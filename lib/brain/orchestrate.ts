@@ -264,21 +264,33 @@ const explainerGenSchema = z.object({
     )
     .min(3)
     .max(14),
-  facts: z
+  summary: z
     .array(
       z.object({
-        label: z
+        heading: z
           .string()
-          .describe("A short data label, e.g. 'Type', 'Born', 'Founded', 'Population', 'Distance from Sun', 'Known for'."),
-        value: z
-          .string()
-          .describe("The concise factual value, e.g. 'Terrestrial planet', '21 December 1981', '2.4 million'."),
+          .describe("A short section heading, e.g. 'Overview', 'Personal details', 'Career', 'Physical characteristics', 'Key dates', 'Geography'."),
+        items: z
+          .array(
+            z.object({
+              label: z.string().describe("A short data label, e.g. 'Born', 'Office', 'Population', 'Diameter', 'Founded'."),
+              value: z.string().describe("The concise CURRENT value, e.g. '14 June 1946', '47th President (since 2025)', '8.4 million'."),
+            })
+          )
+          .min(1),
       })
     )
-    .max(10)
+    .max(6)
     .default([])
     .describe(
-      "A 'data summary' infobox of 4-10 KEY, well-established facts about the subject (Wikipedia-infobox style), shown to the reader but NOT spoken. Use ONLY facts grounded in the verified facts above or stable common knowledge; keep them CURRENT (never outdated); NEVER guess or invent numbers; omit anything uncertain or rapidly-changing unless the verified facts confirm the current value."
+      "A rich, sectioned 'data summary' (a modern Wikipedia-style infobox) of the subject's IMPORTANT facts: 2-5 sections, each with a clear heading and several data rows. Include all the important details a reader would want — but ONLY well-established facts grounded in the verified facts above or stable common knowledge, kept CURRENT and never outdated (for anything that changes — current office/role/status, age, latest work — use the present value). NEVER guess or invent. Shown to the reader but NOT spoken."
+    ),
+  suggestions: z
+    .array(z.string())
+    .max(5)
+    .default([])
+    .describe(
+      "3-5 SHORT related follow-up prompts (3-6 words each) the user might tap next to keep exploring — closely related to the subject and phrased as natural search queries (e.g. 'Mars rovers', 'Could humans live on Mars?', 'Phobos and Deimos')."
     ),
 });
 
@@ -307,7 +319,7 @@ async function buildExplainer(query: string, question: string, ctx: BrainContext
 
 For EACH beat, give one to three natural spoken sentences AND a "media" visual that depicts EXACTLY what you are saying in that beat — the specific objects, action, or people, not a vague theme. Include media on EVERY beat. Plan the visuals to fit the timeline: for a history of a person/place/country, move the media from the OLDEST relevant imagery to the LATEST as the story progresses. Make each beat's media DIFFERENT (no repetition) unless the same visual genuinely fits best.
 End the FINAL beat by warmly inviting the user to ask about anything specific they'd like to go deeper on.
-Also produce a concise "facts" data summary — 4-10 KEY, well-established data points about the subject (like a Wikipedia infobox), accurate and CURRENT, drawn ONLY from the verified facts above or stable common knowledge, never invented or guessed; these are shown to the reader but you do NOT speak them.
+Also produce a rich, sectioned "summary" — a modern Wikipedia-style data infobox with 2-5 headed sections and several data rows each, covering the IMPORTANT details a reader would want. Keep every value accurate and CURRENT (never outdated — use present office/status/age/latest), drawn ONLY from the verified facts above or stable common knowledge, never invented. Plus 3-5 short "suggestions": related follow-up search prompts the user might tap next. The summary and suggestions are shown to the reader but you do NOT speak them.
 
 State only established facts — never predictions, rumours, or opinions as fact. Never say you can't show or discuss something that's public and legal.\nVerified facts:\n${facts}`,
       prompt: question,
@@ -354,7 +366,7 @@ State only established facts — never predictions, rumours, or opinions as fact
   return {
     say: object.title,
     expectsInput: "voice",
-    experience: { type: "explainer", title: object.title, beats, facts: object.facts },
+    experience: { type: "explainer", title: object.title, beats, summary: object.summary, suggestions: object.suggestions },
   };
 }
 

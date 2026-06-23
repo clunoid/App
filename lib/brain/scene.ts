@@ -36,18 +36,25 @@ export const explainerBeatSchema = z.object({
   say: z.string(),
   entity: explainerEntitySchema.optional(),
 });
-/** One data point in the supplementary "at a glance" summary. */
-export const explainerFactSchema = z.object({
+/** One labelled data point inside a summary section. */
+export const summaryItemSchema = z.object({
   label: z.string(),
   value: z.string(),
+});
+/** A titled group of data points — a section of the data summary (infobox). */
+export const summarySectionSchema = z.object({
+  heading: z.string(),
+  items: z.array(summaryItemSchema).min(1),
 });
 export const explainerSchema = z.object({
   type: z.literal("explainer"),
   title: z.string().optional(),
   beats: z.array(explainerBeatSchema).min(1),
-  /** A full-width "data summary" shown BELOW the media + script — a clean, colored
-   *  infobox of key established facts for the reader. Isaac does NOT narrate these. */
-  facts: z.array(explainerFactSchema).optional(),
+  /** A full-width, sectioned "data summary" shown BELOW the media + script — a
+   *  modern Wikipedia-style infobox (headed sections + data). Isaac does NOT narrate it. */
+  summary: z.array(summarySectionSchema).optional(),
+  /** Clickable related follow-up prompts shown at the bottom. */
+  suggestions: z.array(z.string()).optional(),
 });
 
 export const experienceSchema = z.discriminatedUnion("type", [richCardSchema, explainerSchema]);
@@ -56,7 +63,7 @@ export type Experience = z.infer<typeof experienceSchema>;
 export type RichCardExperience = z.infer<typeof richCardSchema>;
 export type ExplainerExperience = z.infer<typeof explainerSchema>;
 export type ExplainerEntity = z.infer<typeof explainerEntitySchema>;
-export type ExplainerFact = z.infer<typeof explainerFactSchema>;
+export type SummarySection = z.infer<typeof summarySectionSchema>;
 
 // ── The Scene envelope ─────────────────────────────────────────────────
 

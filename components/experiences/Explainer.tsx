@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { motion, AnimatePresence, LayoutGroup } from "framer-motion";
 import { Download } from "lucide-react";
 import { useClunoid } from "@/lib/store/useClunoid";
-import type { ExplainerExperience, ExplainerEntity, ExplainerFact } from "@/lib/brain/scene";
+import type { ExplainerExperience, ExplainerEntity, SummarySection } from "@/lib/brain/scene";
 import { downloadMedia } from "@/lib/utils";
 
 /**
@@ -101,20 +101,23 @@ export function Explainer({ data }: { data: ExplainerExperience }) {
       </motion.div>
       </div>
 
-      {/* FULL-WIDTH data summary beneath the media + script (not narrated) */}
-      {data.facts && data.facts.length > 0 && <FactsCard facts={data.facts} />}
+      {/* FULL-WIDTH sectioned data summary beneath the media + script (not narrated) */}
+      {data.summary && data.summary.length > 0 && <SummaryCard sections={data.summary} />}
+
+      {/* Clickable related follow-ups at the bottom (continue the conversation) */}
+      {data.suggestions && data.suggestions.length > 0 && <Suggestions items={data.suggestions} />}
     </div>
   );
 }
 
-const FACT_COLORS = ["#E0937A", "#7FB5FF", "#7FB069", "#D97757", "#B3D4FF"];
+const SECTION_COLORS = ["#E0937A", "#7FB5FF", "#7FB069", "#D97757", "#B3D4FF", "#D4B25A"];
 
 /**
- * Full-width "data summary" beneath the media + script — a clean, modern, colored
- * infobox (Wikipedia-style) of key established facts. Isaac never narrates these;
- * they're extra reference for the reader. Fully dynamic per topic.
+ * Full-width, sectioned "data summary" beneath the media + script — a modern,
+ * Wikipedia-style infobox: each section has a COLORED heading and clean data
+ * rows. Isaac never narrates this; it's extra reference for the reader.
  */
-function FactsCard({ facts }: { facts: ExplainerFact[] }) {
+function SummaryCard({ sections }: { sections: SummarySection[] }) {
   return (
     <motion.div
       layout
@@ -122,24 +125,56 @@ function FactsCard({ facts }: { facts: ExplainerFact[] }) {
       animate={{ opacity: 1, y: 0 }}
       className="w-full rounded-2xl border border-border bg-surface/90 p-5 backdrop-blur sm:p-6"
     >
-      <div className="mb-4 flex items-center gap-2">
+      <div className="mb-5 flex items-center gap-2">
         <span className="h-2.5 w-2.5 rounded-full bg-gradient-to-br from-clay to-spark" />
         <h3 className="font-serif text-lg text-ink sm:text-xl">At a glance</h3>
       </div>
-      <div className="grid grid-cols-2 gap-x-5 gap-y-4 sm:grid-cols-3 lg:grid-cols-4">
-        {facts.map((f, i) => {
-          const c = FACT_COLORS[i % FACT_COLORS.length];
+      <div className="grid gap-x-10 gap-y-7 sm:grid-cols-2 lg:grid-cols-3">
+        {sections.map((sec, i) => {
+          const c = SECTION_COLORS[i % SECTION_COLORS.length];
           return (
-            <div key={i} className="border-l-2 pl-3" style={{ borderColor: c }}>
-              <div className="text-[11px] font-medium uppercase tracking-wider text-ink-faint">{f.label}</div>
-              <div className="mt-0.5 text-sm font-semibold sm:text-[15px]" style={{ color: c }}>
-                {f.value}
-              </div>
+            <div key={i} className="min-w-0">
+              <h4
+                className="mb-2.5 border-b pb-1.5 text-xs font-semibold uppercase tracking-wider"
+                style={{ color: c, borderColor: `${c}55` }}
+              >
+                {sec.heading}
+              </h4>
+              <dl className="flex flex-col gap-2">
+                {sec.items.map((it, j) => (
+                  <div key={j} className="flex items-baseline justify-between gap-4 text-sm">
+                    <dt className="shrink-0 text-ink-faint">{it.label}</dt>
+                    <dd className="min-w-0 break-words text-right font-medium text-ink">{it.value}</dd>
+                  </div>
+                ))}
+              </dl>
             </div>
           );
         })}
       </div>
     </motion.div>
+  );
+}
+
+/** Clickable related follow-up prompts — like the suggestions at the end of a
+ *  chat. Tapping one sends it as the next question (continuing the conversation). */
+function Suggestions({ items }: { items: string[] }) {
+  return (
+    <div className="w-full">
+      <div className="mb-2.5 text-xs font-medium uppercase tracking-wider text-ink-faint">Keep exploring</div>
+      <div className="flex flex-wrap gap-2">
+        {items.map((s, i) => (
+          <button
+            key={i}
+            type="button"
+            onClick={() => useClunoid.getState().send(s)}
+            className="rounded-full border border-border bg-surface/70 px-4 py-2 text-sm text-ink-muted transition hover:border-clay hover:bg-surface-2 hover:text-ink"
+          >
+            {s}
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
 
