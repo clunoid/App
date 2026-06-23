@@ -3,19 +3,19 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useClunoid } from "@/lib/store/useClunoid";
-import { formatName } from "@/lib/utils";
 import { IsaacOrb } from "@/components/stage/IsaacOrb";
 import { ProfileMenu } from "@/components/auth/ProfileMenu";
 
 /**
  * The authenticated app. Isaac's orb is an unbounded background; the UI renders
- * over it. Signed-out visitors are sent back to the welcome gate.
+ * over it. Signed-out visitors are sent back to the welcome gate. The brain's
+ * stage (left: animated media · right: info cards · continuable chat) mounts
+ * into the empty area below the header next.
  */
 export default function Home() {
   const router = useRouter();
   const authChecked = useClunoid((s) => s.authChecked);
   const isAuthed = useClunoid((s) => s.user.isAuthed);
-  const name = useClunoid((s) => s.user.name);
 
   useEffect(() => {
     if (authChecked && !isAuthed) router.replace("/");
@@ -41,16 +41,7 @@ export default function Home() {
           <span className="font-serif text-lg text-ink/80">clunoid</span>
           <ProfileMenu />
         </div>
-
-        <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-6 text-center">
-          <h2 className="font-serif text-3xl text-ink sm:text-4xl">
-            {name ? `You're in, ${formatName(name)}.` : "You're in."}
-          </h2>
-          <p className="mt-3 max-w-md text-ink-muted">
-            Your Clunoid account is ready. Isaac is warming up — soon you&apos;ll be
-            able to ask him anything, out loud or typed, and watch it come to life.
-          </p>
-        </div>
+        {/* Brain stage (media · info cards · chat) mounts here next. */}
       </div>
     </main>
   );
