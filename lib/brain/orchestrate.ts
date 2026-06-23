@@ -264,27 +264,6 @@ const explainerGenSchema = z.object({
     )
     .min(3)
     .max(14),
-  summary: z
-    .array(
-      z.object({
-        heading: z
-          .string()
-          .describe("A short section heading, e.g. 'Overview', 'Personal details', 'Career', 'Physical characteristics', 'Key dates', 'Geography'."),
-        items: z
-          .array(
-            z.object({
-              label: z.string().describe("A short data label, e.g. 'Born', 'Office', 'Population', 'Diameter', 'Founded'."),
-              value: z.string().describe("The concise CURRENT value, e.g. '14 June 1946', '47th President (since 2025)', '8.4 million'."),
-            })
-          )
-          .min(1),
-      })
-    )
-    .max(6)
-    .default([])
-    .describe(
-      "A rich, sectioned 'data summary' (a modern Wikipedia-style infobox) of the subject's IMPORTANT facts: 2-5 sections, each with a clear heading and several data rows. Include all the important details a reader would want — but ONLY well-established facts grounded in the verified facts above or stable common knowledge, kept CURRENT and never outdated (for anything that changes — current office/role/status, age, latest work — use the present value). NEVER guess or invent. Shown to the reader but NOT spoken."
-    ),
   suggestions: z
     .array(z.string())
     .max(5)
@@ -293,6 +272,59 @@ const explainerGenSchema = z.object({
       "3-5 SHORT related follow-up prompts (3-6 words each) the user might tap next to keep exploring — closely related to the subject and phrased as natural search queries (e.g. 'Mars rovers', 'Could humans live on Mars?', 'Phobos and Deimos')."
     ),
 });
+
+// The factual data summary is built SEPARATELY by the strongest model (Sonnet)
+// under strict grounding — discrete "facts" look authoritative, so a single wrong
+// one is far worse than a missing one. Accuracy here is non-negotiable.
+const summaryGenSchema = z.object({
+  summary: z
+    .array(
+      z.object({
+        heading: z
+          .string()
+          .describe("A short section heading, e.g. 'Overview', 'Personal details', 'Career', 'Physical characteristics', 'Key dates'."),
+        items: z
+          .array(
+            z.object({
+              label: z.string().describe("A short data label, e.g. 'Born', 'Office', 'Population', 'Diameter'."),
+              value: z.string().describe("The concise CURRENT value — include the row ONLY if you are certain it is correct."),
+            })
+          )
+          .min(1),
+      })
+    )
+    .max(6)
+    .default([]),
+});
+
+/** Build the verified data summary with the strongest model (Sonnet) and strict
+ *  grounding so no invented/superlative/outdated "fact" ever reaches the card. */
+async function buildSummary(facts: string, subject: string, ctx: BrainContext) {
+  const model = hasAnthropic() ? MODELS.genius() : MODELS.fast();
+  const system = `${dateLine(
+    ctx
+  )}\nYou are building a STRICTLY ACCURATE data summary (a modern Wikipedia-style infobox) about "${subject}". ACCURACY IS ABSOLUTE — a single wrong "fact" is far worse than a missing one, so when in doubt, leave it out.
+- Include ONLY facts EXPLICITLY supported by the verified evidence below, OR stable, universally-established knowledge you are completely certain of.
+- NEVER assert a superlative or record ("first", "only", "largest", "richest", "trillionaire", "fastest", etc.) unless it is directly and clearly stated in the verified evidence.
+- NEVER estimate, guess, round, or extrapolate a number, date, money figure, or ranking. If a precise value is not in the evidence and you are not certain, OMIT that row entirely.
+- Every value must be CURRENT (present office/status/age/latest) — never an outdated value.
+- Prefer FEWER, certain facts over a fuller but partly-wrong summary.
+Organise into 2-5 sections, each a heading plus several data rows. Shown to the reader but NEVER spoken.
+Verified evidence:\n${facts}`;
+  try {
+    const { object } = await generateObject({
+      model,
+      schema: summaryGenSchema,
+      system,
+      prompt: `Produce the verified data summary for: ${subject}`,
+      temperature: 0.1,
+      maxRetries: 1,
+    });
+    return object.summary ?? [];
+  } catch {
+    return [];
+  }
+}
 
 async function buildExplainer(query: string, question: string, ctx: BrainContext): Promise<Scene> {
   // Gather rich verified evidence: live search (current) + Wikipedia (depth + image).
@@ -308,26 +340,37 @@ async function buildExplainer(query: string, question: string, ctx: BrainContext
   if (wiki) facts += `\n${wiki.title}: ${wiki.extract}`;
   if (!facts.trim()) return chatReply(question, ctx, []);
 
-  let object: z.infer<typeof explainerGenSchema>;
-  try {
-    ({ object } = await generateObject({
-      model: hasAnthropic() ? MODELS.smart() : MODELS.fast(),
-      schema: explainerGenSchema,
-      system: `${ISAAC_PERSONA}${dateLine(
-        ctx
-      )}\nBuild a thorough, engaging spoken explainer that fully answers the user, using the verified facts below where they apply (for well-known topics you may also use common knowledge, but never invent specifics). Scale the LENGTH to the request: use only a few beats (3-5) for a simple or narrow question (a word's meaning, a quick "who is…"), and many (up to a dozen) for a rich subject — a full history, a deep "tell me everything", or a news roundup. Cover the essentials AND, where relevant, history, key facts, notable figures, and the LATEST developments. Never pad a simple ask, and never cut important detail from a big one.
+  // Narrative (Haiku, fast) and the factual data summary (Sonnet, strict) run in
+  // PARALLEL — strong accuracy where it matters most, with no added latency.
+  const [genObject, summary] = await Promise.all([
+    (async (): Promise<z.infer<typeof explainerGenSchema> | null> => {
+      try {
+        const { object } = await generateObject({
+          model: hasAnthropic() ? MODELS.smart() : MODELS.fast(),
+          schema: explainerGenSchema,
+          system: `${ISAAC_PERSONA}${dateLine(
+            ctx
+          )}\nBuild a thorough, engaging spoken explainer that fully answers the user, using the verified facts below where they apply (for well-known topics you may also use common knowledge, but never invent specifics). Scale the LENGTH to the request: use only a few beats (3-5) for a simple or narrow question (a word's meaning, a quick "who is…"), and many (up to a dozen) for a rich subject — a full history, a deep "tell me everything", or a news roundup. Cover the essentials AND, where relevant, history, key facts, notable figures, and the LATEST developments. Never pad a simple ask, and never cut important detail from a big one.
 
 For EACH beat, give one to three natural spoken sentences AND a "media" visual that depicts EXACTLY what you are saying in that beat — the specific objects, action, or people, not a vague theme. Include media on EVERY beat. Plan the visuals to fit the timeline: for a history of a person/place/country, move the media from the OLDEST relevant imagery to the LATEST as the story progresses. Make each beat's media DIFFERENT (no repetition) unless the same visual genuinely fits best.
 End the FINAL beat by warmly inviting the user to ask about anything specific they'd like to go deeper on.
-Also produce a rich, sectioned "summary" — a modern Wikipedia-style data infobox with 2-5 headed sections and several data rows each, covering the IMPORTANT details a reader would want. Keep every value accurate and CURRENT (never outdated — use present office/status/age/latest), drawn ONLY from the verified facts above or stable common knowledge, never invented. Plus 3-5 short "suggestions": related follow-up search prompts the user might tap next. The summary and suggestions are shown to the reader but you do NOT speak them.
+Also produce 3-5 short "suggestions": related follow-up search prompts the user might tap next (shown to the reader, not spoken).
 
-State only established facts — never predictions, rumours, or opinions as fact. Never say you can't show or discuss something that's public and legal.\nVerified facts:\n${facts}`,
-      prompt: question,
-      temperature: 0.45,
-      maxRetries: 1,
-    }));
-  } catch {
-    // Fall back to a single grounded card if the structured build fails.
+ACCURACY MATTERS: state only what the verified facts support. NEVER assert a superlative, record, or "first/only/largest/richest", nor a specific number, date, or figure, unless it is clearly in the verified facts — if you are unsure, speak generally instead of stating a specific unverified claim. State only established facts — never predictions, rumours, or opinions as fact. Never say you can't show or discuss something that's public and legal.\nVerified facts:\n${facts}`,
+          prompt: question,
+          temperature: 0.45,
+          maxRetries: 1,
+        });
+        return object;
+      } catch {
+        return null;
+      }
+    })(),
+    buildSummary(facts, query || question, ctx),
+  ]);
+
+  if (!genObject) {
+    // Narrative build failed → a single grounded card.
     const say = await groundedSay(question, facts, ctx);
     return {
       say,
@@ -340,6 +383,7 @@ State only established facts — never predictions, rumours, or opinions as fact
       },
     };
   }
+  const object = genObject;
 
   // Resolve each beat's media in parallel — a real video or image from the best
   // available source. Only attach an entity if media actually resolved.
@@ -366,7 +410,7 @@ State only established facts — never predictions, rumours, or opinions as fact
   return {
     say: object.title,
     expectsInput: "voice",
-    experience: { type: "explainer", title: object.title, beats, summary: object.summary, suggestions: object.suggestions },
+    experience: { type: "explainer", title: object.title, beats, summary, suggestions: object.suggestions },
   };
 }
 
