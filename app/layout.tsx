@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Inter, Source_Serif_4 } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
+import { SessionProvider } from "@/components/auth/SessionProvider";
 import "./globals.css";
 
 const sans = Inter({
@@ -57,7 +58,7 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${sans.variable} ${serif.variable}`}>
       <body>
-        {children}
+        <SessionProvider>{children}</SessionProvider>
         <Analytics />
         <SpeedInsights />
       </body>

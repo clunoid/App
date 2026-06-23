@@ -16,9 +16,10 @@ export async function GET(req: NextRequest) {
   const { searchParams, origin } = new URL(req.url);
   const code = searchParams.get("code");
 
-  // Only allow same-origin relative paths (no open redirects).
+  // Only allow same-origin relative paths (no open redirects). Default to the
+  // authenticated app, since a successful OAuth/recovery exchange means signed-in.
   const nextParam = searchParams.get("next");
-  const next = nextParam && nextParam.startsWith("/") && !nextParam.startsWith("//") ? nextParam : "/";
+  const next = nextParam && nextParam.startsWith("/") && !nextParam.startsWith("//") ? nextParam : "/home";
 
   const response = NextResponse.redirect(new URL(next, origin));
 

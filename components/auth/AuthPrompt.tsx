@@ -76,7 +76,7 @@ export function AuthPrompt() {
     }
   }
 
-  function finishAuth(authUser: User, display: string | undefined, event: "signed_up" | "signed_in") {
+  function finishAuth(authUser: User, display: string | undefined) {
     remember(email.trim().toLowerCase());
     setUser({
       id: authUser.id,
@@ -88,7 +88,7 @@ export function AuthPrompt() {
       isAuthed: true,
     });
     close();
-    useClunoid.getState().announceAuth(event);
+    // Signed in — the "/" route guard now forwards them to /home.
   }
 
   /**
@@ -101,7 +101,7 @@ export function AuthPrompt() {
   async function resolveExisting(supabase: SupabaseClient, addr: string, signupName?: string) {
     const { data, error } = await supabase.auth.signInWithPassword({ email: addr, password });
     if (!error && data.user) {
-      finishAuth(data.user, displayNameOf(data.user) || signupName, "signed_in");
+      finishAuth(data.user, displayNameOf(data.user) || signupName);
       return;
     }
     useClunoid.getState().openAuth("login");
@@ -168,7 +168,7 @@ export function AuthPrompt() {
           }
           // The DB trigger creates the profile; this upsert keeps the tidy name.
           void supabase.from("profiles").upsert({ id: data.user.id, display_name: cleanName });
-          finishAuth(data.user, cleanName, "signed_up");
+          finishAuth(data.user, cleanName);
         }
       } else {
         const { data, error } = await supabase.auth.signInWithPassword({ email: addr, password });
@@ -184,7 +184,7 @@ export function AuthPrompt() {
           }
           throw error;
         }
-        finishAuth(data.user, displayNameOf(data.user), "signed_in");
+        finishAuth(data.user, displayNameOf(data.user));
       }
     } catch (err) {
       setMsg(err instanceof Error ? err.message : "Something went wrong.");

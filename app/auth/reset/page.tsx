@@ -44,7 +44,7 @@ export default function ResetPassword() {
       if (error) throw error;
       setDone(true);
       // They're signed in now — send them into the app.
-      setTimeout(() => router.replace("/"), 1400);
+      setTimeout(() => router.replace("/home"), 1400);
     } catch (err) {
       setMsg(err instanceof Error ? err.message : "Couldn't update your password.");
       setBusy(false);
