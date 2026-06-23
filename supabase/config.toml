@@ -1,0 +1,28 @@
+# Clunoid App — Supabase project configuration.
+# NOTE: the live auth settings (Site URL, redirect URLs, Google provider, email
+# sign-in) are the SOURCE OF TRUTH in the Supabase dashboard. This file documents
+# intent and lets `supabase link --project-ref fgxjscoirazdkckcyory` work.
+
+project_id = "fgxjscoirazdkckcyory"
+
+[api]
+enabled = true
+schemas = ["public", "graphql_public"]
+max_rows = 1000
+
+[auth]
+site_url = "https://clunoid.com"
+additional_redirect_urls = [
+  "https://clunoid.com/**",
+  "https://www.clunoid.com/**",
+  "http://localhost:3000/**",
+]
+
+[auth.email]
+enable_signup = true
+# Instant onboarding — sign-up logs the user straight in (no email confirmation).
+enable_confirmations = false
+
+# Google OAuth is configured in the dashboard (client id / secret live there).
+[auth.external.google]
+enabled = true

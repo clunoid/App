@@ -1,0 +1,55 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background-color: theme("colors.base");
+  color: theme("colors.ink");
+  font-family: var(--font-sans), system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  /* Respect device safe areas (notches, home indicators) */
+  padding: env(safe-area-inset-top) env(safe-area-inset-right)
+    env(safe-area-inset-bottom) env(safe-area-inset-left);
+  overscroll-behavior: none;
+}
+
+/* Use the full viewport, including mobile dynamic toolbars */
+main {
+  min-height: 100dvh;
+}
+
+/* Subtle warm vignette behind the stage */
+.stage-bg {
+  background:
+    radial-gradient(
+      120% 80% at 50% 0%,
+      rgba(217, 119, 87, 0.08) 0%,
+      transparent 55%
+    ),
+    theme("colors.base");
+}
+
+/* Thin, unobtrusive scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: theme("colors.border") transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background: theme("colors.border");
+  border-radius: 9999px;
+}
