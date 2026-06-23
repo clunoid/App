@@ -3,21 +3,25 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { X, Eye, EyeOff } from "lucide-react";
-import type { User } from "@supabase/supabase-js";
+import type { User, SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseBrowser } from "@/lib/supabase/client";
 import { useClunoid } from "@/lib/store/useClunoid";
+import { formatName } from "@/lib/utils";
 
 const EMAIL_KEY = "clunoid_email";
 
+const displayNameOf = (u: User): string | undefined =>
+  (u.user_metadata?.name as string) || (u.user_metadata?.full_name as string) || undefined;
+
 /**
- * Sign up / sign in with email+password or Google. The last-used email is
- * remembered and pre-filled so returning users just type their password.
- * (Email confirmation is disabled in Supabase, so sign-up logs in immediately.)
- *
- * The modal unmounts instantly when closed (no AnimatePresence exit): it is
- * mounted at the top of the Stage and persists across the welcome→live branch
- * swap, so an exit animation racing that swap could otherwise leave an invisible
- * full-screen overlay that silently blocks clicks.
+ * Sign up / sign in with email+password or Google. Smooth, provider-aware:
+ * - last-used email is remembered and pre-filled,
+ * - if an email already has an account, we route to the RIGHT method
+ *   (auto-send Google-only users to Google; sign password users straight in;
+ *   send genuinely new emails to sign-up),
+ * - forgot-password reset is built in.
+ * The modal unmounts instantly when closed (it's mounted once above the
+ * gate/live branches, so an exit animation can't leave a click-blocking overlay).
  */
 export function AuthPrompt() {
   const open = useClunoid((s) => s.authOpen);
@@ -31,11 +35,13 @@ export function AuthPrompt() {
   const [showPass, setShowPass] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const [showReset, setShowReset] = useState(false);
 
   // Pre-fill the remembered email when the modal opens.
   useEffect(() => {
     if (open) {
       setMsg(null);
+      setShowReset(false);
       try {
         const saved = localStorage.getItem(EMAIL_KEY);
         if (saved) setEmail(saved);
@@ -71,10 +77,10 @@ export function AuthPrompt() {
   }
 
   function finishAuth(authUser: User, display: string | undefined, event: "signed_up" | "signed_in") {
-    remember(email);
+    remember(email.trim().toLowerCase());
     setUser({
       id: authUser.id,
-      name: display,
+      name: display ? formatName(display) : undefined,
       email: authUser.email,
       avatarUrl:
         (authUser.user_metadata?.avatar_url as string) || (authUser.user_metadata?.picture as string) || undefined,
@@ -82,8 +88,81 @@ export function AuthPrompt() {
       isAuthed: true,
     });
     close();
-    // Drop them into the live app (welcome / welcome-back).
     useClunoid.getState().announceAuth(event);
+  }
+
+  /** Which providers (email / google) an email is registered with, if any. */
+  async function providersFor(supabase: SupabaseClient, addr: string): Promise<string[]> {
+    try {
+      const { data } = await supabase.rpc("account_providers", { p_email: addr });
+      return Array.isArray(data) ? (data as string[]) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * The email already has an account (or sign-in failed). Route the user to the
+   * method that will actually work, instead of a dead-end "wrong password".
+   */
+  async function resolveExisting(supabase: SupabaseClient, addr: string, signupName?: string) {
+    const providers = await providersFor(supabase, addr);
+    const hasGoogle = providers.includes("google");
+    const hasEmail = providers.includes("email");
+
+    // Created with Google and no password → just take them to Google.
+    if (hasGoogle && !hasEmail) {
+      setMsg("You created this account with Google — taking you there…");
+      await withGoogle();
+      return;
+    }
+
+    // Has a password (or we couldn't tell) → try the password they entered.
+    const { data, error } = await supabase.auth.signInWithPassword({ email: addr, password });
+    if (!error && data.user) {
+      finishAuth(data.user, displayNameOf(data.user) || signupName, "signed_in");
+      return;
+    }
+
+    if (providers.length === 0) {
+      // No account at all → they're new; switch to sign-up.
+      useClunoid.getState().openAuth("signup");
+      setMsg("Looks like you're new here — add your name, then create your account.");
+      setBusy(false);
+      return;
+    }
+
+    // Account exists with a password, but this one was wrong → offer reset.
+    if (hasGoogle) {
+      setMsg("That password didn't match. Try again, reset it below, or use Continue with Google.");
+    } else {
+      setMsg("That password didn't match. Try again, or reset it below.");
+    }
+    setShowReset(true);
+    setBusy(false);
+  }
+
+  async function sendReset() {
+    const addr = email.trim().toLowerCase();
+    if (!addr) {
+      setMsg("Enter your email above first, then tap reset.");
+      return;
+    }
+    setBusy(true);
+    setMsg(null);
+    try {
+      const supabase = getSupabaseBrowser();
+      const { error } = await supabase.auth.resetPasswordForEmail(addr, {
+        redirectTo: `${window.location.origin}/auth/callback?next=/auth/reset`,
+      });
+      if (error) throw error;
+      remember(addr);
+      setMsg("Check your email for a link to reset your password.");
+    } catch (err) {
+      setMsg(err instanceof Error ? err.message : "Couldn't send the reset email.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function submit(e: React.FormEvent) {
@@ -91,67 +170,46 @@ export function AuthPrompt() {
     setBusy(true);
     setMsg(null);
     const supabase = getSupabaseBrowser();
+    const addr = email.trim().toLowerCase();
 
     try {
       if (mode === "signup") {
-        const { data, error } = await supabase.auth.signUp({ email, password, options: { data: { name } } });
+        const cleanName = formatName(name);
+        const { data, error } = await supabase.auth.signUp({
+          email: addr,
+          password,
+          options: { data: { name: cleanName } },
+        });
         if (error) {
-          // They already have an account → if the password is right, just sign in.
           if (/already.*regist|already.*exist|already been/i.test(error.message)) {
-            const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
-              email,
-              password,
-            });
-            if (signInError) {
-              setMsg("You already have an account — please use the right password (or Sign in).");
-              setBusy(false);
-              return;
-            }
-            finishAuth(
-              signInData.user,
-              name ||
-                (signInData.user.user_metadata?.name as string) ||
-                (signInData.user.user_metadata?.full_name as string) ||
-                undefined,
-              "signed_in"
-            );
+            await resolveExisting(supabase, addr, cleanName);
             return;
           }
           throw error;
         }
         if (data.user) {
           // If email confirmation is enabled, signUp returns a user but NO
-          // session — don't pretend they're in. (Clunoid is designed for instant
-          // accounts, so this only shows if confirmations are turned on.)
+          // session — don't pretend they're in. (Clunoid uses instant accounts,
+          // so this only shows if confirmations are turned on.)
           if (!data.session) {
             setMsg("Almost there — check your email to confirm your account, then sign in.");
             setBusy(false);
             return;
           }
-          // The DB trigger creates the profile; this is a non-blocking nicety so
-          // it can never stall the sign-up from completing.
-          void supabase.from("profiles").upsert({ id: data.user.id, display_name: name });
-          finishAuth(data.user, name, "signed_up");
+          // The DB trigger creates the profile; this upsert keeps the tidy name.
+          void supabase.from("profiles").upsert({ id: data.user.id, display_name: cleanName });
+          finishAuth(data.user, cleanName, "signed_up");
         }
       } else {
-        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+        const { data, error } = await supabase.auth.signInWithPassword({ email: addr, password });
         if (error) {
-          // New user who typed into sign-in → flip to sign-up (keep their details).
           if (/invalid login credentials/i.test(error.message)) {
-            useClunoid.getState().openAuth("signup");
-            setMsg("Looks like you're new here — add your name, then create your account.");
-            setBusy(false);
+            await resolveExisting(supabase, addr);
             return;
           }
           throw error;
         }
-        finishAuth(
-          data.user,
-          (data.user.user_metadata?.name as string) ||
-            (data.user.user_metadata?.full_name as string) ||
-            undefined,
-          "signed_in"
-        );
+        finishAuth(data.user, displayNameOf(data.user), "signed_in");
       }
     } catch (err) {
       setMsg(err instanceof Error ? err.message : "Something went wrong.");
@@ -202,8 +260,10 @@ export function AuthPrompt() {
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
+              onBlur={() => setName((n) => formatName(n))}
               placeholder="What should Isaac call you?"
               required
+              autoComplete="name"
               className="rounded-xl border border-border bg-base px-4 py-3 text-ink outline-none placeholder:text-ink-faint focus:border-clay"
             />
           )}
@@ -237,6 +297,17 @@ export function AuthPrompt() {
               {showPass ? <EyeOff size={18} /> : <Eye size={18} />}
             </button>
           </div>
+
+          {(mode === "login" || showReset) && (
+            <button
+              type="button"
+              onClick={sendReset}
+              disabled={busy}
+              className="-mt-1 self-end text-xs text-ink-faint transition hover:text-clay-soft disabled:opacity-60"
+            >
+              Forgot password?
+            </button>
+          )}
 
           {msg && <p className="text-sm text-clay-soft">{msg}</p>}
 

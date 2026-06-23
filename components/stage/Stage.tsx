@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { getSupabaseBrowser } from "@/lib/supabase/client";
 import { useClunoid } from "@/lib/store/useClunoid";
+import { formatName } from "@/lib/utils";
 import { IsaacOrb } from "./IsaacOrb";
 import { AuthPrompt } from "@/components/auth/AuthPrompt";
 import { ProfileMenu } from "@/components/auth/ProfileMenu";
@@ -151,7 +152,7 @@ export function Stage() {
 
             <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-6 text-center">
               <h2 className="font-serif text-3xl text-ink sm:text-4xl">
-                {name ? `You're in, ${name}.` : "You're in."}
+                {name ? `You're in, ${formatName(name)}.` : "You're in."}
               </h2>
               <p className="mt-3 max-w-md text-ink-muted">
                 Your Clunoid account is ready. Isaac is warming up — soon you&apos;ll be

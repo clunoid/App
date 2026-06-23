@@ -4,16 +4,23 @@ import { createServerClient, type CookieOptions } from "@supabase/ssr";
 export const runtime = "nodejs";
 
 /**
- * OAuth (Google) redirect target. Exchanges the auth code for a session and —
- * crucially — writes the session cookies onto the REDIRECT RESPONSE itself, so
- * the browser actually receives them. (Setting cookies via next/headers does
- * NOT attach them to a custom NextResponse.redirect, which silently breaks the
- * client session.)
+ * OAuth (Google) + recovery redirect target. Exchanges the auth code for a
+ * session and — crucially — writes the session cookies onto the REDIRECT
+ * RESPONSE itself, so the browser actually receives them. (Setting cookies via
+ * next/headers does NOT attach them to a custom NextResponse.redirect.)
+ *
+ * Supports a `next` param (same-origin path only) so the password-reset flow can
+ * land the user on /auth/reset after the recovery code is exchanged.
  */
 export async function GET(req: NextRequest) {
   const { searchParams, origin } = new URL(req.url);
   const code = searchParams.get("code");
-  const response = NextResponse.redirect(origin);
+
+  // Only allow same-origin relative paths (no open redirects).
+  const nextParam = searchParams.get("next");
+  const next = nextParam && nextParam.startsWith("/") && !nextParam.startsWith("//") ? nextParam : "/";
+
+  const response = NextResponse.redirect(new URL(next, origin));
 
   if (code) {
     const supabase = createServerClient(
@@ -33,7 +40,7 @@ export async function GET(req: NextRequest) {
     try {
       await supabase.auth.exchangeCodeForSession(code);
     } catch {
-      /* fall through and still redirect home */
+      /* fall through and still redirect */
     }
   }
 

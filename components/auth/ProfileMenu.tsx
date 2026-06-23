@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { LogOut, MapPin, CalendarDays } from "lucide-react";
 import { useClunoid } from "@/lib/store/useClunoid";
-import { cn } from "@/lib/utils";
+import { cn, formatName } from "@/lib/utils";
 
 /**
  * A friendly "City, Region" from the browser's time zone — no permission prompt.
@@ -93,7 +93,7 @@ export function ProfileMenu() {
                   <Avatar url={user.avatarUrl} initial={initial} big />
                 </div>
                 <div className="min-w-0">
-                  <div className="truncate font-medium text-ink">{user.name || "You"}</div>
+                  <div className="truncate font-medium text-ink">{formatName(user.name) || "You"}</div>
                   <div className="truncate text-xs text-ink-muted">{user.email}</div>
                 </div>
               </div>
