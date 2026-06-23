@@ -264,6 +264,22 @@ const explainerGenSchema = z.object({
     )
     .min(3)
     .max(14),
+  facts: z
+    .array(
+      z.object({
+        label: z
+          .string()
+          .describe("A short data label, e.g. 'Type', 'Born', 'Founded', 'Population', 'Distance from Sun', 'Known for'."),
+        value: z
+          .string()
+          .describe("The concise factual value, e.g. 'Terrestrial planet', '21 December 1981', '2.4 million'."),
+      })
+    )
+    .max(10)
+    .default([])
+    .describe(
+      "A 'data summary' infobox of 4-10 KEY, well-established facts about the subject (Wikipedia-infobox style), shown to the reader but NOT spoken. Use ONLY facts grounded in the verified facts above or stable common knowledge; keep them CURRENT (never outdated); NEVER guess or invent numbers; omit anything uncertain or rapidly-changing unless the verified facts confirm the current value."
+    ),
 });
 
 async function buildExplainer(query: string, question: string, ctx: BrainContext): Promise<Scene> {
@@ -291,6 +307,7 @@ async function buildExplainer(query: string, question: string, ctx: BrainContext
 
 For EACH beat, give one to three natural spoken sentences AND a "media" visual that depicts EXACTLY what you are saying in that beat — the specific objects, action, or people, not a vague theme. Include media on EVERY beat. Plan the visuals to fit the timeline: for a history of a person/place/country, move the media from the OLDEST relevant imagery to the LATEST as the story progresses. Make each beat's media DIFFERENT (no repetition) unless the same visual genuinely fits best.
 End the FINAL beat by warmly inviting the user to ask about anything specific they'd like to go deeper on.
+Also produce a concise "facts" data summary — 4-10 KEY, well-established data points about the subject (like a Wikipedia infobox), accurate and CURRENT, drawn ONLY from the verified facts above or stable common knowledge, never invented or guessed; these are shown to the reader but you do NOT speak them.
 
 State only established facts — never predictions, rumours, or opinions as fact. Never say you can't show or discuss something that's public and legal.\nVerified facts:\n${facts}`,
       prompt: question,
@@ -337,7 +354,7 @@ State only established facts — never predictions, rumours, or opinions as fact
   return {
     say: object.title,
     expectsInput: "voice",
-    experience: { type: "explainer", title: object.title, beats },
+    experience: { type: "explainer", title: object.title, beats, facts: object.facts },
   };
 }
 

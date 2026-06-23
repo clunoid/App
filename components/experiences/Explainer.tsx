@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { motion, AnimatePresence, LayoutGroup } from "framer-motion";
 import { Download } from "lucide-react";
 import { useClunoid } from "@/lib/store/useClunoid";
-import type { ExplainerExperience, ExplainerEntity } from "@/lib/brain/scene";
+import type { ExplainerExperience, ExplainerEntity, ExplainerFact } from "@/lib/brain/scene";
 import { downloadMedia } from "@/lib/utils";
 
 /**
@@ -43,7 +43,8 @@ export function Explainer({ data }: { data: ExplainerExperience }) {
   const others = shown.filter((e) => e !== main);
 
   return (
-    <div className="flex w-full flex-col gap-6 lg:flex-row lg:items-start lg:gap-10">
+    <div className="flex w-full flex-col gap-6">
+      <div className="flex w-full flex-col gap-6 lg:flex-row lg:items-start lg:gap-10">
       {/* LEFT — synced media */}
       <div className="flex w-full shrink-0 flex-col items-center gap-4 lg:sticky lg:top-2 lg:w-[44%]">
         <AnimatePresence mode="popLayout">
@@ -98,7 +99,47 @@ export function Explainer({ data }: { data: ExplainerExperience }) {
           ))}
         </div>
       </motion.div>
+      </div>
+
+      {/* FULL-WIDTH data summary beneath the media + script (not narrated) */}
+      {data.facts && data.facts.length > 0 && <FactsCard facts={data.facts} />}
     </div>
+  );
+}
+
+const FACT_COLORS = ["#E0937A", "#7FB5FF", "#7FB069", "#D97757", "#B3D4FF"];
+
+/**
+ * Full-width "data summary" beneath the media + script — a clean, modern, colored
+ * infobox (Wikipedia-style) of key established facts. Isaac never narrates these;
+ * they're extra reference for the reader. Fully dynamic per topic.
+ */
+function FactsCard({ facts }: { facts: ExplainerFact[] }) {
+  return (
+    <motion.div
+      layout
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="w-full rounded-2xl border border-border bg-surface/90 p-5 backdrop-blur sm:p-6"
+    >
+      <div className="mb-4 flex items-center gap-2">
+        <span className="h-2.5 w-2.5 rounded-full bg-gradient-to-br from-clay to-spark" />
+        <h3 className="font-serif text-lg text-ink sm:text-xl">At a glance</h3>
+      </div>
+      <div className="grid grid-cols-2 gap-x-5 gap-y-4 sm:grid-cols-3 lg:grid-cols-4">
+        {facts.map((f, i) => {
+          const c = FACT_COLORS[i % FACT_COLORS.length];
+          return (
+            <div key={i} className="border-l-2 pl-3" style={{ borderColor: c }}>
+              <div className="text-[11px] font-medium uppercase tracking-wider text-ink-faint">{f.label}</div>
+              <div className="mt-0.5 text-sm font-semibold sm:text-[15px]" style={{ color: c }}>
+                {f.value}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </motion.div>
   );
 }
 

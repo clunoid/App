@@ -36,10 +36,18 @@ export const explainerBeatSchema = z.object({
   say: z.string(),
   entity: explainerEntitySchema.optional(),
 });
+/** One data point in the supplementary "at a glance" summary. */
+export const explainerFactSchema = z.object({
+  label: z.string(),
+  value: z.string(),
+});
 export const explainerSchema = z.object({
   type: z.literal("explainer"),
   title: z.string().optional(),
   beats: z.array(explainerBeatSchema).min(1),
+  /** A full-width "data summary" shown BELOW the media + script — a clean, colored
+   *  infobox of key established facts for the reader. Isaac does NOT narrate these. */
+  facts: z.array(explainerFactSchema).optional(),
 });
 
 export const experienceSchema = z.discriminatedUnion("type", [richCardSchema, explainerSchema]);
@@ -48,6 +56,7 @@ export type Experience = z.infer<typeof experienceSchema>;
 export type RichCardExperience = z.infer<typeof richCardSchema>;
 export type ExplainerExperience = z.infer<typeof explainerSchema>;
 export type ExplainerEntity = z.infer<typeof explainerEntitySchema>;
+export type ExplainerFact = z.infer<typeof explainerFactSchema>;
 
 // ── The Scene envelope ─────────────────────────────────────────────────
 
