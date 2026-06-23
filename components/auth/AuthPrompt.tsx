@@ -91,54 +91,24 @@ export function AuthPrompt() {
     useClunoid.getState().announceAuth(event);
   }
 
-  /** Which providers (email / google) an email is registered with, if any. */
-  async function providersFor(supabase: SupabaseClient, addr: string): Promise<string[]> {
-    try {
-      const { data } = await supabase.rpc("account_providers", { p_email: addr });
-      return Array.isArray(data) ? (data as string[]) : [];
-    } catch {
-      return [];
-    }
-  }
-
   /**
-   * The email already has an account (or sign-in failed). Route the user to the
-   * method that will actually work, instead of a dead-end "wrong password".
+   * Sign-up hit an existing email. Try the password they entered (covers people
+   * who already have a password account and used the wrong form), otherwise
+   * route them to a working method. We deliberately do NOT probe which provider
+   * the email uses — that would leak account information (enumeration). The safe
+   * options (Google button, password reset) are surfaced instead.
    */
   async function resolveExisting(supabase: SupabaseClient, addr: string, signupName?: string) {
-    const providers = await providersFor(supabase, addr);
-    const hasGoogle = providers.includes("google");
-    const hasEmail = providers.includes("email");
-
-    // Created with Google and no password → just take them to Google.
-    if (hasGoogle && !hasEmail) {
-      setMsg("You created this account with Google — taking you there…");
-      await withGoogle();
-      return;
-    }
-
-    // Has a password (or we couldn't tell) → try the password they entered.
     const { data, error } = await supabase.auth.signInWithPassword({ email: addr, password });
     if (!error && data.user) {
       finishAuth(data.user, displayNameOf(data.user) || signupName, "signed_in");
       return;
     }
-
-    if (providers.length === 0) {
-      // No account at all → they're new; switch to sign-up.
-      useClunoid.getState().openAuth("signup");
-      setMsg("Looks like you're new here — add your name, then create your account.");
-      setBusy(false);
-      return;
-    }
-
-    // Account exists with a password, but this one was wrong → offer reset.
-    if (hasGoogle) {
-      setMsg("That password didn't match. Try again, reset it below, or use Continue with Google.");
-    } else {
-      setMsg("That password didn't match. Try again, or reset it below.");
-    }
+    useClunoid.getState().openAuth("login");
     setShowReset(true);
+    setMsg(
+      "This email already has an account. If you signed up with Google, use 'Continue with Google' above — otherwise reset your password below."
+    );
     setBusy(false);
   }
 
@@ -204,7 +174,12 @@ export function AuthPrompt() {
         const { data, error } = await supabase.auth.signInWithPassword({ email: addr, password });
         if (error) {
           if (/invalid login credentials/i.test(error.message)) {
-            await resolveExisting(supabase, addr);
+            // Don't reveal whether the email exists or how it's registered.
+            setShowReset(true);
+            setMsg(
+              "We couldn't sign you in. Check your password or reset it below — or if you signed up with Google, use 'Continue with Google' above. New here? Create an account."
+            );
+            setBusy(false);
             return;
           }
           throw error;
