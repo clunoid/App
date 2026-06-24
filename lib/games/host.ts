@@ -1,0 +1,157 @@
+"use client";
+
+/**
+ * Isaac's host voice for the game. PRIMARY: the real Isaac (ElevenLabs via
+ * /api/tts), PREFETCHED so it's instant in the fast pace. FALLBACK: the browser's
+ * built-in SpeechSynthesis, so Isaac is ALWAYS audible even with no TTS
+ * key/credits. One short line per beat; cancels cleanly on round change / mute.
+ */
+
+type TtsPayload = { audio: string } | null;
+
+class Host {
+  private muted = false;
+  private elevenOk = true; // flips false after a miss → use synthesis
+  private gen = 0; // bumps on cancel/mute → invalidates any in-flight say()
+  private cache = new Map<string, Promise<TtsPayload>>();
+  private current: HTMLAudioElement | null = null;
+  private preferred: SpeechSynthesisVoice | null = null;
+
+  constructor() {
+    this.warmVoices();
+  }
+
+  setMuted(v: boolean) {
+    this.muted = v;
+    if (v) this.cancel();
+  }
+
+  private warmVoices() {
+    try {
+      const s = window.speechSynthesis;
+      if (!s) return;
+      const pick = () => {
+        const voices = s.getVoices();
+        if (!voices.length) return false;
+        this.preferred =
+          voices.find((v) => /en[-_]?US/i.test(v.lang) && /male|google|natural|daniel|guy|aaron/i.test(v.name)) ||
+          voices.find((v) => /en[-_]?US/i.test(v.lang)) ||
+          voices.find((v) => /^en/i.test(v.lang)) ||
+          null;
+        return true;
+      };
+      if (!pick() && typeof s.addEventListener === "function") {
+        s.addEventListener("voiceschanged", () => pick(), { once: true });
+      }
+    } catch {
+      /* best effort */
+    }
+  }
+
+  private fetchTts(text: string): Promise<TtsPayload> {
+    return fetch("/api/tts", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ text }),
+    })
+      .then(async (r) => (!r.ok || r.status === 204 ? null : ((await r.json()) as TtsPayload)))
+      .catch(() => null);
+  }
+
+  /** Warm a line ahead of time (e.g. the round's answer during the question). */
+  prefetch(text: string) {
+    const k = text.trim();
+    if (this.muted || !k || !this.elevenOk || this.cache.has(k)) return;
+    this.cache.set(k, this.fetchTts(k));
+  }
+
+  /** Speak a short line now, cutting off whatever Isaac was saying. */
+  async say(text: string) {
+    if (this.muted) return;
+    const k = text.trim();
+    if (!k) return;
+    this.cancel(); // stop current + invalidate any in-flight say()
+    const myGen = this.gen;
+
+    if (this.elevenOk) {
+      let p = this.cache.get(k);
+      if (!p) {
+        p = this.fetchTts(k);
+        this.cache.set(k, p);
+      }
+      let payload: TtsPayload = null;
+      try {
+        payload = await p;
+      } catch {
+        /* ignore */
+      }
+      this.cache.delete(k);
+      if (myGen !== this.gen || this.muted) return; // cancelled / muted while fetching
+      if (payload?.audio) {
+        try {
+          const url = URL.createObjectURL(b64ToBlob(payload.audio, "audio/mpeg"));
+          const audio = new Audio(url);
+          this.current = audio;
+          const cleanup = () => {
+            URL.revokeObjectURL(url);
+            if (this.current === audio) this.current = null;
+          };
+          audio.onended = cleanup;
+          audio.onerror = cleanup;
+          await audio.play();
+          return;
+        } catch {
+          /* autoplay blocked / decode error → synthesis */
+        }
+      } else {
+        this.elevenOk = false; // no key/credits — stop trying
+      }
+    }
+    if (myGen !== this.gen || this.muted) return;
+    this.synth(text);
+  }
+
+  private synth(text: string) {
+    try {
+      const s = window.speechSynthesis;
+      if (!s) return;
+      s.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      u.rate = 1.05;
+      u.pitch = 1.02;
+      u.volume = 1;
+      if (this.preferred) u.voice = this.preferred;
+      s.speak(u);
+    } catch {
+      /* non-fatal */
+    }
+  }
+
+  cancel() {
+    this.gen++; // invalidate any say() awaiting a fetch
+    if (this.current) {
+      this.current.pause();
+      this.current.onended = null;
+      this.current.onerror = null;
+      this.current = null;
+    }
+    try {
+      window.speechSynthesis?.cancel();
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+function b64ToBlob(b64: string, type: string): Blob {
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new Blob([bytes], { type });
+}
+
+let instance: Host | null = null;
+export function getHost(): Host {
+  if (!instance) instance = new Host();
+  return instance;
+}

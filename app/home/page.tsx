@@ -1,9 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { Mic, MicOff, Send, Loader2, Search, History } from "lucide-react";
+import { Mic, MicOff, Send, Loader2, Search, History, Gamepad2 } from "lucide-react";
 import { useClunoid } from "@/lib/store/useClunoid";
 import { useSpeechInput } from "@/lib/voice/useSpeechInput";
 import { useMicLevel } from "@/lib/voice/useMicLevel";
@@ -20,6 +21,16 @@ const BADGES: Record<string, { label: string }> = {
   explainer: { label: "Search" },
   rich_card: { label: "Search" },
 };
+
+/** A flag-game request → routed to the (brain-built) game instead of a search. */
+function isGameRequest(t: string): boolean {
+  const s = t.toLowerCase();
+  if (/\bguess\s+the\s+(flag|countr)/.test(s)) return true;
+  if (/\bflags?\b/.test(s) && /\b(game|quiz|challenge|play|guess|round|mode)\b/.test(s)) return true;
+  if (/\bflag\s+(game|quiz)\b/.test(s)) return true;
+  if (/\b(play|start)\b.*\b(flag|country|countries)\b/.test(s)) return true;
+  return false;
+}
 
 /**
  * The authenticated app — Clunoid's full-screen Stage. Type (or speak) anything;
@@ -53,6 +64,11 @@ export default function Home() {
 
   function handleInput(text: string) {
     setInterim("");
+    // Flag-game requests go through the brain-built game, not a search.
+    if (isGameRequest(text)) {
+      router.push(`/games?q=${encodeURIComponent(text)}`);
+      return;
+    }
     send(text);
   }
 
@@ -167,7 +183,15 @@ export default function Home() {
       {/* Foreground column, edge to edge */}
       <div className="relative z-10 flex h-full flex-col">
         <div className="flex shrink-0 items-center justify-between gap-3 px-5 py-4">
-          <span className="font-serif text-lg text-ink/80">clunoid</span>
+          <div className="flex items-center gap-3">
+            <span className="font-serif text-lg text-ink/80">clunoid</span>
+            <Link
+              href="/games"
+              className="inline-flex items-center gap-1.5 rounded-full border border-border bg-surface/70 px-3 py-1 text-sm text-ink-muted transition hover:border-clay hover:text-ink"
+            >
+              <Gamepad2 size={15} /> Games
+            </Link>
+          </div>
           {isaac === "thinking" ? (
             <div className="inline-flex shrink-0 items-center gap-2 rounded-full border border-border bg-surface/90 px-3 py-1 backdrop-blur">
               <Loader2 size={14} className="animate-spin text-clay" />
