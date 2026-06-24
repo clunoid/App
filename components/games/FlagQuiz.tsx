@@ -49,6 +49,7 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
   const [muted, setMuted] = useState(false);
   const [building, setBuilding] = useState(false);
   const [failed, setFailed] = useState(false);
+  const [canAutoFocus, setCanAutoFocus] = useState(false); // desktop only — no mobile keyboard pop each round
 
   const round: Round | undefined = rounds[idx];
   const total = rounds.length;
@@ -72,13 +73,22 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
   const audio = getAudio();
   const host = getHost();
 
-  const { supported, start: startListen, stop: stopListen } = useListen((t) => {
+  const resetListenRef = useRef<() => void>(() => {});
+  const { supported, start: startListen, stop: stopListen, reset: resetListen } = useListen((t) => {
     if (phaseRef.current !== "answering") return;
+    // While Isaac is talking, ignore the mic AND wipe what it heard — so his voice
+    // is never typed as your answer (no echo) and your words are captured clean.
+    if (host.speaking) {
+      resetListenRef.current();
+      setInterim("");
+      return;
+    }
     voiceRef.current = t;
     setInterim(t);
   });
   const listenRef = useRef({ start: startListen, stop: stopListen });
   listenRef.current = { start: startListen, stop: stopListen };
+  resetListenRef.current = resetListen;
 
   // ── Build a game through Isaac's brain, then play it ──────────────────────
   const startGame = useCallback(
@@ -105,6 +115,12 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
     },
     [host]
   );
+
+  // Only auto-focus the answer box on devices with a real pointer (desktop) — on
+  // phones autoFocus pops the keyboard every round, which is annoying.
+  useEffect(() => {
+    setCanAutoFocus(typeof window !== "undefined" && !!window.matchMedia && window.matchMedia("(pointer: fine)").matches);
+  }, []);
 
   // Launched from /home (or a deep link) with a request → build immediately.
   const startedInitial = useRef(false);
@@ -401,7 +417,7 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
                     value={typed}
                     onChange={(e) => setTyped(e.target.value)}
                     placeholder={interim || "Type the country…"}
-                    autoFocus
+                    autoFocus={canAutoFocus}
                     className="h-11 w-full rounded-full border-0 bg-white/20 px-5 font-bold text-white outline-none backdrop-blur placeholder:font-medium placeholder:text-white/70 focus:bg-white/30"
                   />
                   <button

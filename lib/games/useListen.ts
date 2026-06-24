@@ -53,17 +53,18 @@ export function useListen(onResult: (text: string) => void) {
       }
       cbRef.current((finalRef.current + " " + interim).trim());
     };
-    rec.onerror = () => {};
-    rec.onend = () => {
-      // Browsers auto-stop after a pause; restart while we still want to listen.
-      if (wantOnRef.current) {
-        try {
-          rec.start();
-        } catch {
-          /* already started */
-        }
+    const restart = () => {
+      if (!wantOnRef.current) return;
+      try {
+        rec.start();
+      } catch {
+        /* already started */
       }
     };
+    // Recover from transient errors (no-speech, network…) AND normal auto-stops,
+    // so the mic keeps listening for the whole answering window.
+    rec.onerror = () => setTimeout(restart, 250);
+    rec.onend = () => restart();
     recRef.current = rec;
     return () => {
       wantOnRef.current = false;
@@ -95,5 +96,11 @@ export function useListen(onResult: (text: string) => void) {
     }
   }, []);
 
-  return { supported, start, stop };
+  // Wipe the accumulated transcript (used to discard Isaac's voice / echo so only
+  // the player's own words count).
+  const reset = useCallback(() => {
+    finalRef.current = "";
+  }, []);
+
+  return { supported, start, stop, reset };
 }

@@ -64,8 +64,10 @@ export default function Home() {
 
   function handleInput(text: string) {
     setInterim("");
-    // Flag-game requests go through the brain-built game, not a search.
+    // Flag-game requests go through the brain-built game, not a search. Stop any
+    // in-progress Isaac speech here so it doesn't carry over into the game.
     if (isGameRequest(text)) {
+      useClunoid.getState().interrupt();
       router.push(`/games?q=${encodeURIComponent(text)}`);
       return;
     }

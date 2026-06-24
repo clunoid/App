@@ -16,9 +16,15 @@ class Host {
   private cache = new Map<string, Promise<TtsPayload>>();
   private current: HTMLAudioElement | null = null;
   private preferred: SpeechSynthesisVoice | null = null;
+  private _speaking = false; // true WHILE Isaac is audibly talking
 
   constructor() {
     this.warmVoices();
+  }
+
+  /** True while Isaac is actually talking — used to keep the mic from hearing him. */
+  get speaking() {
+    return this._speaking;
   }
 
   setMuted(v: boolean) {
@@ -94,14 +100,18 @@ class Host {
           this.current = audio;
           const cleanup = () => {
             URL.revokeObjectURL(url);
-            if (this.current === audio) this.current = null;
+            if (this.current === audio) {
+              this.current = null;
+              this._speaking = false;
+            }
           };
           audio.onended = cleanup;
           audio.onerror = cleanup;
+          this._speaking = true;
           await audio.play();
           return;
         } catch {
-          /* autoplay blocked / decode error → synthesis */
+          this._speaking = false; // autoplay blocked / decode error → synthesis
         }
       } else {
         this.elevenOk = false; // no key/credits — stop trying
@@ -121,14 +131,22 @@ class Host {
       u.pitch = 1.02;
       u.volume = 1;
       if (this.preferred) u.voice = this.preferred;
+      this._speaking = true;
+      u.onend = () => {
+        this._speaking = false;
+      };
+      u.onerror = () => {
+        this._speaking = false;
+      };
       s.speak(u);
     } catch {
-      /* non-fatal */
+      this._speaking = false; // non-fatal
     }
   }
 
   cancel() {
     this.gen++; // invalidate any say() awaiting a fetch
+    this._speaking = false;
     if (this.current) {
       this.current.pause();
       this.current.onended = null;

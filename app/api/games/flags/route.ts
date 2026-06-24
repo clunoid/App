@@ -74,7 +74,7 @@ async function loadCountries(): Promise<Map<string, Info>> {
   }
 }
 
-const SYSTEM = `You are setting up a "guess the country by its flag" game. Build the rounds based ENTIRELY on the user's request — honour any continent/region, specific countries, difficulty, theme, number of rounds, "random", or custom set they ask for. If they don't specify, use 12 rounds of a good worldwide mix ordered EASY → MEDIUM → HARD.
+const SYSTEM = `You are setting up a "guess the country by its flag" game. Build the rounds based ENTIRELY on the user's request — honour any continent/region, specific countries, difficulty, theme, number of rounds, "random", or custom set they ask for. If they don't specify, use 12 rounds with a good SPREAD of difficulties (some easy, some medium, some hard). Order does NOT matter — the rounds are shuffled into a random order before play.
 Rules:
 - Use ONLY real countries/territories that have a flag, with correct ISO 3166-1 alpha-2 codes — accuracy is essential (the code MUST match the country).
 - 'easy' = globally famous flags (e.g. us, fr, jp, br); 'hard' = obscure ones.
@@ -124,6 +124,13 @@ export async function POST(req: NextRequest) {
       difficulty: r.difficulty,
       flag: `https://flagcdn.com/${code}.svg`,
     });
+  }
+
+  // Randomize the order so flags never come in a predictable easy→hard run (the
+  // difficulty rail still reflects each round's own level).
+  for (let i = rounds.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [rounds[i], rounds[j]] = [rounds[j], rounds[i]];
   }
 
   return NextResponse.json({

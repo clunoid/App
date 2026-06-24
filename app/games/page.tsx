@@ -30,6 +30,12 @@ function GamesInner() {
     if (authChecked && !isAuthed) router.replace("/");
   }, [authChecked, isAuthed, router]);
 
+  // Silence the main-app Isaac (the /home orb voice) on entry so it can never talk
+  // over the game's own host — no "double Isaac" in the background.
+  useEffect(() => {
+    useClunoid.getState().interrupt();
+  }, []);
+
   if (!authChecked || !isAuthed) return <Loader />;
 
   const q = params.get("q") || undefined;
