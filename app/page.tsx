@@ -20,8 +20,10 @@ export default function Welcome() {
     if (authChecked && isAuthed) router.replace("/home");
   }, [authChecked, isAuthed, router]);
 
-  // Checking the session, or already signed in (about to redirect) → just the orb.
-  if (!authChecked || isAuthed) {
+  // Signed-in visitors are redirected to /home; show the orb during that brief
+  // moment. Everyone else — including search engines and the first paint — gets
+  // the full landing content below, so it's crawlable (not a thin/empty page).
+  if (authChecked && isAuthed) {
     return (
       <main className="stage-bg grid min-h-[100dvh] place-items-center">
         <IsaacOrb size={120} />

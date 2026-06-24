@@ -20,7 +20,7 @@ const serif = Source_Serif_4({
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://clunoid.com"),
-  title: { default: "Clunoid", template: "%s · Clunoid" },
+  title: { default: "Clunoid — Talk to Isaac, an AI that shows you anything", template: "%s · Clunoid" },
   description:
     "Clunoid — talk to Isaac, a super-intelligent AI that shows you anything, solves any problem, and brings ideas to life with synced visuals.",
   applicationName: "Clunoid",
@@ -30,12 +30,12 @@ export const metadata: Metadata = {
     type: "website",
     url: "https://clunoid.com",
     siteName: "Clunoid",
-    title: "Clunoid",
+    title: "Clunoid — Talk to Isaac, an AI that shows you anything",
     description: "Talk to Isaac — a super-intelligent AI that shows you anything.",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Clunoid",
+    title: "Clunoid — Talk to Isaac, an AI that shows you anything",
     description: "Talk to Isaac — a super-intelligent AI that shows you anything.",
   },
   appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: "Clunoid" },
