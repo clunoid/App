@@ -273,9 +273,9 @@ const explainerGenSchema = z.object({
     ),
 });
 
-// The factual data summary is built SEPARATELY by the strongest model (Sonnet)
-// under strict grounding — discrete "facts" look authoritative, so a single wrong
-// one is far worse than a missing one. Accuracy here is non-negotiable.
+// The factual data summary is built by the strongest model (Sonnet) for accuracy —
+// it states the facts plainly as they are, getting dates/timing and current status
+// right, grounded in the verified evidence.
 const summaryGenSchema = z.object({
   summary: z
     .array(
@@ -303,13 +303,12 @@ async function buildSummary(facts: string, subject: string, ctx: BrainContext) {
   const model = hasAnthropic() ? MODELS.genius() : MODELS.fast();
   const system = `${dateLine(
     ctx
-  )}\nYou are building a STRICTLY ACCURATE data summary (a modern Wikipedia-style infobox) about "${subject}". ACCURACY IS ABSOLUTE — a single wrong "fact" is far worse than a missing one, so when in doubt, leave it out.
-- Include ONLY facts EXPLICITLY supported by the verified evidence below, OR stable, universally-established knowledge you are completely certain of.
-- NEVER assert a superlative or record ("first", "only", "largest", "richest", "trillionaire", "fastest", etc.) unless it is directly and clearly stated in the verified evidence.
-- NEVER estimate, guess, round, or extrapolate a number, date, money figure, or ranking. If a precise value is not in the evidence and you are not certain, OMIT that row entirely.
-- Every value must be CURRENT (present office/status/age/latest) — never an outdated value.
-- Prefer FEWER, certain facts over a fuller but partly-wrong summary.
-Organise into 2-5 sections, each a heading plus several data rows. Shown to the reader but NEVER spoken.
+  )}\nYou are building an ACCURATE data summary (a modern Wikipedia-style infobox) about "${subject}". State the important facts plainly and fully, as they are — confidently, without fear or bias.
+- Use the verified evidence below as your source of truth; state what it establishes, including real superlatives or records when they are genuinely true.
+- DATES AND TIMING MUST BE EXACT: never misdate an event or attribute it to the wrong year — use the precise dates/years from the evidence. Use CURRENT status (present office/role/net worth/age); the current date above is the ground truth.
+- Don't fabricate or guess a value that the evidence and well-established knowledge don't support — but do state the real, established facts.
+- Keep every value current, never outdated.
+Organise into 2-5 sections, each a heading plus several data rows. This is shown to the reader but never spoken.
 Verified evidence:\n${facts}`;
   try {
     const { object } = await generateObject({
@@ -356,7 +355,7 @@ For EACH beat, give one to three natural spoken sentences AND a "media" visual t
 End the FINAL beat by warmly inviting the user to ask about anything specific they'd like to go deeper on.
 Also produce 3-5 short "suggestions": related follow-up search prompts the user might tap next (shown to the reader, not spoken).
 
-ACCURACY MATTERS: state only what the verified facts support. NEVER assert a superlative, record, or "first/only/largest/richest", nor a specific number, date, or figure, unless it is clearly in the verified facts — if you are unsure, speak generally instead of stating a specific unverified claim. State only established facts — never predictions, rumours, or opinions as fact. Never say you can't show or discuss something that's public and legal.\nVerified facts:\n${facts}`,
+Be accurate — especially with DATES and current status: never misdate an event or attribute it to the wrong year, and use present-day status. State the real, established facts plainly (don't fabricate or guess unsupported specifics). Never present predictions, rumours, or opinions as settled fact. Never say you can't show or discuss something that's public and legal.\nVerified facts:\n${facts}`,
           prompt: question,
           temperature: 0.45,
           maxRetries: 1,

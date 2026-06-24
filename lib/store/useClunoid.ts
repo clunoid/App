@@ -1,6 +1,7 @@
 "use client";
 
 import { create } from "zustand";
+import { persist } from "zustand/middleware";
 import { SpeechPlayer } from "@/lib/voice/speech";
 import { getSupabaseBrowser } from "@/lib/supabase/client";
 import type { Scene, Experience, ExplainerExperience } from "@/lib/brain/scene";
@@ -16,6 +17,10 @@ export type UserState = {
   createdAt?: string;
   isAuthed: boolean;
 };
+
+/** A saved past request — its title + the full experience, so it can be reopened
+ *  exactly as it appeared (cards, media). */
+export type HistoryEntry = { id: string; title: string; experience: Experience; createdAt: string };
 
 function clientCtx() {
   try {
@@ -61,6 +66,10 @@ type ClunoidStore = {
   expectsInput: Scene["expectsInput"];
   history: Turn[];
 
+  // History (past results, persisted per device)
+  historyLog: HistoryEntry[];
+  historyOpen: boolean;
+
   // Session
   user: UserState;
   authChecked: boolean;
@@ -78,6 +87,11 @@ type ClunoidStore = {
   openProfile: () => void;
   closeProfile: () => void;
   signOut: () => Promise<void>;
+
+  openHistory: () => void;
+  closeHistory: () => void;
+  restoreHistory: (id: string) => void;
+  deleteHistory: (id: string) => void;
 
   send: (text: string) => Promise<void>;
   interrupt: () => void;
@@ -101,125 +115,186 @@ async function postBrain(req: BrainRequest): Promise<Scene> {
   return (await res.json()) as Scene;
 }
 
-export const useClunoid = create<ClunoidStore>((set, get) => {
-  function stopPlayback() {
-    playSeq++; // invalidate any in-flight explainer/speech loop
-    getPlayer(set).stop();
-  }
-
-  // Narrate an explainer beat-by-beat from `start` (visuals sync to each beat).
-  async function playExplainerFrom(exp: ExplainerExperience, start: number, seq: number) {
-    const p = getPlayer(set);
-    for (let i = Math.max(0, start); i < exp.beats.length; i++) {
-      if (seq !== playSeq) return; // superseded / interrupted
-      set({ caption: exp.beats[i].say, spokenChars: 0, explainerIndex: i, isaac: "speaking" });
-      if (i + 1 < exp.beats.length) p.prefetch(exp.beats[i + 1].say); // pipeline → no gap between beats
-      await p.play(exp.beats[i].say, (c) => set({ spokenChars: c }));
-    }
-  }
-
-  async function applyScene(scene: Scene) {
-    const seq = ++playSeq;
-    const exp = scene.experience ?? null;
-    const newExplainer = !scene.keep && exp?.type === "explainer" ? exp : null;
-    set((s) => ({
-      caption: newExplainer ? newExplainer.beats[0]?.say ?? scene.say : scene.say,
-      spokenChars: 0,
-      explainerIndex: scene.keep ? s.explainerIndex : 0,
-      // Replace the Stage with the new experience, UNLESS it's a short interactive
-      // reply (keep) — then leave the current content on screen.
-      experience: scene.keep ? s.experience : scene.clear ? null : exp,
-      expectsInput: scene.expectsInput,
-      history: [...s.history, { role: "isaac" as const, content: scene.say }].slice(-14),
-      isaac: "speaking",
-    }));
-
-    if (newExplainer) {
-      await playExplainerFrom(newExplainer, 0, seq);
-    } else {
-      // A card or short reply — speak/caption the line.
-      await getPlayer(set).play(scene.say, (chars) => set({ spokenChars: chars }));
-      // Then resume the current explainer where Isaac left off (continue / react).
-      if (scene.resume && seq === playSeq) {
-        const cur = get().experience;
-        if (cur?.type === "explainer") await playExplainerFrom(cur, get().explainerIndex, seq);
+export const useClunoid = create<ClunoidStore>()(
+  persist(
+    (set, get) => {
+      function stopPlayback() {
+        playSeq++; // invalidate any in-flight explainer/speech loop
+        getPlayer(set).stop();
       }
-    }
-    if (seq === playSeq) set({ isaac: "idle" });
-  }
 
-  async function run(req: BrainRequest, userTurn?: string) {
-    stopPlayback(); // barge-in: stop any current speech / explainer
-    set((s) => ({
-      isaac: "thinking",
-      amplitude: 0,
-      history: userTurn ? [...s.history, { role: "user" as const, content: userTurn }].slice(-14) : s.history,
-    }));
-    try {
-      const scene = await postBrain({
-        ...req,
-        history: get().history,
-        experience: get().experience ?? null,
-        user: get().user,
-        client: clientCtx(),
-      });
-      await applyScene(scene);
-    } catch {
-      await applyScene({ say: "Say that once more for me?", expectsInput: "voice" });
-    }
-  }
-
-  return {
-    isaac: "idle",
-    caption: "",
-    spokenChars: 0,
-    explainerIndex: 0,
-    amplitude: 0,
-    micLevel: 0,
-
-    experience: null,
-    expectsInput: "none",
-    history: [],
-
-    user: { isAuthed: false },
-    authChecked: false,
-
-    authOpen: false,
-    authMode: "signup",
-    profileOpen: false,
-
-    setUser: (u) => set({ user: u }),
-    setAuthChecked: (v) => set({ authChecked: v }),
-    setMicLevel: (v) => set({ micLevel: v }),
-    openAuth: (mode) => set({ authOpen: true, authMode: mode }),
-    closeAuth: () => set({ authOpen: false }),
-    openProfile: () => set({ profileOpen: true }),
-    closeProfile: () => set({ profileOpen: false }),
-
-    signOut: async () => {
-      set({ profileOpen: false });
-      stopPlayback();
-      try {
-        await getSupabaseBrowser().auth.signOut();
-      } catch {
-        /* ignore — clear local state regardless */
+      // Narrate an explainer beat-by-beat from `start` (visuals sync to each beat).
+      async function playExplainerFrom(exp: ExplainerExperience, start: number, seq: number) {
+        const p = getPlayer(set);
+        for (let i = Math.max(0, start); i < exp.beats.length; i++) {
+          if (seq !== playSeq) return; // superseded / interrupted
+          set({ caption: exp.beats[i].say, spokenChars: 0, explainerIndex: i, isaac: "speaking" });
+          if (i + 1 < exp.beats.length) p.prefetch(exp.beats[i + 1].say); // pipeline → no gap between beats
+          await p.play(exp.beats[i].say, (c) => set({ spokenChars: c }));
+        }
       }
-      // Fresh slate; the /home route guard sends them back to the welcome gate.
-      set({ user: { isAuthed: false }, experience: null, history: [], caption: "", isaac: "idle", amplitude: 0 });
-    },
 
-    send: async (text) => {
-      const t = text.trim();
-      if (!t) return;
-      if (get().isaac === "thinking") return; // don't pile up requests mid-thought
-      await run({ kind: "utterance", text: t }, t);
-    },
+      async function applyScene(scene: Scene) {
+        const seq = ++playSeq;
+        const exp = scene.experience ?? null;
+        const newExplainer = !scene.keep && exp?.type === "explainer" ? exp : null;
+        set((s) => ({
+          caption: newExplainer ? newExplainer.beats[0]?.say ?? scene.say : scene.say,
+          spokenChars: 0,
+          explainerIndex: scene.keep ? s.explainerIndex : 0,
+          // Replace the Stage with the new experience, UNLESS it's a short interactive
+          // reply (keep) — then leave the current content on screen.
+          experience: scene.keep ? s.experience : scene.clear ? null : exp,
+          expectsInput: scene.expectsInput,
+          history: [...s.history, { role: "isaac" as const, content: scene.say }].slice(-14),
+          isaac: "speaking",
+        }));
 
-    interrupt: () => {
-      stopPlayback();
-      set({ isaac: "idle", amplitude: 0 });
-    },
+        // Save substantive results to history so they can be reopened later exactly
+        // as they appeared (immediate-duplicate suppression; capped at 60).
+        if (!scene.keep && (exp?.type === "explainer" || exp?.type === "rich_card")) {
+          const title = ((exp as { title?: string }).title || scene.say || "Untitled").trim();
+          set((s) => {
+            if (s.historyLog[0]?.title === title) return s;
+            const entry: HistoryEntry = {
+              id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+              title,
+              experience: exp,
+              createdAt: new Date().toISOString(),
+            };
+            return { historyLog: [entry, ...s.historyLog].slice(0, 60) };
+          });
+        }
 
-    isEcho: (text) => textIsEcho(text, isaacCorpus(get())),
-  };
-});
+        if (newExplainer) {
+          await playExplainerFrom(newExplainer, 0, seq);
+        } else {
+          // A card or short reply — speak/caption the line.
+          await getPlayer(set).play(scene.say, (chars) => set({ spokenChars: chars }));
+          // Then resume the current explainer where Isaac left off (continue / react).
+          if (scene.resume && seq === playSeq) {
+            const cur = get().experience;
+            if (cur?.type === "explainer") await playExplainerFrom(cur, get().explainerIndex, seq);
+          }
+        }
+        if (seq === playSeq) set({ isaac: "idle" });
+      }
+
+      async function run(req: BrainRequest, userTurn?: string) {
+        stopPlayback(); // barge-in: stop any current speech / explainer
+        set((s) => ({
+          isaac: "thinking",
+          amplitude: 0,
+          history: userTurn ? [...s.history, { role: "user" as const, content: userTurn }].slice(-14) : s.history,
+        }));
+        try {
+          const scene = await postBrain({
+            ...req,
+            history: get().history,
+            experience: get().experience ?? null,
+            user: get().user,
+            client: clientCtx(),
+          });
+          await applyScene(scene);
+        } catch {
+          await applyScene({ say: "Say that once more for me?", expectsInput: "voice" });
+        }
+      }
+
+      return {
+        isaac: "idle",
+        caption: "",
+        spokenChars: 0,
+        explainerIndex: 0,
+        amplitude: 0,
+        micLevel: 0,
+
+        experience: null,
+        expectsInput: "none",
+        history: [],
+
+        historyLog: [],
+        historyOpen: false,
+
+        user: { isAuthed: false },
+        authChecked: false,
+
+        authOpen: false,
+        authMode: "signup",
+        profileOpen: false,
+
+        setUser: (u) => set({ user: u }),
+        setAuthChecked: (v) => set({ authChecked: v }),
+        setMicLevel: (v) => set({ micLevel: v }),
+        openAuth: (mode) => set({ authOpen: true, authMode: mode }),
+        closeAuth: () => set({ authOpen: false }),
+        openProfile: () => set({ profileOpen: true }),
+        closeProfile: () => set({ profileOpen: false }),
+
+        signOut: async () => {
+          set({ profileOpen: false });
+          stopPlayback();
+          try {
+            await getSupabaseBrowser().auth.signOut();
+          } catch {
+            /* ignore — clear local state regardless */
+          }
+          // Fresh slate; the /home route guard sends them back to the welcome gate.
+          // (History stays on the device, like the old app.)
+          set({ user: { isAuthed: false }, experience: null, history: [], caption: "", isaac: "idle", amplitude: 0 });
+        },
+
+        openHistory: () => set({ historyOpen: true }),
+        closeHistory: () => set({ historyOpen: false }),
+        restoreHistory: (id) => {
+          const entry = get().historyLog.find((h) => h.id === id);
+          if (!entry) return;
+          stopPlayback();
+          const exp = entry.experience;
+          // Reopen fully revealed (all beats shown) — no re-voicing needed.
+          const idx = exp.type === "explainer" ? exp.beats.length - 1 : 0;
+          set({
+            experience: exp,
+            explainerIndex: idx,
+            isaac: "idle",
+            amplitude: 0,
+            historyOpen: false,
+            caption: "",
+          });
+        },
+        deleteHistory: (id) => set((s) => ({ historyLog: s.historyLog.filter((h) => h.id !== id) })),
+
+        send: async (text) => {
+          const t = text.trim();
+          if (!t) return;
+          if (get().isaac === "thinking") return; // don't pile up requests mid-thought
+          await run({ kind: "utterance", text: t }, t);
+        },
+
+        interrupt: () => {
+          stopPlayback();
+          set({ isaac: "idle", amplitude: 0 });
+        },
+
+        isEcho: (text) => textIsEcho(text, isaacCorpus(get())),
+      };
+    },
+    {
+      // Remember the current result + history so a refresh resumes where you were
+      // (transient playback state — isaac/amplitude/mic — is NOT persisted). The
+      // page calls rehydrate() once, deterministically, on mount.
+      name: "clunoid-session",
+      version: 1,
+      skipHydration: true,
+      partialize: (s) => ({
+        experience: s.experience,
+        explainerIndex: s.explainerIndex,
+        history: s.history,
+        expectsInput: s.expectsInput,
+        caption: s.caption,
+        spokenChars: s.spokenChars,
+        historyLog: s.historyLog,
+      }),
+    }
+  )
+);

@@ -3,13 +3,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { Mic, MicOff, Send, Loader2, Search } from "lucide-react";
+import { Mic, MicOff, Send, Loader2, Search, History } from "lucide-react";
 import { useClunoid } from "@/lib/store/useClunoid";
 import { useSpeechInput } from "@/lib/voice/useSpeechInput";
 import { useMicLevel } from "@/lib/voice/useMicLevel";
 import { IsaacOrb } from "@/components/stage/IsaacOrb";
 import { SceneRenderer } from "@/components/stage/SceneRenderer";
 import { Caption } from "@/components/stage/Caption";
+import { HistoryPanel } from "@/components/stage/HistoryPanel";
 import { ProfileMenu } from "@/components/auth/ProfileMenu";
 import { cn } from "@/lib/utils";
 
@@ -44,6 +45,11 @@ export default function Home() {
   useEffect(() => {
     if (authChecked && !isAuthed) router.replace("/");
   }, [authChecked, isAuthed, router]);
+
+  // Restore the saved session (current result + history) once on mount.
+  useEffect(() => {
+    void useClunoid.persist.rehydrate();
+  }, []);
 
   function handleInput(text: string) {
     setInterim("");
@@ -228,6 +234,17 @@ export default function Home() {
           })()}
 
           <div className="relative flex min-w-0 flex-1 items-end">
+            {/* History — opens the full-screen list of past results */}
+            <button
+              type="button"
+              onClick={() => useClunoid.getState().openHistory()}
+              title="History"
+              aria-label="History"
+              className="absolute bottom-[0.6rem] left-2 z-10 flex h-8 items-center gap-1 rounded-full px-2 text-ink-faint transition hover:bg-surface-2 hover:text-clay sm:bottom-3"
+            >
+              <History size={17} />
+              <span className="hidden text-xs font-medium sm:inline">History</span>
+            </button>
             <textarea
               ref={taRef}
               value={typed}
@@ -240,7 +257,7 @@ export default function Home() {
               }}
               rows={1}
               placeholder="Ask Isaac anything"
-              className="max-h-[40vh] min-h-[3rem] w-full resize-none rounded-3xl border border-border bg-surface/80 px-5 py-[0.8rem] text-ink outline-none backdrop-blur placeholder:text-ink-faint focus:border-clay sm:min-h-[3.5rem] sm:py-[0.95rem]"
+              className="max-h-[40vh] min-h-[3rem] w-full resize-none rounded-3xl border border-border bg-surface/80 py-[0.8rem] pl-12 pr-5 text-ink outline-none backdrop-blur placeholder:text-ink-faint focus:border-clay sm:min-h-[3.5rem] sm:py-[0.95rem] sm:pl-28"
             />
           </div>
 
@@ -258,6 +275,8 @@ export default function Home() {
       <div className="pointer-events-none absolute inset-x-0 bottom-24 z-20 flex justify-center px-4">
         <Caption interim={interim} />
       </div>
+
+      <HistoryPanel />
     </main>
   );
 }

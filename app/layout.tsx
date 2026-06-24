@@ -39,6 +39,9 @@ export const metadata: Metadata = {
     description: "Talk to Isaac — a super-intelligent AI that shows you anything.",
   },
   appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: "Clunoid" },
+  // Google Search Console verification (also verified via the static HTML file in
+  // public/ and the DNS TXT record at the registrar).
+  verification: { google: "nZ4tS4HU5SuDFm29AgPfaOm42hMl6jq27wxcLq5hvBk" },
 };
 
 export const viewport: Viewport = {
