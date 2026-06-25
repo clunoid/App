@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { Mic, MicOff, Send, Loader2, Search, History, Gamepad2 } from "lucide-react";
+import { Mic, MicOff, Send, Loader2, Search, History, Gamepad2, BarChart3 } from "lucide-react";
 import { useClunoid } from "@/lib/store/useClunoid";
 import { useSpeechInput } from "@/lib/voice/useSpeechInput";
 import { useMicLevel } from "@/lib/voice/useMicLevel";
@@ -29,6 +29,14 @@ function isGameRequest(t: string): boolean {
   if (/\bflags?\b/.test(s) && /\b(game|quiz|challenge|play|guess|round|mode)\b/.test(s)) return true;
   if (/\bflag\s+(game|quiz)\b/.test(s)) return true;
   if (/\b(play|start)\b.*\b(flag|country|countries)\b/.test(s)) return true;
+  return false;
+}
+
+/** A stat-battle / bar-chart-race request → routed to the /stats feature. */
+function isStatRequest(t: string): boolean {
+  const s = t.toLowerCase();
+  if (/\b(bar[-\s]?chart\s*race|stat\s*(battle|race)|ranking\s*over\s*time|race\s*chart)\b/.test(s)) return true;
+  if (/\b(gdp|elo|population|net worth|market cap|subscribers?|medals?)\b/.test(s) && /\b(over time|race|battle|history|ranking|\d{4})\b/.test(s)) return true;
   return false;
 }
 
@@ -69,6 +77,11 @@ export default function Home() {
     if (isGameRequest(text)) {
       useClunoid.getState().interrupt();
       router.push(`/games/flags?q=${encodeURIComponent(text)}`);
+      return;
+    }
+    if (isStatRequest(text)) {
+      useClunoid.getState().interrupt();
+      router.push(`/stats?q=${encodeURIComponent(text)}`);
       return;
     }
     send(text);
@@ -192,6 +205,12 @@ export default function Home() {
               className="inline-flex items-center gap-1.5 rounded-full border border-border bg-surface/70 px-3 py-1 text-sm text-ink-muted transition hover:border-clay hover:text-ink"
             >
               <Gamepad2 size={15} /> Games
+            </Link>
+            <Link
+              href="/stats"
+              className="inline-flex items-center gap-1.5 rounded-full border border-border bg-surface/70 px-3 py-1 text-sm text-ink-muted transition hover:border-clay hover:text-ink"
+            >
+              <BarChart3 size={15} /> Stat Battle
             </Link>
           </div>
           {isaac === "thinking" ? (

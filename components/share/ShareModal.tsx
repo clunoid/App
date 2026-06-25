@@ -29,11 +29,14 @@ export function ShareModal({
   open,
   onClose,
   makeSpec,
+  render,
   fileName = "clunoid",
 }: {
   open: boolean;
   onClose: () => void;
-  makeSpec: (aspect: ReelAspect) => ReelSpec;
+  makeSpec?: (aspect: ReelAspect) => ReelSpec;
+  // Optional custom renderer (e.g. the Stat Battle race). Defaults to renderReel(makeSpec).
+  render?: (aspect: ReelAspect, opts: { host: HTMLElement | null; signal: AbortSignal; onProgress: (p: number, l: string) => void }) => Promise<{ blob: Blob; ext: string; mime: string; hadVoice: boolean }>;
   fileName?: string;
 }) {
   const [aspect, setAspect] = useState<ReelAspect>("9:16");
@@ -83,14 +86,13 @@ export function ShareModal({
     try {
       // let the "rendering" view (host div) mount before we draw into it
       await new Promise((r) => requestAnimationFrame(() => r(null)));
-      const res = await renderReel(makeSpec(aspect), {
-        host: hostRef.current,
-        signal: ac.signal,
-        onProgress: (p, l) => {
-          setPct(p);
-          setLabel(l);
-        },
-      });
+      const onProgress = (p: number, l: string) => {
+        setPct(p);
+        setLabel(l);
+      };
+      const res = render
+        ? await render(aspect, { host: hostRef.current, signal: ac.signal, onProgress })
+        : await renderReel(makeSpec!(aspect), { host: hostRef.current, signal: ac.signal, onProgress });
       if (ac.signal.aborted) return;
       blobRef.current = res.blob;
       setFileExt(res.ext);
@@ -103,7 +105,7 @@ export function ShareModal({
       console.error("reel render failed", e);
       setStatus("error");
     }
-  }, [aspect, cleanupUrl, makeSpec]);
+  }, [aspect, cleanupUrl, makeSpec, render]);
 
   const download = useCallback(() => {
     const blob = blobRef.current;
