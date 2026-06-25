@@ -3,9 +3,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { Volume2, VolumeX, Mic, MicOff, Play, RotateCcw, Trophy, ArrowLeft, Sparkles, X, Globe, Check, Grid2x2, Keyboard } from "lucide-react";
+import { Volume2, VolumeX, Mic, MicOff, Play, RotateCcw, Trophy, ArrowLeft, Sparkles, X, Globe, Check, Grid2x2, Keyboard, Film } from "lucide-react";
 import { RaysBackground } from "./RaysBackground";
 import { DocumentBackground } from "./DocumentBackground";
+import { ShareModal } from "@/components/share/ShareModal";
+import type { ReelAspect, ReelSpec } from "@/lib/share/reel";
 import { buildGame, buildAllCountries, PRESETS, type Round, type Difficulty } from "@/lib/games/generate";
 import { isCorrect, pickCountry } from "@/lib/games/grade";
 import { getAudio } from "@/lib/games/audio";
@@ -36,6 +38,8 @@ const STRIPES = "repeating-linear-gradient(45deg, rgba(255,255,255,0.28) 0 13px,
 type Phase = "menu" | "loading" | "answering" | "reveal" | "complete";
 type SetMode = "set" | "all";
 type AnswerMode = "choice" | "input";
+// One per played round — the raw material for the shareable recap video.
+type ReplayRound = { code: string; flag: string; name: string; said: string; correct: boolean; difficulty: Difficulty };
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 const barColor = (frac: number) => `hsl(${Math.max(0, frac * 125)}, 90%, 48%)`;
@@ -78,6 +82,8 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
   const [runId, setRunId] = useState(0);
   const [score, setScore] = useState(0);
   const [results, setResults] = useState<boolean[]>([]);
+  const [replay, setReplay] = useState<ReplayRound[]>([]); // per-round log for the share video
+  const [shareOpen, setShareOpen] = useState(false);
   const [typed, setTyped] = useState("");
   const [interim, setInterim] = useState("");
   const [choices, setChoices] = useState<string[]>([]);
@@ -152,6 +158,7 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
       setRounds(g.rounds);
       setScore(0);
       setResults([]);
+      setReplay([]);
       setIdx(0);
       setRunId((n) => n + 1);
       setBuilding(false);
@@ -194,6 +201,7 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
     setRounds(reshuffleWithin(rounds));
     setScore(0);
     setResults([]);
+    setReplay([]);
     setIdx(0);
     setRunId((n) => n + 1);
     setPhase("loading");
@@ -248,6 +256,7 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
     const said = pickedVal || typedVal || pickCountry(voiceVal, rounds.map((x) => x.name));
     setLocked({ said, correct, answer: r.name });
     setResults((prev) => [...prev, correct]);
+    setReplay((prev) => [...prev, { code: r.code, flag: r.flag, name: r.name, said, correct, difficulty: r.difficulty }]);
     if (correct) setScore((s) => s + 1);
 
     setPhase("reveal");
@@ -425,6 +434,49 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
     if (phaseRef.current === "answering") lockRound();
   }
 
+  // Map this game's replay into the GENERIC reel spec the share module renders.
+  // (This is the only flag-specific mapping — it lives in the game, not the
+  // reusable share folder, so future games supply their own builder.)
+  const buildReelSpec = useCallback(
+    (aspect: ReelAspect): ReelSpec => {
+      const theme = choiceMode
+        ? { mode: "document" as const, bg: "#c8c5bd", accent: "#8a2433", ink: "#2c2823" }
+        : { mode: "rays" as const, bg: `hsl(${hue}, 80%, 56%)`, accent: "#FFD400", ink: "#fff", hue };
+      const pct = total ? Math.round((score / total) * 100) : 0;
+      const verdict = pct >= 90 ? "Flag master!" : pct >= 70 ? "Impressive!" : pct >= 40 ? "Nicely done!" : "Good try!";
+      // Keep the clip short + shareable: at most ~16 flags, sampled evenly.
+      const MAX = 16;
+      const picks = replay.length <= MAX ? replay : Array.from({ length: MAX }, (_, i) => replay[Math.floor((i * replay.length) / MAX)]);
+      return {
+        aspect,
+        theme,
+        title: "Guess The Country",
+        subtitle,
+        brand: "clunoid.com",
+        intro: {
+          headline: "Guess The Country",
+          sub: subtitle ? undefined : "How well do you know your flags?",
+          narration: `Let's see how you did on ${total} flag${total === 1 ? "" : "s"}.`,
+        },
+        scenes: picks.map((r) => ({
+          imageUrl: r.flag,
+          bigText: r.name,
+          userText: !r.correct && r.said ? r.said : undefined,
+          correct: r.correct,
+          badge: cap(r.difficulty),
+          narration: r.correct ? `Yes! ${r.name}.` : `It's ${r.name}.`,
+        })),
+        outro: {
+          headline: verdict,
+          scoreText: `${score} / ${total}`,
+          sub: "Can you beat my score?",
+          narration: `You scored ${score} out of ${total}. Can you beat me? Play at clunoid dot com.`,
+        },
+      };
+    },
+    [choiceMode, hue, subtitle, score, total, replay]
+  );
+
   // ── Screens ──────────────────────────────────────────────────────────────
   if (phase === "menu") {
     return (
@@ -440,19 +492,24 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
   }
   if (phase === "complete") {
     return (
-      <CompleteScreen
-        choiceMode={choiceMode}
-        hue={hue}
-        title={title}
-        score={score}
-        total={total}
-        results={results}
-        canContinue={setMode === "set"}
-        building={building}
-        onContinue={continueAll}
-        onReplay={replaySame}
-        onMenu={exitToMenu}
-      />
+      <>
+        <CompleteScreen
+          choiceMode={choiceMode}
+          hue={hue}
+          title={title}
+          score={score}
+          total={total}
+          results={results}
+          canContinue={setMode === "set"}
+          building={building}
+          canShare={replay.length > 0}
+          onShare={() => setShareOpen(true)}
+          onContinue={continueAll}
+          onReplay={replaySame}
+          onMenu={exitToMenu}
+        />
+        <ShareModal open={shareOpen} onClose={() => setShareOpen(false)} makeSpec={buildReelSpec} fileName="clunoid-flags" />
+      </>
     );
   }
   if (!round) return null;
@@ -858,6 +915,8 @@ function CompleteScreen({
   results,
   canContinue,
   building,
+  canShare,
+  onShare,
   onContinue,
   onReplay,
   onMenu,
@@ -870,6 +929,8 @@ function CompleteScreen({
   results: boolean[];
   canContinue: boolean;
   building: boolean;
+  canShare: boolean;
+  onShare: () => void;
   onContinue: () => void;
   onReplay: () => void;
   onMenu: () => void;
@@ -905,11 +966,22 @@ function CompleteScreen({
           ))}
         </div>
 
+        {canShare && (
+          <button
+            onClick={onShare}
+            className={`mt-7 flex w-full items-center justify-center gap-2 rounded-full px-5 py-4 text-lg font-extrabold shadow-xl transition hover:scale-[1.03] ${
+              choiceMode ? "bg-[#8a2433] text-white" : "bg-[#FFD400] text-black"
+            }`}
+          >
+            <Film size={20} /> Share your game
+          </button>
+        )}
+
         {canContinue && (
           <button
             onClick={onContinue}
             disabled={building}
-            className={`mt-7 flex w-full items-center justify-center gap-2 rounded-full px-5 py-4 text-lg font-extrabold shadow-xl transition hover:scale-[1.03] disabled:opacity-70 ${
+            className={`mt-3 flex w-full items-center justify-center gap-2 rounded-full px-5 py-4 text-lg font-extrabold shadow-xl transition hover:scale-[1.03] disabled:opacity-70 ${
               choiceMode ? "bg-[#2c2823] text-[#f6f4ee]" : "bg-white text-black"
             }`}
           >
