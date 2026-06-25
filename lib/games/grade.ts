@@ -57,6 +57,30 @@ export function isCorrect(guess: string, answer: string, aliases: string[] = [])
 }
 
 /**
+ * Pull the COUNTRY out of whatever was said/typed — even a long, rambling
+ * utterance ("umm is it maybe France?") — and ignore everything else (filler,
+ * or Isaac's own words echoed by the mic). Returns "" if no country is found.
+ *  1) a known name that actually appears in the text (longest match wins), then
+ *  2) for a short guess, snap a mis-hear/typo to the closest name.
+ */
+export function pickCountry(text: string, names: string[]): string {
+  const g = normalize(text);
+  if (!g) return "";
+  let best = "";
+  for (const name of names) {
+    const c = normalize(name);
+    if (c.length >= 3 && (g === c || g.includes(c)) && c.length > normalize(best).length) best = name;
+  }
+  if (best) return best;
+  // short single guess → tolerate a mis-hear/typo
+  if (g.split(" ").filter((w) => w.length >= 3).length <= 2) {
+    const snap = autocorrect(text, names);
+    if (normalize(snap) !== g) return snap;
+  }
+  return "";
+}
+
+/**
  * Snap a noisy guess to the closest known country name (for display), e.g. a
  * mis-heard "pero" → "Peru". Returns the original if nothing is close enough.
  */

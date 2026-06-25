@@ -21,12 +21,12 @@ export const PRESETS: { label: string; request: string }[] = [
   { label: "Random", request: "12 completely random country flags from all over the world." },
 ];
 
-export async function buildGame(request: string): Promise<Game> {
+async function post(payload: Record<string, unknown>): Promise<Game> {
   try {
     const res = await fetch("/api/games/flags", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ request }),
+      body: JSON.stringify(payload),
     });
     if (!res.ok) throw new Error("generation failed");
     const data = (await res.json()) as Partial<Game>;
@@ -38,4 +38,14 @@ export async function buildGame(request: string): Promise<Game> {
   } catch {
     return { title: "Flags", secondsPerRound: 7, rounds: [] };
   }
+}
+
+/** A brain-curated set from a natural request. */
+export function buildGame(request: string): Promise<Game> {
+  return post({ request });
+}
+
+/** EVERY country in the world, ordered easiest → hardest (for "Continue"). */
+export function buildAllCountries(): Promise<Game> {
+  return post({ all: true });
 }

@@ -4,7 +4,8 @@
  * Isaac's host voice for the game. PRIMARY: the real Isaac (ElevenLabs via
  * /api/tts), PREFETCHED so it's instant in the fast pace. FALLBACK: the browser's
  * built-in SpeechSynthesis, so Isaac is ALWAYS audible even with no TTS
- * key/credits. One short line per beat; cancels cleanly on round change / mute.
+ * key/credits. `say()` resolves when he FINISHES (or is cancelled), so the caller
+ * can open the mic only after he's done talking — which kills self-echo.
  */
 
 type TtsPayload = { audio: string } | null;
@@ -17,6 +18,7 @@ class Host {
   private current: HTMLAudioElement | null = null;
   private preferred: SpeechSynthesisVoice | null = null;
   private _speaking = false; // true WHILE Isaac is audibly talking
+  private endResolve: (() => void) | null = null; // resolves the in-flight say()
 
   constructor() {
     this.warmVoices();
@@ -71,8 +73,8 @@ class Host {
     this.cache.set(k, this.fetchTts(k));
   }
 
-  /** Speak a short line now, cutting off whatever Isaac was saying. */
-  async say(text: string) {
+  /** Speak a line; the returned promise resolves when it ENDS (or is cancelled). */
+  async say(text: string): Promise<void> {
     if (this.muted) return;
     const k = text.trim();
     if (!k) return;
@@ -98,17 +100,22 @@ class Host {
           const url = URL.createObjectURL(b64ToBlob(payload.audio, "audio/mpeg"));
           const audio = new Audio(url);
           this.current = audio;
-          const cleanup = () => {
-            URL.revokeObjectURL(url);
-            if (this.current === audio) {
-              this.current = null;
-              this._speaking = false;
-            }
-          };
-          audio.onended = cleanup;
-          audio.onerror = cleanup;
           this._speaking = true;
-          await audio.play();
+          await new Promise<void>((resolve) => {
+            this.endResolve = resolve;
+            const done = () => {
+              URL.revokeObjectURL(url);
+              if (this.current === audio) {
+                this.current = null;
+                this._speaking = false;
+              }
+              if (this.endResolve === resolve) this.endResolve = null;
+              resolve();
+            };
+            audio.onended = done;
+            audio.onerror = done;
+            audio.play().catch(done);
+          });
           return;
         } catch {
           this._speaking = false; // autoplay blocked / decode error → synthesis
@@ -118,35 +125,45 @@ class Host {
       }
     }
     if (myGen !== this.gen || this.muted) return;
-    this.synth(text);
+    await this.synth(text);
   }
 
-  private synth(text: string) {
-    try {
-      const s = window.speechSynthesis;
-      if (!s) return;
-      s.cancel();
-      const u = new SpeechSynthesisUtterance(text);
-      u.rate = 1.05;
-      u.pitch = 1.02;
-      u.volume = 1;
-      if (this.preferred) u.voice = this.preferred;
-      this._speaking = true;
-      u.onend = () => {
+  private synth(text: string): Promise<void> {
+    return new Promise<void>((resolve) => {
+      try {
+        const s = window.speechSynthesis;
+        if (!s) return resolve();
+        s.cancel();
+        const u = new SpeechSynthesisUtterance(text);
+        u.rate = 1.05;
+        u.pitch = 1.02;
+        u.volume = 1;
+        if (this.preferred) u.voice = this.preferred;
+        this._speaking = true;
+        this.endResolve = resolve;
+        const done = () => {
+          this._speaking = false;
+          if (this.endResolve === resolve) this.endResolve = null;
+          resolve();
+        };
+        u.onend = done;
+        u.onerror = done;
+        s.speak(u);
+      } catch {
         this._speaking = false;
-      };
-      u.onerror = () => {
-        this._speaking = false;
-      };
-      s.speak(u);
-    } catch {
-      this._speaking = false; // non-fatal
-    }
+        resolve();
+      }
+    });
   }
 
   cancel() {
     this.gen++; // invalidate any say() awaiting a fetch
     this._speaking = false;
+    if (this.endResolve) {
+      const r = this.endResolve;
+      this.endResolve = null;
+      r(); // unblock the awaiting say() so callers don't hang
+    }
     if (this.current) {
       this.current.pause();
       this.current.onended = null;

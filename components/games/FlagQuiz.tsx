@@ -1,11 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AnimatePresence, motion } from "framer-motion";
-import { Volume2, VolumeX, Mic, Play, RotateCcw, Trophy, ArrowLeft, Sparkles } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { motion } from "framer-motion";
+import { Volume2, VolumeX, Mic, Play, RotateCcw, Trophy, ArrowLeft, Sparkles, X, Globe } from "lucide-react";
 import { RaysBackground } from "./RaysBackground";
-import { buildGame, PRESETS, type Round, type Difficulty } from "@/lib/games/generate";
-import { isCorrect } from "@/lib/games/grade";
+import { buildGame, buildAllCountries, PRESETS, type Round, type Difficulty } from "@/lib/games/generate";
+import { isCorrect, pickCountry } from "@/lib/games/grade";
 import { getAudio } from "@/lib/games/audio";
 import { getHost } from "@/lib/games/host";
 import { useListen } from "@/lib/games/useListen";
@@ -22,19 +23,22 @@ const DIFFS: Difficulty[] = ["easy", "medium", "hard"];
 const HUES = [222, 145, 282, 200, 324, 168, 255, 30, 192, 305, 130, 244];
 
 const REVEAL_MS = 2200;
-const LOAD_CAP_MS = 4000;
+const LOAD_CAP_MS = 6000;
 const TITLE_SHADOW = "0 3px 0 rgba(0,0,0,0.22), 0 7px 16px rgba(0,0,0,0.38)";
 const YELLOW = "#FFD400";
 const STRIPES = "repeating-linear-gradient(45deg, rgba(255,255,255,0.28) 0 13px, rgba(255,255,255,0) 13px 26px)";
 
 type Phase = "menu" | "loading" | "answering" | "reveal" | "complete";
+type Mode = "set" | "all";
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 const barColor = (frac: number) => `hsl(${Math.max(0, frac * 125)}, 90%, 48%)`;
 const pngFallback = (code: string) => `https://flagcdn.com/w2560/${code}.png`;
 
 export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
+  const router = useRouter();
   const [phase, setPhase] = useState<Phase>("menu");
+  const [mode, setMode] = useState<Mode>("set");
   const [rounds, setRounds] = useState<Round[]>([]);
   const [title, setTitle] = useState("Flags");
   const [secs, setSecs] = useState(7);
@@ -66,6 +70,7 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
   const tickRef = useRef(-1);
   const flagRef = useRef<HTMLImageElement | null>(null);
   const onReadyRef = useRef<(code: string) => void>(() => {});
+  const preloadedRef = useRef<Set<string>>(new Set());
   phaseRef.current = phase;
   typedRef.current = typed;
   mutedRef.current = muted;
@@ -76,8 +81,7 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
   const resetListenRef = useRef<() => void>(() => {});
   const { supported, start: startListen, stop: stopListen, reset: resetListen } = useListen((t) => {
     if (phaseRef.current !== "answering") return;
-    // While Isaac is talking, ignore the mic AND wipe what it heard — so his voice
-    // is never typed as your answer (no echo) and your words are captured clean.
+    // Safety net: if Isaac is somehow still talking, ignore + wipe (no echo).
     if (host.speaking) {
       resetListenRef.current();
       setInterim("");
@@ -90,7 +94,22 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
   listenRef.current = { start: startListen, stop: stopListen };
   resetListenRef.current = resetListen;
 
-  // ── Build a game through Isaac's brain, then play it ──────────────────────
+  // ── Build a game, then play it ────────────────────────────────────────────
+  const launch = useCallback((g: { title: string; secondsPerRound: number; rounds: Round[] }, nextMode: Mode) => {
+    preloadedRef.current = new Set();
+    secsRef.current = g.secondsPerRound;
+    setSecs(g.secondsPerRound);
+    setMode(nextMode);
+    setTitle(g.title);
+    setRounds(g.rounds);
+    setScore(0);
+    setResults([]);
+    setIdx(0);
+    setRunId((n) => n + 1);
+    setBuilding(false);
+    setPhase("loading");
+  }, []);
+
   const startGame = useCallback(
     async (request: string) => {
       setBuilding(true);
@@ -102,22 +121,23 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
         setFailed(true);
         return;
       }
-      secsRef.current = g.secondsPerRound;
-      setSecs(g.secondsPerRound);
-      setTitle(g.title);
-      setRounds(g.rounds);
-      setScore(0);
-      setResults([]);
-      setIdx(0);
-      setRunId((n) => n + 1);
-      setBuilding(false);
-      setPhase("loading");
+      launch(g, "set");
     },
-    [host]
+    [host, launch]
   );
 
-  // Only auto-focus the answer box on devices with a real pointer (desktop) — on
-  // phones autoFocus pops the keyboard every round, which is annoying.
+  // "Continue" → every country in the world, easiest → hardest.
+  const continueAll = useCallback(async () => {
+    setBuilding(true);
+    const g = await buildAllCountries();
+    if (!g.rounds.length) {
+      setBuilding(false);
+      return;
+    }
+    launch(g, "all");
+  }, [launch]);
+
+  // Only auto-focus the answer box on devices with a real pointer (desktop).
   useEffect(() => {
     setCanAutoFocus(typeof window !== "undefined" && !!window.matchMedia && window.matchMedia("(pointer: fine)").matches);
   }, []);
@@ -131,7 +151,28 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
     }
   }, [initialRequest, startGame]);
 
-  // ── Lock the round (timer expiry or submit): grade, reveal, schedule next ──
+  // Warm Isaac's question lines so he speaks instantly (mic opens right after him).
+  useEffect(() => {
+    if (rounds.length) QUESTIONS.forEach((q) => host.prefetch(q));
+  }, [rounds, host]);
+
+  // Preload the next several flags so each round's image is cached and paints
+  // instantly — no round ever starts on a flag that hasn't loaded.
+  useEffect(() => {
+    for (let i = idx; i < Math.min(idx + 6, rounds.length); i++) {
+      const r = rounds[i];
+      if (!r || preloadedRef.current.has(r.code)) continue;
+      preloadedRef.current.add(r.code);
+      const img = new Image();
+      img.onerror = () => {
+        const png = new Image();
+        png.src = pngFallback(r.code);
+      };
+      img.src = r.flag;
+    }
+  }, [idx, rounds]);
+
+  // ── Lock the round: grade, reveal, schedule next ──────────────────────────
   const lockRound = useCallback(() => {
     if (lockedThisRound.current || phaseRef.current !== "answering") return;
     const r = rounds[idx];
@@ -141,8 +182,13 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
     listenRef.current.stop();
     audio.stopMusic();
 
-    const said = typedRef.current.trim() || voiceRef.current.trim();
-    const correct = !!said && isCorrect(said, r.name, r.aliases);
+    const typedVal = typedRef.current.trim();
+    const voiceVal = voiceRef.current.trim();
+    const raw = typedVal || voiceVal;
+    const correct = !!raw && isCorrect(raw, r.name, r.aliases);
+    // "You said" shows only a COUNTRY — typed as-is, or the country pulled out of
+    // the spoken phrase (filler / Isaac-echo are dropped).
+    const said = typedVal || pickCountry(voiceVal, rounds.map((x) => x.name));
     setLocked({ said, correct, answer: r.name });
     setResults((prev) => [...prev, correct]);
     if (correct) setScore((s) => s + 1);
@@ -150,7 +196,7 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
     setPhase("reveal");
     if (correct) audio.correct();
     else audio.wrong();
-    host.say(correct ? `Yes! ${r.name}.` : `It's ${r.name}.`);
+    void host.say(correct ? `Yes! ${r.name}.` : `It's ${r.name}.`);
 
     advanceRef.current = setTimeout(() => {
       if (idx + 1 >= total) {
@@ -166,7 +212,8 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
   const lockRef = useRef(lockRound);
   lockRef.current = lockRound;
 
-  // ── Each round: reset, wait for the flag to paint, then run timer + voice ──
+  // ── Each round: reset, WAIT for the flag to paint, speak the question, THEN
+  //    open the mic (so it never hears Isaac) and run the timer ───────────────
   useEffect(() => {
     if (phaseRef.current === "complete" || phaseRef.current === "menu") return;
     const r = rounds[idx];
@@ -190,10 +237,16 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
       audio.unlock();
       audio.pop();
       if (!mutedRef.current) audio.startMusic();
-      host.say(QUESTIONS[idx % QUESTIONS.length]);
-      host.prefetch(`Yes! ${r.name}.`); // ready the instant we reveal
+      host.prefetch(`Yes! ${r.name}.`);
       host.prefetch(`It's ${r.name}.`);
-      if (supported) listenRef.current.start();
+      // Speak the question, and only AFTER Isaac finishes open the mic — so the
+      // mic never captures his voice (the root of the echo).
+      void host.say(QUESTIONS[idx % QUESTIONS.length]).then(() => {
+        if (cancelled || phaseRef.current !== "answering" || !supported) return;
+        resetListenRef.current();
+        voiceRef.current = "";
+        listenRef.current.start();
+      });
 
       tickRef.current = secsRef.current;
       const deadline = Date.now() + secsRef.current * 1000;
@@ -255,6 +308,17 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
     }
   }
 
+  // Stop play immediately and go back to the game's menu.
+  const exitToMenu = useCallback(() => {
+    if (timerRef.current) clearInterval(timerRef.current);
+    if (advanceRef.current) clearTimeout(advanceRef.current);
+    audio.stopMusic();
+    host.cancel();
+    listenRef.current.stop();
+    startedInitial.current = true; // don't re-trigger the initial request
+    setPhase("menu");
+  }, [audio, host]);
+
   function submitNow(e: React.FormEvent) {
     e.preventDefault();
     if (phaseRef.current === "answering") lockRound();
@@ -262,7 +326,16 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
 
   // ── Screens ──────────────────────────────────────────────────────────────
   if (phase === "menu") {
-    return <MenuScreen building={building} failed={failed} onPlay={startGame} muted={muted} onMute={toggleMute} />;
+    return (
+      <MenuScreen
+        building={building}
+        failed={failed}
+        onPlay={startGame}
+        onHome={() => router.push("/home")}
+        muted={muted}
+        onMute={toggleMute}
+      />
+    );
   }
   if (phase === "complete") {
     return (
@@ -272,11 +345,11 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
         score={score}
         total={total}
         results={results}
-        onReplay={() => startGame(`Another ${total}-flag game like "${title}".`)}
-        onMenu={() => {
-          startedInitial.current = true; // don't re-trigger the initial request
-          setPhase("menu");
-        }}
+        canContinue={mode === "set"}
+        building={building}
+        onContinue={continueAll}
+        onReplay={() => (mode === "all" ? continueAll() : startGame(`Another ${total}-flag game like "${title}".`))}
+        onMenu={exitToMenu}
       />
     );
   }
@@ -297,17 +370,26 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
       </div>
 
       <div className="relative z-10 flex h-full flex-col">
-        {/* Top: round badge · title · mute */}
+        {/* Top: close · round badge · title · mute */}
         <div className="relative flex items-start justify-between px-4 pt-4 sm:px-8 sm:pt-6">
-          <motion.div
-            key={`badge-${idx}`}
-            initial={{ scale: 0.5, rotate: -20 }}
-            animate={{ scale: 1, rotate: 0 }}
-            transition={{ type: "spring", stiffness: 300, damping: 16 }}
-            className="grid h-14 w-14 shrink-0 place-items-center rounded-full border-[3px] border-white bg-black text-2xl font-extrabold text-white shadow-lg sm:h-16 sm:w-16 sm:text-3xl"
-          >
-            {idx + 1}
-          </motion.div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={exitToMenu}
+              aria-label="Close game"
+              className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-black/25 text-white backdrop-blur transition hover:bg-black/40 sm:h-10 sm:w-10"
+            >
+              <X size={18} />
+            </button>
+            <motion.div
+              key={`badge-${idx}`}
+              initial={{ scale: 0.5, rotate: -20 }}
+              animate={{ scale: 1, rotate: 0 }}
+              transition={{ type: "spring", stiffness: 300, damping: 16 }}
+              className="grid h-12 w-12 shrink-0 place-items-center rounded-full border-[3px] border-white bg-black text-xl font-extrabold text-white shadow-lg sm:h-16 sm:w-16 sm:text-3xl"
+            >
+              {idx + 1}
+            </motion.div>
+          </div>
 
           <h1
             className="pointer-events-none absolute inset-x-0 top-4 mx-auto text-center text-4xl font-extrabold leading-none tracking-tight sm:top-6 sm:text-6xl"
@@ -327,7 +409,7 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
         </div>
 
         {/* Difficulty rail */}
-        <div className="absolute left-3 top-[32%] z-20 flex flex-col gap-1.5 sm:left-8">
+        <div className="absolute left-3 top-[34%] z-20 flex flex-col gap-1.5 sm:left-8">
           {DIFFS.map((d) => {
             const on = round.difficulty === d;
             return (
@@ -388,11 +470,13 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
           )}
         </div>
 
-        {/* Bottom: timer (answering) or answer reveal */}
+        {/* Bottom: timer (answering) or the answer reveal.
+            NOTE: deliberately NOT <AnimatePresence mode="wait"> — under React 19
+            the exiting form can fail to settle, which would keep it mounted and
+            stop the answer from ever showing. Direct conditional render is safe. */}
         <div className="px-4 pb-[max(env(safe-area-inset-bottom),1.25rem)] pt-2 sm:px-8">
-          <AnimatePresence mode="wait">
             {phase === "answering" ? (
-              <motion.div key="bar" initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
+              <motion.div key="bar" initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }}>
                 <div className="mx-auto w-full max-w-2xl rounded-full bg-[#e9e9ec] p-1 shadow-[inset_0_2px_5px_rgba(0,0,0,0.25)]">
                   <div
                     className="h-6 rounded-full sm:h-8"
@@ -433,24 +517,23 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
                 key="reveal"
                 initial={{ opacity: 0, scale: 0.6, y: 20 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0 }}
                 transition={{ type: "spring", stiffness: 300, damping: 16 }}
                 className="text-center"
               >
+                {/* Below the flag: just the answer (the country). */}
                 <div
                   className="text-5xl font-extrabold leading-none sm:text-7xl"
                   style={{ color: YELLOW, textShadow: TITLE_SHADOW }}
                 >
                   {locked?.answer ?? round.name}
                 </div>
-                <div className="mt-2 text-lg font-bold text-white/90 sm:text-xl">
-                  {locked?.correct ? "✓ Correct" : locked?.said ? `✗ You said “${locked.said}”` : "✗ Time's up"}
-                  <span className="mx-2 text-white/50">·</span>
-                  Score {score}/{idx + 1}
-                </div>
+                {locked?.correct ? (
+                  <div className="mt-2 text-lg font-bold text-white/90 sm:text-xl">✓ Correct</div>
+                ) : locked?.said ? (
+                  <div className="mt-2 text-lg font-bold text-white/80 sm:text-xl">You said “{locked.said}”</div>
+                ) : null}
               </motion.div>
             )}
-          </AnimatePresence>
         </div>
       </div>
     </div>
@@ -462,12 +545,14 @@ function MenuScreen({
   building,
   failed,
   onPlay,
+  onHome,
   muted,
   onMute,
 }: {
   building: boolean;
   failed: boolean;
   onPlay: (request: string) => void;
+  onHome: () => void;
   muted: boolean;
   onMute: () => void;
 }) {
@@ -490,6 +575,13 @@ function MenuScreen({
   return (
     <div className="relative grid h-[100dvh] w-screen place-items-center overflow-hidden px-6 select-none">
       <RaysBackground hue={222} />
+      <button
+        onClick={onHome}
+        aria-label="Back to Clunoid"
+        className="absolute left-4 top-4 z-20 flex h-11 items-center gap-1.5 rounded-full bg-black/25 px-4 text-white backdrop-blur transition hover:bg-black/40"
+      >
+        <ArrowLeft size={18} /> <span className="text-sm font-extrabold">clunoid</span>
+      </button>
       <button
         onClick={onMute}
         aria-label={muted ? "Unmute" : "Mute"}
@@ -565,6 +657,9 @@ function CompleteScreen({
   score,
   total,
   results,
+  canContinue,
+  building,
+  onContinue,
   onReplay,
   onMenu,
 }: {
@@ -573,6 +668,9 @@ function CompleteScreen({
   score: number;
   total: number;
   results: boolean[];
+  canContinue: boolean;
+  building: boolean;
+  onContinue: () => void;
   onReplay: () => void;
   onMenu: () => void;
 }) {
@@ -603,14 +701,30 @@ function CompleteScreen({
           <span className="text-3xl font-bold text-white/80">/ {total}</span>
         </div>
         <div className="mt-5 flex max-w-xs flex-wrap justify-center gap-1.5">
-          {results.map((r, i) => (
+          {results.slice(0, 60).map((r, i) => (
             <span key={i} className={`h-3 w-3 rounded-full ${r ? "bg-white" : "bg-black/30"}`} />
           ))}
         </div>
-        <div className="mt-8 flex w-full gap-3">
+
+        {canContinue && (
+          <button
+            onClick={onContinue}
+            disabled={building}
+            className="mt-7 flex w-full items-center justify-center gap-2 rounded-full bg-white px-5 py-4 text-lg font-extrabold text-black shadow-xl transition hover:scale-[1.03] disabled:opacity-70"
+          >
+            {building ? (
+              <span className="h-5 w-5 animate-spin rounded-full border-2 border-black/30 border-t-black" />
+            ) : (
+              <Globe size={20} />
+            )}
+            Continue · all countries
+          </button>
+        )}
+
+        <div className="mt-3 flex w-full gap-3">
           <button
             onClick={onReplay}
-            className="flex flex-1 items-center justify-center gap-2 rounded-full bg-white px-5 py-3.5 font-extrabold text-black shadow-xl transition hover:scale-[1.03]"
+            className="flex flex-1 items-center justify-center gap-2 rounded-full bg-white/90 px-5 py-3.5 font-extrabold text-black shadow-xl transition hover:scale-[1.03]"
           >
             <RotateCcw size={18} /> Play again
           </button>

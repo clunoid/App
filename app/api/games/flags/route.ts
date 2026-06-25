@@ -2,21 +2,26 @@ import { NextRequest, NextResponse } from "next/server";
 import { generateObject } from "ai";
 import { z } from "zod";
 import { MODELS, hasAnthropic, hasGroq } from "@/lib/models";
+import { WORLD_ORDER, WORLD_ALIASES } from "@/lib/games/world";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
 
 /**
- * Isaac's brain builds the flag game. Given ANY natural request ("hard European
- * flags", "tricky lookalikes", "20 random", "flags of former Soviet states"…),
- * the LLM picks real countries dynamically — nothing is hardcoded. The picks are
- * then validated + enriched server-side against the REST Countries dataset
- * (authoritative names + alternative spellings for grading) and returned with
- * never-cropped flagcdn SVG URLs. This is the ONLY place a flag game is made.
+ * Isaac's brain builds the flag game. Two modes:
+ *  - default: the LLM picks real countries dynamically for ANY natural request,
+ *    validated against the authoritative flagcdn name list, then ORDERED
+ *    easy → medium → hard.
+ *  - { all: true }: skip the LLM and return EVERY sovereign country, easiest →
+ *    hardest (WORLD_ORDER). Used by "Continue".
+ * Country names come from flagcdn (so every code has a real, loadable flag).
  */
 
+type Difficulty = "easy" | "medium" | "hard";
+type RoundOut = { code: string; name: string; aliases: string[]; difficulty: Difficulty; flag: string };
+
 const genSchema = z.object({
-  title: z.string().describe("A short, fun title for the set, e.g. 'World Flags', 'Hard Mode', 'European Flags'."),
+  title: z.string().describe("A short, fun title, e.g. 'World Flags', 'Hard Mode', 'European Flags'."),
   secondsPerRound: z
     .number()
     .int()
@@ -37,32 +42,25 @@ const genSchema = z.object({
     .max(40),
 });
 
-type Info = { name: string; aliases: string[] };
-let cache: Map<string, Info> | null = null;
+// Authoritative code → name from flagcdn (every code here has a real flag).
+let cache: Map<string, string> | null = null;
 let cacheAt = 0;
 const DAY = 24 * 60 * 60 * 1000;
 
 const uniq = (arr: (string | undefined)[]) =>
   Array.from(new Set(arr.filter((x): x is string => !!x && x.trim().length > 1)));
+const DIFF_RANK: Record<Difficulty, number> = { easy: 0, medium: 1, hard: 2 };
+const flagUrl = (code: string) => `https://flagcdn.com/${code}.svg`;
 
-async function loadCountries(): Promise<Map<string, Info>> {
+async function loadFlagNames(): Promise<Map<string, string>> {
   if (cache && Date.now() - cacheAt < DAY) return cache;
   try {
-    const res = await fetch("https://restcountries.com/v3.1/all?fields=cca2,name,altSpellings", {
-      headers: { accept: "application/json" },
-    });
-    if (!res.ok) throw new Error("rest countries failed");
-    const data = (await res.json()) as Array<{
-      cca2?: string;
-      name?: { common?: string; official?: string };
-      altSpellings?: string[];
-    }>;
-    const m = new Map<string, Info>();
-    for (const c of data) {
-      const code = (c.cca2 || "").toLowerCase();
-      if (!/^[a-z]{2}$/.test(code)) continue;
-      const name = c.name?.common || code.toUpperCase();
-      m.set(code, { name, aliases: uniq([name, c.name?.official, ...(c.altSpellings || [])]) });
+    const res = await fetch("https://flagcdn.com/en/codes.json", { headers: { accept: "application/json" } });
+    if (!res.ok) throw new Error("flagcdn codes failed");
+    const data = (await res.json()) as Record<string, string>;
+    const m = new Map<string, string>();
+    for (const [code, name] of Object.entries(data)) {
+      if (/^[a-z]{2}$/.test(code) && name) m.set(code, name);
     }
     if (m.size) {
       cache = m;
@@ -74,7 +72,23 @@ async function loadCountries(): Promise<Map<string, Info>> {
   }
 }
 
-const SYSTEM = `You are setting up a "guess the country by its flag" game. Build the rounds based ENTIRELY on the user's request — honour any continent/region, specific countries, difficulty, theme, number of rounds, "random", or custom set they ask for. If they don't specify, use 12 rounds with a good SPREAD of difficulties (some easy, some medium, some hard). Order does NOT matter — the rounds are shuffled into a random order before play.
+/** Every sovereign country, easiest → hardest. */
+function buildAllCountries(names: Map<string, string>): RoundOut[] {
+  const present = WORLD_ORDER.filter((c) => names.size === 0 || names.has(c));
+  const n = present.length;
+  return present.map((code, i) => {
+    const name = names.get(code) || code.toUpperCase();
+    return {
+      code,
+      name,
+      aliases: uniq([name, ...(WORLD_ALIASES[code] || [])]),
+      difficulty: (i < n * 0.23 ? "easy" : i < n * 0.58 ? "medium" : "hard") as Difficulty,
+      flag: flagUrl(code),
+    };
+  });
+}
+
+const SYSTEM = `You are setting up a "guess the country by its flag" game. Build the rounds based ENTIRELY on the user's request — honour any continent/region, specific countries, difficulty, theme, number of rounds, "random", or custom set they ask for. If they don't specify, use 12 rounds with a good SPREAD of difficulties (a few easy, a few medium, a few hard) using a varied, randomized selection of countries.
 Rules:
 - Use ONLY real countries/territories that have a flag, with correct ISO 3166-1 alpha-2 codes — accuracy is essential (the code MUST match the country).
 - 'easy' = globally famous flags (e.g. us, fr, jp, br); 'hard' = obscure ones.
@@ -82,14 +96,21 @@ Rules:
 - No duplicate countries. If the user specifies a number of rounds, produce EXACTLY that many; otherwise 12 (hard cap 40).`;
 
 export async function POST(req: NextRequest) {
-  if (!hasGroq() && !hasAnthropic()) return NextResponse.json({ title: "Flags", rounds: [] });
-
-  let request = "";
+  let body: { request?: string; all?: boolean } = {};
   try {
-    ({ request } = await req.json());
+    body = await req.json();
   } catch {
     return new Response(null, { status: 400 });
   }
+
+  const names = await loadFlagNames();
+
+  // ── "All countries" mode (Continue) — deterministic, no LLM ──────────────
+  if (body.all) {
+    return NextResponse.json({ title: "All Countries", secondsPerRound: 8, rounds: buildAllCountries(names) });
+  }
+
+  if (!hasGroq() && !hasAnthropic()) return NextResponse.json({ title: "Flags", rounds: [] });
 
   const model = hasAnthropic() ? MODELS.genius() : MODELS.fast();
   let object: z.infer<typeof genSchema>;
@@ -98,40 +119,34 @@ export async function POST(req: NextRequest) {
       model,
       schema: genSchema,
       system: SYSTEM,
-      prompt: request?.trim() || "A worldwide mix of 12 flags, easy to hard.",
-      temperature: 0.4,
+      prompt: body.request?.trim() || "A varied mix of 12 flags, a spread of easy/medium/hard.",
+      temperature: 0.5,
       maxRetries: 1,
     }));
   } catch {
     return NextResponse.json({ title: "Flags", rounds: [] });
   }
 
-  const countries = await loadCountries();
-  const rounds: Array<{ code: string; name: string; aliases: string[]; difficulty: string; flag: string }> = [];
+  const rounds: RoundOut[] = [];
   const seen = new Set<string>();
   for (const r of object.rounds) {
     const code = (r.code || "").toLowerCase().trim();
     if (!/^[a-z]{2}$/.test(code) || seen.has(code)) continue;
-    const info = countries.get(code);
-    // If we have the authoritative list and the code isn't in it, drop it.
-    if (countries.size > 0 && !info) continue;
+    // Drop codes that don't have a real flag (so every round's flag loads).
+    if (names.size > 0 && !names.has(code)) continue;
     seen.add(code);
-    const name = info?.name || r.name || code.toUpperCase();
+    const name = names.get(code) || r.name || code.toUpperCase();
     rounds.push({
       code,
       name,
-      aliases: uniq([name, r.name, ...(r.aliases || []), ...(info?.aliases || [])]),
+      aliases: uniq([name, r.name, ...(r.aliases || []), ...(WORLD_ALIASES[code] || [])]),
       difficulty: r.difficulty,
-      flag: `https://flagcdn.com/${code}.svg`,
+      flag: flagUrl(code),
     });
   }
 
-  // Randomize the order so flags never come in a predictable easy→hard run (the
-  // difficulty rail still reflects each round's own level).
-  for (let i = rounds.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [rounds[i], rounds[j]] = [rounds[j], rounds[i]];
-  }
+  // Order easy → medium → hard (a clear difficulty ramp, not an easy/hard jumble).
+  rounds.sort((a, b) => DIFF_RANK[a.difficulty] - DIFF_RANK[b.difficulty]);
 
   return NextResponse.json({
     title: object.title || "Flags",
