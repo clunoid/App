@@ -131,7 +131,7 @@ export async function POST(req: NextRequest) {
   if (!hasGroq() && !hasAnthropic()) return NextResponse.json({ title: "Flags", rounds: [] });
 
   const model = hasAnthropic() ? MODELS.genius() : MODELS.fast();
-  let object: z.infer<typeof genSchema>;
+  let object: z.infer<typeof genSchema> | null = null;
   try {
     ({ object } = await generateObject({
       model,
@@ -139,16 +139,15 @@ export async function POST(req: NextRequest) {
       system: SYSTEM,
       prompt: body.request?.trim() || "A varied mix of 12 flags, a spread of easy/medium/hard.",
       temperature: 0.8, // more variety in which countries get picked each play
-
-      maxRetries: 1,
+      maxRetries: 2,
     }));
   } catch {
-    return NextResponse.json({ title: "Flags", rounds: [] });
+    /* fall through to the dataset fallback below */
   }
 
   const rounds: RoundOut[] = [];
   const seen = new Set<string>();
-  for (const r of object.rounds) {
+  for (const r of object?.rounds || []) {
     const code = (r.code || "").toLowerCase().trim();
     if (!/^[a-z]{2}$/.test(code) || seen.has(code)) continue;
     // Drop codes that don't have a real flag (so every round's flag loads).
@@ -164,9 +163,18 @@ export async function POST(req: NextRequest) {
     });
   }
 
+  // If the LLM hiccupped (rate limit / transient), still hand back a playable
+  // game: a 12-flag world spread from the dataset, shuffled within tiers.
+  if (!rounds.length) {
+    const all = buildAllCountries(names);
+    const pick = (d: Difficulty, k: number) => shuffle(all.filter((r) => r.difficulty === d)).slice(0, k);
+    const fb = orderByTier([...pick("easy", 4), ...pick("medium", 4), ...pick("hard", 4)]);
+    return NextResponse.json({ title: "World Flags", secondsPerRound: 7, rounds: fb });
+  }
+
   return NextResponse.json({
-    title: object.title || "Flags",
-    secondsPerRound: object.secondsPerRound ?? 7,
+    title: object?.title || "Flags",
+    secondsPerRound: object?.secondsPerRound ?? 7,
     // Difficulty ramp, but randomized within each tier (different every play).
     rounds: orderByTier(rounds),
   });
