@@ -49,8 +49,26 @@ const DAY = 24 * 60 * 60 * 1000;
 
 const uniq = (arr: (string | undefined)[]) =>
   Array.from(new Set(arr.filter((x): x is string => !!x && x.trim().length > 1)));
-const DIFF_RANK: Record<Difficulty, number> = { easy: 0, medium: 1, hard: 2 };
 const flagUrl = (code: string) => `https://flagcdn.com/${code}.svg`;
+
+function shuffle<T>(a: T[]): T[] {
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+/**
+ * Keep the difficulty RAMP (all easy, then medium, then hard) but SHUFFLE the
+ * countries WITHIN each tier — so every play has a different sequence and you
+ * can't memorize "round 1 is the USA"; you have to actually know the flag.
+ */
+function orderByTier(rounds: RoundOut[]): RoundOut[] {
+  const t: Record<Difficulty, RoundOut[]> = { easy: [], medium: [], hard: [] };
+  for (const r of rounds) t[r.difficulty].push(r);
+  return [...shuffle(t.easy), ...shuffle(t.medium), ...shuffle(t.hard)];
+}
 
 async function loadFlagNames(): Promise<Map<string, string>> {
   if (cache && Date.now() - cacheAt < DAY) return cache;
@@ -105,9 +123,9 @@ export async function POST(req: NextRequest) {
 
   const names = await loadFlagNames();
 
-  // ── "All countries" mode (Continue) — deterministic, no LLM ──────────────
+  // ── "All countries" mode (Continue) — every country, shuffled within tiers ─
   if (body.all) {
-    return NextResponse.json({ title: "All Countries", secondsPerRound: 8, rounds: buildAllCountries(names) });
+    return NextResponse.json({ title: "All Countries", secondsPerRound: 8, rounds: orderByTier(buildAllCountries(names)) });
   }
 
   if (!hasGroq() && !hasAnthropic()) return NextResponse.json({ title: "Flags", rounds: [] });
@@ -120,7 +138,8 @@ export async function POST(req: NextRequest) {
       schema: genSchema,
       system: SYSTEM,
       prompt: body.request?.trim() || "A varied mix of 12 flags, a spread of easy/medium/hard.",
-      temperature: 0.5,
+      temperature: 0.8, // more variety in which countries get picked each play
+
       maxRetries: 1,
     }));
   } catch {
@@ -145,12 +164,10 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  // Order easy → medium → hard (a clear difficulty ramp, not an easy/hard jumble).
-  rounds.sort((a, b) => DIFF_RANK[a.difficulty] - DIFF_RANK[b.difficulty]);
-
   return NextResponse.json({
     title: object.title || "Flags",
     secondsPerRound: object.secondsPerRound ?? 7,
-    rounds,
+    // Difficulty ramp, but randomized within each tier (different every play).
+    rounds: orderByTier(rounds),
   });
 }

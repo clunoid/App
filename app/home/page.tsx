@@ -68,7 +68,7 @@ export default function Home() {
     // in-progress Isaac speech here so it doesn't carry over into the game.
     if (isGameRequest(text)) {
       useClunoid.getState().interrupt();
-      router.push(`/games?q=${encodeURIComponent(text)}`);
+      router.push(`/games/flags?q=${encodeURIComponent(text)}`);
       return;
     }
     send(text);

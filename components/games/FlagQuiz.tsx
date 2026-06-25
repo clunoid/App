@@ -69,7 +69,6 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
   const advanceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const tickRef = useRef(-1);
   const flagRef = useRef<HTMLImageElement | null>(null);
-  const onReadyRef = useRef<(code: string) => void>(() => {});
   const preloadedRef = useRef<Set<string>>(new Set());
   phaseRef.current = phase;
   typedRef.current = typed;
@@ -263,16 +262,32 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
       timerRef.current = id;
     };
 
-    onReadyRef.current = (code: string) => {
-      if (!cancelled && code === r.code) begin();
+    // Wait for the VISIBLE flag to actually DECODE (be paint-ready) before the
+    // round starts — so a flag is never blank while Isaac names it. Retry the
+    // SVG, then a PNG, then give up gracefully (the cap) so it can't hang.
+    let settled = false;
+    const ready = () => {
+      if (cancelled || settled) return;
+      settled = true;
+      begin();
     };
     const el = flagRef.current;
-    if (el && el.complete && el.naturalWidth > 0) begin();
-    const capTimer = setTimeout(() => begin(), LOAD_CAP_MS);
+    if (el) {
+      el.decode().then(ready).catch(() => {
+        if (cancelled || settled) return;
+        if (!el.dataset.fb) {
+          el.dataset.fb = "1";
+          el.src = pngFallback(r.code);
+        }
+        el.decode().then(ready).catch(ready);
+      });
+    } else {
+      ready();
+    }
+    const capTimer = setTimeout(ready, LOAD_CAP_MS);
 
     return () => {
       cancelled = true;
-      onReadyRef.current = () => {};
       clearTimeout(capTimer);
       if (timerRef.current) clearInterval(timerRef.current);
       if (advanceRef.current) clearTimeout(advanceRef.current);
@@ -331,7 +346,7 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
         building={building}
         failed={failed}
         onPlay={startGame}
-        onHome={() => router.push("/home")}
+        onHome={() => router.push("/games")}
         muted={muted}
         onMute={toggleMute}
       />
@@ -451,7 +466,6 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
               src={round.flag}
               alt="Flag"
               draggable={false}
-              onLoad={() => onReadyRef.current(round.code)}
               onError={(e) => {
                 const t = e.currentTarget as HTMLImageElement;
                 if (!t.dataset.fb) {
@@ -577,10 +591,10 @@ function MenuScreen({
       <RaysBackground hue={222} />
       <button
         onClick={onHome}
-        aria-label="Back to Clunoid"
+        aria-label="Back to games"
         className="absolute left-4 top-4 z-20 flex h-11 items-center gap-1.5 rounded-full bg-black/25 px-4 text-white backdrop-blur transition hover:bg-black/40"
       >
-        <ArrowLeft size={18} /> <span className="text-sm font-extrabold">clunoid</span>
+        <ArrowLeft size={18} /> <span className="text-sm font-extrabold">Games</span>
       </button>
       <button
         onClick={onMute}
