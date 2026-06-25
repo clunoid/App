@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { Volume2, VolumeX, Mic, Play, RotateCcw, Trophy, ArrowLeft, Sparkles, X, Globe, Check, Grid2x2, Keyboard } from "lucide-react";
+import { Volume2, VolumeX, Mic, MicOff, Play, RotateCcw, Trophy, ArrowLeft, Sparkles, X, Globe, Check, Grid2x2, Keyboard } from "lucide-react";
 import { RaysBackground } from "./RaysBackground";
 import { DocumentBackground } from "./DocumentBackground";
 import { buildGame, buildAllCountries, PRESETS, type Round, type Difficulty } from "@/lib/games/generate";
@@ -88,6 +88,10 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
   const [building, setBuilding] = useState(false);
   const [failed, setFailed] = useState(false);
   const [canAutoFocus, setCanAutoFocus] = useState(false);
+  // Voice answering is OPT-IN: the mic stays muted until the user taps to talk,
+  // then auto-re-arms each round. This keeps the mic off during Isaac's question
+  // (no echo-cancellation ducking, no recognition churn). Typing always works.
+  const [voiceOn, setVoiceOn] = useState(false);
 
   const round: Round | undefined = rounds[idx];
   const total = rounds.length;
@@ -99,6 +103,7 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
   const voiceRef = useRef("");
   const pickedRef = useRef("");
   const mutedRef = useRef(false);
+  const voiceOnRef = useRef(false);
   const secsRef = useRef(7);
   const answerModeRef = useRef<AnswerMode>("choice");
   const lockedThisRound = useRef(false);
@@ -110,6 +115,7 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
   phaseRef.current = phase;
   typedRef.current = typed;
   mutedRef.current = muted;
+  voiceOnRef.current = voiceOn;
   answerModeRef.current = answerMode;
 
   const audio = getAudio();
@@ -299,14 +305,19 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
       if (!mutedRef.current) audio.startMusic();
       host.prefetch(`Yes! ${r.name}.`);
       host.prefetch(`It's ${r.name}.`);
-      void host.say(QUESTIONS[idx % QUESTIONS.length]);
-      // Mic ON immediately (only in type/speak mode) so it never misses you; the
-      // host.speaking guard drops Isaac's own voice.
-      if (answerModeRef.current === "input" && supported) {
-        resetListenRef.current();
-        voiceRef.current = "";
-        listenRef.current.start();
-      }
+      // Ask the question. The mic opens ONLY AFTER Isaac finishes (host.say
+      // resolves on audio-end) and ONLY if the user armed voice — so the open mic
+      // never ducks his TTS or churns on his echo. Re-checked every round, so once
+      // armed it auto-re-arms; the guards stop a late-resolving say() (after a lock
+      // or round change) from re-opening the mic.
+      void host.say(QUESTIONS[idx % QUESTIONS.length]).then(() => {
+        if (cancelled || lockedThisRound.current || phaseRef.current !== "answering") return;
+        if (answerModeRef.current === "input" && voiceOnRef.current && supported) {
+          resetListenRef.current();
+          voiceRef.current = "";
+          listenRef.current.start();
+        }
+      });
 
       tickRef.current = secsRef.current;
       const deadline = Date.now() + secsRef.current * 1000;
@@ -378,6 +389,24 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
       host.cancel();
     } else if (phaseRef.current === "answering") {
       audio.startMusic();
+    }
+  }
+
+  // Opt-in voice. Arming mid-round opens the mic now if we're answering and Isaac
+  // is silent; if he's still talking, begin()'s say().then() opens it when he's
+  // done. Muting stops it immediately. The preference persists across rounds.
+  function toggleVoice() {
+    const next = !voiceOnRef.current;
+    voiceOnRef.current = next;
+    setVoiceOn(next);
+    if (next) {
+      if (phaseRef.current === "answering" && !lockedThisRound.current && !host.speaking && supported) {
+        resetListenRef.current();
+        voiceRef.current = "";
+        listenRef.current.start();
+      }
+    } else {
+      listenRef.current.stop();
     }
   }
 
@@ -644,17 +673,24 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
           ) : (
             <form onSubmit={submitNow} className="mx-auto mt-3 flex w-full max-w-md items-center gap-2">
               {supported && (
-                <span
-                  className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-white/20 text-white ring-1 ring-white/40"
-                  title="Listening"
+                <button
+                  type="button"
+                  onClick={toggleVoice}
+                  aria-label={voiceOn ? "Mute microphone" : "Unmute microphone to answer by voice"}
+                  title={voiceOn ? "Voice on — tap to mute" : "Tap to answer by voice"}
+                  className={`grid h-11 w-11 shrink-0 place-items-center rounded-full ring-1 transition ${
+                    voiceOn
+                      ? `bg-white text-black ring-white/70 shadow ${phase === "answering" ? "animate-pulse" : ""}`
+                      : "bg-white/15 text-white/70 ring-white/30 hover:bg-white/25 hover:text-white"
+                  }`}
                 >
-                  <Mic size={18} />
-                </span>
+                  {voiceOn ? <Mic size={18} /> : <MicOff size={18} />}
+                </button>
               )}
               <input
                 value={typed}
                 onChange={(e) => setTyped(e.target.value)}
-                placeholder={interim || "Type the country…"}
+                placeholder={interim || (voiceOn ? "Listening… or type" : "Type the country…")}
                 autoFocus={canAutoFocus}
                 disabled={reveal}
                 className="h-11 w-full rounded-full border-0 bg-white/20 px-5 font-bold text-white outline-none backdrop-blur placeholder:font-medium placeholder:text-white/70 focus:bg-white/30 disabled:opacity-70"
