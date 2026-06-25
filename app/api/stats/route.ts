@@ -19,8 +19,8 @@ const schema = z.object({
   timeLabel: z.string().optional().describe("Label for the time axis, e.g. 'Year'."),
   entities: z
     .array(z.object({ name: z.string(), color: z.string().optional().describe("Distinct hex like '#c0392b'.") }))
-    .min(4)
-    .max(16)
+    .min(2)
+    .max(22)
     .describe("Every competitor that appears in ANY keyframe; distinct, readable colors."),
   keyframes: z
     .array(
@@ -28,12 +28,12 @@ const schema = z.object({
         time: z.number().describe("The year/time, ascending across keyframes."),
         values: z
           .array(z.object({ name: z.string().describe("MUST match an entities[].name exactly."), value: z.number() }))
-          .min(3)
-          .max(16),
+          .min(2)
+          .max(22),
       })
     )
-    .min(6)
-    .max(28)
+    .min(2)
+    .max(36)
     .describe("Chronological, ascending. Sparse but enough to interpolate smoothly. Omit a name before it existed."),
 });
 
@@ -101,5 +101,7 @@ export async function POST(req: NextRequest) {
   } catch {
     /* fall through */
   }
-  return NextResponse.json(normalize(GDP_FALLBACK));
+  // A specific request failed (transient) — signal the client to offer a retry
+  // rather than returning the (wrong-topic) GDP fallback.
+  return NextResponse.json({ error: true }, { status: 200 });
 }

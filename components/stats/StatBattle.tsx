@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { ArrowLeft, Sparkles, Play, RotateCcw, Film, Loader2, BarChart3 } from "lucide-react";
 import { DocumentBackground } from "@/components/games/DocumentBackground";
 import { ShareModal } from "@/components/share/ShareModal";
-import { buildRace, PRESETS } from "@/lib/stats/generate";
+import { buildRace, gdpFallbackRace, PRESETS } from "@/lib/stats/generate";
 import { drawRaceFrame, newRaceState, renderRaceVideo } from "@/lib/stats/render";
 import type { RaceData } from "@/lib/stats/types";
 import type { ReelAspect } from "@/lib/share/reel";
@@ -27,17 +27,26 @@ export function StatBattle({ initialRequest }: { initialRequest?: string }) {
 
   const start = useCallback(async (req: string) => {
     const r = (req || "").trim();
+    const isDefault = !r || r === PRESETS[0].request;
     setFailed(false);
     setPhase("building");
-    const data = await buildRace(r || PRESETS[0].request);
-    if (!data.frames.length || !data.entities.length) {
-      setFailed(true);
-      setPhase("menu");
-      return;
+    try {
+      const data = await buildRace(r || PRESETS[0].request);
+      setRace(data);
+      setReplayKey((n) => n + 1);
+      setPhase("playing");
+    } catch {
+      // The GDP default always works (offline fallback); other topics that fail
+      // (usually a transient model hiccup) ask the user to try again.
+      if (isDefault) {
+        setRace(gdpFallbackRace());
+        setReplayKey((n) => n + 1);
+        setPhase("playing");
+      } else {
+        setFailed(true);
+        setPhase("menu");
+      }
     }
-    setRace(data);
-    setReplayKey((n) => n + 1);
-    setPhase("playing");
   }, []);
 
   const startedInitial = useRef(false);

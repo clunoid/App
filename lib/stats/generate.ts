@@ -33,19 +33,21 @@ export function toRaceData(raw: RaceRaw): RaceData {
   };
 }
 
-/** Ask the brain for a stat battle; always resolves to a playable race. */
+/** The GDP default, ready to play (offline fallback for the default experience). */
+export function gdpFallbackRace(): RaceData {
+  return toRaceData(GDP_FALLBACK);
+}
+
+/** Ask the brain for a stat battle. THROWS on failure so the caller can decide
+ *  whether to show the GDP default (for the default request) or a retry prompt. */
 export async function buildRace(request: string): Promise<RaceData> {
-  try {
-    const res = await fetch("/api/stats", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ request }),
-    });
-    if (!res.ok) throw new Error("stats generation failed");
-    const raw = (await res.json()) as RaceRaw;
-    if (!raw.entities?.length || !raw.keyframes?.length) throw new Error("empty race");
-    return toRaceData(raw);
-  } catch {
-    return toRaceData(GDP_FALLBACK);
-  }
+  const res = await fetch("/api/stats", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ request }),
+  });
+  if (!res.ok) throw new Error("stats generation failed");
+  const raw = (await res.json()) as RaceRaw & { error?: boolean };
+  if (raw.error || !raw.entities?.length || !raw.keyframes?.length) throw new Error("empty race");
+  return toRaceData(raw);
 }
