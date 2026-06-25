@@ -72,6 +72,7 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
   const [answerMode, setAnswerMode] = useState<AnswerMode>("choice");
   const [rounds, setRounds] = useState<Round[]>([]);
   const [title, setTitle] = useState("Flags");
+  const [subtitle, setSubtitle] = useState<string | undefined>(undefined);
   const [secs, setSecs] = useState(7);
   const [idx, setIdx] = useState(0);
   const [runId, setRunId] = useState(0);
@@ -133,7 +134,7 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
 
   // ── Build a game, then play it ────────────────────────────────────────────
   const launch = useCallback(
-    (g: { title: string; secondsPerRound: number; rounds: Round[] }, nextSet: SetMode, am: AnswerMode) => {
+    (g: { title: string; subtitle?: string; secondsPerRound: number; rounds: Round[] }, nextSet: SetMode, am: AnswerMode) => {
       preloadedRef.current = new Set();
       secsRef.current = g.secondsPerRound;
       answerModeRef.current = am;
@@ -141,6 +142,7 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
       setSetMode(nextSet);
       setAnswerMode(am);
       setTitle(g.title);
+      setSubtitle(g.subtitle);
       setRounds(g.rounds);
       setScore(0);
       setResults([]);
@@ -444,7 +446,7 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
       </div>
 
       <div className="relative z-10 flex h-full flex-col">
-        {/* Top: close · round badge · title · mute */}
+        {/* Top: close · round badge · mute (title moved down to the flag area) */}
         <div className="relative flex items-start justify-between px-4 pt-4 sm:px-8 sm:pt-6">
           <div className="flex items-center gap-2">
             <button
@@ -461,21 +463,13 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
               initial={{ scale: 0.5, rotate: -20 }}
               animate={{ scale: 1, rotate: 0 }}
               transition={{ type: "spring", stiffness: 300, damping: 16 }}
-              className={`grid h-12 w-12 shrink-0 place-items-center rounded-full border-[3px] text-xl font-extrabold shadow-lg sm:h-16 sm:w-16 sm:text-3xl ${
-                choiceMode ? "border-[#2c2823] bg-[#f6f4ee] text-[#2c2823]" : "border-white bg-black text-white"
-              }`}
+              className={`grid h-12 w-12 shrink-0 place-items-center rounded-full border-[3px] font-extrabold shadow-lg sm:h-16 sm:w-16 ${
+                total >= 100 ? "text-base sm:text-xl" : "text-xl sm:text-3xl"
+              } ${choiceMode ? "border-[#2c2823] bg-[#f6f4ee] text-[#2c2823]" : "border-white bg-black text-white"}`}
             >
               {idx + 1}
             </motion.div>
           </div>
-
-          <h1
-            className="pointer-events-none absolute inset-x-0 top-4 mx-auto text-center text-4xl font-extrabold leading-none tracking-tight sm:top-6 sm:text-6xl"
-            style={{ textShadow: choiceMode ? "none" : TITLE_SHADOW }}
-          >
-            <span style={{ color: choiceMode ? INK : "#fff" }}>Guess The </span>
-            <span style={{ color: choiceMode ? SEAL : YELLOW }}>Country</span>
-          </h1>
 
           <button
             onClick={toggleMute}
@@ -515,11 +509,35 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
           })}
         </div>
 
-        {/* Center: flag + a reserved slot below it for the answer reveal */}
+        {/* Center: title + subtitle, then the flag + a reserved answer slot */}
         <div className="relative flex flex-1 flex-col items-center justify-center gap-2 px-6">
+          {/* Title sits just above the flag (clear of the top controls), fluid
+              size so it fits every screen; category shows as a quoted subtitle. */}
+          <div className="pointer-events-none flex flex-col items-center text-center">
+            <h1
+              className="font-extrabold leading-none tracking-tight"
+              style={{ fontSize: "clamp(1.5rem, 6.4vw, 3.5rem)", textShadow: choiceMode ? "none" : TITLE_SHADOW }}
+            >
+              <span style={{ color: choiceMode ? INK : "#fff" }}>Guess The </span>
+              <span style={{ color: choiceMode ? SEAL : YELLOW }}>Country</span>
+            </h1>
+            {subtitle && (
+              <p
+                className="mt-1 font-bold italic leading-tight"
+                style={{
+                  fontSize: "clamp(0.8rem, 3.2vw, 1.3rem)",
+                  color: choiceMode ? SEAL : "rgba(255,255,255,0.92)",
+                  textShadow: choiceMode ? "none" : "0 1px 4px rgba(0,0,0,0.45)",
+                }}
+              >
+                “{subtitle}”
+              </p>
+            )}
+          </div>
+
           <motion.div
             key={round.code}
-            initial={{ scale: 0.7, opacity: 0, rotate: -6 }}
+            initial={{ scale: 0.7, opacity: 0, rotate: choiceMode ? 0 : -6 }}
             animate={{
               scale: phase === "loading" ? 0.85 : 1,
               opacity: phase === "loading" ? 0 : 1,
@@ -528,7 +546,7 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
             transition={{
               opacity: { duration: 0.25 },
               scale: { type: "spring", stiffness: 220, damping: 18 },
-              rotate: { duration: 5, repeat: Infinity, ease: "easeInOut" },
+              ...(choiceMode ? {} : { rotate: { duration: 5, repeat: Infinity, ease: "easeInOut" } }),
             }}
             className="rounded-[1.6rem] bg-white p-2.5 shadow-2xl sm:p-3"
           >

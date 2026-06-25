@@ -8,17 +8,21 @@
 
 export type Difficulty = "easy" | "medium" | "hard";
 export type Round = { code: string; name: string; aliases: string[]; difficulty: Difficulty; flag: string };
-export type Game = { title: string; secondsPerRound: number; rounds: Round[] };
+export type Game = { title: string; subtitle?: string; secondsPerRound: number; rounds: Round[] };
 
-/** Quick-start presets — each is just a natural request the brain interprets. */
+/**
+ * Quick-start presets — each is just a natural request the brain interprets.
+ * Region/category chips request the FULL set (no fixed count) so the brain
+ * returns every matching country; "World"/"Random" stay a varied worldwide mix.
+ */
 export const PRESETS: { label: string; request: string }[] = [
-  { label: "World", request: "A worldwide mix of 12 flags, easy to hard." },
-  { label: "Europe", request: "12 European country flags, easy to hard." },
-  { label: "Asia", request: "12 Asian country flags, easy to hard." },
-  { label: "Africa", request: "12 African country flags, easy to hard." },
-  { label: "Americas", request: "12 flags from the Americas, easy to hard." },
-  { label: "Hard", request: "12 hard, obscure, tricky-to-recognize country flags." },
-  { label: "Random", request: "12 completely random country flags from all over the world." },
+  { label: "World", request: "A varied worldwide mix of flags, easy to hard." },
+  { label: "Europe", request: "European country flags, easy to hard." },
+  { label: "Asia", request: "Asian country flags, easy to hard." },
+  { label: "Africa", request: "African country flags, easy to hard." },
+  { label: "Americas", request: "Flags of the Americas, easy to hard." },
+  { label: "Hard", request: "Hard, obscure, tricky-to-recognize flags from around the world." },
+  { label: "Random", request: "A completely random worldwide mix of flags." },
 ];
 
 async function post(payload: Record<string, unknown>): Promise<Game> {
@@ -32,6 +36,7 @@ async function post(payload: Record<string, unknown>): Promise<Game> {
     const data = (await res.json()) as Partial<Game>;
     return {
       title: data.title || "Flags",
+      subtitle: typeof data.subtitle === "string" && data.subtitle.trim() ? data.subtitle.trim() : undefined,
       secondsPerRound: data.secondsPerRound && data.secondsPerRound > 0 ? data.secondsPerRound : 7,
       rounds: Array.isArray(data.rounds) ? data.rounds : [],
     };

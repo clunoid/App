@@ -7,13 +7,21 @@ import { WORLD_ORDER, WORLD_ALIASES } from "@/lib/games/world";
 export const runtime = "nodejs";
 export const maxDuration = 30;
 
+// Size of a default/general/worldwide game — a varied spread sampled fresh from
+// ALL world countries each play (replaces the old hardcoded ~12).
+const DEFAULT_SPREAD = 12;
+
 /**
- * Isaac's brain builds the flag game. Two modes:
- *  - default: the LLM picks real countries dynamically for ANY natural request,
- *    validated against the authoritative flagcdn name list, then ORDERED
- *    easy → medium → hard.
- *  - { all: true }: skip the LLM and return EVERY sovereign country, easiest →
- *    hardest (WORLD_ORDER). Used by "Continue".
+ * Isaac's brain builds the flag game. The LLM CLASSIFIES every natural request:
+ *  - "category": a specific set/region/theme/property (e.g. "islands", "African
+ *    flags", "Arab countries", "Kenya's neighbours", "Christian-majority"). The
+ *    LLM returns the COMPLETE list of matching countries (no cap), plus a brief
+ *    subtitle. Validated against the authoritative flagcdn name list.
+ *  - "general": a vague worldwide/random mix with no specific category. Expanded
+ *    SERVER-SIDE into a shuffled difficulty-spread drawn from ALL world countries
+ *    (different every play — never the same hardcoded list).
+ *  - "all": every country in the world → the full WORLD_ORDER list (same as the
+ *    { all: true } "Continue" path).
  * Country names come from flagcdn (so every code has a real, loadable flag).
  */
 
@@ -21,7 +29,18 @@ type Difficulty = "easy" | "medium" | "hard";
 type RoundOut = { code: string; name: string; aliases: string[]; difficulty: Difficulty; flag: string };
 
 const genSchema = z.object({
-  title: z.string().describe("A short, fun title, e.g. 'World Flags', 'Hard Mode', 'European Flags'."),
+  title: z.string().describe("A short, fun title, e.g. 'World Flags', 'African Flags', 'Island Nations'."),
+  subtitle: z
+    .string()
+    .optional()
+    .describe(
+      "A brief 2-4 word label naming the category exactly as searched, e.g. 'Arab countries flags', 'Island nations', \"Kenya's neighbours\". ONLY for a specific category; OMIT for a general worldwide/random or all-countries game."
+    ),
+  mode: z
+    .enum(["category", "general", "all"])
+    .describe(
+      "'category' = a specific named set/region/continent/theme/property; 'general' = a vague worldwide/random mix with no specific category; 'all' = every country in the world."
+    ),
   secondsPerRound: z
     .number()
     .int()
@@ -33,13 +52,14 @@ const genSchema = z.object({
     .array(
       z.object({
         code: z.string().describe("ISO 3166-1 alpha-2 country code, lowercase (e.g. 'fr', 'jp', 'br')."),
-        name: z.string().describe("The country's common English name (e.g. 'France')."),
-        aliases: z.array(z.string()).default([]).describe("Accepted alternative names/spellings/abbreviations."),
-        difficulty: z.enum(["easy", "medium", "hard"]).describe("How globally recognizable the flag is."),
+        difficulty: z.enum(["easy", "medium", "hard"]).describe("How globally recognizable the flag is: easy=famous, hard=obscure."),
       })
     )
     .min(1)
-    .max(40),
+    .max(250)
+    .describe(
+      "For 'category': EVERY real country/territory that matches (the COMPLETE list, do not cap), or EXACTLY the number of rounds the user asked for. For 'general' or 'all': just a few sample rounds — the server expands these from the full world list. Return ONLY the code + difficulty for each (the server supplies official names)."
+    ),
 });
 
 // Authoritative code → name from flagcdn (every code here has a real flag).
@@ -109,12 +129,32 @@ function buildAllCountries(names: Map<string, string>): RoundOut[] {
   });
 }
 
-const SYSTEM = `You are setting up a "guess the country by its flag" game. Build the rounds based ENTIRELY on the user's request — honour any continent/region, specific countries, difficulty, theme, number of rounds, "random", or custom set they ask for. If they don't specify, use 12 rounds with a good SPREAD of difficulties (a few easy, a few medium, a few hard) using a varied, randomized selection of countries.
+/**
+ * A varied difficulty-spread of `n` flags drawn RANDOMLY from ALL world
+ * countries (different every play) — used for general/worldwide requests so the
+ * default game is never the same hardcoded ~12. Keeps the easy → medium → hard
+ * ramp via orderByTier.
+ */
+function worldSpread(names: Map<string, string>, n: number): RoundOut[] {
+  const all = buildAllCountries(names);
+  const per = Math.ceil(n / 3);
+  const pick = (d: Difficulty) => shuffle(all.filter((r) => r.difficulty === d)).slice(0, per);
+  return orderByTier([...pick("easy"), ...pick("medium"), ...pick("hard")].slice(0, n));
+}
+
+const SYSTEM = `You are setting up a "guess the country by its flag" game. Read the user's request and decide the MODE:
+
+- "category": the request names a SPECIFIC set — a region, continent, theme, or property (examples: "islands", "African flags", "Arab countries", "Middle East countries", "Kenya's neighbours", "Christian-majority countries", "Scandinavian flags", "hard European flags"). For a category you MUST list EVERY real country/territory that matches — the COMPLETE, EXHAUSTIVE set, with NONE missing and NONE that don't belong. Do NOT cap or sample the list. The ONLY exception: if the user explicitly asks for a number of rounds, return EXACTLY that many, chosen to span easy/medium/hard. Always set a brief 2-4 word "subtitle" naming the category as the user framed it (e.g. "Arab countries flags", "Island nations").
+
+- "general": the request is a vague worldwide / random / mixed game with NO specific category (examples: "random", "a mix", "world flags", "surprise me", or empty). Return just a FEW sample rounds — the server expands them into a full worldwide spread. OMIT the subtitle.
+
+- "all": the user wants every country / all the flags in the world. Return just a few sample rounds — the server expands to the full world list. OMIT the subtitle.
+
 Rules:
-- Use ONLY real countries/territories that have a flag, with correct ISO 3166-1 alpha-2 codes — accuracy is essential (the code MUST match the country).
-- 'easy' = globally famous flags (e.g. us, fr, jp, br); 'hard' = obscure ones.
-- Give each country's common English name + a few accepted aliases (short names, common spellings, abbreviations).
-- No duplicate countries. If the user specifies a number of rounds, produce EXACTLY that many; otherwise 12 (hard cap 40).`;
+- Use ONLY real countries/territories that have a flag, with correct ISO 3166-1 alpha-2 codes — accuracy is essential (the code MUST match the country). Include dependent territories when they genuinely fit the category (e.g. island territories for "islands").
+- For a category, be EXHAUSTIVE and ACCURATE: include every member of the set.
+- For each round return ONLY the lowercase ISO code and a difficulty ('easy' = globally famous flags like us/fr/jp/br; 'medium' = moderately known; 'hard' = obscure). The server fills in the official country name.
+- No duplicate countries.`;
 
 export async function POST(req: NextRequest) {
   let body: { request?: string; all?: boolean } = {};
@@ -131,7 +171,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ title: "All Countries", secondsPerRound: 8, rounds: orderByTier(buildAllCountries(names)) });
   }
 
-  if (!hasGroq() && !hasAnthropic()) return NextResponse.json({ title: "Flags", rounds: [] });
+  const request = (body.request || "").trim();
+
+  // Empty request → a fresh, varied worldwide spread (no LLM needed).
+  if (!request) {
+    return NextResponse.json({ title: "World Flags", secondsPerRound: 7, rounds: worldSpread(names, DEFAULT_SPREAD) });
+  }
+
+  if (!hasGroq() && !hasAnthropic()) {
+    return NextResponse.json({ title: "World Flags", secondsPerRound: 7, rounds: worldSpread(names, DEFAULT_SPREAD) });
+  }
 
   const model = hasAnthropic() ? MODELS.genius() : MODELS.fast();
   let object: z.infer<typeof genSchema> | null = null;
@@ -140,14 +189,24 @@ export async function POST(req: NextRequest) {
       model,
       schema: genSchema,
       system: SYSTEM,
-      prompt: body.request?.trim() || "A varied mix of 12 flags, a spread of easy/medium/hard.",
-      temperature: 0.8, // more variety in which countries get picked each play
+      prompt: request,
+      temperature: 0.4, // lower temp → accurate, complete category lists
       maxRetries: 2,
     }));
   } catch {
     /* fall through to the dataset fallback below */
   }
 
+  // "all" / "general" → expand SERVER-SIDE from the full world list, shuffled,
+  // so the result is complete (all) or varied every play (general).
+  if (object?.mode === "all") {
+    return NextResponse.json({ title: object.title || "All Countries", secondsPerRound: object.secondsPerRound ?? 8, rounds: orderByTier(buildAllCountries(names)) });
+  }
+  if (object?.mode === "general") {
+    return NextResponse.json({ title: object.title || "World Flags", secondsPerRound: object.secondsPerRound ?? 7, rounds: worldSpread(names, DEFAULT_SPREAD) });
+  }
+
+  // "category" → use the model's COMPLETE list, validated against flagcdn.
   const rounds: RoundOut[] = [];
   const seen = new Set<string>();
   for (const r of object?.rounds || []) {
@@ -156,27 +215,25 @@ export async function POST(req: NextRequest) {
     // Drop codes that don't have a real flag (so every round's flag loads).
     if (names.size > 0 && !names.has(code)) continue;
     seen.add(code);
-    const name = names.get(code) || r.name || code.toUpperCase();
+    const name = names.get(code) || code.toUpperCase();
     rounds.push({
       code,
       name,
-      aliases: uniq([name, r.name, ...(r.aliases || []), ...(WORLD_ALIASES[code] || [])]),
+      aliases: uniq([name, ...(WORLD_ALIASES[code] || [])]),
       difficulty: r.difficulty,
       flag: flagUrl(code),
     });
   }
 
-  // If the LLM hiccupped (rate limit / transient), still hand back a playable
-  // game: a 12-flag world spread from the dataset, shuffled within tiers.
+  // If the LLM hiccupped (rate limit / transient / empty), still hand back a
+  // playable game: a fresh worldwide spread from the dataset.
   if (!rounds.length) {
-    const all = buildAllCountries(names);
-    const pick = (d: Difficulty, k: number) => shuffle(all.filter((r) => r.difficulty === d)).slice(0, k);
-    const fb = orderByTier([...pick("easy", 4), ...pick("medium", 4), ...pick("hard", 4)]);
-    return NextResponse.json({ title: "World Flags", secondsPerRound: 7, rounds: fb });
+    return NextResponse.json({ title: "World Flags", secondsPerRound: 7, rounds: worldSpread(names, DEFAULT_SPREAD) });
   }
 
   return NextResponse.json({
     title: object?.title || "Flags",
+    subtitle: object?.subtitle?.trim() || undefined,
     secondsPerRound: object?.secondsPerRound ?? 7,
     // Difficulty ramp, but randomized within each tier (different every play).
     rounds: orderByTier(rounds),
