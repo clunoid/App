@@ -2,9 +2,14 @@
 
 import { aspectSize, type ReelSpec, type ReelScene, type ReelTheme } from "./reel";
 import { fetchNarrationBytes } from "./tts";
-import { sfxComplete, sfxCorrect, sfxPop, sfxWrong } from "./sfx";
+import { sfxComplete, sfxCorrect, sfxPop, sfxTick, sfxWrong } from "./sfx";
 
 export type RenderResult = { blob: Blob; ext: string; mime: string; hadVoice: boolean };
+
+// Each scene plays like a real round: a short suspense beat (flag + question +
+// ticking timer) BEFORE the answer is revealed — so the clip feels like watching
+// the game being played, not a results recap.
+const QUESTION_SECONDS = 1.25;
 export type RenderOpts = {
   host?: HTMLElement | null; // element to mount the live-rendering canvas into
   onProgress?: (pct: number, label: string) => void;
@@ -210,6 +215,21 @@ function statusColor(theme: ReelTheme, correct: boolean) {
   return correct ? "#1f7a4d" : "#a32333";
 }
 
+// The game's striped timer bar (green → red as it depletes), for the suspense beat.
+function drawTimerBar(ctx: CanvasRenderingContext2D, W: number, H: number, frac: number, theme: ReelTheme, cy: number) {
+  const bw = W * 0.6;
+  const bh = Math.max(10, H * 0.013);
+  const x = W / 2 - bw / 2;
+  const y = cy - bh / 2;
+  ctx.fillStyle = theme.mode === "rays" ? "rgba(0,0,0,0.28)" : "rgba(0,0,0,0.16)";
+  roundRect(ctx, x, y, bw, bh, bh / 2);
+  ctx.fill();
+  const f = clamp01(frac);
+  ctx.fillStyle = `hsl(${Math.max(0, f * 125)}, 90%, 48%)`;
+  roundRect(ctx, x, y, Math.max(bh, bw * f), bh, bh / 2);
+  ctx.fill();
+}
+
 /* ── scene drawers ────────────────────────────────────────────────────────── */
 function drawIntro(ctx: CanvasRenderingContext2D, W: number, H: number, spec: ReelSpec, p: number) {
   const min = Math.min(W, H);
@@ -222,10 +242,12 @@ function drawIntro(ctx: CanvasRenderingContext2D, W: number, H: number, spec: Re
   ctx.globalAlpha = 1;
 }
 
-function drawScene(ctx: CanvasRenderingContext2D, W: number, H: number, spec: ReelSpec, scene: ReelScene, img: HTMLImageElement | null, idx: number, p: number) {
+function drawScene(ctx: CanvasRenderingContext2D, W: number, H: number, spec: ReelSpec, scene: ReelScene, img: HTMLImageElement | null, idx: number, p: number, sceneDur: number) {
   const min = Math.min(W, H);
   const ink = spec.theme.mode === "rays" ? "#fff" : spec.theme.ink;
   const shadow = spec.theme.mode === "rays";
+  const qFrac = Math.min(0.6, QUESTION_SECONDS / Math.max(0.001, sceneDur));
+  const revealing = p >= qFrac;
 
   // Title (small, top)
   drawTitle(ctx, spec.title, W / 2, H * 0.115, min * 0.052, ink, spec.theme.accent, shadow, W * 0.86);
@@ -234,16 +256,26 @@ function drawScene(ctx: CanvasRenderingContext2D, W: number, H: number, spec: Re
   text(ctx, `Round ${idx + 1}${scene.badge ? " · " + scene.badge : ""}`, W / 2, H * 0.17, min * 0.032, spec.theme.mode === "rays" ? "rgba(255,255,255,0.85)" : "rgba(44,40,35,0.6)", { weight: 700 });
 
   // Flag card (pops in)
-  const pop = 0.85 + 0.15 * ease(p * 4);
-  drawImageCard(ctx, img, W / 2, H * 0.44, W * 0.74, H * 0.4, pop);
+  const pop = 0.85 + 0.15 * ease(p * 5);
+  drawImageCard(ctx, img, W / 2, H * 0.43, W * 0.74, H * 0.38, pop);
 
-  // The answer (reveals after ~35%)
-  const ap = ease((p - 0.3) / 0.4);
-  if (ap > 0.01) {
+  if (!revealing) {
+    // ── Suspense beat: the question + a depleting timer (like playing a round) ──
+    text(ctx, scene.questionText, W / 2, H * 0.72, min * 0.05, ink, { weight: 800, shadow, maxW: W * 0.9 });
+    drawTimerBar(ctx, W, H, 1 - p / qFrac, spec.theme, H * 0.8);
+  } else {
+    // ── Reveal: the answer pops in with ✓/✗ ──
+    const rp = clamp01((p - qFrac) / (1 - qFrac));
+    const ap = ease(rp * 3);
     ctx.globalAlpha = ap;
-    text(ctx, scene.bigText, W / 2, H * 0.74, min * 0.085, spec.theme.mode === "rays" ? spec.theme.accent : spec.theme.ink, { weight: 800, shadow, maxW: W * 0.9 });
+    const nameScale = 0.8 + 0.2 * ease(rp * 3);
+    ctx.save();
+    ctx.translate(W / 2, H * 0.72);
+    ctx.scale(nameScale, nameScale);
+    text(ctx, scene.bigText, 0, 0, min * 0.085, spec.theme.mode === "rays" ? spec.theme.accent : spec.theme.ink, { weight: 800, shadow, maxW: W * 0.86 });
+    ctx.restore();
     const sc = statusColor(spec.theme, scene.correct);
-    const statusTxt = scene.correct ? "✓ Correct" : scene.userText ? `✗ You said “${scene.userText}”` : "✗";
+    const statusTxt = scene.correct ? "✓ Correct" : scene.userText ? `✗ You said “${scene.userText}”` : "✗ Missed";
     text(ctx, statusTxt, W / 2, H * 0.8, min * 0.038, scene.correct ? (spec.theme.mode === "rays" ? "#bdf0d2" : sc) : spec.theme.mode === "rays" ? "#f6c9cf" : sc, { weight: 700, shadow, maxW: W * 0.9 });
     ctx.globalAlpha = 1;
   }
@@ -254,16 +286,16 @@ function drawOutro(ctx: CanvasRenderingContext2D, W: number, H: number, spec: Re
   const ink = spec.theme.mode === "rays" ? "#fff" : spec.theme.ink;
   const shadow = spec.theme.mode === "rays";
   ctx.globalAlpha = ease(p * 2.5);
-  text(ctx, spec.outro.headline, W / 2, H * 0.34, min * 0.085, spec.theme.accent, { weight: 800, shadow, maxW: W * 0.9 });
-  // big score
-  const sc = 0.7 + 0.3 * ease(p * 3);
+  // Call to action — invite viewers to play (clunoid.com is the hero).
+  text(ctx, spec.outro.headline, W / 2, H * 0.32, min * 0.082, spec.theme.accent, { weight: 800, shadow, maxW: W * 0.9 });
+  if (spec.outro.scoreText) text(ctx, spec.outro.scoreText, W / 2, H * 0.42, min * 0.044, ink, { weight: 700, shadow, maxW: W * 0.85 });
+  const sc = 0.82 + 0.18 * ease(p * 3);
   ctx.save();
-  ctx.translate(W / 2, H * 0.52);
+  ctx.translate(W / 2, H * 0.57);
   ctx.scale(sc, sc);
-  text(ctx, spec.outro.scoreText, 0, 0, min * 0.16, ink, { weight: 800, shadow });
+  text(ctx, spec.brand, 0, 0, min * 0.11, spec.theme.accent, { weight: 800, shadow });
   ctx.restore();
-  if (spec.outro.sub) text(ctx, spec.outro.sub, W / 2, H * 0.62, min * 0.04, ink, { weight: 700, shadow, maxW: W * 0.85 });
-  text(ctx, `Play at ${spec.brand}`, W / 2, H * 0.74, min * 0.045, spec.theme.accent, { weight: 800, shadow, maxW: W * 0.85 });
+  if (spec.outro.sub) text(ctx, spec.outro.sub, W / 2, H * 0.67, min * 0.04, ink, { weight: 700, shadow, maxW: W * 0.85 });
   ctx.globalAlpha = 1;
 }
 
@@ -278,7 +310,7 @@ function drawFrame(ctx: CanvasRenderingContext2D, W: number, H: number, spec: Re
   let t = el - durs.introDur;
   for (let i = 0; i < spec.scenes.length; i++) {
     if (t < durs.sceneDurs[i]) {
-      drawScene(ctx, W, H, spec, spec.scenes[i], images[i], i, t / durs.sceneDurs[i]);
+      drawScene(ctx, W, H, spec, spec.scenes[i], images[i], i, t / durs.sceneDurs[i], durs.sceneDurs[i]);
       return;
     }
     t -= durs.sceneDurs[i];
@@ -351,9 +383,10 @@ export async function renderReel(spec: ReelSpec, opts: RenderOpts = {}): Promise
   const outroBuf = buffers[buffers.length - 1];
 
   const dur = (b: AudioBuffer | null, min: number) => Math.max(min, (b ? b.duration : 0) + 0.7);
-  const introDur = dur(introBuf, 2.0);
-  const sceneDurs = spec.scenes.map((_, i) => dur(sceneBufs[i], 1.7));
-  const outroDur = dur(outroBuf, 3.4);
+  const introDur = dur(introBuf, 2.2);
+  // Each scene = suspense beat (QUESTION_SECONDS) + the reveal (as long as Isaac talks).
+  const sceneDurs = spec.scenes.map((_, i) => QUESTION_SECONDS + dur(sceneBufs[i], 1.4));
+  const outroDur = dur(outroBuf, 4.2);
   const total = introDur + sceneDurs.reduce((a, b) => a + b, 0) + outroDur;
 
   const fps = 30;
@@ -391,9 +424,12 @@ export async function renderReel(spec: ReelSpec, opts: RenderOpts = {}): Promise
   play(introBuf, at + 0.15);
   at += introDur;
   spec.scenes.forEach((s, i) => {
-    sfxPop(ac, dest, t0 + at + 0.02);
-    play(sceneBufs[i], at + 0.2);
-    (s.correct ? sfxCorrect : sfxWrong)(ac, dest, t0 + at + sceneDurs[i] * 0.32);
+    const qd = Math.min(sceneDurs[i] * 0.6, QUESTION_SECONDS);
+    sfxPop(ac, dest, t0 + at + 0.02); // flag appears
+    sfxTick(ac, dest, t0 + at + qd * 0.45); // suspense ticks
+    sfxTick(ac, dest, t0 + at + qd * 0.78, true);
+    (s.correct ? sfxCorrect : sfxWrong)(ac, dest, t0 + at + qd + 0.03); // reveal sting
+    play(sceneBufs[i], at + qd + 0.12); // Isaac says the answer AT the reveal
     at += sceneDurs[i];
   });
   sfxComplete(ac, dest, t0 + at + 0.1);

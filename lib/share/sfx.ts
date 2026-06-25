@@ -24,6 +24,9 @@ export function sfxPop(ctx: AudioContext, target: AudioNode, at: number) {
   tone(ctx, target, 520, 0.06, "triangle", 0.12, at);
   tone(ctx, target, 880, 0.09, "triangle", 0.12, at + 0.045);
 }
+export function sfxTick(ctx: AudioContext, target: AudioNode, at: number, urgent = false) {
+  tone(ctx, target, urgent ? 920 : 640, 0.06, "square", urgent ? 0.1 : 0.06, at);
+}
 export function sfxCorrect(ctx: AudioContext, target: AudioNode, at: number) {
   tone(ctx, target, 660, 0.12, "sine", 0.17, at);
   tone(ctx, target, 880, 0.12, "sine", 0.17, at + 0.1);

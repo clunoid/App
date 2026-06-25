@@ -442,11 +442,10 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
       const theme = choiceMode
         ? { mode: "document" as const, bg: "#c8c5bd", accent: "#8a2433", ink: "#2c2823" }
         : { mode: "rays" as const, bg: `hsl(${hue}, 80%, 56%)`, accent: "#FFD400", ink: "#fff", hue };
-      const pct = total ? Math.round((score / total) * 100) : 0;
-      const verdict = pct >= 90 ? "Flag master!" : pct >= 70 ? "Impressive!" : pct >= 40 ? "Nicely done!" : "Good try!";
-      // Keep the clip short + shareable: at most ~16 flags, sampled evenly.
-      const MAX = 16;
+      // Keep the clip short + shareable: at most ~12 flags, sampled evenly.
+      const MAX = 12;
       const picks = replay.length <= MAX ? replay : Array.from({ length: MAX }, (_, i) => replay[Math.floor((i * replay.length) / MAX)]);
+      const category = subtitle ? subtitle.replace(/\s*flags?$/i, "") : "";
       return {
         aspect,
         theme,
@@ -455,22 +454,27 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
         brand: "clunoid.com",
         intro: {
           headline: "Guess The Country",
-          sub: subtitle ? undefined : "How well do you know your flags?",
-          narration: `Let's see how you did on ${total} flag${total === 1 ? "" : "s"}.`,
+          sub: subtitle ? "Can you name them all?" : "Can you name these flags?",
+          narration: category
+            ? `Let's play Guess the Country — ${category}! Can you name them all?`
+            : "Let's play Guess the Country! Can you name these flags?",
         },
-        scenes: picks.map((r) => ({
+        // Each scene plays like a round: the flag + question + a beat, then the reveal.
+        scenes: picks.map((r, i) => ({
           imageUrl: r.flag,
+          questionText: QUESTIONS[i % QUESTIONS.length],
           bigText: r.name,
           userText: !r.correct && r.said ? r.said : undefined,
           correct: r.correct,
           badge: cap(r.difficulty),
           narration: r.correct ? `Yes! ${r.name}.` : `It's ${r.name}.`,
         })),
+        // Outro = Isaac's call to action: come play at clunoid.com.
         outro: {
-          headline: verdict,
-          scoreText: `${score} / ${total}`,
-          sub: "Can you beat my score?",
-          narration: `You scored ${score} out of ${total}. Can you beat me? Play at clunoid dot com.`,
+          headline: "Your turn!",
+          scoreText: `I scored ${score}/${total}`,
+          sub: "Free to play · Guess the Country & more",
+          narration: `I scored ${score} out of ${total}. Think you can beat me? Come play Guess the Country — free — at clunoid dot com. Your turn!`,
         },
       };
     },

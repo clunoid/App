@@ -21,11 +21,12 @@ export type ReelTheme = {
 
 export type ReelScene = {
   imageUrl: string; // the round's image (e.g. a flag PNG, CORS-enabled)
+  questionText: string; // shown during the suspense beat (e.g. "Which country is this?")
   bigText: string; // the revealed answer (e.g. the country name)
   userText?: string; // what the player answered (shown only when provided)
   correct: boolean; // drives the ✓/✗ + colour
   badge?: string; // a small tag, e.g. the difficulty
-  narration: string; // the line Isaac speaks over this scene
+  narration: string; // the line Isaac speaks at the reveal
 };
 
 export type ReelSpec = {
