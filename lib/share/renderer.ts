@@ -6,10 +6,45 @@ import { sfxComplete, sfxCorrect, sfxPop, sfxTick, sfxWrong } from "./sfx";
 
 export type RenderResult = { blob: Blob; ext: string; mime: string; hadVoice: boolean };
 
-// Each scene plays like a real round: a short suspense beat (flag + question +
-// ticking timer) BEFORE the answer is revealed — so the clip feels like watching
-// the game being played, not a results recap.
-const QUESTION_SECONDS = 1.25;
+// Each scene plays like a real round: a suspense beat (flag + Isaac's question +
+// a calm ticking timer) BEFORE the answer is revealed — so the clip feels like
+// watching the game being played, not a results recap. The beat is at least this
+// long (and longer if Isaac's question takes longer), so the timer isn't a flash.
+const QUESTION_MIN_SECONDS = 2.9;
+
+/** Run async tasks with a concurrency cap (gentle on the TTS API → no rate-limit drops). */
+async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T, i: number) => Promise<R>): Promise<R[]> {
+  const out: R[] = new Array(items.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const i = next++;
+      out[i] = await fn(items[i], i);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(Math.max(1, limit), items.length || 1) }, worker));
+  return out;
+}
+
+/** Fetch + decode one narration line, retrying transient failures so Isaac never drops out. */
+async function fetchDecodeLine(ac: AudioContext, text: string): Promise<AudioBuffer | null> {
+  if (!text || !text.trim()) return null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const bytes = await fetchNarrationBytes(text);
+    if (bytes) {
+      try {
+        const ab = new ArrayBuffer(bytes.byteLength);
+        new Uint8Array(ab).set(bytes);
+        return await ac.decodeAudioData(ab);
+      } catch {
+        return null; // a decode error won't fix on retry
+      }
+    }
+    // null = 204 (no key) or a transient/rate-limit error → back off and retry.
+    if (attempt < 2) await new Promise((r) => setTimeout(r, 400 + attempt * 500));
+  }
+  return null;
+}
 export type RenderOpts = {
   host?: HTMLElement | null; // element to mount the live-rendering canvas into
   onProgress?: (pct: number, label: string) => void;
@@ -242,11 +277,11 @@ function drawIntro(ctx: CanvasRenderingContext2D, W: number, H: number, spec: Re
   ctx.globalAlpha = 1;
 }
 
-function drawScene(ctx: CanvasRenderingContext2D, W: number, H: number, spec: ReelSpec, scene: ReelScene, img: HTMLImageElement | null, idx: number, p: number, sceneDur: number) {
+function drawScene(ctx: CanvasRenderingContext2D, W: number, H: number, spec: ReelSpec, scene: ReelScene, img: HTMLImageElement | null, idx: number, p: number, sceneDur: number, qDur: number) {
   const min = Math.min(W, H);
   const ink = spec.theme.mode === "rays" ? "#fff" : spec.theme.ink;
   const shadow = spec.theme.mode === "rays";
-  const qFrac = Math.min(0.6, QUESTION_SECONDS / Math.max(0.001, sceneDur));
+  const qFrac = Math.min(0.78, qDur / Math.max(0.001, sceneDur));
   const revealing = p >= qFrac;
 
   // Title (small, top)
@@ -299,7 +334,7 @@ function drawOutro(ctx: CanvasRenderingContext2D, W: number, H: number, spec: Re
   ctx.globalAlpha = 1;
 }
 
-type Durs = { introDur: number; sceneDurs: number[]; outroDur: number };
+type Durs = { introDur: number; sceneDurs: number[]; qDurs: number[]; outroDur: number };
 function drawFrame(ctx: CanvasRenderingContext2D, W: number, H: number, spec: ReelSpec, images: (HTMLImageElement | null)[], durs: Durs, el: number) {
   drawBg(ctx, W, H, spec.theme, el);
   drawBrand(ctx, W, H, spec);
@@ -310,7 +345,7 @@ function drawFrame(ctx: CanvasRenderingContext2D, W: number, H: number, spec: Re
   let t = el - durs.introDur;
   for (let i = 0; i < spec.scenes.length; i++) {
     if (t < durs.sceneDurs[i]) {
-      drawScene(ctx, W, H, spec, spec.scenes[i], images[i], i, t / durs.sceneDurs[i], durs.sceneDurs[i]);
+      drawScene(ctx, W, H, spec, spec.scenes[i], images[i], i, t / durs.sceneDurs[i], durs.sceneDurs[i], durs.qDurs[i]);
       return;
     }
     t -= durs.sceneDurs[i];
@@ -346,46 +381,50 @@ export async function renderReel(spec: ReelSpec, opts: RenderOpts = {}): Promise
     /* fonts optional */
   }
   // first frame so the preview isn't blank during the fetch
-  drawFrame(ctx, W, H, spec, [], { introDur: 1, sceneDurs: [], outroDur: 1 }, 0);
+  drawFrame(ctx, W, H, spec, [], { introDur: 1, sceneDurs: [], qDurs: [], outroDur: 1 }, 0);
 
   const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
   const ac = new Ctx();
   const dest = ac.createMediaStreamDestination();
 
   prog(8, "Loading Isaac’s voice…");
-  const lines = [spec.intro.narration, ...spec.scenes.map((s) => s.narration), spec.outro.narration];
-  const [images, narrBytes] = await Promise.all([
-    Promise.all(spec.scenes.map((s) => loadImage(s.imageUrl))),
-    Promise.all(lines.map((t) => fetchNarrationBytes(t))),
-  ]);
+  // Every line Isaac speaks: intro, then a QUESTION + an ANSWER per scene, then outro.
+  const lineTexts: string[] = [spec.intro.narration];
+  spec.scenes.forEach((s) => {
+    lineTexts.push(s.questionNarration || "");
+    lineTexts.push(s.narration);
+  });
+  lineTexts.push(spec.outro.narration);
+
+  // Fetch images + all narration, but CAP TTS concurrency (with retry) so a long
+  // video never trips the rate limit and drops Isaac's voice partway through.
+  const imagesP = Promise.all(spec.scenes.map((s) => loadImage(s.imageUrl)));
+  let fetched = 0;
+  const buffers = await mapLimit(lineTexts, 3, async (t) => {
+    const buf = await fetchDecodeLine(ac, t);
+    fetched++;
+    prog(Math.min(14, 8 + Math.round((fetched / lineTexts.length) * 6)), "Loading Isaac’s voice…");
+    return buf;
+  });
+  const images = await imagesP;
   if (signal?.aborted) {
     try { await ac.close(); } catch {}
     throw new DOMException("aborted", "AbortError");
   }
 
-  const buffers: (AudioBuffer | null)[] = [];
-  for (const b of narrBytes) {
-    if (!b) {
-      buffers.push(null);
-      continue;
-    }
-    try {
-      const ab = new ArrayBuffer(b.byteLength);
-      new Uint8Array(ab).set(b);
-      buffers.push(await ac.decodeAudioData(ab));
-    } catch {
-      buffers.push(null);
-    }
-  }
   const hadVoice = buffers.some(Boolean);
   const introBuf = buffers[0];
-  const sceneBufs = buffers.slice(1, 1 + spec.scenes.length);
+  const questionBufs = spec.scenes.map((_, i) => buffers[1 + i * 2]);
+  const answerBufs = spec.scenes.map((_, i) => buffers[2 + i * 2]);
   const outroBuf = buffers[buffers.length - 1];
 
   const dur = (b: AudioBuffer | null, min: number) => Math.max(min, (b ? b.duration : 0) + 0.7);
   const introDur = dur(introBuf, 2.2);
-  // Each scene = suspense beat (QUESTION_SECONDS) + the reveal (as long as Isaac talks).
-  const sceneDurs = spec.scenes.map((_, i) => QUESTION_SECONDS + dur(sceneBufs[i], 1.4));
+  // Suspense beat = Isaac's question + a "thinking" pause (calm timer, never a flash);
+  // the reveal lasts as long as Isaac takes to name the answer.
+  const qDurs = spec.scenes.map((_, i) => Math.max(QUESTION_MIN_SECONDS, questionBufs[i] ? questionBufs[i]!.duration + 1.1 : QUESTION_MIN_SECONDS));
+  const revealDurs = spec.scenes.map((_, i) => dur(answerBufs[i], 1.5));
+  const sceneDurs = spec.scenes.map((_, i) => qDurs[i] + revealDurs[i]);
   const outroDur = dur(outroBuf, 4.2);
   const total = introDur + sceneDurs.reduce((a, b) => a + b, 0) + outroDur;
 
@@ -424,12 +463,13 @@ export async function renderReel(spec: ReelSpec, opts: RenderOpts = {}): Promise
   play(introBuf, at + 0.15);
   at += introDur;
   spec.scenes.forEach((s, i) => {
-    const qd = Math.min(sceneDurs[i] * 0.6, QUESTION_SECONDS);
+    const qd = qDurs[i];
     sfxPop(ac, dest, t0 + at + 0.02); // flag appears
-    sfxTick(ac, dest, t0 + at + qd * 0.45); // suspense ticks
-    sfxTick(ac, dest, t0 + at + qd * 0.78, true);
+    play(questionBufs[i], at + 0.2); // Isaac ASKS the question
+    sfxTick(ac, dest, t0 + at + qd - 0.5); // countdown ticks near the end of the beat
+    sfxTick(ac, dest, t0 + at + qd - 0.18, true);
     (s.correct ? sfxCorrect : sfxWrong)(ac, dest, t0 + at + qd + 0.03); // reveal sting
-    play(sceneBufs[i], at + qd + 0.12); // Isaac says the answer AT the reveal
+    play(answerBufs[i], at + qd + 0.12); // Isaac says the ANSWER at the reveal
     at += sceneDurs[i];
   });
   sfxComplete(ac, dest, t0 + at + 0.1);
@@ -437,16 +477,18 @@ export async function renderReel(spec: ReelSpec, opts: RenderOpts = {}): Promise
 
   rec.start();
   prog(15, "Recording…");
-  const startMs = performance.now();
+  // Drive the video off the AUDIO clock so the picture and Isaac never drift apart
+  // (requestAnimationFrame can throttle; ac.currentTime can't) — this is what keeps
+  // Isaac in sync, and audible, even on long clips.
   await new Promise<void>((resolve, reject) => {
     const frame = () => {
       if (signal?.aborted) {
         reject(new DOMException("aborted", "AbortError"));
         return;
       }
-      const el = (performance.now() - startMs) / 1000;
+      const el = Math.max(0, ac.currentTime - t0);
       try {
-        drawFrame(ctx, W, H, spec, images, { introDur, sceneDurs, outroDur }, el);
+        drawFrame(ctx, W, H, spec, images, { introDur, sceneDurs, qDurs, outroDur }, el);
       } catch (e) {
         reject(e as Error);
         return;

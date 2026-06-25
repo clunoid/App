@@ -3,10 +3,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { Volume2, VolumeX, Mic, MicOff, Play, RotateCcw, Trophy, ArrowLeft, Sparkles, X, Globe, Check, Grid2x2, Keyboard, Film } from "lucide-react";
+import { Volume2, VolumeX, Mic, MicOff, Play, RotateCcw, Trophy, ArrowLeft, Sparkles, X, Globe, Check, Grid2x2, Keyboard, Film, Instagram, Youtube } from "lucide-react";
 import { RaysBackground } from "./RaysBackground";
 import { DocumentBackground } from "./DocumentBackground";
 import { ShareModal } from "@/components/share/ShareModal";
+import { TikTokIcon, XIcon } from "@/components/share/SocialIcons";
 import type { ReelAspect, ReelSpec } from "@/lib/share/reel";
 import { buildGame, buildAllCountries, PRESETS, type Round, type Difficulty } from "@/lib/games/generate";
 import { isCorrect, pickCountry } from "@/lib/games/grade";
@@ -442,8 +443,9 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
       const theme = choiceMode
         ? { mode: "document" as const, bg: "#c8c5bd", accent: "#8a2433", ink: "#2c2823" }
         : { mode: "rays" as const, bg: `hsl(${hue}, 80%, 56%)`, accent: "#FFD400", ink: "#fff", hue };
-      // Keep the clip short + shareable: at most ~12 flags, sampled evenly.
-      const MAX = 12;
+      // Keep the clip short + shareable: at most ~8 flags, sampled evenly (each now
+      // plays as a full round — Isaac asks, the timer ticks, then the reveal).
+      const MAX = 8;
       const picks = replay.length <= MAX ? replay : Array.from({ length: MAX }, (_, i) => replay[Math.floor((i * replay.length) / MAX)]);
       const category = subtitle ? subtitle.replace(/\s*flags?$/i, "") : "";
       return {
@@ -463,6 +465,7 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
         scenes: picks.map((r, i) => ({
           imageUrl: r.flag,
           questionText: QUESTIONS[i % QUESTIONS.length],
+          questionNarration: QUESTIONS[i % QUESTIONS.length], // Isaac asks, like the game
           bigText: r.name,
           userText: !r.correct && r.said ? r.said : undefined,
           correct: r.correct,
@@ -973,11 +976,17 @@ function CompleteScreen({
         {canShare && (
           <button
             onClick={onShare}
-            className={`mt-7 flex w-full items-center justify-center gap-2 rounded-full px-5 py-4 text-lg font-extrabold shadow-xl transition hover:scale-[1.03] ${
-              choiceMode ? "bg-[#8a2433] text-white" : "bg-[#FFD400] text-black"
-            }`}
+            className="mt-7 flex w-full items-center justify-center gap-2.5 rounded-full px-5 py-4 text-lg font-extrabold text-white shadow-xl transition hover:scale-[1.03]"
+            style={{ background: "linear-gradient(120deg, #7c3aed 0%, #ec4899 50%, #f97316 100%)" }}
           >
-            <Film size={20} /> Share your game
+            <Film size={20} />
+            Share your game
+            <span className="ml-0.5 flex items-center gap-1.5 text-white/95">
+              <TikTokIcon size={15} />
+              <Instagram size={15} />
+              <Youtube size={15} />
+              <XIcon size={15} />
+            </span>
           </button>
         )}
 

@@ -1,11 +1,24 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Download, Share2, X, Film, Loader2, Smartphone, Monitor } from "lucide-react";
+import { useCallback, useEffect, useRef, useState, type ComponentType } from "react";
+import { Download, Share2, X, Film, Loader2, Smartphone, Monitor, Instagram, Youtube, Facebook } from "lucide-react";
 import { canRecordVideo, type ReelAspect, type ReelSpec } from "@/lib/share/reel";
 import { renderReel } from "@/lib/share/renderer";
+import { TikTokIcon, XIcon, WhatsAppIcon } from "./SocialIcons";
 
 type Status = "idle" | "rendering" | "ready" | "unsupported" | "error";
+
+const SHARE_CAPTION = "I played Guess the Country on clunoid.com 🌍 Can you beat me?";
+// Each opens the app via its universal/https link (the OS routes to the installed
+// app, else the web). text-capable ones (X, WhatsApp) get a prefilled caption.
+const PLATFORMS: { key: string; label: string; color: string; href: string; Icon: ComponentType<{ size?: number; className?: string }> }[] = [
+  { key: "instagram", label: "Instagram", color: "#E1306C", href: "https://www.instagram.com/", Icon: Instagram },
+  { key: "tiktok", label: "TikTok", color: "#010101", href: "https://www.tiktok.com/upload", Icon: TikTokIcon },
+  { key: "youtube", label: "YouTube", color: "#FF0000", href: "https://www.youtube.com/upload", Icon: Youtube },
+  { key: "x", label: "X", color: "#000000", href: `https://twitter.com/intent/tweet?text=${encodeURIComponent(SHARE_CAPTION)}&url=${encodeURIComponent("https://clunoid.com")}`, Icon: XIcon },
+  { key: "whatsapp", label: "WhatsApp", color: "#25D366", href: `https://wa.me/?text=${encodeURIComponent(SHARE_CAPTION + " https://clunoid.com")}`, Icon: WhatsAppIcon },
+  { key: "facebook", label: "Facebook", color: "#1877F2", href: `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent("https://clunoid.com")}`, Icon: Facebook },
+];
 
 /**
  * Generic, reusable "share your game as a video" modal. Any game passes a
@@ -121,6 +134,21 @@ export function ShareModal({
     download(); // no file-share support (most desktops) → download instead
   }, [download, fileExt, fileName, mime]);
 
+  // Open a specific platform: save the video first, then open the app (its https
+  // link routes to the installed app on the device, else the web) so the user can
+  // attach the just-saved clip / post the link.
+  const postTo = useCallback(
+    (href: string) => {
+      try {
+        window.open(href, "_blank", "noopener,noreferrer");
+      } catch {
+        /* ignore */
+      }
+      download();
+    },
+    [download]
+  );
+
   if (!open) return null;
 
   return (
@@ -200,6 +228,28 @@ export function ShareModal({
 
           {status === "ready" && !hadVoice && (
             <p className="text-center text-[11px] text-amber-300/80">Isaac’s voice wasn’t available, so this clip has sound effects only.</p>
+          )}
+
+          {/* Post-to-platform shortcuts — open the app (or web) so it's easy to post. */}
+          {status === "ready" && (
+            <div>
+              <p className="mb-2 text-center text-xs font-semibold text-white/55">Post to</p>
+              <div className="flex flex-wrap items-center justify-center gap-2.5">
+                {PLATFORMS.map((p) => (
+                  <button
+                    key={p.key}
+                    onClick={() => postTo(p.href)}
+                    aria-label={`Post to ${p.label}`}
+                    title={`Save the video & open ${p.label}`}
+                    className="grid h-11 w-11 place-items-center rounded-full text-white shadow-md ring-1 ring-white/15 transition hover:scale-110"
+                    style={{ backgroundColor: p.color }}
+                  >
+                    <p.Icon size={20} />
+                  </button>
+                ))}
+              </div>
+              <p className="mt-2 text-center text-[11px] text-white/45">We’ll save the video — attach it in the app.</p>
+            </div>
           )}
         </div>
 
