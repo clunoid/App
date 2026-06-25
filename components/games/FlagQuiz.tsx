@@ -3,8 +3,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { Volume2, VolumeX, Mic, Play, RotateCcw, Trophy, ArrowLeft, Sparkles, X, Globe } from "lucide-react";
+import { Volume2, VolumeX, Mic, Play, RotateCcw, Trophy, ArrowLeft, Sparkles, X, Globe, Check, Grid2x2, Keyboard } from "lucide-react";
 import { RaysBackground } from "./RaysBackground";
+import { DocumentBackground } from "./DocumentBackground";
 import { buildGame, buildAllCountries, PRESETS, type Round, type Difficulty } from "@/lib/games/generate";
 import { isCorrect, pickCountry } from "@/lib/games/grade";
 import { getAudio } from "@/lib/games/audio";
@@ -21,24 +22,54 @@ const QUESTIONS = [
 ];
 const DIFFS: Difficulty[] = ["easy", "medium", "hard"];
 const HUES = [222, 145, 282, 200, 324, 168, 255, 30, 192, 305, 130, 244];
+// distractors of last resort, if a game is too small to supply 3 others
+const FALLBACK_NAMES = ["France", "Japan", "Brazil", "Germany", "Canada", "Italy", "Spain", "Egypt", "Kenya", "Norway", "Peru", "Greece"];
 
 const REVEAL_MS = 2200;
 const LOAD_CAP_MS = 6000;
 const TITLE_SHADOW = "0 3px 0 rgba(0,0,0,0.22), 0 7px 16px rgba(0,0,0,0.38)";
 const YELLOW = "#FFD400";
+const INK = "#2c2823";
+const SEAL = "#8a2433";
 const STRIPES = "repeating-linear-gradient(45deg, rgba(255,255,255,0.28) 0 13px, rgba(255,255,255,0) 13px 26px)";
 
 type Phase = "menu" | "loading" | "answering" | "reveal" | "complete";
-type Mode = "set" | "all";
+type SetMode = "set" | "all";
+type AnswerMode = "choice" | "input";
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 const barColor = (frac: number) => `hsl(${Math.max(0, frac * 125)}, 90%, 48%)`;
 const pngFallback = (code: string) => `https://flagcdn.com/w2560/${code}.png`;
 
+function shuffle<T>(a: T[]): T[] {
+  const out = [...a];
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+// keep the easy→medium→hard ramp, shuffle within each tier (Play again reshuffles)
+function reshuffleWithin(rounds: Round[]): Round[] {
+  const t: Record<Difficulty, Round[]> = { easy: [], medium: [], hard: [] };
+  for (const r of rounds) t[r.difficulty].push(r);
+  return [...shuffle(t.easy), ...shuffle(t.medium), ...shuffle(t.hard)];
+}
+function makeChoices(answer: string, names: string[]): string[] {
+  const pool = shuffle([...new Set(names)].filter((n) => n !== answer));
+  const out = pool.slice(0, 3);
+  for (let i = 0; out.length < 3 && i < FALLBACK_NAMES.length; i++) {
+    const f = FALLBACK_NAMES[i];
+    if (f !== answer && !out.includes(f)) out.push(f);
+  }
+  return shuffle([answer, ...out]);
+}
+
 export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
   const router = useRouter();
   const [phase, setPhase] = useState<Phase>("menu");
-  const [mode, setMode] = useState<Mode>("set");
+  const [setMode, setSetMode] = useState<SetMode>("set");
+  const [answerMode, setAnswerMode] = useState<AnswerMode>("choice");
   const [rounds, setRounds] = useState<Round[]>([]);
   const [title, setTitle] = useState("Flags");
   const [secs, setSecs] = useState(7);
@@ -48,22 +79,27 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
   const [results, setResults] = useState<boolean[]>([]);
   const [typed, setTyped] = useState("");
   const [interim, setInterim] = useState("");
+  const [choices, setChoices] = useState<string[]>([]);
+  const [picked, setPicked] = useState<string | null>(null);
   const [locked, setLocked] = useState<{ said: string; correct: boolean; answer: string } | null>(null);
   const [timeLeft, setTimeLeft] = useState(7000);
   const [muted, setMuted] = useState(false);
   const [building, setBuilding] = useState(false);
   const [failed, setFailed] = useState(false);
-  const [canAutoFocus, setCanAutoFocus] = useState(false); // desktop only — no mobile keyboard pop each round
+  const [canAutoFocus, setCanAutoFocus] = useState(false);
 
   const round: Round | undefined = rounds[idx];
   const total = rounds.length;
   const hue = HUES[idx % HUES.length];
+  const choiceMode = answerMode === "choice";
 
   const phaseRef = useRef<Phase>("menu");
   const typedRef = useRef("");
   const voiceRef = useRef("");
+  const pickedRef = useRef("");
   const mutedRef = useRef(false);
   const secsRef = useRef(7);
+  const answerModeRef = useRef<AnswerMode>("choice");
   const lockedThisRound = useRef(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
   const advanceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -73,14 +109,16 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
   phaseRef.current = phase;
   typedRef.current = typed;
   mutedRef.current = muted;
+  answerModeRef.current = answerMode;
 
   const audio = getAudio();
   const host = getHost();
 
   const resetListenRef = useRef<() => void>(() => {});
   const { supported, start: startListen, stop: stopListen, reset: resetListen } = useListen((t) => {
-    if (phaseRef.current !== "answering") return;
-    // Safety net: if Isaac is somehow still talking, ignore + wipe (no echo).
+    if (phaseRef.current !== "answering" || answerModeRef.current !== "input") return;
+    // While Isaac talks, ignore + wipe what the mic heard (no echo). After he's
+    // done, your speech is captured clean.
     if (host.speaking) {
       resetListenRef.current();
       setInterim("");
@@ -94,23 +132,28 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
   resetListenRef.current = resetListen;
 
   // ── Build a game, then play it ────────────────────────────────────────────
-  const launch = useCallback((g: { title: string; secondsPerRound: number; rounds: Round[] }, nextMode: Mode) => {
-    preloadedRef.current = new Set();
-    secsRef.current = g.secondsPerRound;
-    setSecs(g.secondsPerRound);
-    setMode(nextMode);
-    setTitle(g.title);
-    setRounds(g.rounds);
-    setScore(0);
-    setResults([]);
-    setIdx(0);
-    setRunId((n) => n + 1);
-    setBuilding(false);
-    setPhase("loading");
-  }, []);
+  const launch = useCallback(
+    (g: { title: string; secondsPerRound: number; rounds: Round[] }, nextSet: SetMode, am: AnswerMode) => {
+      preloadedRef.current = new Set();
+      secsRef.current = g.secondsPerRound;
+      answerModeRef.current = am;
+      setSecs(g.secondsPerRound);
+      setSetMode(nextSet);
+      setAnswerMode(am);
+      setTitle(g.title);
+      setRounds(g.rounds);
+      setScore(0);
+      setResults([]);
+      setIdx(0);
+      setRunId((n) => n + 1);
+      setBuilding(false);
+      setPhase("loading");
+    },
+    []
+  );
 
   const startGame = useCallback(
-    async (request: string) => {
+    async (request: string, am: AnswerMode = "choice") => {
       setBuilding(true);
       setFailed(false);
       host.say("Let's play! Guess the country.");
@@ -120,12 +163,12 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
         setFailed(true);
         return;
       }
-      launch(g, "set");
+      launch(g, "set", am);
     },
     [host, launch]
   );
 
-  // "Continue" → every country in the world, easiest → hardest.
+  // "Continue" → every country in the world, easiest → hardest (same answer mode).
   const continueAll = useCallback(async () => {
     setBuilding(true);
     const g = await buildAllCountries();
@@ -133,30 +176,38 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
       setBuilding(false);
       return;
     }
-    launch(g, "all");
+    launch(g, "all", answerModeRef.current);
   }, [launch]);
 
-  // Only auto-focus the answer box on devices with a real pointer (desktop).
+  // "Play again" → the SAME flags, reshuffled (keep the difficulty ramp).
+  const replaySame = useCallback(() => {
+    if (!rounds.length) return;
+    preloadedRef.current = new Set();
+    setRounds(reshuffleWithin(rounds));
+    setScore(0);
+    setResults([]);
+    setIdx(0);
+    setRunId((n) => n + 1);
+    setPhase("loading");
+  }, [rounds]);
+
   useEffect(() => {
     setCanAutoFocus(typeof window !== "undefined" && !!window.matchMedia && window.matchMedia("(pointer: fine)").matches);
   }, []);
 
-  // Launched from /home (or a deep link) with a request → build immediately.
   const startedInitial = useRef(false);
   useEffect(() => {
     if (initialRequest && !startedInitial.current) {
       startedInitial.current = true;
-      void startGame(initialRequest);
+      void startGame(initialRequest, "choice");
     }
   }, [initialRequest, startGame]);
 
-  // Warm Isaac's question lines so he speaks instantly (mic opens right after him).
   useEffect(() => {
     if (rounds.length) QUESTIONS.forEach((q) => host.prefetch(q));
   }, [rounds, host]);
 
-  // Preload the next several flags so each round's image is cached and paints
-  // instantly — no round ever starts on a flag that hasn't loaded.
+  // Preload upcoming flags so each round's image is cached + paints instantly.
   useEffect(() => {
     for (let i = idx; i < Math.min(idx + 6, rounds.length); i++) {
       const r = rounds[i];
@@ -181,13 +232,12 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
     listenRef.current.stop();
     audio.stopMusic();
 
+    const pickedVal = pickedRef.current.trim();
     const typedVal = typedRef.current.trim();
     const voiceVal = voiceRef.current.trim();
-    const raw = typedVal || voiceVal;
+    const raw = pickedVal || typedVal || voiceVal;
     const correct = !!raw && isCorrect(raw, r.name, r.aliases);
-    // "You said" shows only a COUNTRY — typed as-is, or the country pulled out of
-    // the spoken phrase (filler / Isaac-echo are dropped).
-    const said = typedVal || pickCountry(voiceVal, rounds.map((x) => x.name));
+    const said = pickedVal || typedVal || pickCountry(voiceVal, rounds.map((x) => x.name));
     setLocked({ said, correct, answer: r.name });
     setResults((prev) => [...prev, correct]);
     if (correct) setScore((s) => s + 1);
@@ -211,8 +261,14 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
   const lockRef = useRef(lockRound);
   lockRef.current = lockRound;
 
-  // ── Each round: reset, WAIT for the flag to paint, speak the question, THEN
-  //    open the mic (so it never hears Isaac) and run the timer ───────────────
+  function pickChoice(name: string) {
+    if (phaseRef.current !== "answering" || lockedThisRound.current) return;
+    setPicked(name);
+    pickedRef.current = name;
+    lockRound();
+  }
+
+  // ── Each round: reset, wait for the flag to paint, then run timer + voice ──
   useEffect(() => {
     if (phaseRef.current === "complete" || phaseRef.current === "menu") return;
     const r = rounds[idx];
@@ -222,7 +278,10 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
     setLocked(null);
     setTyped("");
     setInterim("");
+    setPicked(null);
+    pickedRef.current = "";
     voiceRef.current = "";
+    setChoices(makeChoices(r.name, rounds.map((x) => x.name)));
     setTimeLeft(secsRef.current * 1000);
     setPhase("loading");
 
@@ -238,14 +297,14 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
       if (!mutedRef.current) audio.startMusic();
       host.prefetch(`Yes! ${r.name}.`);
       host.prefetch(`It's ${r.name}.`);
-      // Speak the question, and only AFTER Isaac finishes open the mic — so the
-      // mic never captures his voice (the root of the echo).
-      void host.say(QUESTIONS[idx % QUESTIONS.length]).then(() => {
-        if (cancelled || phaseRef.current !== "answering" || !supported) return;
+      void host.say(QUESTIONS[idx % QUESTIONS.length]);
+      // Mic ON immediately (only in type/speak mode) so it never misses you; the
+      // host.speaking guard drops Isaac's own voice.
+      if (answerModeRef.current === "input" && supported) {
         resetListenRef.current();
         voiceRef.current = "";
         listenRef.current.start();
-      });
+      }
 
       tickRef.current = secsRef.current;
       const deadline = Date.now() + secsRef.current * 1000;
@@ -262,9 +321,7 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
       timerRef.current = id;
     };
 
-    // Wait for the VISIBLE flag to actually DECODE (be paint-ready) before the
-    // round starts — so a flag is never blank while Isaac names it. Retry the
-    // SVG, then a PNG, then give up gracefully (the cap) so it can't hang.
+    // Wait for the visible flag to DECODE before starting (never blank).
     let settled = false;
     const ready = () => {
       if (cancelled || settled) return;
@@ -298,7 +355,6 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [idx, runId]);
 
-  // Hard stop on unmount.
   useEffect(
     () => () => {
       if (advanceRef.current) clearTimeout(advanceRef.current);
@@ -323,14 +379,13 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
     }
   }
 
-  // Stop play immediately and go back to the game's menu.
   const exitToMenu = useCallback(() => {
     if (timerRef.current) clearInterval(timerRef.current);
     if (advanceRef.current) clearTimeout(advanceRef.current);
     audio.stopMusic();
     host.cancel();
     listenRef.current.stop();
-    startedInitial.current = true; // don't re-trigger the initial request
+    startedInitial.current = true;
     setPhase("menu");
   }, [audio, host]);
 
@@ -355,15 +410,16 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
   if (phase === "complete") {
     return (
       <CompleteScreen
+        choiceMode={choiceMode}
         hue={hue}
         title={title}
         score={score}
         total={total}
         results={results}
-        canContinue={mode === "set"}
+        canContinue={setMode === "set"}
         building={building}
         onContinue={continueAll}
-        onReplay={() => (mode === "all" ? continueAll() : startGame(`Another ${total}-flag game like "${title}".`))}
+        onReplay={replaySame}
         onMenu={exitToMenu}
       />
     );
@@ -371,14 +427,17 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
   if (!round) return null;
 
   const frac = timeLeft / (secs * 1000);
+  const reveal = phase === "reveal";
 
   return (
     <div className="relative h-[100dvh] w-screen overflow-hidden select-none">
-      <RaysBackground hue={hue} />
+      {choiceMode ? <DocumentBackground /> : <RaysBackground hue={hue} />}
 
       {/* Right-edge brand mark */}
       <div
-        className="pointer-events-none absolute right-1 top-1/2 z-20 -translate-y-1/2 text-sm font-extrabold uppercase tracking-[0.3em] text-white/70 sm:right-3 sm:text-base"
+        className={`pointer-events-none absolute right-1 top-1/2 z-20 -translate-y-1/2 text-sm font-extrabold uppercase tracking-[0.3em] sm:right-3 sm:text-base ${
+          choiceMode ? "text-[#2c2823]/35" : "text-white/70"
+        }`}
         style={{ writingMode: "vertical-rl" }}
       >
         clunoid
@@ -391,7 +450,9 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
             <button
               onClick={exitToMenu}
               aria-label="Close game"
-              className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-black/25 text-white backdrop-blur transition hover:bg-black/40 sm:h-10 sm:w-10"
+              className={`grid h-9 w-9 shrink-0 place-items-center rounded-full backdrop-blur transition sm:h-10 sm:w-10 ${
+                choiceMode ? "bg-black/10 text-[#2c2823] hover:bg-black/20" : "bg-black/25 text-white hover:bg-black/40"
+              }`}
             >
               <X size={18} />
             </button>
@@ -400,7 +461,9 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
               initial={{ scale: 0.5, rotate: -20 }}
               animate={{ scale: 1, rotate: 0 }}
               transition={{ type: "spring", stiffness: 300, damping: 16 }}
-              className="grid h-12 w-12 shrink-0 place-items-center rounded-full border-[3px] border-white bg-black text-xl font-extrabold text-white shadow-lg sm:h-16 sm:w-16 sm:text-3xl"
+              className={`grid h-12 w-12 shrink-0 place-items-center rounded-full border-[3px] text-xl font-extrabold shadow-lg sm:h-16 sm:w-16 sm:text-3xl ${
+                choiceMode ? "border-[#2c2823] bg-[#f6f4ee] text-[#2c2823]" : "border-white bg-black text-white"
+              }`}
             >
               {idx + 1}
             </motion.div>
@@ -408,23 +471,28 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
 
           <h1
             className="pointer-events-none absolute inset-x-0 top-4 mx-auto text-center text-4xl font-extrabold leading-none tracking-tight sm:top-6 sm:text-6xl"
-            style={{ textShadow: TITLE_SHADOW }}
+            style={{ textShadow: choiceMode ? "none" : TITLE_SHADOW }}
           >
-            <span className="text-white">Guess The </span>
-            <span style={{ color: YELLOW }}>Country</span>
+            <span style={{ color: choiceMode ? INK : "#fff" }}>Guess The </span>
+            <span style={{ color: choiceMode ? SEAL : YELLOW }}>Country</span>
           </h1>
 
           <button
             onClick={toggleMute}
             aria-label={muted ? "Unmute" : "Mute"}
-            className="z-20 grid h-11 w-11 shrink-0 place-items-center rounded-full bg-black/25 text-white backdrop-blur transition hover:bg-black/40"
+            className={`z-20 grid h-11 w-11 shrink-0 place-items-center rounded-full backdrop-blur transition ${
+              choiceMode ? "bg-black/10 text-[#2c2823] hover:bg-black/20" : "bg-black/25 text-white hover:bg-black/40"
+            }`}
           >
             {muted ? <VolumeX size={20} /> : <Volume2 size={20} />}
           </button>
         </div>
 
-        {/* Difficulty rail */}
-        <div className="absolute left-3 top-[34%] z-20 flex flex-col gap-1.5 sm:left-8">
+        {/* Difficulty rail — tucked just under the header on phones (clears the top
+            controls AND the flag), a larger left rail on desktop. Position lives in a
+            scoped <style> so it never depends on Tailwind emitting a top-N utility. */}
+        <style>{".cl-diffrail{top:3.5rem}@media(min-width:640px){.cl-diffrail{top:34%}}"}</style>
+        <div className="cl-diffrail absolute left-2 z-20 flex flex-col gap-0.5 sm:left-8 sm:gap-1.5">
           {DIFFS.map((d) => {
             const on = round.difficulty === d;
             return (
@@ -432,10 +500,14 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
                 key={d}
                 animate={{ scale: on ? 1.06 : 1 }}
                 transition={{ type: "spring", stiffness: 300, damping: 18 }}
-                className={`select-none text-xl font-extrabold italic sm:text-2xl ${
-                  on ? "rounded-full bg-[#C81E5B] px-4 py-0.5 text-white shadow-lg" : "px-1 text-white/80"
+                className={`select-none text-base font-extrabold italic sm:text-2xl ${
+                  on
+                    ? `rounded-full px-3 py-0 text-white shadow-lg sm:px-4 sm:py-0.5 ${choiceMode ? "bg-[#8a2433]" : "bg-[#C81E5B]"}`
+                    : choiceMode
+                    ? "px-1 text-[#2c2823]/70"
+                    : "px-1 text-white/80"
                 }`}
-                style={on ? {} : { textShadow: "0 2px 3px rgba(0,0,0,0.35)" }}
+                style={on || choiceMode ? {} : { textShadow: "0 2px 3px rgba(0,0,0,0.35)" }}
               >
                 {cap(d)}
               </motion.div>
@@ -443,15 +515,15 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
           })}
         </div>
 
-        {/* Center: flag (slightly reduced — never cropped) */}
-        <div className="relative flex flex-1 items-center justify-center px-6">
+        {/* Center: flag + a reserved slot below it for the answer reveal */}
+        <div className="relative flex flex-1 flex-col items-center justify-center gap-2 px-6">
           <motion.div
             key={round.code}
             initial={{ scale: 0.7, opacity: 0, rotate: -6 }}
             animate={{
               scale: phase === "loading" ? 0.85 : 1,
               opacity: phase === "loading" ? 0 : 1,
-              rotate: [-2.5, 2.5, -2.5],
+              rotate: choiceMode ? 0 : [-2.5, 2.5, -2.5],
             }}
             transition={{
               opacity: { duration: 0.25 },
@@ -473,88 +545,118 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
                   t.src = pngFallback(round.code);
                 }
               }}
-              className="block max-h-[30vh] w-auto max-w-[80vw] rounded-xl object-contain sm:max-h-[40vh] sm:max-w-[56vw]"
+              className="block max-h-[28vh] w-auto max-w-[80vw] rounded-xl object-contain sm:max-h-[38vh] sm:max-w-[56vw]"
             />
           </motion.div>
 
           {phase === "loading" && (
             <div className="absolute inset-0 grid place-items-center">
-              <div className="h-12 w-12 animate-spin rounded-full border-4 border-white/40 border-t-white" />
+              <div className={`h-12 w-12 animate-spin rounded-full border-4 ${choiceMode ? "border-[#2c2823]/25 border-t-[#2c2823]" : "border-white/40 border-t-white"}`} />
             </div>
           )}
-        </div>
 
-        {/* Bottom: timer (answering) or the answer reveal.
-            NOTE: deliberately NOT <AnimatePresence mode="wait"> — under React 19
-            the exiting form can fail to settle, which would keep it mounted and
-            stop the answer from ever showing. Direct conditional render is safe. */}
-        <div className="px-4 pb-[max(env(safe-area-inset-bottom),1.25rem)] pt-2 sm:px-8">
-            {phase === "answering" ? (
-              <motion.div key="bar" initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }}>
-                <div className="mx-auto w-full max-w-2xl rounded-full bg-[#e9e9ec] p-1 shadow-[inset_0_2px_5px_rgba(0,0,0,0.25)]">
-                  <div
-                    className="h-6 rounded-full sm:h-8"
-                    style={{
-                      width: `${Math.max(2, frac * 100)}%`,
-                      backgroundColor: barColor(frac),
-                      backgroundImage: STRIPES,
-                      transition: "width 0.09s linear, background-color 0.3s linear",
-                    }}
-                  />
-                </div>
-                <form onSubmit={submitNow} className="mx-auto mt-3 flex w-full max-w-md items-center gap-2">
-                  {supported && (
-                    <span
-                      className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-white/20 text-white ring-1 ring-white/40"
-                      title="Listening"
-                    >
-                      <Mic size={18} />
-                    </span>
-                  )}
-                  <input
-                    value={typed}
-                    onChange={(e) => setTyped(e.target.value)}
-                    placeholder={interim || "Type the country…"}
-                    autoFocus={canAutoFocus}
-                    className="h-11 w-full rounded-full border-0 bg-white/20 px-5 font-bold text-white outline-none backdrop-blur placeholder:font-medium placeholder:text-white/70 focus:bg-white/30"
-                  />
-                  <button
-                    type="submit"
-                    className="h-11 shrink-0 rounded-full bg-white px-5 font-extrabold text-black transition hover:bg-white/90"
-                  >
-                    Lock
-                  </button>
-                </form>
-              </motion.div>
-            ) : (
-              <motion.div
-                key="reveal"
-                initial={{ opacity: 0, scale: 0.6, y: 20 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                transition={{ type: "spring", stiffness: 300, damping: 16 }}
-                className="text-center"
-              >
-                {/* Below the flag: just the answer (the country). */}
+          {/* Reserved answer slot (keeps the flag from jumping) */}
+          <div className="flex min-h-[3.4rem] items-center justify-center text-center sm:min-h-[4.5rem]">
+            {reveal && (
+              <motion.div initial={{ opacity: 0, y: 10, scale: 0.92 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ type: "spring", stiffness: 300, damping: 16 }}>
                 <div
-                  className="text-5xl font-extrabold leading-none sm:text-7xl"
-                  style={{ color: YELLOW, textShadow: TITLE_SHADOW }}
+                  className="text-4xl font-extrabold leading-none sm:text-6xl"
+                  style={{ color: choiceMode ? INK : YELLOW, textShadow: choiceMode ? "none" : TITLE_SHADOW }}
                 >
                   {locked?.answer ?? round.name}
                 </div>
-                {locked?.correct ? (
-                  <div className="mt-2 text-lg font-bold text-white/90 sm:text-xl">✓ Correct</div>
-                ) : locked?.said ? (
-                  <div className="mt-2 text-lg font-bold text-white/80 sm:text-xl">You said “{locked.said}”</div>
-                ) : null}
+                {!choiceMode &&
+                  (locked?.correct ? (
+                    <div className="mt-1 text-base font-bold text-white/90 sm:text-lg">✓ Correct</div>
+                  ) : locked?.said ? (
+                    <div className="mt-1 text-base font-bold text-white/80 sm:text-lg">You said “{locked.said}”</div>
+                  ) : null)}
               </motion.div>
             )}
+          </div>
+        </div>
+
+        {/* Bottom: FIXED — timer bar + (4 choices | type/speak row). Always present. */}
+        <div className="px-4 pb-[max(env(safe-area-inset-bottom),1.25rem)] pt-1 sm:px-8">
+          <div
+            className={`mx-auto w-full max-w-2xl rounded-full p-1 ${
+              choiceMode ? "bg-[#b3b0a8] shadow-[inset_0_2px_5px_rgba(0,0,0,0.25)]" : "bg-[#e9e9ec] shadow-[inset_0_2px_5px_rgba(0,0,0,0.25)]"
+            }`}
+          >
+            <div
+              className="h-5 rounded-full sm:h-7"
+              style={{
+                width: `${Math.max(2, frac * 100)}%`,
+                backgroundColor: barColor(frac),
+                backgroundImage: STRIPES,
+                transition: "width 0.09s linear, background-color 0.3s linear",
+              }}
+            />
+          </div>
+
+          {choiceMode ? (
+            <div className="mx-auto mt-3 w-full max-w-xl" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.625rem" }}>
+              {choices.map((name) => {
+                const isAnswer = reveal && name === (locked?.answer ?? round.name);
+                const isWrongPick = reveal && name === picked && name !== (locked?.answer ?? round.name);
+                return (
+                  <button
+                    key={name}
+                    onClick={() => pickChoice(name)}
+                    disabled={reveal}
+                    className={`flex min-h-[3.25rem] items-center justify-center rounded-2xl px-3 text-base font-extrabold shadow-md ring-1 transition active:scale-[0.98] sm:min-h-[3.75rem] sm:text-xl ${
+                      isAnswer
+                        ? "bg-[#1f7a4d] text-white ring-black/10"
+                        : isWrongPick
+                        ? "bg-[#a32333] text-white ring-black/10"
+                        : "bg-[#f6f4ee] text-[#2c2823] ring-black/10 hover:bg-white disabled:opacity-70"
+                    }`}
+                  >
+                    {isAnswer ? (
+                      <span className="inline-flex items-center gap-1.5">
+                        <Check size={18} strokeWidth={3} /> {name}
+                      </span>
+                    ) : (
+                      name
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            <form onSubmit={submitNow} className="mx-auto mt-3 flex w-full max-w-md items-center gap-2">
+              {supported && (
+                <span
+                  className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-white/20 text-white ring-1 ring-white/40"
+                  title="Listening"
+                >
+                  <Mic size={18} />
+                </span>
+              )}
+              <input
+                value={typed}
+                onChange={(e) => setTyped(e.target.value)}
+                placeholder={interim || "Type the country…"}
+                autoFocus={canAutoFocus}
+                disabled={reveal}
+                className="h-11 w-full rounded-full border-0 bg-white/20 px-5 font-bold text-white outline-none backdrop-blur placeholder:font-medium placeholder:text-white/70 focus:bg-white/30 disabled:opacity-70"
+              />
+              <button
+                type="submit"
+                disabled={reveal}
+                className="h-11 shrink-0 rounded-full bg-white px-5 font-extrabold text-black transition hover:bg-white/90 disabled:opacity-70"
+              >
+                Lock
+              </button>
+            </form>
+          )}
         </div>
       </div>
     </div>
   );
 }
 
-/* ── Menu / start screen — every game is generated by Isaac's brain ───────── */
+/* ── Menu / start screen ─────────────────────────────────────────────────── */
 function MenuScreen({
   building,
   failed,
@@ -565,20 +667,21 @@ function MenuScreen({
 }: {
   building: boolean;
   failed: boolean;
-  onPlay: (request: string) => void;
+  onPlay: (request: string, am: AnswerMode) => void;
   onHome: () => void;
   muted: boolean;
   onMute: () => void;
 }) {
   const [request, setRequest] = useState("");
+  const [am, setAm] = useState<AnswerMode>("choice");
 
   if (building) {
     return (
       <div className="relative grid h-[100dvh] w-screen place-items-center overflow-hidden px-6 select-none">
-        <RaysBackground hue={222} />
+        {am === "choice" ? <DocumentBackground /> : <RaysBackground hue={222} />}
         <div className="relative z-10 flex flex-col items-center text-center">
-          <div className="h-14 w-14 animate-spin rounded-full border-4 border-white/40 border-t-white" />
-          <p className="mt-5 text-xl font-extrabold text-white" style={{ textShadow: TITLE_SHADOW }}>
+          <div className={`h-14 w-14 animate-spin rounded-full border-4 ${am === "choice" ? "border-[#2c2823]/25 border-t-[#2c2823]" : "border-white/40 border-t-white"}`} />
+          <p className="mt-5 text-xl font-extrabold" style={{ color: am === "choice" ? INK : "#fff", textShadow: am === "choice" ? "none" : TITLE_SHADOW }}>
             Isaac is building your game…
           </p>
         </div>
@@ -586,20 +689,25 @@ function MenuScreen({
     );
   }
 
+  const doc = am === "choice";
   return (
     <div className="relative grid h-[100dvh] w-screen place-items-center overflow-hidden px-6 select-none">
-      <RaysBackground hue={222} />
+      {doc ? <DocumentBackground /> : <RaysBackground hue={222} />}
       <button
         onClick={onHome}
         aria-label="Back to games"
-        className="absolute left-4 top-4 z-20 flex h-11 items-center gap-1.5 rounded-full bg-black/25 px-4 text-white backdrop-blur transition hover:bg-black/40"
+        className={`absolute left-4 top-4 z-20 flex h-11 items-center gap-1.5 rounded-full px-4 backdrop-blur transition ${
+          doc ? "bg-black/10 text-[#2c2823] hover:bg-black/20" : "bg-black/25 text-white hover:bg-black/40"
+        }`}
       >
         <ArrowLeft size={18} /> <span className="text-sm font-extrabold">Games</span>
       </button>
       <button
         onClick={onMute}
         aria-label={muted ? "Unmute" : "Mute"}
-        className="absolute right-4 top-4 z-20 grid h-11 w-11 place-items-center rounded-full bg-black/25 text-white backdrop-blur transition hover:bg-black/40"
+        className={`absolute right-4 top-4 z-20 grid h-11 w-11 place-items-center rounded-full backdrop-blur transition ${
+          doc ? "bg-black/10 text-[#2c2823] hover:bg-black/20" : "bg-black/25 text-white hover:bg-black/40"
+        }`}
       >
         {muted ? <VolumeX size={20} /> : <Volume2 size={20} />}
       </button>
@@ -610,33 +718,53 @@ function MenuScreen({
           animate={{ scale: 1, opacity: 1 }}
           transition={{ type: "spring", stiffness: 220, damping: 16 }}
           className="text-5xl font-extrabold leading-none tracking-tight sm:text-7xl"
-          style={{ textShadow: TITLE_SHADOW }}
+          style={{ textShadow: doc ? "none" : TITLE_SHADOW }}
         >
-          <span className="text-white">Guess The </span>
-          <span style={{ color: YELLOW }}>Country</span>
+          <span style={{ color: doc ? INK : "#fff" }}>Guess The </span>
+          <span style={{ color: doc ? SEAL : YELLOW }}>Country</span>
         </motion.h1>
-        <p className="mt-3 text-lg font-bold text-white/85">Ask Isaac for any flag challenge.</p>
+        <p className="mt-3 text-lg font-bold" style={{ color: doc ? "#2c2823cc" : "#ffffffd9" }}>
+          Ask Isaac for any flag challenge.
+        </p>
+
+        {/* Answer mode toggle */}
+        <div className={`mt-6 inline-flex rounded-full p-1 ${doc ? "bg-black/10" : "bg-black/25"}`}>
+          {([
+            { v: "choice", label: "Multiple choice", Icon: Grid2x2 },
+            { v: "input", label: "Type or speak", Icon: Keyboard },
+          ] as const).map(({ v, label, Icon }) => (
+            <button
+              key={v}
+              onClick={() => setAm(v)}
+              className={`flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-extrabold transition ${
+                am === v ? (doc ? "bg-[#f6f4ee] text-[#2c2823] shadow" : "bg-white text-black shadow") : doc ? "text-[#2c2823]/70" : "text-white/80"
+              }`}
+            >
+              <Icon size={16} /> {label}
+            </button>
+          ))}
+        </div>
 
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            onPlay(request.trim() || PRESETS[0].request);
+            onPlay(request.trim() || PRESETS[0].request, am);
           }}
-          className="mt-7 flex w-full items-center gap-2"
+          className="mt-5 flex w-full items-center gap-2"
         >
-          <div className="flex min-w-0 flex-1 items-center gap-2 rounded-full bg-black/20 px-4 backdrop-blur">
-            <Sparkles size={18} className="shrink-0 text-white/70" />
+          <div className={`flex min-w-0 flex-1 items-center gap-2 rounded-full px-4 backdrop-blur ${doc ? "bg-black/10" : "bg-black/20"}`}>
+            <Sparkles size={18} className={`shrink-0 ${doc ? "text-[#2c2823]/60" : "text-white/70"}`} />
             <input
               value={request}
               onChange={(e) => setRequest(e.target.value)}
               placeholder="e.g. hard European flags, 15 rounds"
-              className="h-12 w-full bg-transparent font-bold text-white outline-none placeholder:font-medium placeholder:text-white/60"
+              className={`h-12 w-full bg-transparent font-bold outline-none ${doc ? "text-[#2c2823] placeholder:text-[#2c2823]/55" : "text-white placeholder:text-white/60"} placeholder:font-medium`}
             />
           </div>
           <button
             type="submit"
             aria-label="Play"
-            className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-white text-black shadow-xl transition hover:scale-[1.05]"
+            className={`grid h-12 w-12 shrink-0 place-items-center rounded-full shadow-xl transition hover:scale-[1.05] ${doc ? "bg-[#2c2823] text-[#f6f4ee]" : "bg-white text-black"}`}
           >
             <Play size={20} fill="currentColor" />
           </button>
@@ -646,8 +774,10 @@ function MenuScreen({
           {PRESETS.map((p) => (
             <button
               key={p.label}
-              onClick={() => onPlay(p.request)}
-              className="rounded-full bg-white/15 px-4 py-2 text-sm font-extrabold text-white transition hover:bg-white/25"
+              onClick={() => onPlay(p.request, am)}
+              className={`rounded-full px-4 py-2 text-sm font-extrabold transition ${
+                doc ? "bg-black/10 text-[#2c2823] hover:bg-black/20" : "bg-white/15 text-white hover:bg-white/25"
+              }`}
             >
               {p.label}
             </button>
@@ -655,7 +785,7 @@ function MenuScreen({
         </div>
 
         {failed && (
-          <p className="mt-5 text-sm font-bold text-white/90">
+          <p className="mt-5 text-sm font-bold" style={{ color: doc ? INK : "#fff" }}>
             Isaac couldn&apos;t build that set — try a different region or difficulty.
           </p>
         )}
@@ -666,6 +796,7 @@ function MenuScreen({
 
 /* ── Completion screen ─────────────────────────────────────────────────── */
 function CompleteScreen({
+  choiceMode,
   hue,
   title,
   score,
@@ -677,6 +808,7 @@ function CompleteScreen({
   onReplay,
   onMenu,
 }: {
+  choiceMode: boolean;
   hue: number;
   title: string;
   score: number;
@@ -690,33 +822,32 @@ function CompleteScreen({
 }) {
   const pct = total ? Math.round((score / total) * 100) : 0;
   const verdict = pct >= 90 ? "Flag master!" : pct >= 70 ? "Impressive!" : pct >= 40 ? "Nicely done!" : "Keep practicing!";
+  const fg = choiceMode ? INK : "#fff";
   return (
     <div className="relative grid h-[100dvh] w-screen place-items-center overflow-hidden px-6 select-none">
-      <RaysBackground hue={hue} />
+      {choiceMode ? <DocumentBackground /> : <RaysBackground hue={hue} />}
       <motion.div
         initial={{ scale: 0.8, opacity: 0, y: 16 }}
         animate={{ scale: 1, opacity: 1, y: 0 }}
         transition={{ type: "spring", stiffness: 200, damping: 16 }}
         className="relative z-10 flex w-full max-w-sm flex-col items-center text-center"
       >
-        <motion.div
-          initial={{ rotate: -15, scale: 0.6 }}
-          animate={{ rotate: 0, scale: 1 }}
-          transition={{ type: "spring", stiffness: 220, damping: 12 }}
-        >
-          <Trophy size={72} className="text-white" style={{ filter: "drop-shadow(0 4px 8px rgba(0,0,0,0.35))" }} />
+        <motion.div initial={{ rotate: -15, scale: 0.6 }} animate={{ rotate: 0, scale: 1 }} transition={{ type: "spring", stiffness: 220, damping: 12 }}>
+          <Trophy size={72} style={{ color: choiceMode ? SEAL : "#fff", filter: "drop-shadow(0 4px 8px rgba(0,0,0,0.35))" }} />
         </motion.div>
-        <h1 className="mt-4 text-4xl font-extrabold sm:text-5xl" style={{ color: YELLOW, textShadow: TITLE_SHADOW }}>
+        <h1 className="mt-4 text-4xl font-extrabold sm:text-5xl" style={{ color: choiceMode ? SEAL : YELLOW, textShadow: choiceMode ? "none" : TITLE_SHADOW }}>
           {verdict}
         </h1>
-        <p className="mt-1 text-base font-bold text-white/85">{title}</p>
-        <div className="mt-3 flex items-baseline gap-2 text-white" style={{ textShadow: TITLE_SHADOW }}>
+        <p className="mt-1 text-base font-bold" style={{ color: fg, opacity: 0.85 }}>
+          {title}
+        </p>
+        <div className="mt-3 flex items-baseline gap-2" style={{ color: fg, textShadow: choiceMode ? "none" : TITLE_SHADOW }}>
           <span className="text-7xl font-extrabold">{score}</span>
-          <span className="text-3xl font-bold text-white/80">/ {total}</span>
+          <span className="text-3xl font-bold opacity-80">/ {total}</span>
         </div>
         <div className="mt-5 flex max-w-xs flex-wrap justify-center gap-1.5">
           {results.slice(0, 60).map((r, i) => (
-            <span key={i} className={`h-3 w-3 rounded-full ${r ? "bg-white" : "bg-black/30"}`} />
+            <span key={i} className={`h-3 w-3 rounded-full ${r ? (choiceMode ? "bg-[#1f7a4d]" : "bg-white") : choiceMode ? "bg-black/25" : "bg-black/30"}`} />
           ))}
         </div>
 
@@ -724,13 +855,11 @@ function CompleteScreen({
           <button
             onClick={onContinue}
             disabled={building}
-            className="mt-7 flex w-full items-center justify-center gap-2 rounded-full bg-white px-5 py-4 text-lg font-extrabold text-black shadow-xl transition hover:scale-[1.03] disabled:opacity-70"
+            className={`mt-7 flex w-full items-center justify-center gap-2 rounded-full px-5 py-4 text-lg font-extrabold shadow-xl transition hover:scale-[1.03] disabled:opacity-70 ${
+              choiceMode ? "bg-[#2c2823] text-[#f6f4ee]" : "bg-white text-black"
+            }`}
           >
-            {building ? (
-              <span className="h-5 w-5 animate-spin rounded-full border-2 border-black/30 border-t-black" />
-            ) : (
-              <Globe size={20} />
-            )}
+            {building ? <span className="h-5 w-5 animate-spin rounded-full border-2 border-current border-t-transparent" /> : <Globe size={20} />}
             Continue · all countries
           </button>
         )}
@@ -738,13 +867,17 @@ function CompleteScreen({
         <div className="mt-3 flex w-full gap-3">
           <button
             onClick={onReplay}
-            className="flex flex-1 items-center justify-center gap-2 rounded-full bg-white/90 px-5 py-3.5 font-extrabold text-black shadow-xl transition hover:scale-[1.03]"
+            className={`flex flex-1 items-center justify-center gap-2 rounded-full px-5 py-3.5 font-extrabold shadow-xl transition hover:scale-[1.03] ${
+              choiceMode ? "bg-[#8a2433] text-white" : "bg-white/90 text-black"
+            }`}
           >
             <RotateCcw size={18} /> Play again
           </button>
           <button
             onClick={onMenu}
-            className="flex flex-1 items-center justify-center gap-2 rounded-full bg-black/25 px-5 py-3.5 font-extrabold text-white backdrop-blur transition hover:bg-black/40"
+            className={`flex flex-1 items-center justify-center gap-2 rounded-full px-5 py-3.5 font-extrabold backdrop-blur transition ${
+              choiceMode ? "bg-black/10 text-[#2c2823] hover:bg-black/20" : "bg-black/25 text-white hover:bg-black/40"
+            }`}
           >
             <ArrowLeft size={18} /> Menu
           </button>
