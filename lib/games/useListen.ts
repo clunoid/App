@@ -34,8 +34,10 @@ export function useListen(onResult: (text: string) => void) {
   const [supported] = useState<boolean>(() => !!getCtor());
   const recRef = useRef<SpeechRecognitionLike | null>(null);
   const finalRef = useRef("");
+  const finalsRef = useRef<string[]>([]); // committed final segments BY result index (idempotent — no double-append)
   const wantOnRef = useRef(false);
   const runningRef = useRef(false); // true between onstart and onend — prevents double-start
+  const gotFinalRef = useRef(false); // a final answer was captured this round → stop re-arming (no mic re-trigger / re-capture)
   const deniedRef = useRef(false); // mic blocked / unavailable — stop retrying (no hot loop)
   const lastStartRef = useRef(0); // throttle: never start more than once per ~400ms
   const cbRef = useRef(onResult);
@@ -55,9 +57,17 @@ export function useListen(onResult: (text: string) => void) {
       let interim = "";
       for (let i = e.resultIndex; i < e.results.length; i++) {
         const r = e.results[i];
-        if (r.isFinal) finalRef.current = (finalRef.current + " " + r[0].transcript).trim();
-        else interim += r[0].transcript;
+        // Assign each final result BY ITS INDEX — re-seeing the same result just
+        // overwrites the same slot (idempotent), so one word can never be appended
+        // twice ("ukraine ukraine"). Interim text isn't committed.
+        if (r.isFinal) {
+          finalsRef.current[i] = r[0].transcript;
+          gotFinalRef.current = true;
+        } else {
+          interim += r[0].transcript;
+        }
       }
+      finalRef.current = finalsRef.current.filter(Boolean).join(" ").trim();
       cbRef.current((finalRef.current + " " + interim).trim());
     };
     // Re-arm ONLY when we still want to listen, nothing is already running, and
@@ -65,10 +75,13 @@ export function useListen(onResult: (text: string) => void) {
     // stop the rapid start→onend→start churn (the "double trigger"), including the
     // hot loop that happens when start() fails before onstart (e.g. mic blocked).
     const restart = () => {
-      if (!wantOnRef.current || runningRef.current || deniedRef.current) return;
+      // gotFinalRef: once an answer is captured this round, do NOT re-open the mic
+      // — that relaunch is the audible "triggered twice" sound and re-captures the
+      // trailing word. We re-arm next round via start() (which clears the latch).
+      if (!wantOnRef.current || runningRef.current || deniedRef.current || gotFinalRef.current) return;
       const wait = Math.max(0, 400 - (Date.now() - lastStartRef.current));
       setTimeout(() => {
-        if (!wantOnRef.current || runningRef.current || deniedRef.current) return;
+        if (!wantOnRef.current || runningRef.current || deniedRef.current || gotFinalRef.current) return;
         lastStartRef.current = Date.now();
         try {
           rec.start();
@@ -109,6 +122,8 @@ export function useListen(onResult: (text: string) => void) {
 
   const start = useCallback(() => {
     finalRef.current = "";
+    finalsRef.current = [];
+    gotFinalRef.current = false; // fresh round/arm — allow listening again
     wantOnRef.current = true;
     deniedRef.current = false; // explicit (re)enable clears any prior denial
     if (runningRef.current) return; // already listening — never stack a second session
@@ -133,6 +148,7 @@ export function useListen(onResult: (text: string) => void) {
   // the player's own words count).
   const reset = useCallback(() => {
     finalRef.current = "";
+    finalsRef.current = [];
   }, []);
 
   return { supported, start, stop, reset };
