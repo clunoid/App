@@ -70,7 +70,7 @@ export default function GamesHub() {
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
                   key={c}
-                  src={`https://flagcdn.com/${c}.svg`}
+                  src={`https://flagcdn.com/h40/${c}.png`}
                   alt=""
                   className="h-9 w-auto shrink-0 rounded-md shadow ring-1 ring-black/10"
                 />

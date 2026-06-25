@@ -49,7 +49,10 @@ const DAY = 24 * 60 * 60 * 1000;
 
 const uniq = (arr: (string | undefined)[]) =>
   Array.from(new Set(arr.filter((x): x is string => !!x && x.trim().length > 1)));
-const flagUrl = (code: string) => `https://flagcdn.com/${code}.svg`;
+// PNG (not SVG): flagcdn SVGs are inconsistent — some omit width/height and only
+// carry a viewBox, which renders as a tiny "dot" in an <img>. The PNG always has
+// real pixel dimensions, so every flag displays at full size. w1280 is crisp.
+const flagUrl = (code: string) => `https://flagcdn.com/w1280/${code}.png`;
 
 function shuffle<T>(a: T[]): T[] {
   for (let i = a.length - 1; i > 0; i--) {

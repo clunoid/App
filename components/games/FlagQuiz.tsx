@@ -473,7 +473,7 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
                   t.src = pngFallback(round.code);
                 }
               }}
-              className="block max-h-[30vh] w-auto max-w-[72vw] rounded-xl object-contain sm:max-h-[40vh] sm:max-w-[50vw]"
+              className="block max-h-[30vh] w-auto max-w-[80vw] rounded-xl object-contain sm:max-h-[40vh] sm:max-w-[56vw]"
             />
           </motion.div>
 
