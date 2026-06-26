@@ -358,8 +358,9 @@ export async function POST(req: NextRequest) {
       // right (model knowledge lags), so ground it explicitly with up-to-the-moment data.
       let ctx = context;
       if (hasSearch()) {
-        const tr = await webSearch(`${plan.title} current value ${NOW_LABEL} — today's exact figures and ranking`).catch(() => null);
-        if (tr) ctx = (ctx + `\nLATEST STANDINGS (as of ${NOW_LABEL} — use these exact current figures for the final keyframe): ` + [tr.answer, ...tr.results.slice(0, 5).map((x) => `• ${x.title}: ${x.content}`)].filter(Boolean).join("\n")).slice(0, 8500);
+        // advanced depth pulls richer content with REAL current numbers (basic only returns a vague summary)
+        const tr = await webSearch(`${plan.title} — exact current figures and full ranking as of ${NOW_LABEL}, with numbers`, { depth: "advanced", maxResults: 6 }).catch(() => null);
+        if (tr) ctx = (ctx + `\nLATEST STANDINGS (as of ${NOW_LABEL} — use these exact current figures for the final keyframe, do NOT round to clean numbers): ` + [tr.answer, ...tr.results.slice(0, 6).map((x) => `• ${x.title}: ${x.content}`)].filter(Boolean).join("\n")).slice(0, 9500);
       }
 
       const series = (

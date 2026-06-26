@@ -272,6 +272,7 @@ export function StatBattle({ initialRequest }: { initialRequest?: string }) {
           heading="Share your stat battle"
           idleHint="Export this stat battle as a video — for your projects & socials."
           caption={`${race.title} — a stat battle from clunoid.com 📊`}
+          captionContext={{ title: race.title, subtitle: race.subtitle, source: race.source }}
           render={(aspect: ReelAspect, opts) => renderRaceVideo(race, aspect, opts)}
         />
       )}

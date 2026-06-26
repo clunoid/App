@@ -3,6 +3,7 @@
 import { aspectSize, type ReelAspect } from "@/lib/share/reel";
 import type { RenderResult } from "@/lib/share/renderer";
 import { createCanvasRecorder } from "@/lib/share/record";
+import { fetchNarrationBytes } from "@/lib/share/tts";
 import { flagUrlFromIso2 } from "./flags";
 import type { RaceData, RaceEvent } from "./types";
 
@@ -593,42 +594,85 @@ export function drawRaceFrame(ctx: CanvasRenderingContext2D, W: number, H: numbe
   // ── story panel ──
   drawStoryPanel(ctx, panelX, panelY, panelW, panelH, race, curT, ev, evAlpha, vertical);
 
-  // source + brand
+  // source (bottom-left)
   ctx.textAlign = "left";
+  ctx.textBaseline = "alphabetic";
   if (race.source) {
     setFont(ctx, min * 0.026, 700);
     ctx.fillStyle = "rgba(44,40,35,0.45)";
     ctx.fillText(`Source: ${race.source}`, padX, H * 0.975);
   }
-  ctx.textAlign = "right";
-  setFont(ctx, min * 0.03, 800);
-  ctx.fillStyle = "rgba(44,40,35,0.5)";
-  ctx.fillText("clunoid.com", W - padX, H * 0.975);
+  // brand badge (bottom-right) — clearly visible, out of the way of the data
+  drawBrandBadge(ctx, W - padX, H * 0.965, min * 0.034);
+}
+
+/** A clear "clunoid.com" pill badge, right edge anchored at (rx, cy). */
+function drawBrandBadge(ctx: CanvasRenderingContext2D, rx: number, cy: number, px: number) {
+  setFont(ctx, px, 800);
+  const text = "clunoid.com";
+  const tw = ctx.measureText(text).width;
+  const padH = px * 0.55;
+  const padV = px * 0.42;
+  const bw = tw + padH * 2;
+  const bh = px + padV * 2;
+  const x = rx - bw;
+  const y = cy - bh / 2;
+  ctx.save();
+  ctx.shadowColor = "rgba(0,0,0,0.22)";
+  ctx.shadowBlur = px * 0.3;
+  ctx.shadowOffsetY = px * 0.08;
+  roundRect(ctx, x, y, bw, bh, bh / 2);
+  ctx.fillStyle = SEAL;
+  ctx.fill();
+  ctx.restore();
+  ctx.fillStyle = "#fff";
+  ctx.textAlign = "left";
+  ctx.textBaseline = "middle";
+  ctx.fillText(text, x + padH, cy + px * 0.04);
+  ctx.textBaseline = "alphabetic";
+}
+
+/* ── Isaac's closing call-to-action screen (clunoid.com is the hero) ───────── */
+const OUTRO_LINE =
+  "Loved this? You can make your own stat battle on any topic at clunoid dot com. Type any ranking, watch it race — for free. Come create yours.";
+
+function drawStatOutro(ctx: CanvasRenderingContext2D, W: number, H: number, p: number) {
+  const min = Math.min(W, H);
+  drawCertificateBg(ctx, W, H);
+  ctx.globalAlpha = clamp01(p * 3);
+  ctx.textAlign = "center";
+  ctx.textBaseline = "alphabetic";
+
+  setFont(ctx, min * 0.044, 700);
+  ctx.fillStyle = "rgba(44,40,35,0.6)";
+  ctx.fillText("You just watched a Clunoid Stat Battle", W / 2, H * 0.3);
+
+  setFont(ctx, min * 0.072, 800);
+  ctx.fillStyle = INK;
+  ctx.fillText("Make your own — on any topic", W / 2, H * 0.42);
+
+  const heroPx = fitText(ctx, "clunoid.com", min * 0.155, 800, W * 0.88);
+  const sc = 0.86 + 0.14 * clamp01(p * 3);
+  ctx.save();
+  ctx.translate(W / 2, H * 0.58);
+  ctx.scale(sc, sc);
+  ctx.shadowColor = "rgba(0,0,0,0.18)";
+  ctx.shadowBlur = heroPx * 0.06;
+  ctx.shadowOffsetY = heroPx * 0.04;
+  ctx.fillStyle = SEAL;
+  setFont(ctx, heroPx, 800);
+  ctx.fillText("clunoid.com", 0, 0);
+  ctx.restore();
+
+  setFont(ctx, min * 0.05, 700);
+  ctx.fillStyle = "rgba(44,40,35,0.72)";
+  ctx.fillText("Any ranking. Any era. Free.", W / 2, H * 0.72);
+  ctx.globalAlpha = 1;
   ctx.textAlign = "left";
 }
 
-/* ── SFX (subtle, into the recording's audio node) ────────────────────────── */
-function tone(ac: AudioContext, target: AudioNode, freq: number, dur: number, type: OscillatorType, vol: number, at: number) {
-  const osc = ac.createOscillator();
-  const g = ac.createGain();
-  osc.type = type;
-  osc.frequency.setValueAtTime(freq, at);
-  g.gain.setValueAtTime(0.0001, at);
-  g.gain.exponentialRampToValueAtTime(vol, at + 0.02);
-  g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
-  osc.connect(g).connect(target);
-  osc.start(at);
-  osc.stop(at + dur + 0.03);
-}
-function sfxWhoosh(ac: AudioContext, dest: AudioNode, at: number) {
-  tone(ac, dest, 680, 0.12, "triangle", 0.06, at);
-  tone(ac, dest, 430, 0.16, "triangle", 0.05, at + 0.05);
-}
-function scheduleBed(ac: AudioContext, dest: AudioNode, t0: number, total: number) {
-  for (let at = 0; at < total; at += 2) tone(ac, dest, at % 4 < 2 ? 110 : 98, 1.7, "sine", 0.022, t0 + at);
-}
-
-/* ── render the race into a downloadable/shareable video ──────────────────── */
+/* ── render the race into a downloadable/shareable video (SILENT race; Isaac's
+ *    voiced clunoid.com call-to-action plays only over the outro) ─────────────── */
 export async function renderRaceVideo(
   race: RaceData,
   aspect: ReelAspect,
@@ -637,11 +681,22 @@ export async function renderRaceVideo(
   const { w: W, h: H } = aspectSize(aspect);
   const rec = createCanvasRecorder(W, H, 30, opts.host);
   const { ctx, ac, dest } = rec;
-  opts.onProgress?.(4, "Loading flags…");
+  opts.onProgress?.(4, "Loading media…");
+  // Isaac's outro line — fetched up front so we know its exact length.
+  let outroBuf: AudioBuffer | null = null;
   try {
-    await Promise.all([document.fonts.load('800 120px "Baloo 2"'), document.fonts.load('700 120px "Baloo 2"'), preloadRaceImages(race)]);
+    const [, , bytes] = await Promise.all([
+      document.fonts.load('800 120px "Baloo 2"'),
+      preloadRaceImages(race),
+      fetchNarrationBytes(OUTRO_LINE),
+    ]);
+    if (bytes) {
+      const ab = new ArrayBuffer(bytes.byteLength);
+      new Uint8Array(ab).set(bytes);
+      outroBuf = await ac.decodeAudioData(ab);
+    }
   } catch {
-    /* fonts/images optional */
+    /* fonts / images / voice all optional */
   }
   const state = newRaceState();
   drawRaceFrame(ctx, W, H, race, state, 0);
@@ -651,14 +706,26 @@ export async function renderRaceVideo(
   } catch {
     /* ignore */
   }
-  const total = race.durationSec + END_HOLD;
+  const raceEnd = race.durationSec + END_HOLD;
+  const outroDur = outroBuf ? outroBuf.duration + 1.4 : 4.5;
+  const total = raceEnd + outroDur;
   const t0 = ac.currentTime + 0.1;
-  scheduleBed(ac, dest, t0, total);
+
+  // The race itself is SILENT; Isaac speaks only over the outro.
+  if (outroBuf) {
+    const src = ac.createBufferSource();
+    src.buffer = outroBuf;
+    src.connect(dest);
+    try {
+      src.connect(ac.destination);
+    } catch {
+      /* ignore */
+    }
+    src.start(t0 + raceEnd + 0.3);
+  }
 
   rec.start();
   opts.onProgress?.(6, "Recording…");
-  let lastLeader = "";
-  let lastWhoosh = 0;
   await new Promise<void>((resolve, reject) => {
     const frame = () => {
       if (opts.signal?.aborted) {
@@ -667,17 +734,11 @@ export async function renderRaceVideo(
       }
       const el = Math.max(0, ac.currentTime - t0);
       try {
-        drawRaceFrame(ctx, W, H, race, state, Math.min(el, race.durationSec));
+        if (el < raceEnd) drawRaceFrame(ctx, W, H, race, state, Math.min(el, race.durationSec));
+        else drawStatOutro(ctx, W, H, (el - raceEnd) / outroDur);
       } catch (e) {
         reject(e as Error);
         return;
-      }
-      if (state.leader && state.leader !== lastLeader && el > 0.4) {
-        if (ac.currentTime - lastWhoosh > 0.4) {
-          sfxWhoosh(ac, dest, ac.currentTime + 0.01);
-          lastWhoosh = ac.currentTime;
-        }
-        lastLeader = state.leader;
       }
       opts.onProgress?.(Math.min(99, Math.round((el / total) * 100)), "Recording…");
       if (el >= total) {
@@ -694,5 +755,5 @@ export async function renderRaceVideo(
 
   const { blob, ext, mime } = await rec.stop();
   opts.onProgress?.(100, "Done");
-  return { blob, ext, mime, hadVoice: false };
+  return { blob, ext, mime, hadVoice: !!outroBuf };
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type ComponentType } from "react";
-import { Download, Share2, X, Film, Loader2, Smartphone, Monitor, Instagram, Youtube, Facebook } from "lucide-react";
+import { Download, Share2, X, Film, Loader2, Smartphone, Monitor, Instagram, Youtube, Facebook, Sparkles, Copy, Check } from "lucide-react";
 import { canRecordVideo, type ReelAspect, type ReelSpec } from "@/lib/share/reel";
 import { renderReel } from "@/lib/share/renderer";
 import { TikTokIcon, XIcon, WhatsAppIcon } from "./SocialIcons";
@@ -37,6 +37,7 @@ export function ShareModal({
   heading = "Share your game",
   idleHint,
   caption = DEFAULT_CAPTION,
+  captionContext,
 }: {
   open: boolean;
   onClose: () => void;
@@ -47,8 +48,12 @@ export function ShareModal({
   heading?: string; // modal title (e.g. "Share your stat battle")
   idleHint?: string; // the idle preview hint (defaults to the game wording)
   caption?: string; // prefilled social caption
+  captionContext?: { title: string; subtitle?: string; source?: string }; // enables the AI caption generator
 }) {
   const platforms = buildPlatforms(caption);
+  const [cap, setCap] = useState<{ title: string; caption: string; hashtags: string[] } | null>(null);
+  const [capLoading, setCapLoading] = useState(false);
+  const [copied, setCopied] = useState(false);
   const [aspect, setAspect] = useState<ReelAspect>("9:16");
   const [status, setStatus] = useState<Status>("idle");
   const [pct, setPct] = useState(0);
@@ -77,6 +82,8 @@ export function ShareModal({
     setPct(0);
     setUrl(null);
     blobRef.current = null;
+    setCap(null);
+    setCapLoading(false);
     onClose();
   }, [cleanupUrl, onClose]);
 
@@ -161,6 +168,37 @@ export function ShareModal({
     [download]
   );
 
+  // Ask the brain for a ready-to-paste title + caption + hashtags.
+  const generateCaption = useCallback(async () => {
+    if (!captionContext) return;
+    setCapLoading(true);
+    setCap(null);
+    try {
+      const res = await fetch("/api/share-caption", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(captionContext),
+      });
+      const d = await res.json();
+      if (!d.error && d.caption) setCap({ title: d.title || "", caption: d.caption, hashtags: d.hashtags || [] });
+    } catch {
+      /* leave cap null → the button can be retried */
+    }
+    setCapLoading(false);
+  }, [captionContext]);
+
+  const captionText = cap ? `${cap.title}\n\n${cap.caption}\n\n${cap.hashtags.join(" ")}`.trim() : "";
+  const copyCaption = useCallback(() => {
+    if (!captionText) return;
+    navigator.clipboard
+      ?.writeText(captionText)
+      .then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1800);
+      })
+      .catch(() => {});
+  }, [captionText]);
+
   if (!open) return null;
 
   return (
@@ -239,7 +277,40 @@ export function ShareModal({
           )}
 
           {status === "ready" && !hadVoice && (
-            <p className="text-center text-[11px] text-amber-300/80">Isaac’s voice wasn’t available, so this clip has sound effects only.</p>
+            <p className="text-center text-[11px] text-amber-300/80">Isaac’s voice wasn’t available for this clip.</p>
+          )}
+
+          {/* AI caption generator — a ready-to-paste title + caption + hashtags. */}
+          {status === "ready" && captionContext && (
+            <div className="rounded-2xl bg-white/[0.04] p-3 ring-1 ring-white/10">
+              {!cap ? (
+                <button
+                  onClick={generateCaption}
+                  disabled={capLoading}
+                  className="flex w-full items-center justify-center gap-2 rounded-full bg-gradient-to-r from-violet-500 to-pink-500 py-2.5 text-sm font-extrabold text-white transition hover:opacity-90 disabled:opacity-60"
+                >
+                  {capLoading ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
+                  {capLoading ? "Writing your caption…" : "Generate title, caption & hashtags"}
+                </button>
+              ) : (
+                <div>
+                  <div className="mb-2 flex items-center justify-between">
+                    <p className="text-xs font-bold text-white/55">Ready to post — copy &amp; paste</p>
+                    <button onClick={copyCaption} className="flex items-center gap-1 rounded-full bg-white/10 px-3 py-1 text-xs font-bold text-white transition hover:bg-white/20">
+                      {copied ? <Check size={13} /> : <Copy size={13} />} {copied ? "Copied" : "Copy all"}
+                    </button>
+                  </div>
+                  <div className="max-h-40 overflow-y-auto rounded-xl bg-black/30 p-3 text-sm leading-relaxed">
+                    <p className="font-extrabold text-white">{cap.title}</p>
+                    <p className="mt-1.5 text-white/85">{cap.caption}</p>
+                    <p className="mt-1.5 font-semibold text-sky-300/90">{cap.hashtags.join(" ")}</p>
+                  </div>
+                  <button onClick={generateCaption} disabled={capLoading} className="mt-1.5 text-[11px] text-white/45 underline transition hover:text-white/70">
+                    {capLoading ? "Regenerating…" : "Regenerate"}
+                  </button>
+                </div>
+              )}
+            </div>
           )}
 
           {/* Post-to-platform shortcuts — open the app (or web) so it's easy to post. */}

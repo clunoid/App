@@ -46,7 +46,7 @@ export async function imageSearch(query: string): Promise<string | null> {
   }
 }
 
-export async function webSearch(query: string): Promise<WebSearch | null> {
+export async function webSearch(query: string, opts?: { depth?: "basic" | "advanced"; maxResults?: number }): Promise<WebSearch | null> {
   const key = process.env.TAVILY_API_KEY;
   if (!key || !query.trim()) return null;
   try {
@@ -56,9 +56,9 @@ export async function webSearch(query: string): Promise<WebSearch | null> {
       body: JSON.stringify({
         api_key: key,
         query,
-        search_depth: "basic",
+        search_depth: opts?.depth ?? "basic", // "advanced" pulls richer content (real figures) at a higher cost
         include_answer: true,
-        max_results: 5,
+        max_results: opts?.maxResults ?? 5,
       }),
     });
     if (!res.ok) return null;
