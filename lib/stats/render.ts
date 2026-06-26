@@ -3,7 +3,6 @@
 import { aspectSize, type ReelAspect } from "@/lib/share/reel";
 import type { RenderResult } from "@/lib/share/renderer";
 import { createCanvasRecorder } from "@/lib/share/record";
-import { fetchNarrationBytes } from "@/lib/share/tts";
 import { flagUrlFromIso2 } from "./flags";
 import type { RaceData, RaceEvent } from "./types";
 
@@ -632,29 +631,33 @@ function drawBrandBadge(ctx: CanvasRenderingContext2D, rx: number, cy: number, p
   ctx.textBaseline = "alphabetic";
 }
 
-/* ── Isaac's closing call-to-action screen (clunoid.com is the hero) ───────── */
-const OUTRO_LINE =
-  "Loved this? You can make your own stat battle on any topic at clunoid dot com. Type any ranking, watch it race — for free. Come create yours.";
-
+/* ── Isaac's closing screen — brief & clean: "Made on clunoid.com" ─────────────
+ * The voice-over is a single PRE-RECORDED clip (public/stat-outro.mp3, Isaac
+ * saying "Made on clunoid dot com. Make your own.") reused for every outro, so
+ * we never call TTS per video. Re-record with scripts/genoutro.mjs if the line
+ * changes. */
 function drawStatOutro(ctx: CanvasRenderingContext2D, W: number, H: number, p: number) {
-  const min = Math.min(W, H);
   drawCertificateBg(ctx, W, H);
   ctx.globalAlpha = clamp01(p * 3);
   ctx.textAlign = "center";
   ctx.textBaseline = "alphabetic";
 
-  setFont(ctx, min * 0.044, 700);
-  ctx.fillStyle = "rgba(44,40,35,0.6)";
-  ctx.fillText("You just watched a Clunoid Stat Battle", W / 2, H * 0.3);
+  // Hero "clunoid.com" centered. The eyebrow + subline are anchored to the
+  // hero's baseline by heroPx (NOT fixed H-fractions), so the phrase keeps its
+  // spacing in BOTH portrait (9:16) and landscape (16:9) — where H, but not
+  // min, shrinks. fitText also caps the glyph to the canvas width.
+  const heroPx = fitText(ctx, "clunoid.com", Math.min(W, H) * 0.165, 800, W * 0.9);
+  const cy = H * 0.5;
+  const small = heroPx * 0.3;
 
-  setFont(ctx, min * 0.072, 800);
-  ctx.fillStyle = INK;
-  ctx.fillText("Make your own — on any topic", W / 2, H * 0.42);
+  // "Made on" eyebrow — just above the hero's cap so they read as one phrase.
+  setFont(ctx, small, 700);
+  ctx.fillStyle = "rgba(44,40,35,0.58)";
+  ctx.fillText("Made on", W / 2, cy - heroPx * 0.92);
 
-  const heroPx = fitText(ctx, "clunoid.com", min * 0.155, 800, W * 0.88);
-  const sc = 0.86 + 0.14 * clamp01(p * 3);
+  const sc = 0.88 + 0.12 * clamp01(p * 3);
   ctx.save();
-  ctx.translate(W / 2, H * 0.58);
+  ctx.translate(W / 2, cy);
   ctx.scale(sc, sc);
   ctx.shadowColor = "rgba(0,0,0,0.18)";
   ctx.shadowBlur = heroPx * 0.06;
@@ -664,9 +667,11 @@ function drawStatOutro(ctx: CanvasRenderingContext2D, W: number, H: number, p: n
   ctx.fillText("clunoid.com", 0, 0);
   ctx.restore();
 
-  setFont(ctx, min * 0.05, 700);
+  // "Make your own stat battle" subline — fit to width so it never overruns.
+  const subPx = fitText(ctx, "Make your own stat battle", small, 700, W * 0.9);
+  setFont(ctx, subPx, 700);
   ctx.fillStyle = "rgba(44,40,35,0.72)";
-  ctx.fillText("Any ranking. Any era. Free.", W / 2, H * 0.72);
+  ctx.fillText("Make your own stat battle", W / 2, cy + heroPx * 0.9);
   ctx.globalAlpha = 1;
   ctx.textAlign = "left";
 }
@@ -682,18 +687,17 @@ export async function renderRaceVideo(
   const rec = createCanvasRecorder(W, H, 30, opts.host);
   const { ctx, ac, dest } = rec;
   opts.onProgress?.(4, "Loading media…");
-  // Isaac's outro line — fetched up front so we know its exact length.
+  // Isaac's outro voice — a single PRE-RECORDED clip reused for every video
+  // (no per-render TTS). Loaded up front so we know its exact length.
   let outroBuf: AudioBuffer | null = null;
   try {
-    const [, , bytes] = await Promise.all([
+    const [, , resp] = await Promise.all([
       document.fonts.load('800 120px "Baloo 2"'),
       preloadRaceImages(race),
-      fetchNarrationBytes(OUTRO_LINE),
+      fetch("/stat-outro.mp3").catch(() => null),
     ]);
-    if (bytes) {
-      const ab = new ArrayBuffer(bytes.byteLength);
-      new Uint8Array(ab).set(bytes);
-      outroBuf = await ac.decodeAudioData(ab);
+    if (resp?.ok) {
+      outroBuf = await ac.decodeAudioData(await resp.arrayBuffer());
     }
   } catch {
     /* fonts / images / voice all optional */
@@ -707,7 +711,7 @@ export async function renderRaceVideo(
     /* ignore */
   }
   const raceEnd = race.durationSec + END_HOLD;
-  const outroDur = outroBuf ? outroBuf.duration + 1.4 : 4.5;
+  const outroDur = outroBuf ? outroBuf.duration + 1.0 : 3.5;
   const total = raceEnd + outroDur;
   const t0 = ac.currentTime + 0.1;
 
