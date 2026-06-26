@@ -14,7 +14,12 @@ export const maxDuration = 180; // the brain may research + build long historica
 
 const HEX = /^#?[0-9a-fA-F]{6}$/;
 const ISO2 = /^[a-z]{2}$/;
-const NOW = new Date().getFullYear();
+const _D = new Date();
+const NOW = _D.getFullYear();
+const NOW_MONTH = _D.getMonth(); // 0-11
+const NOW_FRAC = NOW + NOW_MONTH / 12; // current date as a fractional year (e.g. 2026.42 in Jun)
+const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+const NOW_LABEL = `${MONTH_NAMES[NOW_MONTH]} ${NOW}`; // e.g. "June 2026"
 const WB_LATEST = NOW - 2; // World Bank annual data lags ~2 years (e.g. 2024 today)
 
 /** Display scale read from the request text (deterministic, not model-guessed). */
@@ -109,14 +114,14 @@ const seriesSchema = z.object({
     .describe("Chronological, ascending; FIRST keyframe = the exact start year, LAST = the exact end year. Each keyframe lists ONLY the entities that genuinely exist/compete that year."),
 });
 
-function seriesSystem(opts: { from: number; to: number; topN: number; named?: string[]; context: string; anchor: string; scaleHint: string }): string {
+function seriesSystem(opts: { from: number; to: number; topN: number; nowLabel: string; named?: string[]; context: string; anchor: string; scaleHint: string }): string {
   return `You assemble ACCURATE ranking-over-time data for an animated bar-chart race. Accuracy is paramount — use the research notes + authoritative anchors below; otherwise use the most credible scholarly figures (e.g. Maddison Project for historical GDP, IMF/World Bank for recent economics, Forbes for net worth, Transfermarkt for football values, recognised historical scholarship for army sizes). NEVER invent fake precision.
 
 REQUIREMENTS:
 - Span EXACTLY ${opts.from} to ${opts.to}: the FIRST keyframe's time = ${opts.from}, the LAST = ${opts.to}. For years beyond the latest real data, give the best current projection/estimate; for ancient/historical years, the best scholarly estimate.
 - ${opts.scaleHint}
 - METRIC DEFINITION: use the single most standard, widely-cited definition of the metric and apply it CONSISTENTLY across every year (e.g. army size = ACTIVE military personnel, not reserves or total available manpower; GDP = nominal). State nothing — just be consistent.
-- PRESENT-DAY ACCURACY (most important): the final keyframe (${opts.to}) ordering AND values MUST match current real-world data. If the research notes include a "LATEST STANDINGS" section, use it as the source of truth for the latest year's ranking and figures. Sanity-check against common knowledge (e.g. today the largest active militaries are China, India, USA, North Korea, Russia — NOT Bangladesh/Vietnam; the biggest economies are USA then China then Germany/Japan/India/UK).
+- PRESENT-DAY ACCURACY (MOST IMPORTANT): the FINAL keyframe represents TODAY (${opts.nowLabel}) — its ranking AND values MUST equal the CURRENT real-world figures as of now (use the "LATEST STANDINGS" research as the source of truth; e.g. a company's live market cap today). Use PRECISE real figures, NOT suspiciously round numbers — real values look like 4,824,531,000,000, never exactly 3,300,000,000,000. Sanity-check against common knowledge (today's biggest economies are USA>China>Germany/Japan/India/UK; largest active militaries China/India/USA/NK/Russia).
 - ${
     opts.named && opts.named.length >= 2
       ? `Use EXACTLY these competitors (no more, no fewer): ${opts.named.join(", ")}. Include every one in every keyframe of the range.`
@@ -142,11 +147,11 @@ function scaleHintFor(money: boolean, scale: DisplayScale, valueLabel: string, s
   return `Output every value as the actual ${valueLabel || "figure"}${suffix ? ` (unit: ${suffix.trim()})` : ""} as a plain number.`;
 }
 
-/* ── research: a couple of parallel web searches for richer, accurate grounding ── */
+/* ── research: web search for grounding (kept to ONE query to conserve search quota;
+ *  the model path runs a second, targeted "current value" search) ── */
 async function research(request: string): Promise<string> {
   if (!hasSearch()) return "";
-  const queries = [request, `${request} — figures by year, historical data and sources`];
-  const results = await Promise.all(queries.map((q) => webSearch(q).catch(() => null)));
+  const results = [await webSearch(`${request} — figures by year and current values`).catch(() => null)];
   const lines: string[] = [];
   const seen = new Set<string>();
   for (const r of results) {
@@ -349,20 +354,20 @@ export async function POST(req: NextRequest) {
       const anchorKey = INDICATOR_KEYS.includes(key) ? key : guess; // anchor GDP/etc. to WB reality
       const anchor = anchorKey ? await wbAnchor(anchorKey, from, to, chosenScale) : "";
 
-      // A targeted search for the LATEST standings — the projected/recent year is the
-      // hardest to get right, so ground it explicitly with current figures.
+      // A targeted search for TODAY's figures — the current value is the hardest to get
+      // right (model knowledge lags), so ground it explicitly with up-to-the-moment data.
       let ctx = context;
       if (hasSearch()) {
-        const tr = await webSearch(`${plan.title} ${to} latest ranking with current figures`).catch(() => null);
-        if (tr) ctx = (ctx + "\nLATEST STANDINGS: " + [tr.answer, ...tr.results.slice(0, 4).map((x) => `• ${x.title}: ${x.content}`)].filter(Boolean).join("\n")).slice(0, 8000);
+        const tr = await webSearch(`${plan.title} current value ${NOW_LABEL} — today's exact figures and ranking`).catch(() => null);
+        if (tr) ctx = (ctx + `\nLATEST STANDINGS (as of ${NOW_LABEL} — use these exact current figures for the final keyframe): ` + [tr.answer, ...tr.results.slice(0, 5).map((x) => `• ${x.title}: ${x.content}`)].filter(Boolean).join("\n")).slice(0, 8500);
       }
 
       const series = (
         await generateObject({
           model: MODELS.genius(),
           schema: seriesSchema,
-          system: seriesSystem({ from, to, topN, named, context: ctx, anchor, scaleHint }),
-          prompt: `${request}\nProduce the ranking-over-time series for EXACTLY ${from} to ${to}.`,
+          system: seriesSystem({ from, to, topN, nowLabel: NOW_LABEL, named, context: ctx, anchor, scaleHint }),
+          prompt: `${request}\nProduce the ranking-over-time series for EXACTLY ${from} to ${to}. The final keyframe is TODAY (${NOW_LABEL}) with current real values.`,
           temperature: 0.2,
           maxRetries: 3,
           maxTokens: 24000, // many entities × keyframes of JSON — never truncate the series
@@ -392,6 +397,10 @@ export async function POST(req: NextRequest) {
     race.events = plan.events as RaceEventRaw[];
 
     const norm = normalize(race);
+    // If the race runs to the current year, nudge the LAST keyframe's time to TODAY
+    // (fractional), so the counter ends at the current month (e.g. "Jun 2026") not January.
+    const lastKf = norm.keyframes[norm.keyframes.length - 1];
+    if (lastKf && Math.round(lastKf.time) === NOW && NOW_FRAC > lastKf.time) lastKf.time = NOW_FRAC;
     if (norm.entities.length >= 2 && norm.keyframes.length >= 2) return NextResponse.json(norm);
   } catch (e) {
     console.error("[stats] build failed:", e);

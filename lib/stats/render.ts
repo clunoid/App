@@ -278,6 +278,32 @@ function drawMediaRowAt(ctx: CanvasRenderingContext2D, items: MediaItem[], start
   }
 }
 
+/** A small ROUND media chip (a country flag beside a logo/photo) — compact, saves space. */
+function drawCircleMedia(ctx: CanvasRenderingContext2D, img: HTMLImageElement, cx: number, cy: number, d: number) {
+  const r = d / 2;
+  ctx.save();
+  ctx.shadowColor = "rgba(0,0,0,0.2)";
+  ctx.shadowBlur = d * 0.1;
+  ctx.shadowOffsetY = d * 0.03;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fillStyle = "#fff";
+  ctx.fill();
+  ctx.restore();
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.clip();
+  const s = Math.max(d / img.width, d / img.height); // cover
+  ctx.drawImage(img, cx - (img.width * s) / 2, cy - (img.height * s) / 2, img.width * s, img.height * s);
+  ctx.restore();
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.strokeStyle = "rgba(0,0,0,0.18)";
+  ctx.lineWidth = Math.max(1, d * 0.045);
+  ctx.stroke();
+}
+
 /** Pick the event that is "current" at time t (last one whose time ≤ t). */
 function activeEvent(race: RaceData, t: number): { ev: RaceEvent | null; idx: number } {
   let idx = -1;
@@ -308,7 +334,11 @@ function drawStoryPanel(
   ctx.textAlign = vertical ? "left" : "center";
   ctx.textBaseline = "alphabetic";
   const yearPx = vertical ? h * 0.4 : min * 0.32;
-  const fitPx = fitText(ctx, timeStr, yearPx, 800, vertical ? w * 0.34 : w * 0.94);
+  // Size to a CONSTANT-width sample (not the changing string) so the font never
+  // resizes frame-to-frame — the counter stays rock-steady, no "bounce".
+  const sample = span > 160 ? "8888" : "Sep 8888";
+  const fitPx = fitText(ctx, sample, yearPx, 800, vertical ? w * 0.36 : w * 0.94);
+  setFont(ctx, fitPx, 800);
   ctx.fillStyle = "rgba(74,69,62,0.9)";
   const yearY = vertical ? y + h * 0.46 : y + fitPx * 0.95;
   ctx.fillText(timeStr, vertical ? x + w * 0.02 : cx, yearY);
@@ -453,8 +483,8 @@ export function drawRaceFrame(ctx: CanvasRenderingContext2D, W: number, H: numbe
   const titleY = H * (vertical ? 0.06 : 0.085);
   const barsTop = H * (vertical ? 0.12 : 0.17);
   const barsBottom = H * (vertical ? 0.6 : 0.9);
-  const barsRight = vertical ? W - padX : W * 0.62;
-  const panelX = vertical ? padX : W * 0.635;
+  const barsRight = vertical ? W - padX : W * 0.66; // give the bars more room to stretch
+  const panelX = vertical ? padX : W * 0.675;
   const panelY = vertical ? H * 0.63 : barsTop;
   const panelW = vertical ? W - 2 * padX : W * 0.965 - panelX;
   const panelH = vertical ? H * 0.32 : barsBottom - barsTop;
@@ -481,11 +511,13 @@ export function drawRaceFrame(ctx: CanvasRenderingContext2D, W: number, H: numbe
   // so full unrounded values like "$3,300,000,000,000" always fit.
   let globalMax = 1;
   for (const f of race.frames) for (const nm in f.values) if (f.values[nm] > globalMax) globalMax = f.values[nm];
-  setFont(ctx, barH * 0.5, 800);
+  const valuePx = barH * 0.42; // compact value text so the bars can stretch as far as possible
+  const cFlagD = barH * 0.64; // small ROUND country-flag diameter
+  setFont(ctx, valuePx, 800);
   const hasCFlag = race.entities.some((e) => e.kind !== "country" && e.country);
   const valueReserve = Math.min(
-    (vertical ? W : barsRight) * 0.54,
-    ctx.measureText(fmtValue(globalMax, race)).width + (hasCFlag ? barH * 0.95 : 0) + innerPad * 3.2
+    (vertical ? W : barsRight) * 0.34, // cap kept low so the leader bar isn't held back
+    ctx.measureText(fmtValue(globalMax, race)).width + (hasCFlag ? cFlagD + innerPad : 0) + innerPad * 2.2
   );
   const maxBarW = Math.max(barH * 2, barsRight - X0 - valueReserve);
   const minBarW = flagH * 1.55 + maxBarW * 0.08; // keep the lowest bars long enough to read
@@ -539,22 +571,21 @@ export function drawRaceFrame(ctx: CanvasRenderingContext2D, W: number, H: numbe
       afterX = nx + ctx.measureText(r.e.name).width + innerPad * 0.9;
     }
 
-    // country-of-origin flag — beside a company's logo / a person's photo (not for country bars)
+    // country-of-origin flag — a small ROUND flag beside a company's logo / a person's photo
     if (r.e.kind !== "country" && r.e.country) {
       const cImg = getImg(flagUrlFromIso2(r.e.country));
       if (cImg) {
-        const cfh = barH * 0.6;
-        const cfw = mediaBoxW(cImg, cfh, "contain");
-        drawMedia(ctx, cImg, afterX + cfw / 2, yMid, cfh, "contain");
-        afterX += cfw + innerPad * 0.8;
+        drawCircleMedia(ctx, cImg, afterX + cFlagD / 2, yMid, cFlagD);
+        afterX += cFlagD + innerPad * 0.7;
       }
     }
 
-    // value (full figure)
+    // value (full figure) — fit so it never spills into the story panel
     ctx.textAlign = "left";
     ctx.fillStyle = INK;
-    setFont(ctx, barH * 0.5, 800);
-    ctx.fillText(fmtValue(r.v, race), afterX, yMid);
+    const vStr = fmtValue(r.v, race);
+    fitText(ctx, vStr, valuePx, 800, (vertical ? W * 0.97 : panelX) - afterX - innerPad);
+    ctx.fillText(vStr, afterX, yMid);
     ctx.globalAlpha = 1;
   }
   ctx.textBaseline = "alphabetic";

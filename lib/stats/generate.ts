@@ -41,9 +41,9 @@ export function toRaceData(raw: RaceRaw): RaceData {
     frames,
     events,
     topN: Math.min(raw.topN && raw.topN >= 3 ? raw.topN : 12, entities.length),
-    // Slow, watchable pace — the years should glide, not fly. Scales with the span
-    // (and keyframe count) up to a shareable cap.
-    durationSec: Math.min(140, Math.max(55, Math.max((frames.length ? frames[frames.length - 1].time - frames[0].time : 0) * 1.1, frames.length * 3))),
+    // Slow, watchable pace (~half the previous speed) — the years crawl, the values
+    // roll. Scales with the span (and keyframe count) up to a shareable cap.
+    durationSec: Math.min(240, Math.max(80, Math.max((frames.length ? frames[frames.length - 1].time - frames[0].time : 0) * 2.2, frames.length * 6))),
   };
 }
 
