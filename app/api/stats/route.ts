@@ -121,7 +121,7 @@ REQUIREMENTS:
 - Span EXACTLY ${opts.from} to ${opts.to}: the FIRST keyframe's time = ${opts.from}, the LAST = ${opts.to}. For years beyond the latest real data, give the best current projection/estimate; for ancient/historical years, the best scholarly estimate.
 - ${opts.scaleHint}
 - METRIC DEFINITION: use the single most standard, widely-cited definition of the metric and apply it CONSISTENTLY across every year (e.g. army size = ACTIVE military personnel, not reserves or total available manpower; GDP = nominal). State nothing — just be consistent.
-- PRESENT-DAY ACCURACY (MOST IMPORTANT): the FINAL keyframe represents TODAY (${opts.nowLabel}). Its ranking AND values MUST equal the figure for RIGHT NOW from the "LATEST STANDINGS" research — specifically the one labelled "today"/"current"/"as of ${opts.nowLabel}", NOT a recent peak, all-time high, or a month-ago value (e.g. if research says "$4.82T today, down from a $5.22T peak", use 4,820,000,000,000). Use the MOST PRECISE figure the research gives (avoid suspiciously round numbers when a precise one is available). Sanity-check against common knowledge (today's biggest economies are USA>China>Germany/Japan/India/UK; largest active militaries China/India/USA/NK/Russia).
+- PRESENT-DAY ACCURACY (MOST IMPORTANT): the FINAL keyframe represents TODAY (${opts.nowLabel}). Its ranking AND values MUST equal the figure for RIGHT NOW from the research notes — use the "CURRENT (${opts.nowLabel})" line and the sourced numbers, specifically the value for "today"/"current"/"as of ${opts.nowLabel}", NOT a recent peak, all-time high, or a month-ago value (e.g. if research says "$4.82T today, down from a $5.22T peak", use 4,820,000,000,000). Use the MOST PRECISE figure the research gives (avoid suspiciously round numbers when a precise one is available). Sanity-check against common knowledge (today's biggest economies are USA>China>Germany/Japan/India/UK; largest active militaries China/India/USA/NK/Russia).
 - ${
     opts.named && opts.named.length >= 2
       ? `Use EXACTLY these competitors (no more, no fewer): ${opts.named.join(", ")}. Include every one in every keyframe of the range.`
@@ -147,28 +147,22 @@ function scaleHintFor(money: boolean, scale: DisplayScale, valueLabel: string, s
   return `Output every value as the actual ${valueLabel || "figure"}${suffix ? ` (unit: ${suffix.trim()})` : ""} as a plain number.`;
 }
 
-/* ── research: web search for grounding (kept to ONE query to conserve search quota;
- *  the model path runs a second, targeted "current value" search) ── */
-async function research(request: string): Promise<string> {
+/* ── research: ONE web search per generation (conserves Tavily quota). Advanced
+ *  depth returns rich content with REAL numbers — both historical AND current —
+ *  so it grounds the whole race (routing, story, and the up-to-the-moment value). ── */
+async function research(request: string, nowLabel: string): Promise<string> {
   if (!hasSearch()) return "";
-  const results = [await webSearch(`${request} — figures by year and current values`).catch(() => null)];
+  const r = await webSearch(`${request} — full ranking over time with historical AND exact CURRENT figures as of ${nowLabel} (with numbers)`, { depth: "advanced", maxResults: 6 }).catch(() => null);
+  if (!r) return "";
   const lines: string[] = [];
   const seen = new Set<string>();
-  for (const r of results) {
-    if (!r) continue;
-    if (r.answer && !seen.has(r.answer)) {
-      seen.add(r.answer);
-      lines.push(r.answer);
-    }
-    for (const x of r.results.slice(0, 4)) {
-      const line = `• ${x.title}: ${x.content}`;
-      if (!seen.has(x.url)) {
-        seen.add(x.url);
-        lines.push(line);
-      }
-    }
+  if (r.answer) lines.push(`CURRENT (${nowLabel}): ${r.answer}`);
+  for (const x of r.results.slice(0, 6)) {
+    if (seen.has(x.url)) continue;
+    seen.add(x.url);
+    lines.push(`• ${x.title}: ${x.content}`);
   }
-  return lines.join("\n").slice(0, 6000);
+  return lines.join("\n").slice(0, 9000);
 }
 
 /** Compact World Bank "anchor" (a few sampled years' top values) to ground the brain. */
@@ -295,7 +289,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const context = await research(request);
+    const context = await research(request, NOW_LABEL);
 
     const { object: plan } = await generateObject({
       model: MODELS.genius(),
@@ -354,20 +348,13 @@ export async function POST(req: NextRequest) {
       const anchorKey = INDICATOR_KEYS.includes(key) ? key : guess; // anchor GDP/etc. to WB reality
       const anchor = anchorKey ? await wbAnchor(anchorKey, from, to, chosenScale) : "";
 
-      // A targeted search for TODAY's figures — the current value is the hardest to get
-      // right (model knowledge lags), so ground it explicitly with up-to-the-moment data.
-      let ctx = context;
-      if (hasSearch()) {
-        // advanced depth pulls richer content with REAL current numbers (basic only returns a vague summary)
-        const tr = await webSearch(`${plan.title} — exact current figures and full ranking as of ${NOW_LABEL}, with numbers`, { depth: "advanced", maxResults: 6 }).catch(() => null);
-        if (tr) ctx = (ctx + `\nLATEST STANDINGS (as of ${NOW_LABEL} — use these exact current figures for the final keyframe, do NOT round to clean numbers): ` + [tr.answer, ...tr.results.slice(0, 6).map((x) => `• ${x.title}: ${x.content}`)].filter(Boolean).join("\n")).slice(0, 9500);
-      }
-
+      // Reuse the SINGLE research pass (no second search) — it already carries the
+      // current figures (advanced depth), so the series can ground today's value from it.
       const series = (
         await generateObject({
           model: MODELS.genius(),
           schema: seriesSchema,
-          system: seriesSystem({ from, to, topN, nowLabel: NOW_LABEL, named, context: ctx, anchor, scaleHint }),
+          system: seriesSystem({ from, to, topN, nowLabel: NOW_LABEL, named, context, anchor, scaleHint }),
           prompt: `${request}\nProduce the ranking-over-time series for EXACTLY ${from} to ${to}. The final keyframe is TODAY (${NOW_LABEL}) with current real values.`,
           temperature: 0.2,
           maxRetries: 3,
