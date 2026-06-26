@@ -8,17 +8,20 @@ import { TikTokIcon, XIcon, WhatsAppIcon } from "./SocialIcons";
 
 type Status = "idle" | "rendering" | "ready" | "unsupported" | "error";
 
-const SHARE_CAPTION = "I played Guess the Country on clunoid.com 🌍 Can you beat me?";
+const DEFAULT_CAPTION = "I played Guess the Country on clunoid.com 🌍 Can you beat me?";
+const SHARE_URL = "https://clunoid.com";
 // Each opens the app via its universal/https link (the OS routes to the installed
 // app, else the web). text-capable ones (X, WhatsApp) get a prefilled caption.
-const PLATFORMS: { key: string; label: string; color: string; href: string; Icon: ComponentType<{ size?: number; className?: string }> }[] = [
-  { key: "instagram", label: "Instagram", color: "#E1306C", href: "https://www.instagram.com/", Icon: Instagram },
-  { key: "tiktok", label: "TikTok", color: "#010101", href: "https://www.tiktok.com/upload", Icon: TikTokIcon },
-  { key: "youtube", label: "YouTube", color: "#FF0000", href: "https://www.youtube.com/upload", Icon: Youtube },
-  { key: "x", label: "X", color: "#000000", href: `https://twitter.com/intent/tweet?text=${encodeURIComponent(SHARE_CAPTION)}&url=${encodeURIComponent("https://clunoid.com")}`, Icon: XIcon },
-  { key: "whatsapp", label: "WhatsApp", color: "#25D366", href: `https://wa.me/?text=${encodeURIComponent(SHARE_CAPTION + " https://clunoid.com")}`, Icon: WhatsAppIcon },
-  { key: "facebook", label: "Facebook", color: "#1877F2", href: `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent("https://clunoid.com")}`, Icon: Facebook },
-];
+function buildPlatforms(caption: string): { key: string; label: string; color: string; href: string; Icon: ComponentType<{ size?: number; className?: string }> }[] {
+  return [
+    { key: "instagram", label: "Instagram", color: "#E1306C", href: "https://www.instagram.com/", Icon: Instagram },
+    { key: "tiktok", label: "TikTok", color: "#010101", href: "https://www.tiktok.com/upload", Icon: TikTokIcon },
+    { key: "youtube", label: "YouTube", color: "#FF0000", href: "https://www.youtube.com/upload", Icon: Youtube },
+    { key: "x", label: "X", color: "#000000", href: `https://twitter.com/intent/tweet?text=${encodeURIComponent(caption)}&url=${encodeURIComponent(SHARE_URL)}`, Icon: XIcon },
+    { key: "whatsapp", label: "WhatsApp", color: "#25D366", href: `https://wa.me/?text=${encodeURIComponent(caption + " " + SHARE_URL)}`, Icon: WhatsAppIcon },
+    { key: "facebook", label: "Facebook", color: "#1877F2", href: `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(SHARE_URL)}`, Icon: Facebook },
+  ];
+}
 
 /**
  * Generic, reusable "share your game as a video" modal. Any game passes a
@@ -31,6 +34,9 @@ export function ShareModal({
   makeSpec,
   render,
   fileName = "clunoid",
+  heading = "Share your game",
+  idleHint,
+  caption = DEFAULT_CAPTION,
 }: {
   open: boolean;
   onClose: () => void;
@@ -38,7 +44,11 @@ export function ShareModal({
   // Optional custom renderer (e.g. the Stat Battle race). Defaults to renderReel(makeSpec).
   render?: (aspect: ReelAspect, opts: { host: HTMLElement | null; signal: AbortSignal; onProgress: (p: number, l: string) => void }) => Promise<{ blob: Blob; ext: string; mime: string; hadVoice: boolean }>;
   fileName?: string;
+  heading?: string; // modal title (e.g. "Share your stat battle")
+  idleHint?: string; // the idle preview hint (defaults to the game wording)
+  caption?: string; // prefilled social caption
 }) {
+  const platforms = buildPlatforms(caption);
   const [aspect, setAspect] = useState<ReelAspect>("9:16");
   const [status, setStatus] = useState<Status>("idle");
   const [pct, setPct] = useState(0);
@@ -127,14 +137,14 @@ export function ShareModal({
       const file = new File([blob], `${fileName}.${fileExt}`, { type: mime });
       const nav = navigator as Navigator & { canShare?: (d: ShareData) => boolean };
       if (nav.canShare && nav.canShare({ files: [file] })) {
-        await nav.share({ files: [file], title: "My Clunoid game", text: "Can you beat my score? Play at clunoid.com" });
+        await nav.share({ files: [file], title: heading, text: caption });
         return;
       }
     } catch (e) {
       if ((e as Error)?.name === "AbortError") return;
     }
     download(); // no file-share support (most desktops) → download instead
-  }, [download, fileExt, fileName, mime]);
+  }, [download, fileExt, fileName, mime, caption, heading]);
 
   // Open a specific platform: save the video first, then open the app (its https
   // link routes to the installed app on the device, else the web) so the user can
@@ -161,7 +171,7 @@ export function ShareModal({
       >
         <div className="flex items-center justify-between px-5 pt-4">
           <h2 className="flex items-center gap-2 text-lg font-extrabold">
-            <Film size={20} /> Share your game
+            <Film size={20} /> {heading}
           </h2>
           <button onClick={handleClose} aria-label="Close" className="grid h-9 w-9 place-items-center rounded-full bg-white/10 text-white/80 transition hover:bg-white/20">
             <X size={18} />
@@ -207,7 +217,7 @@ export function ShareModal({
               <video src={url} controls playsInline autoPlay loop className="max-h-full max-w-full rounded-xl" />
             ) : (
               <div ref={hostRef} className="flex h-full w-full items-center justify-center p-2">
-                {status === "idle" && <p className="px-6 text-center text-sm text-white/55">Create a {aspect} video of your game, narrated by Isaac.</p>}
+                {status === "idle" && <p className="px-6 text-center text-sm text-white/55">{idleHint || `Create a ${aspect} video of your game, narrated by Isaac.`}</p>}
               </div>
             )}
           </div>
@@ -237,7 +247,7 @@ export function ShareModal({
             <div>
               <p className="mb-2 text-center text-xs font-semibold text-white/55">Post to</p>
               <div className="flex flex-wrap items-center justify-center gap-2.5">
-                {PLATFORMS.map((p) => (
+                {platforms.map((p) => (
                   <button
                     key={p.key}
                     onClick={() => postTo(p.href)}

@@ -6,7 +6,7 @@ import { ArrowLeft, Sparkles, Play, RotateCcw, Film, Loader2, BarChart3 } from "
 import { DocumentBackground } from "@/components/games/DocumentBackground";
 import { ShareModal } from "@/components/share/ShareModal";
 import { buildRace, gdpFallbackRace, PRESETS } from "@/lib/stats/generate";
-import { drawRaceFrame, newRaceState, renderRaceVideo } from "@/lib/stats/render";
+import { drawRaceFrame, newRaceState, preloadRaceImages, renderRaceVideo } from "@/lib/stats/render";
 import type { RaceData } from "@/lib/stats/types";
 import type { ReelAspect } from "@/lib/share/reel";
 
@@ -32,6 +32,7 @@ export function StatBattle({ initialRequest }: { initialRequest?: string }) {
     setPhase("building");
     try {
       const data = await buildRace(r || PRESETS[0].request);
+      await preloadRaceImages(data).catch(() => {}); // flags ready before the race plays
       setRace(data);
       setReplayKey((n) => n + 1);
       setPhase("playing");
@@ -39,7 +40,9 @@ export function StatBattle({ initialRequest }: { initialRequest?: string }) {
       // The GDP default always works (offline fallback); other topics that fail
       // (usually a transient model hiccup) ask the user to try again.
       if (isDefault) {
-        setRace(gdpFallbackRace());
+        const fb = gdpFallbackRace();
+        await preloadRaceImages(fb).catch(() => {});
+        setRace(fb);
         setReplayKey((n) => n + 1);
         setPhase("playing");
       } else {
@@ -97,7 +100,10 @@ export function StatBattle({ initialRequest }: { initialRequest?: string }) {
             <>
               <div className="h-14 w-14 animate-spin rounded-full border-4 border-[#2c2823]/25 border-t-[#2c2823]" />
               <p className="mt-5 text-xl font-extrabold" style={{ color: INK }}>
-                Isaac is researching your stat battle…
+                Researching real data & building the story…
+              </p>
+              <p className="mt-2 text-sm font-semibold" style={{ color: "#2c2823aa" }}>
+                Pulling verified figures and writing the timeline — this takes a moment.
               </p>
             </>
           ) : (
@@ -148,7 +154,9 @@ export function StatBattle({ initialRequest }: { initialRequest?: string }) {
               </div>
 
               {failed && <p className="mt-5 text-sm font-bold" style={{ color: SEAL }}>Couldn&apos;t build that one — try rephrasing the topic and range.</p>}
-              <p className="mt-4 text-[11px] text-[#2c2823]/45">Figures are AI-researched estimates.</p>
+              <p className="mt-4 max-w-sm text-[11px] leading-relaxed text-[#2c2823]/50">
+                Economy &amp; population stats use verified World Bank data; other topics are researched from the live web. Watch it here, or turn it into a video for your projects.
+              </p>
             </>
           )}
         </div>
@@ -185,6 +193,7 @@ export function StatBattle({ initialRequest }: { initialRequest?: string }) {
             <Film size={18} /> Create video
           </button>
         </div>
+        <p className="-mt-1 text-center text-xs font-semibold text-[#2c2823]/55">Watch it here, or export a video (optional) for your projects &amp; socials.</p>
       </div>
 
       {race && (
@@ -192,6 +201,9 @@ export function StatBattle({ initialRequest }: { initialRequest?: string }) {
           open={shareOpen}
           onClose={() => setShareOpen(false)}
           fileName="clunoid-stat-battle"
+          heading="Share your stat battle"
+          idleHint="Export this stat battle as a video — for your projects & socials."
+          caption={`${race.title} — a stat battle from clunoid.com 📊`}
           render={(aspect: ReelAspect, opts) => renderRaceVideo(race, aspect, opts)}
         />
       )}

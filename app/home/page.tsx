@@ -36,7 +36,11 @@ function isGameRequest(t: string): boolean {
 function isStatRequest(t: string): boolean {
   const s = t.toLowerCase();
   if (/\b(bar[-\s]?chart\s*race|stat\s*(battle|race)|ranking\s*over\s*time|race\s*chart)\b/.test(s)) return true;
-  if (/\b(gdp|elo|population|net worth|market cap|subscribers?|medals?)\b/.test(s) && /\b(over time|race|battle|history|ranking|\d{4})\b/.test(s)) return true;
+  if (
+    /\b(gdp|elo|population|net worth|market cap|subscribers?|medals?|emissions|co2|military spending|defen[cs]e spending|life expectancy|inflation|per capita|largest economies|richest countries|most populous)\b/.test(s) &&
+    /\b(over time|race|battle|history|ranking|rankings|\d{4})\b/.test(s)
+  )
+    return true;
   return false;
 }
 

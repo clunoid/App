@@ -2,23 +2,29 @@
 
 import { PALETTE, type RaceData, type RaceRaw } from "./types";
 import { GDP_FALLBACK } from "./fallback";
+import { flagUrlForName } from "./flags";
 
 /** Quick-start stat battles — natural requests the brain researches. First = GDP. */
 export const PRESETS: { label: string; request: string }[] = [
-  { label: "GDP Battle", request: "World's Largest Economies by GDP — epic battle, 1960 to 2026" },
-  { label: "Chess ELO", request: "Top chess players by ELO rating, 1967 to 2026" },
-  { label: "Populations", request: "World's most populous countries, 1950 to 2026" },
-  { label: "Companies", request: "Biggest companies by market capitalization, 1995 to 2026" },
-  { label: "YouTubers", request: "Most-subscribed YouTube channels, 2010 to 2026" },
-  { label: "Olympic Gold", request: "Olympic gold medals by country (cumulative), 1896 to 2024" },
+  { label: "GDP Battle", request: "World's Largest Economies by GDP — epic battle, 1960 to today" },
+  { label: "Populations", request: "World's most populous countries, 1960 to today" },
+  { label: "GDP per capita", request: "Richest countries by GDP per capita, 1960 to today" },
+  { label: "Military spending", request: "Top countries by military spending, 1960 to today" },
+  { label: "CO₂ emitters", request: "Biggest CO2 emitters by country, 1960 to today" },
+  { label: "Chess ELO", request: "Top chess players by ELO rating, 1970 to today" },
 ];
 
 /** Brain output (raw, name→value arrays) → normalized client model (sorted, maps). */
 export function toRaceData(raw: RaceRaw): RaceData {
-  const entities = (raw.entities || []).map((e, i) => ({ name: e.name, color: e.color || PALETTE[i % PALETTE.length] }));
+  const entities = (raw.entities || []).map((e, i) => ({
+    name: e.name,
+    color: e.color || PALETTE[i % PALETTE.length],
+    image: e.image || flagUrlForName(e.name) || undefined,
+  }));
   const frames = (raw.keyframes || [])
     .map((k) => ({ time: k.time, values: Object.fromEntries(k.values.map((v) => [v.name, v.value])) }))
     .sort((a, b) => a.time - b.time);
+  const events = (raw.events || []).slice().sort((a, b) => a.time - b.time);
   return {
     title: raw.title || "Stat Battle",
     subtitle: raw.subtitle || "",
@@ -26,9 +32,12 @@ export function toRaceData(raw: RaceRaw): RaceData {
     unitPrefix: raw.unitPrefix || "",
     unitSuffix: raw.unitSuffix || "",
     timeLabel: raw.timeLabel || "Year",
+    decimals: Number.isFinite(raw.decimals as number) ? (raw.decimals as number) : 1,
+    source: raw.source || "",
     entities,
     frames,
-    topN: Math.min(10, entities.length),
+    events,
+    topN: Math.min(raw.topN && raw.topN >= 5 ? raw.topN : 12, entities.length),
     durationSec: Math.min(60, Math.max(28, frames.length * 2.4)),
   };
 }
