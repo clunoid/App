@@ -79,7 +79,7 @@ HONOR THE USER EXACTLY — never override an explicit request:
 - topN = the user's requested visible-bar count if given (e.g. "top 15"→15, "5 players"→5); else a natural number for the topic.
 - If the user NAMES specific competitors (e.g. "Elon Musk vs Jeff Bezos vs Bernard Arnault"), put them verbatim in namedEntities and set topN to that count.
 - entityKind: country (flags), company (logos), person (photos), or mixed.
-- Units: national GDP / economic output → displayScale "M" (millions, the classic stat-battle style); personal net worth or company market-cap → "B" (billions); ratings/counts → raw. Money decimals 1, counts/ratings 0. Honor any unit the user specifies.
+- Units — show FULL figures, NEVER abbreviated/rounded (no "0.6B"): national GDP → displayScale "M" (full millions, e.g. 28750956); company market-cap → "raw" (full dollars, e.g. 757423097909); personal net worth → "M" (full millions, e.g. 72751); ratings/counts → "raw". decimals 0 always (full integers). Only use B/T if the user EXPLICITLY asks to abbreviate.
 
 EVENT STORY: the REAL, well-established events across the WHOLE span that explain the movement (wars, crashes, oil shocks, reforms, booms, a person's company IPO, a record transfer). Each beat: punchy title, 1–2 truthful sentences, and media — for COUNTRY topics use partyCodes (flags; vsCodes only for a conflict's other side); for PEOPLE/COMPANY topics use subjects (the names whose photo/logo illustrates the beat). Be exact with dates/facts.`;
 }
@@ -87,7 +87,13 @@ EVENT STORY: the REAL, well-established events across the WHOLE span that explai
 /* ── 2. MODEL DATA: web-researched series for anything the catalogue can't cover ── */
 const seriesSchema = z.object({
   entities: z
-    .array(z.object({ name: z.string(), color: z.string().optional().describe("Distinct hex like '#c0392b'.") }))
+    .array(
+      z.object({
+        name: z.string(),
+        color: z.string().optional().describe("Distinct hex like '#c0392b'."),
+        country: z.string().optional().describe("ISO-3166 alpha-2 (lowercase) of the entity's origin — a company's HQ country, a person's nationality (e.g. 'us' for Apple, 'fr' for Mbappé). Omit for country entities."),
+      })
+    )
     .min(2)
     .max(44)
     .describe("EVERY competitor that appears in ANY keyframe across the whole span (a rolling roster — far more than are visible at once); distinct, readable colors."),
@@ -119,6 +125,7 @@ REQUIREMENTS:
 - HISTORICAL VALIDITY: an entity must NOT appear in any keyframe before it existed (e.g. no Ottoman Empire before ~1300, no USA before 1776, no Germany before 1871, a footballer only during their career) and not after it dissolved/retired. Use period-appropriate entities.
 - Use 14–24 keyframes (max 28) spaced across the full span so the race moves believably; more for longer spans.
 - Every values[].name must EXACTLY match an entities[].name. Give each a DISTINCT high-contrast hex color. Use widely-recognised names.
+- For EACH entity set its "country" field = the ISO-3166 alpha-2 (lowercase) of its origin (company HQ, person's nationality) — e.g. Apple→"us", Mbappé→"fr", Toyota→"jp". This shows a small flag of where it's from.
 - Be exact with the most recent / present-day standing.
 
 ${opts.anchor ? `AUTHORITATIVE ANCHORS (real World Bank actuals, NOMINAL current-US$, in the SAME units you must output). Match these for the listed years, and CRUCIALLY keep the SAME measure for ALL years — figures BEFORE the earliest anchor year must be SMALLER than that anchor and trend smoothly into it with NO jump or discontinuity (e.g. if US 1960 ≈ 543,000 (millions), then US 1929 must be far lower like ~100,000, not higher). Do NOT switch to inflation-adjusted or PPP dollars for the historical part.\n${opts.anchor}\n` : ""}RESEARCH NOTES:
@@ -199,13 +206,17 @@ function normalize(raw: RaceRaw): RaceRaw {
   const seen = new Set<string>();
   const entities = (raw.entities || [])
     .filter((e) => e && e.name && !seen.has(e.name) && seen.add(e.name))
-    .map((e, i) => ({
-      name: e.name.trim(),
-      color: HEX.test(e.color || "") ? (e.color!.startsWith("#") ? e.color! : "#" + e.color!) : PALETTE[i % PALETTE.length],
-      kind: e.kind,
-      // only auto-attach a flag for country entities; logos/photos are resolved client-side
-      image: e.image || (e.kind && e.kind !== "country" ? undefined : flagUrlForName(e.name)) || undefined,
-    }));
+    .map((e, i) => {
+      const cc = String(e.country || "").toLowerCase().trim();
+      return {
+        name: e.name.trim(),
+        color: HEX.test(e.color || "") ? (e.color!.startsWith("#") ? e.color! : "#" + e.color!) : PALETTE[i % PALETTE.length],
+        kind: e.kind,
+        country: ISO2.test(cc) ? cc : undefined,
+        // only auto-attach a flag for country entities; logos/photos are resolved client-side
+        image: e.image || (e.kind && e.kind !== "country" ? undefined : flagUrlForName(e.name)) || undefined,
+      };
+    });
   const names = new Set(entities.map((e) => e.name));
   const keyframes = (raw.keyframes || [])
     .map((k) => ({
@@ -320,10 +331,19 @@ export async function POST(req: NextRequest) {
     // Web-researched model path — honors the EXACT span, named entities, projections.
     if (!race) {
       const money = plan.unitPrefix === "$";
-      const chosenScale = (scale || (plan.displayScale as DisplayScale) || (money ? "M" : "raw")) as DisplayScale;
+      // Scale is DETERMINISTIC (the brain's choice is unreliable) and always FULL — no
+      // "0.6B" abbreviation. Company market-cap → raw full dollars (the classic look);
+      // GDP / net worth → full millions; counts → the brain's scale. User can override.
+      const chosenScale: DisplayScale = scale
+        ? scale
+        : money
+        ? plan.entityKind === "company"
+          ? "raw"
+          : "M"
+        : (plan.displayScale as DisplayScale) || "raw";
       const unitPrefix = plan.unitPrefix || "";
       const unitSuffix = money ? SCALE_SUFFIX[chosenScale] : plan.unitSuffix || "";
-      const dec = decimals ?? plan.decimals ?? (money ? 1 : 0);
+      const dec = decimals ?? plan.decimals ?? 0; // full integers by default (no "0.6B" rounding)
       const scaleHint = scaleHintFor(money, chosenScale, plan.valueLabel || "", unitSuffix);
 
       const anchorKey = INDICATOR_KEYS.includes(key) ? key : guess; // anchor GDP/etc. to WB reality
@@ -361,7 +381,7 @@ export async function POST(req: NextRequest) {
         decimals: dec,
         topN: named.length >= 2 ? named.length : topN,
         source: hasSearch() ? "Researched data" : "",
-        entities: (series.entities || []).map((e) => ({ name: e.name, color: e.color || "", kind: kindOf(e.name) })),
+        entities: (series.entities || []).map((e) => ({ name: e.name, color: e.color || "", kind: kindOf(e.name), country: e.country })),
         keyframes: series.keyframes || [],
       };
     }

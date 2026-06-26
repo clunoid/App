@@ -41,7 +41,13 @@ function getImg(url?: string | null): HTMLImageElement | null {
 /** Preload every image a race needs (bar flags + event flags) before exporting. */
 export async function preloadRaceImages(race: RaceData): Promise<void> {
   const urls = new Set<string>();
-  for (const e of race.entities) if (e.image) urls.add(e.image);
+  for (const e of race.entities) {
+    if (e.image) urls.add(e.image);
+    if (e.kind !== "country" && e.country) {
+      const cf = flagUrlFromIso2(e.country);
+      if (cf) urls.add(cf);
+    }
+  }
   for (const ev of race.events) {
     for (const c of [...(ev.partyCodes || []), ...(ev.vsCodes || [])]) {
       const u = flagUrlFromIso2(c);
@@ -129,6 +135,15 @@ export function fmtValue(v: number, race: RaceData): string {
   const d = race.decimals ?? 1;
   const num = Math.max(0, v).toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d });
   return (race.unitPrefix || "") + num + (race.unitSuffix || "");
+}
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+/** A granular time counter: "Sep 2020" for normal spans (months glide by), "YYYY" for very long/ancient spans. */
+function fmtTime(curT: number, span: number): string {
+  const year = Math.floor(curT);
+  if (span > 160 || year < 1) return `${Math.max(0, Math.round(curT))}`;
+  const month = Math.min(11, Math.max(0, Math.floor((curT - year) * 12)));
+  return `${MONTHS[month]} ${year}`;
 }
 
 /* ── per-frame smoothing state (shared by live preview + export) ──────────── */
@@ -287,19 +302,16 @@ function drawStoryPanel(
   const cx = x + w / 2;
   const min = Math.min(w, h);
 
-  // Big year
-  ctx.textAlign = "center";
+  // Big time counter — glides month-by-month ("Sep 2020"), or year for long/ancient spans.
+  const span = race.frames.length ? race.frames[race.frames.length - 1].time - race.frames[0].time : 0;
+  const timeStr = fmtTime(curT, span);
+  ctx.textAlign = vertical ? "left" : "center";
   ctx.textBaseline = "alphabetic";
-  const yearPx = vertical ? h * 0.42 : min * 0.34;
-  setFont(ctx, yearPx, 800);
+  const yearPx = vertical ? h * 0.4 : min * 0.32;
+  const fitPx = fitText(ctx, timeStr, yearPx, 800, vertical ? w * 0.34 : w * 0.94);
   ctx.fillStyle = "rgba(74,69,62,0.9)";
-  const yearY = vertical ? y + h * 0.46 : y + yearPx * 0.95;
-  ctx.fillText(`${Math.round(curT)}`, vertical ? x + w * 0.22 : cx, yearY);
-  if (race.timeLabel && !vertical) {
-    setFont(ctx, min * 0.05, 700);
-    ctx.fillStyle = "rgba(74,69,62,0.55)";
-    ctx.fillText(race.timeLabel, cx, y + yearPx * 0.95 - yearPx * 0.92);
-  }
+  const yearY = vertical ? y + h * 0.46 : y + fitPx * 0.95;
+  ctx.fillText(timeStr, vertical ? x + w * 0.02 : cx, yearY);
 
   if (!ev) return;
   ctx.globalAlpha = evAlpha;
@@ -465,7 +477,16 @@ export function drawRaceFrame(ctx: CanvasRenderingContext2D, W: number, H: numbe
   const X0 = padX;
   const flagH = barH * 0.82;
   const innerPad = barH * 0.2;
-  const valueReserve = (vertical ? W : barsRight) * (vertical ? 0.26 : 0.2);
+  // Adaptive value column: wide enough for the largest FULL figure (+ a country flag),
+  // so full unrounded values like "$3,300,000,000,000" always fit.
+  let globalMax = 1;
+  for (const f of race.frames) for (const nm in f.values) if (f.values[nm] > globalMax) globalMax = f.values[nm];
+  setFont(ctx, barH * 0.5, 800);
+  const hasCFlag = race.entities.some((e) => e.kind !== "country" && e.country);
+  const valueReserve = Math.min(
+    (vertical ? W : barsRight) * 0.54,
+    ctx.measureText(fmtValue(globalMax, race)).width + (hasCFlag ? barH * 0.95 : 0) + innerPad * 3.2
+  );
   const maxBarW = Math.max(barH * 2, barsRight - X0 - valueReserve);
   const minBarW = flagH * 1.55 + maxBarW * 0.08; // keep the lowest bars long enough to read
 
@@ -495,7 +516,7 @@ export function drawRaceFrame(ctx: CanvasRenderingContext2D, W: number, H: numbe
     ctx.textBaseline = "middle";
     if (flagImg) drawMedia(ctx, flagImg, flagCx, yMid, flagH, fit);
 
-    let valueX: number;
+    let afterX: number; // where content after the bar (country flag + value) starts
     if (nameW <= innerAvail) {
       // inside, white with a soft shadow for legibility on any color
       ctx.save();
@@ -506,22 +527,34 @@ export function drawRaceFrame(ctx: CanvasRenderingContext2D, W: number, H: numbe
       setFont(ctx, barH * 0.5, 800);
       ctx.fillText(r.e.name, X0 + w - flagW - innerPad * 1.6, yMid);
       ctx.restore();
-      valueX = X0 + w + innerPad * 1.4;
+      afterX = X0 + w + innerPad * 1.2;
     } else {
       // outside, in ink (short bar)
       ctx.textAlign = "left";
       ctx.fillStyle = INK;
       setFont(ctx, barH * 0.48, 800);
-      const nx = X0 + w + innerPad * 1.4;
+      const nx = X0 + w + innerPad * 1.2;
       ctx.fillText(r.e.name, nx, yMid);
-      valueX = nx + ctx.measureText(r.e.name).width + innerPad * 1.2;
+      setFont(ctx, barH * 0.5, 800);
+      afterX = nx + ctx.measureText(r.e.name).width + innerPad * 0.9;
     }
 
-    // value
+    // country-of-origin flag — beside a company's logo / a person's photo (not for country bars)
+    if (r.e.kind !== "country" && r.e.country) {
+      const cImg = getImg(flagUrlFromIso2(r.e.country));
+      if (cImg) {
+        const cfh = barH * 0.6;
+        const cfw = mediaBoxW(cImg, cfh, "contain");
+        drawMedia(ctx, cImg, afterX + cfw / 2, yMid, cfh, "contain");
+        afterX += cfw + innerPad * 0.8;
+      }
+    }
+
+    // value (full figure)
     ctx.textAlign = "left";
     ctx.fillStyle = INK;
     setFont(ctx, barH * 0.5, 800);
-    ctx.fillText(fmtValue(r.v, race), valueX, yMid);
+    ctx.fillText(fmtValue(r.v, race), afterX, yMid);
     ctx.globalAlpha = 1;
   }
   ctx.textBaseline = "alphabetic";

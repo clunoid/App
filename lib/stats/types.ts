@@ -13,6 +13,7 @@ export type RaceEntity = {
   color: string;
   kind?: EntityKind; // how to fetch its media (country→flag, company→logo, person→photo)
   image?: string; // resolved media image drawn at the bar's end
+  country?: string; // ISO-3166 alpha-2 of the entity's origin → a small flag beside non-country media
 };
 
 // A timeline beat shown in the story panel (bottom/right) while its time is current.

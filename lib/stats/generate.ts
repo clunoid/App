@@ -20,6 +20,7 @@ export function toRaceData(raw: RaceRaw): RaceData {
     name: e.name,
     color: e.color || PALETTE[i % PALETTE.length],
     kind: e.kind,
+    country: e.country,
     // only auto-flag country entities; logos/photos are resolved client-side (resolveRaceMedia)
     image: e.image || (e.kind && e.kind !== "country" ? undefined : flagUrlForName(e.name)) || undefined,
   }));
@@ -40,7 +41,9 @@ export function toRaceData(raw: RaceRaw): RaceData {
     frames,
     events,
     topN: Math.min(raw.topN && raw.topN >= 3 ? raw.topN : 12, entities.length),
-    durationSec: Math.min(95, Math.max(40, frames.length * 3.4)),
+    // Slow, watchable pace — the years should glide, not fly. Scales with the span
+    // (and keyframe count) up to a shareable cap.
+    durationSec: Math.min(140, Math.max(55, Math.max((frames.length ? frames[frames.length - 1].time - frames[0].time : 0) * 1.1, frames.length * 3))),
   };
 }
 
