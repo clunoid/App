@@ -4,20 +4,20 @@ import { z } from "zod";
 import { MODELS, hasAnthropic } from "@/lib/models";
 import { PALETTE, type RaceEventRaw, type RaceRaw } from "@/lib/stats/types";
 import { GDP_FALLBACK } from "@/lib/stats/fallback";
-import { INDICATORS, INDICATOR_KEYS, indicatorMenu, guessIndicatorKey, detectYears, type DisplayScale, type IndicatorKey } from "@/lib/stats/indicators";
+import { INDICATORS, INDICATOR_KEYS, indicatorMenu, guessIndicatorKey, detectYears, SCALE_DIV, SCALE_SUFFIX, type DisplayScale, type IndicatorKey } from "@/lib/stats/indicators";
 import { buildWorldBankRace } from "@/lib/stats/sources/worldbank";
 import { flagUrlForName } from "@/lib/stats/flags";
 import { hasSearch, webSearch } from "@/lib/data/search";
 
 export const runtime = "nodejs";
-export const maxDuration = 90; // real research + multi-decade data is heavier than the flags game
+export const maxDuration = 180; // the brain may research + build long historical spans — give it room
 
 const HEX = /^#?[0-9a-fA-F]{6}$/;
 const ISO2 = /^[a-z]{2}$/;
 const NOW = new Date().getFullYear();
+const WB_LATEST = NOW - 2; // World Bank annual data lags ~2 years (e.g. 2024 today)
 
-/** Read the display scale from the request text (deterministic, not model-guessed).
- *  Default for big figures is millions; the user can ask for exact/billions/etc. */
+/** Display scale read from the request text (deterministic, not model-guessed). */
 function detectScale(request: string): { scale?: DisplayScale; decimals?: number } {
   const s = request.toLowerCase();
   if (/\b(exact|full figures?|precise|to the (dollar|cent)|unrounded)\b/.test(s)) return { scale: "raw", decimals: 0 };
@@ -28,50 +28,59 @@ function detectScale(request: string): { scale?: DisplayScale; decimals?: number
   return {}; // → the indicator's default (money: millions)
 }
 
+/** Did the user explicitly TYPE a year beyond World Bank's coverage (wants projection)? */
+function wantsBeyondWB(request: string): boolean {
+  const yrs = (request.match(/\b(1[5-9]\d{2}|20\d{2})\b/g) || []).map(Number);
+  return yrs.some((y) => y > WB_LATEST);
+}
+
 /* ── 1. PLAN + STORY: map the free-text request to a data plan + event timeline ── */
 const planSchema = z.object({
-  mode: z.enum(["worldbank", "model"]).describe("'worldbank' if a catalogue indicator below fits a by-country ranking; else 'model' for web-researched data."),
+  mode: z.enum(["worldbank", "model"]).describe("'worldbank' ONLY for a modern (1960+) by-country ranking matching a catalogue indicator; 'model' for everything else (historical, people, clubs, projections, custom lists)."),
   indicatorKey: z.string().describe("One catalogue key (exact) when mode='worldbank', else 'none'."),
   title: z.string().describe("Punchy headline, e.g. \"World's Largest Economies\"."),
-  subtitle: z.string().optional().describe("Range + unit note, e.g. 'Nominal GDP · 1960–2026'."),
-  valueLabel: z.string().optional().describe("[model mode] what the number is, e.g. 'ELO rating'."),
+  subtitle: z.string().optional().describe("Range + unit note, e.g. 'Nominal GDP · 1560–2026'."),
+  valueLabel: z.string().optional().describe("[model] what the number is, e.g. 'Net worth', 'ELO', 'Army size'."),
   unitPrefix: z.string().optional().describe("[model] prefix e.g. '$' (empty if none)."),
-  unitSuffix: z.string().optional().describe("[model] suffix e.g. ' pts', '%', 'M' (empty if none)."),
-  displayScale: z.enum(["raw", "K", "M", "B", "T"]).optional().describe("How to scale big numbers; for money default 'M' (millions) unless the user asks otherwise (e.g. 'exact'→'raw', 'in billions'→'B')."),
-  decimals: z.number().int().min(0).max(3).optional().describe("Decimals shown per value (money: 1; counts/ratings: 0)."),
-  fromYear: z.number().int().describe("Start year (respect the user; sensible default else)."),
-  toYear: z.number().int().describe("End year (default the current year)."),
-  topN: z.number().int().min(5).max(20).describe("Visible bars (default 12)."),
+  unitSuffix: z.string().optional().describe("[model] suffix e.g. ' pts', '%', 'M', ' troops' (empty if none)."),
+  displayScale: z.enum(["raw", "K", "M", "B", "T"]).optional().describe("[model] magnitude. Money → 'M' unless the user says otherwise."),
+  decimals: z.number().int().min(0).max(3).optional().describe("Decimals per value (money: 1; counts/ratings: 0)."),
+  fromYear: z.number().int().describe("EXACT start the user asked for (e.g. 1560, or 1 for '1 AD'). Only default (≈1960) when the user gave none."),
+  toYear: z.number().int().describe("EXACT end the user asked for (e.g. 2026). Default the current year when none given."),
+  topN: z.number().int().min(3).max(20).describe("Visible bars: default 12; if the user names specific competitors, set this to how many they named."),
+  namedEntities: z.array(z.string()).optional().describe("If the user EXPLICITLY listed competitors (e.g. 'Elon Musk vs Jeff Bezos vs ...'), list them EXACTLY here; else omit."),
   events: z
     .array(
       z.object({
         time: z.number().describe("Year this beat begins (within the range, ascending)."),
         title: z.string().describe("Bold era/event headline."),
         description: z.string().describe("1–2 factual sentences about what happened and its effect on the ranking."),
-        partyCodes: z.array(z.string()).optional().describe("ISO-3166 alpha-2 codes (lowercase) of the main countries/side involved → shown as flags."),
+        partyCodes: z.array(z.string()).optional().describe("ISO-3166 alpha-2 codes (lowercase) of the main countries/side → shown as flags."),
         vsCodes: z.array(z.string()).optional().describe("ONLY for conflicts: the opposing side's ISO-3166 alpha-2 codes."),
       })
     )
     .min(3)
-    .max(16)
-    .describe("The real story across the FULL span — major, factual events that explain the movement, ascending by time."),
+    .max(50)
+    .describe("The real story across the FULL span — major, factual events that explain the movement, ascending by time. Roughly one beat per major turning point (more for longer spans)."),
 });
 
 function planSystem(): string {
-  return `You plan an animated bar-chart race ("stat battle") AND write its factual event story. The numbers come from VERIFIED sources, never from you, so focus on (a) routing to the right data and (b) an accurate narrative.
+  return `You plan an animated bar-chart race ("stat battle") AND write its factual event story. Numbers come from VERIFIED sources, so focus on (a) routing and (b) an accurate narrative.
 
-DATA ROUTING — prefer verified World Bank data. If the request is a by-country ranking that matches one of these indicators, set mode="worldbank" and indicatorKey to that EXACT key:
+ROUTING:
+- mode="worldbank" ONLY when it's a by-COUNTRY ranking that matches a catalogue indicator AND the whole span is modern (fromYear ≥ 1960). Pick the EXACT indicatorKey:
 ${indicatorMenu()}
-Otherwise set mode="model", indicatorKey="none" (e.g. chess ELO, football clubs, companies, YouTubers — these will be web-researched).
+- mode="model" for EVERYTHING ELSE — historical spans (pre-1960, e.g. "GDP 1560–2026", "armies 1 AD–2026"), people/companies/clubs (net worth, market cap, transfer values), sports, or any custom list. These get web-researched.
 
-UNITS: for money default displayScale "M" (millions, full figures) with decimals 1, UNLESS the user specifies (e.g. "exact figures"→"raw" decimals 0; "in billions"→"B"; "trillions"→"T"). Counts/ratings → decimals 0.
+HONOR THE USER EXACTLY — never override an explicit request:
+- fromYear/toYear = EXACTLY the years asked (1560, 1 for "1 AD", 2026, …). Only default (fromYear≈1960, toYear=${NOW}) when the user gives none.
+- If the user NAMES specific competitors (e.g. "Elon Musk vs Jeff Bezos vs Bernard Arnault"), put them verbatim in namedEntities and set topN to that count.
+- Units: national GDP / economic output → displayScale "M" (millions, the classic stat-battle style); personal net worth or company market-cap → "B" (billions); ratings/counts → raw. Money decimals 1, counts/ratings 0. Honor any unit the user specifies.
 
-RANGE: respect any years the user gives. Otherwise default fromYear≈1960 (World Bank data starts ~1960) and toYear=${NOW}. topN default 12.
-
-EVENT STORY: write the REAL, well-established events across the whole span that explain why the ranking shifts (wars, oil shocks, recessions, reforms, booms). Each beat: a punchy title, 1–2 truthful sentences, and the ISO-3166 alpha-2 flags of the countries involved (partyCodes; add vsCodes only for a conflict's opposing side). Be accurate with dates and facts.`;
+EVENT STORY: the REAL, well-established events across the WHOLE span that explain the movement (wars, crashes, oil shocks, reforms, booms, a person's company IPO, a transfer). Each beat: punchy title, 1–2 truthful sentences, and ISO-3166 alpha-2 flags of those involved (partyCodes; vsCodes only for a conflict's other side). Be exact with dates/facts.`;
 }
 
-/* ── 2. MODEL DATA: web-researched series for topics no catalogue covers ──────── */
+/* ── 2. MODEL DATA: web-researched series for anything the catalogue can't cover ── */
 const seriesSchema = z.object({
   entities: z
     .array(z.object({ name: z.string(), color: z.string().optional().describe("Distinct hex like '#c0392b'.") }))
@@ -87,18 +96,79 @@ const seriesSchema = z.object({
     )
     .min(2)
     .max(60)
-    .describe("Chronological, ascending. Sparse but enough to interpolate smoothly. Omit a name before it existed."),
+    .describe("Chronological, ascending; FIRST keyframe = the exact start year, LAST = the exact end year. Sparse but enough to interpolate smoothly."),
 });
 
-function seriesSystem(context: string): string {
-  return `You assemble ACCURATE ranking-over-time data for an animated bar-chart race. Use the research notes below as your primary source; fill gaps only with well-established facts. NEVER invent fake precision.
-- Pick 8–14 entities (max 16) that genuinely led the metric across the span, including ones that entered or fell out of the top over time.
-- 12–18 keyframes (max 24), ascending, spanning the FULL range; space them so values change believably. Omit a name before it existed.
-- Every values[].name must exactly match an entities[].name. Give each a DISTINCT high-contrast hex color.
-- Be exact with the most recent keyframe (present-day standing).
+function seriesSystem(opts: { from: number; to: number; named?: string[]; context: string; anchor: string; scaleHint: string }): string {
+  return `You assemble ACCURATE ranking-over-time data for an animated bar-chart race. Accuracy is paramount — use the research notes + authoritative anchors below; otherwise use the most credible scholarly figures (e.g. Maddison Project for historical GDP, IMF/World Bank for recent economics, Forbes for net worth, Transfermarkt for football values, recognised historical scholarship for army sizes). NEVER invent fake precision.
 
-RESEARCH NOTES:
-${context || "(none — use well-established knowledge; do not fabricate precision)"}`;
+REQUIREMENTS:
+- Span EXACTLY ${opts.from} to ${opts.to}: the FIRST keyframe's time = ${opts.from}, the LAST = ${opts.to}. For years beyond the latest real data, give the best current projection/estimate; for ancient/historical years, the best scholarly estimate.
+- ${opts.scaleHint}
+- METRIC DEFINITION: use the single most standard, widely-cited definition of the metric and apply it CONSISTENTLY across every year (e.g. army size = ACTIVE military personnel, not reserves or total available manpower; GDP = nominal). State nothing — just be consistent.
+- PRESENT-DAY ACCURACY (most important): the final keyframe (${opts.to}) ordering AND values MUST match current real-world data. If the research notes include a "LATEST STANDINGS" section, use it as the source of truth for the latest year's ranking and figures. Sanity-check against common knowledge (e.g. today the largest active militaries are China, India, USA, North Korea, Russia — NOT Bangladesh/Vietnam; the biggest economies are USA then China then Germany/Japan/India/UK).
+- ${opts.named && opts.named.length >= 2 ? `Use EXACTLY these competitors (no more, no fewer): ${opts.named.join(", ")}.` : "Pick the 8–14 entities (max 16) that genuinely led the metric across the span, including ones that entered or fell out of the top over time."}
+- HISTORICAL VALIDITY: an entity must NOT appear in any keyframe before it existed (e.g. no Ottoman Empire before ~1300, no USA before 1776, no Germany before 1871) and not after it dissolved. Use period-appropriate entities.
+- Use 14–24 keyframes (max 28) spaced across the full span so the race moves believably; more for longer spans.
+- Every values[].name must EXACTLY match an entities[].name. Give each a DISTINCT high-contrast hex color. Use widely-recognised names.
+- Be exact with the most recent / present-day standing.
+
+${opts.anchor ? `AUTHORITATIVE ANCHORS (real World Bank actuals, NOMINAL current-US$, in the SAME units you must output). Match these for the listed years, and CRUCIALLY keep the SAME measure for ALL years — figures BEFORE the earliest anchor year must be SMALLER than that anchor and trend smoothly into it with NO jump or discontinuity (e.g. if US 1960 ≈ 543,000 (millions), then US 1929 must be far lower like ~100,000, not higher). Do NOT switch to inflation-adjusted or PPP dollars for the historical part.\n${opts.anchor}\n` : ""}RESEARCH NOTES:
+${opts.context || "(none — use well-established knowledge; do not fabricate precision)"}`;
+}
+
+/** Human description of the output scale + a concrete calibration example. */
+function scaleHintFor(money: boolean, scale: DisplayScale, valueLabel: string, suffix: string): string {
+  if (money) {
+    const names: Record<DisplayScale, string> = { raw: "actual US dollars", K: "thousands of USD", M: "millions of USD", B: "billions of USD", T: "trillions of USD" };
+    const ref = (28.75e12 / SCALE_DIV[scale]).toLocaleString(undefined, { maximumFractionDigits: 2 });
+    return `Output every value as a NUMBER in ${names[scale]} (calibration: a $28.75 trillion economy = ${ref}). Do NOT include the currency symbol or commas in the number.`;
+  }
+  return `Output every value as the actual ${valueLabel || "figure"}${suffix ? ` (unit: ${suffix.trim()})` : ""} as a plain number.`;
+}
+
+/* ── research: a couple of parallel web searches for richer, accurate grounding ── */
+async function research(request: string): Promise<string> {
+  if (!hasSearch()) return "";
+  const queries = [request, `${request} — figures by year, historical data and sources`];
+  const results = await Promise.all(queries.map((q) => webSearch(q).catch(() => null)));
+  const lines: string[] = [];
+  const seen = new Set<string>();
+  for (const r of results) {
+    if (!r) continue;
+    if (r.answer && !seen.has(r.answer)) {
+      seen.add(r.answer);
+      lines.push(r.answer);
+    }
+    for (const x of r.results.slice(0, 4)) {
+      const line = `• ${x.title}: ${x.content}`;
+      if (!seen.has(x.url)) {
+        seen.add(x.url);
+        lines.push(line);
+      }
+    }
+  }
+  return lines.join("\n").slice(0, 6000);
+}
+
+/** Compact World Bank "anchor" (a few sampled years' top values) to ground the brain. */
+async function wbAnchor(key: IndicatorKey, from: number, to: number, scale?: DisplayScale): Promise<string> {
+  try {
+    const wb = await buildWorldBankRace({ indicatorKey: key, from: Math.max(1960, from), to: Math.min(WB_LATEST, to), topN: 12, scale });
+    if (!wb || wb.keyframes.length < 2) return "";
+    const kfs = wb.keyframes;
+    const pick = [kfs[0], kfs[Math.floor(kfs.length / 2)], kfs[kfs.length - 1]];
+    const suffix = wb.unitSuffix || "";
+    const prefix = wb.unitPrefix || "";
+    return pick
+      .map((k) => {
+        const top = [...k.values].sort((a, b) => b.value - a.value).slice(0, 10);
+        return `${k.time}: ` + top.map((v) => `${v.name} ${prefix}${Math.round(v.value).toLocaleString()}${suffix}`).join(", ");
+      })
+      .join("\n");
+  } catch {
+    return "";
+  }
 }
 
 /* ── normalization (the renderer must never see malformed data) ────────────────── */
@@ -112,7 +182,8 @@ function cleanEvents(events: RaceEventRaw[] | undefined): RaceEventRaw[] {
       partyCodes: (e.partyCodes || []).map((c) => String(c).toLowerCase().trim()).filter((c) => ISO2.test(c)).slice(0, 8),
       vsCodes: (e.vsCodes || []).map((c) => String(c).toLowerCase().trim()).filter((c) => ISO2.test(c)).slice(0, 8),
     }))
-    .sort((a, b) => a.time - b.time);
+    .sort((a, b) => a.time - b.time)
+    .slice(0, 50);
 }
 
 function normalize(raw: RaceRaw): RaceRaw {
@@ -142,7 +213,7 @@ function normalize(raw: RaceRaw): RaceRaw {
     unitSuffix: raw.unitSuffix || "",
     timeLabel: raw.timeLabel || "Year",
     decimals: Number.isFinite(raw.decimals as number) ? Math.max(0, Math.min(3, raw.decimals as number)) : 1,
-    topN: raw.topN && raw.topN >= 5 ? Math.min(20, raw.topN) : 12,
+    topN: raw.topN && raw.topN >= 3 ? Math.min(20, raw.topN) : 12,
     source: raw.source || "",
     entities,
     keyframes,
@@ -150,13 +221,12 @@ function normalize(raw: RaceRaw): RaceRaw {
   };
 }
 
-/** Build a VERIFIED World Bank race for an indicator (no brain needed) — used as a
- *  fallback so common topics still show real data if the brain is unavailable. */
+/** Verified World Bank race for an indicator (no brain needed). */
 async function buildVerified(key: IndicatorKey, request: string): Promise<RaceRaw | null> {
   const { from, to } = detectYears(request, NOW);
   const { scale, decimals } = detectScale(request);
   const wbFrom = Math.max(1960, from);
-  const wbTo = Math.min(NOW, Math.max(to, wbFrom + 1));
+  const wbTo = Math.min(WB_LATEST, Math.max(to > WB_LATEST ? WB_LATEST : to, wbFrom + 1));
   const wb = await buildWorldBankRace({ indicatorKey: key, from: wbFrom, to: wbTo, topN: 12, scale, decimals });
   if (!wb) return null;
   const ind = INDICATORS[key];
@@ -188,8 +258,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(normalize(await defaultRace()));
   }
 
-  // No brain available: still serve VERIFIED data for catalogue topics (no story);
-  // topics that need research can't be built, so signal a retry.
+  // No brain: still serve VERIFIED data for catalogue topics (no story); else retry.
   if (!hasAnthropic()) {
     if (guess) {
       const v = await buildVerified(guess, request).catch(() => null);
@@ -199,67 +268,85 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    // Optional live web research — grounds the plan + any model-built series in real sources.
-    let context = "";
-    if (hasSearch()) {
-      const r = await webSearch(`${request} ranking by year (data)`).catch(() => null);
-      if (r) context = [r.answer, ...r.results.slice(0, 4).map((x) => `• ${x.title}: ${x.content}`)].filter(Boolean).join("\n").slice(0, 4000);
-    }
+    const context = await research(request);
 
     const { object: plan } = await generateObject({
       model: MODELS.genius(),
       schema: planSchema,
       system: planSystem(),
-      prompt: context ? `${request}\n\nResearch notes (for the story + routing):\n${context}` : request,
+      prompt: context ? `${request}\n\nResearch notes (for routing + the story):\n${context}` : request,
       temperature: 0.2,
       maxRetries: 3,
+      maxTokens: 12000, // the long-span event story can be many beats
     });
 
     const from = Math.min(plan.fromYear, plan.toYear);
     const to = Math.max(plan.fromYear, plan.toYear);
     const topN = plan.topN || 12;
     const key = plan.indicatorKey as IndicatorKey;
+    const { scale, decimals } = detectScale(request);
+    const named = (plan.namedEntities || []).map((n) => n.trim()).filter(Boolean);
+
+    // World Bank is used ONLY when the whole span is modern (≥1960), the user didn't
+    // ask for a year beyond real data, and no specific competitors were named.
+    const wbEligible =
+      plan.mode === "worldbank" &&
+      INDICATOR_KEYS.includes(key) &&
+      from >= 1960 &&
+      !wantsBeyondWB(request) &&
+      named.length < 2;
 
     let race: RaceRaw | null = null;
 
-    // Verified World Bank path. Scale is read from the request (deterministic),
-    // defaulting to the indicator's natural scale (money → millions).
-    if (plan.mode === "worldbank" && INDICATOR_KEYS.includes(key)) {
-      const wbFrom = Math.max(1960, from); // World Bank data begins ~1960
-      const { scale, decimals } = detectScale(request);
+    if (wbEligible) {
       try {
-        race = await buildWorldBankRace({
-          indicatorKey: key,
-          from: wbFrom,
-          to: Math.min(NOW, to),
-          topN,
-          scale,
-          decimals,
-        });
+        race = await buildWorldBankRace({ indicatorKey: key, from, to: Math.min(WB_LATEST, to), topN, scale, decimals });
       } catch {
         race = null;
       }
     }
 
-    // Web-researched model path (topics no catalogue covers).
+    // Web-researched model path — honors the EXACT span, named entities, projections.
     if (!race) {
-      const { object: series } = await generateObject({
-        model: MODELS.genius(),
-        schema: seriesSchema,
-        system: seriesSystem(context),
-        prompt: `${request}\nRange: ${from} to ${to}. Provide the ranking-over-time series.`,
-        temperature: 0.2,
-        maxRetries: 3,
-      });
+      const money = plan.unitPrefix === "$";
+      const chosenScale = (scale || (plan.displayScale as DisplayScale) || (money ? "M" : "raw")) as DisplayScale;
+      const unitPrefix = plan.unitPrefix || "";
+      const unitSuffix = money ? SCALE_SUFFIX[chosenScale] : plan.unitSuffix || "";
+      const dec = decimals ?? plan.decimals ?? (money ? 1 : 0);
+      const scaleHint = scaleHintFor(money, chosenScale, plan.valueLabel || "", unitSuffix);
+
+      const anchorKey = INDICATOR_KEYS.includes(key) ? key : guess; // anchor GDP/etc. to WB reality
+      const anchor = anchorKey ? await wbAnchor(anchorKey, from, to, chosenScale) : "";
+
+      // A targeted search for the LATEST standings — the projected/recent year is the
+      // hardest to get right, so ground it explicitly with current figures.
+      let ctx = context;
+      if (hasSearch()) {
+        const tr = await webSearch(`${plan.title} ${to} latest ranking with current figures`).catch(() => null);
+        if (tr) ctx = (ctx + "\nLATEST STANDINGS: " + [tr.answer, ...tr.results.slice(0, 4).map((x) => `• ${x.title}: ${x.content}`)].filter(Boolean).join("\n")).slice(0, 8000);
+      }
+
+      const series = (
+        await generateObject({
+          model: MODELS.genius(),
+          schema: seriesSchema,
+          system: seriesSystem({ from, to, named, context: ctx, anchor, scaleHint }),
+          prompt: `${request}\nProduce the ranking-over-time series for EXACTLY ${from} to ${to}.`,
+          temperature: 0.2,
+          maxRetries: 3,
+          maxTokens: 24000, // many entities × keyframes of JSON — never truncate the series
+        })
+      ).object;
+
       race = {
         title: plan.title,
         valueLabel: plan.valueLabel || "",
-        unitPrefix: plan.unitPrefix || "",
-        unitSuffix: plan.unitSuffix || "",
+        unitPrefix,
+        unitSuffix,
         timeLabel: "Year",
-        decimals: plan.decimals ?? (plan.unitPrefix === "$" ? 1 : 0),
-        topN,
-        source: hasSearch() ? "Web research" : "",
+        decimals: dec,
+        topN: named.length >= 2 ? named.length : topN,
+        source: hasSearch() ? "Researched data" : "",
         entities: (series.entities || []).map((e) => ({ name: e.name, color: e.color || "", image: flagUrlForName(e.name) || undefined })),
         keyframes: series.keyframes || [],
       };
@@ -276,12 +363,10 @@ export async function POST(req: NextRequest) {
     console.error("[stats] build failed:", e);
   }
 
-  // The brain failed (e.g. transient / out of credits). For catalogue topics we can
-  // still return VERIFIED World Bank data (just without the written story).
+  // The brain failed (transient). For catalogue topics, still return VERIFIED data.
   if (guess) {
     const v = await buildVerified(guess, request).catch(() => null);
     if (v) return NextResponse.json(normalize(v));
   }
-  // A specific non-catalogue request failed — tell the client to offer a retry.
   return NextResponse.json({ error: true }, { status: 200 });
 }

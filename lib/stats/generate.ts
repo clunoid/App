@@ -38,7 +38,7 @@ export function toRaceData(raw: RaceRaw): RaceData {
     frames,
     events,
     topN: Math.min(raw.topN && raw.topN >= 5 ? raw.topN : 12, entities.length),
-    durationSec: Math.min(60, Math.max(28, frames.length * 2.4)),
+    durationSec: Math.min(95, Math.max(40, frames.length * 3.4)),
   };
 }
 

@@ -9,7 +9,7 @@ import type { RaceData, RaceEvent } from "./types";
 const FONT = '"Baloo 2", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
 const INK = "#2c2823";
 const SEAL = "#8a2433";
-const END_HOLD = 2.6; // hold the final standings at the end
+const END_HOLD = 3.5; // hold the final standings at the end
 
 const clamp01 = (n: number) => Math.max(0, Math.min(1, n));
 
@@ -380,7 +380,7 @@ export function drawRaceFrame(ctx: CanvasRenderingContext2D, W: number, H: numbe
   const ranked = race.entities.map((e) => ({ e, v: vals.get(e.name) || 0 })).sort((a, b) => b.v - a.v);
   const dt = state.init ? Math.max(0, Math.min(0.1, el - state.lastEl)) : 0;
   state.lastEl = el;
-  const kRank = state.init ? 1 - Math.exp(-dt * 8) : 1;
+  const kRank = state.init ? 1 - Math.exp(-dt * 8) : 1; // snappy settle so bars sit at clean rows (overall pace is set by durationSec)
   const kMax = state.init ? 1 - Math.exp(-dt * 5) : 1;
   const targetMax = Math.max(1e-6, ranked.length ? ranked[0].v : 1);
   state.max = state.init ? state.max + (targetMax - state.max) * kMax : targetMax;
@@ -427,19 +427,20 @@ export function drawRaceFrame(ctx: CanvasRenderingContext2D, W: number, H: numbe
 
   // ── bars ──
   const rowH = (barsBottom - barsTop) / race.topN;
-  const barH = rowH * 0.78;
+  const barH = rowH * 0.9; // thick bars with a minimal gap (matches the reference look)
   const X0 = padX;
-  const flagH = barH * 0.8;
-  const innerPad = barH * 0.22;
+  const flagH = barH * 0.82;
+  const innerPad = barH * 0.2;
   const valueReserve = (vertical ? W : barsRight) * (vertical ? 0.26 : 0.2);
   const maxBarW = Math.max(barH * 2, barsRight - X0 - valueReserve);
+  const minBarW = flagH * 1.55 + maxBarW * 0.08; // keep the lowest bars long enough to read
 
   for (const r of ranked) {
     const dispR = state.disp.get(r.e.name)!;
     if (dispR > race.topN - 0.25) continue;
     const alpha = clamp01(race.topN - dispR);
     const yMid = barsTop + dispR * rowH + rowH / 2;
-    const w = Math.max(barH * 0.9, (r.v / maxV) * maxBarW);
+    const w = Math.max(minBarW, (r.v / maxV) * maxBarW);
     ctx.globalAlpha = alpha;
 
     // flat solid bar (data-viz look — no gradient/heavy shadow)
