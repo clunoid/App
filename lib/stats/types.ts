@@ -5,10 +5,14 @@
  * sparse time keyframes; the renderer interpolates between them for a smooth race.
  */
 
+// What an entity IS — drives which media we show on its bar (flag / logo / photo).
+export type EntityKind = "country" | "company" | "person" | "other";
+
 export type RaceEntity = {
   name: string;
   color: string;
-  image?: string; // a small media image drawn at the bar's end (a flag, a logo…)
+  kind?: EntityKind; // how to fetch its media (country→flag, company→logo, person→photo)
+  image?: string; // resolved media image drawn at the bar's end
 };
 
 // A timeline beat shown in the story panel (bottom/right) while its time is current.
@@ -18,8 +22,11 @@ export type RaceEventRaw = {
   description: string; // a short paragraph about what happened
   partyCodes?: string[]; // ISO-3166 alpha-2 codes → flags shown as media (a side)
   vsCodes?: string[]; // optional opposing side → drawn after a "vs"
+  subjects?: string[]; // entity/person/company names whose media best illustrates the beat
 };
-export type RaceEvent = RaceEventRaw;
+export type RaceEvent = RaceEventRaw & {
+  subjectMedia?: string[]; // resolved image URLs for `subjects` (filled client-side)
+};
 
 // Raw shape returned by the brain / API (values as an array — JSON friendly).
 export type RaceKeyframeRaw = { time: number; values: { name: string; value: number }[] };

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { generateObject } from "ai";
 import { z } from "zod";
 import { MODELS, hasAnthropic } from "@/lib/models";
-import { PALETTE, type RaceEventRaw, type RaceRaw } from "@/lib/stats/types";
+import { PALETTE, type EntityKind, type RaceEventRaw, type RaceRaw } from "@/lib/stats/types";
 import { GDP_FALLBACK } from "@/lib/stats/fallback";
 import { INDICATORS, INDICATOR_KEYS, indicatorMenu, guessIndicatorKey, detectYears, SCALE_DIV, SCALE_SUFFIX, type DisplayScale, type IndicatorKey } from "@/lib/stats/indicators";
 import { buildWorldBankRace } from "@/lib/stats/sources/worldbank";
@@ -47,7 +47,8 @@ const planSchema = z.object({
   decimals: z.number().int().min(0).max(3).optional().describe("Decimals per value (money: 1; counts/ratings: 0)."),
   fromYear: z.number().int().describe("EXACT start the user asked for (e.g. 1560, or 1 for '1 AD'). Only default (≈1960) when the user gave none."),
   toYear: z.number().int().describe("EXACT end the user asked for (e.g. 2026). Default the current year when none given."),
-  topN: z.number().int().min(3).max(20).describe("Visible bars: default 12; if the user names specific competitors, set this to how many they named."),
+  topN: z.number().int().min(3).max(25).describe("How many bars are VISIBLE at once. Use the user's number if they gave one (e.g. 'top 15'→15, '5 players'→5); otherwise pick a natural count for the topic (≈10–15). This is the visible window, NOT the total roster."),
+  entityKind: z.enum(["country", "company", "person", "mixed", "other"]).describe("What the competitors ARE — drives their bar media: country→flag, company→logo, person→photo. 'mixed' if it varies."),
   namedEntities: z.array(z.string()).optional().describe("If the user EXPLICITLY listed competitors (e.g. 'Elon Musk vs Jeff Bezos vs ...'), list them EXACTLY here; else omit."),
   events: z
     .array(
@@ -55,8 +56,9 @@ const planSchema = z.object({
         time: z.number().describe("Year this beat begins (within the range, ascending)."),
         title: z.string().describe("Bold era/event headline."),
         description: z.string().describe("1–2 factual sentences about what happened and its effect on the ranking."),
-        partyCodes: z.array(z.string()).optional().describe("ISO-3166 alpha-2 codes (lowercase) of the main countries/side → shown as flags."),
+        partyCodes: z.array(z.string()).optional().describe("ISO-3166 alpha-2 codes (lowercase) of the countries involved → shown as flags. Use for country topics / wars."),
         vsCodes: z.array(z.string()).optional().describe("ONLY for conflicts: the opposing side's ISO-3166 alpha-2 codes."),
+        subjects: z.array(z.string()).optional().describe("For NON-country topics: 1–3 entity/person/company names whose photo/logo best illustrates this beat (e.g. ['Kylian Mbappé'] or ['Tesla, Inc.']). Names should match entities where possible."),
       })
     )
     .min(3)
@@ -74,10 +76,12 @@ ${indicatorMenu()}
 
 HONOR THE USER EXACTLY — never override an explicit request:
 - fromYear/toYear = EXACTLY the years asked (1560, 1 for "1 AD", 2026, …). Only default (fromYear≈1960, toYear=${NOW}) when the user gives none.
+- topN = the user's requested visible-bar count if given (e.g. "top 15"→15, "5 players"→5); else a natural number for the topic.
 - If the user NAMES specific competitors (e.g. "Elon Musk vs Jeff Bezos vs Bernard Arnault"), put them verbatim in namedEntities and set topN to that count.
+- entityKind: country (flags), company (logos), person (photos), or mixed.
 - Units: national GDP / economic output → displayScale "M" (millions, the classic stat-battle style); personal net worth or company market-cap → "B" (billions); ratings/counts → raw. Money decimals 1, counts/ratings 0. Honor any unit the user specifies.
 
-EVENT STORY: the REAL, well-established events across the WHOLE span that explain the movement (wars, crashes, oil shocks, reforms, booms, a person's company IPO, a transfer). Each beat: punchy title, 1–2 truthful sentences, and ISO-3166 alpha-2 flags of those involved (partyCodes; vsCodes only for a conflict's other side). Be exact with dates/facts.`;
+EVENT STORY: the REAL, well-established events across the WHOLE span that explain the movement (wars, crashes, oil shocks, reforms, booms, a person's company IPO, a record transfer). Each beat: punchy title, 1–2 truthful sentences, and media — for COUNTRY topics use partyCodes (flags; vsCodes only for a conflict's other side); for PEOPLE/COMPANY topics use subjects (the names whose photo/logo illustrates the beat). Be exact with dates/facts.`;
 }
 
 /* ── 2. MODEL DATA: web-researched series for anything the catalogue can't cover ── */
@@ -85,21 +89,21 @@ const seriesSchema = z.object({
   entities: z
     .array(z.object({ name: z.string(), color: z.string().optional().describe("Distinct hex like '#c0392b'.") }))
     .min(2)
-    .max(30)
-    .describe("Every competitor that appears in ANY keyframe; distinct, readable colors."),
+    .max(44)
+    .describe("EVERY competitor that appears in ANY keyframe across the whole span (a rolling roster — far more than are visible at once); distinct, readable colors."),
   keyframes: z
     .array(
       z.object({
         time: z.number().describe("The year/time, ascending across keyframes."),
-        values: z.array(z.object({ name: z.string().describe("MUST match an entities[].name exactly."), value: z.number() })).min(2).max(30),
+        values: z.array(z.object({ name: z.string().describe("MUST match an entities[].name exactly."), value: z.number() })).min(2).max(44),
       })
     )
     .min(2)
     .max(60)
-    .describe("Chronological, ascending; FIRST keyframe = the exact start year, LAST = the exact end year. Sparse but enough to interpolate smoothly."),
+    .describe("Chronological, ascending; FIRST keyframe = the exact start year, LAST = the exact end year. Each keyframe lists ONLY the entities that genuinely exist/compete that year."),
 });
 
-function seriesSystem(opts: { from: number; to: number; named?: string[]; context: string; anchor: string; scaleHint: string }): string {
+function seriesSystem(opts: { from: number; to: number; topN: number; named?: string[]; context: string; anchor: string; scaleHint: string }): string {
   return `You assemble ACCURATE ranking-over-time data for an animated bar-chart race. Accuracy is paramount — use the research notes + authoritative anchors below; otherwise use the most credible scholarly figures (e.g. Maddison Project for historical GDP, IMF/World Bank for recent economics, Forbes for net worth, Transfermarkt for football values, recognised historical scholarship for army sizes). NEVER invent fake precision.
 
 REQUIREMENTS:
@@ -107,8 +111,12 @@ REQUIREMENTS:
 - ${opts.scaleHint}
 - METRIC DEFINITION: use the single most standard, widely-cited definition of the metric and apply it CONSISTENTLY across every year (e.g. army size = ACTIVE military personnel, not reserves or total available manpower; GDP = nominal). State nothing — just be consistent.
 - PRESENT-DAY ACCURACY (most important): the final keyframe (${opts.to}) ordering AND values MUST match current real-world data. If the research notes include a "LATEST STANDINGS" section, use it as the source of truth for the latest year's ranking and figures. Sanity-check against common knowledge (e.g. today the largest active militaries are China, India, USA, North Korea, Russia — NOT Bangladesh/Vietnam; the biggest economies are USA then China then Germany/Japan/India/UK).
-- ${opts.named && opts.named.length >= 2 ? `Use EXACTLY these competitors (no more, no fewer): ${opts.named.join(", ")}.` : "Pick the 8–14 entities (max 16) that genuinely led the metric across the span, including ones that entered or fell out of the top over time."}
-- HISTORICAL VALIDITY: an entity must NOT appear in any keyframe before it existed (e.g. no Ottoman Empire before ~1300, no USA before 1776, no Germany before 1871) and not after it dissolved. Use period-appropriate entities.
+- ${
+    opts.named && opts.named.length >= 2
+      ? `Use EXACTLY these competitors (no more, no fewer): ${opts.named.join(", ")}. Include every one in every keyframe of the range.`
+      : `ROLLING ROSTER: provide a LARGE pool of entities (aim for ~2–3× the ${opts.topN} visible bars, up to ~40) so that as leaders fade/retire/are overtaken, FRESH ones rise to replace them — a real race, never a static set. Only include an entity in a keyframe for years it actually competes; a value of essentially 0 means "not present" — simply OMIT it from that keyframe rather than listing 0 (an entity that retires/dissolves should DISAPPEAR, replaced by the next real competitor).`
+  }
+- HISTORICAL VALIDITY: an entity must NOT appear in any keyframe before it existed (e.g. no Ottoman Empire before ~1300, no USA before 1776, no Germany before 1871, a footballer only during their career) and not after it dissolved/retired. Use period-appropriate entities.
 - Use 14–24 keyframes (max 28) spaced across the full span so the race moves believably; more for longer spans.
 - Every values[].name must EXACTLY match an entities[].name. Give each a DISTINCT high-contrast hex color. Use widely-recognised names.
 - Be exact with the most recent / present-day standing.
@@ -181,6 +189,7 @@ function cleanEvents(events: RaceEventRaw[] | undefined): RaceEventRaw[] {
       description: String(e.description || "").trim(),
       partyCodes: (e.partyCodes || []).map((c) => String(c).toLowerCase().trim()).filter((c) => ISO2.test(c)).slice(0, 8),
       vsCodes: (e.vsCodes || []).map((c) => String(c).toLowerCase().trim()).filter((c) => ISO2.test(c)).slice(0, 8),
+      subjects: (e.subjects || []).map((s) => String(s).trim()).filter(Boolean).slice(0, 4),
     }))
     .sort((a, b) => a.time - b.time)
     .slice(0, 50);
@@ -193,7 +202,9 @@ function normalize(raw: RaceRaw): RaceRaw {
     .map((e, i) => ({
       name: e.name.trim(),
       color: HEX.test(e.color || "") ? (e.color!.startsWith("#") ? e.color! : "#" + e.color!) : PALETTE[i % PALETTE.length],
-      image: e.image || flagUrlForName(e.name) || undefined,
+      kind: e.kind,
+      // only auto-attach a flag for country entities; logos/photos are resolved client-side
+      image: e.image || (e.kind && e.kind !== "country" ? undefined : flagUrlForName(e.name)) || undefined,
     }));
   const names = new Set(entities.map((e) => e.name));
   const keyframes = (raw.keyframes || [])
@@ -213,7 +224,7 @@ function normalize(raw: RaceRaw): RaceRaw {
     unitSuffix: raw.unitSuffix || "",
     timeLabel: raw.timeLabel || "Year",
     decimals: Number.isFinite(raw.decimals as number) ? Math.max(0, Math.min(3, raw.decimals as number)) : 1,
-    topN: raw.topN && raw.topN >= 3 ? Math.min(20, raw.topN) : 12,
+    topN: raw.topN && raw.topN >= 3 ? Math.min(25, raw.topN) : 12,
     source: raw.source || "",
     entities,
     keyframes,
@@ -330,7 +341,7 @@ export async function POST(req: NextRequest) {
         await generateObject({
           model: MODELS.genius(),
           schema: seriesSchema,
-          system: seriesSystem({ from, to, named, context: ctx, anchor, scaleHint }),
+          system: seriesSystem({ from, to, topN, named, context: ctx, anchor, scaleHint }),
           prompt: `${request}\nProduce the ranking-over-time series for EXACTLY ${from} to ${to}.`,
           temperature: 0.2,
           maxRetries: 3,
@@ -338,6 +349,9 @@ export async function POST(req: NextRequest) {
         })
       ).object;
 
+      const ek = plan.entityKind;
+      const kindOf = (name: string): EntityKind =>
+        ek === "mixed" ? (flagUrlForName(name) ? "country" : "other") : ek === "country" || ek === "company" || ek === "person" ? ek : "other";
       race = {
         title: plan.title,
         valueLabel: plan.valueLabel || "",
@@ -347,7 +361,7 @@ export async function POST(req: NextRequest) {
         decimals: dec,
         topN: named.length >= 2 ? named.length : topN,
         source: hasSearch() ? "Researched data" : "",
-        entities: (series.entities || []).map((e) => ({ name: e.name, color: e.color || "", image: flagUrlForName(e.name) || undefined })),
+        entities: (series.entities || []).map((e) => ({ name: e.name, color: e.color || "", kind: kindOf(e.name) })),
         keyframes: series.keyframes || [],
       };
     }

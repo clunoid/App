@@ -19,7 +19,9 @@ export function toRaceData(raw: RaceRaw): RaceData {
   const entities = (raw.entities || []).map((e, i) => ({
     name: e.name,
     color: e.color || PALETTE[i % PALETTE.length],
-    image: e.image || flagUrlForName(e.name) || undefined,
+    kind: e.kind,
+    // only auto-flag country entities; logos/photos are resolved client-side (resolveRaceMedia)
+    image: e.image || (e.kind && e.kind !== "country" ? undefined : flagUrlForName(e.name)) || undefined,
   }));
   const frames = (raw.keyframes || [])
     .map((k) => ({ time: k.time, values: Object.fromEntries(k.values.map((v) => [v.name, v.value])) }))
@@ -37,7 +39,7 @@ export function toRaceData(raw: RaceRaw): RaceData {
     entities,
     frames,
     events,
-    topN: Math.min(raw.topN && raw.topN >= 5 ? raw.topN : 12, entities.length),
+    topN: Math.min(raw.topN && raw.topN >= 3 ? raw.topN : 12, entities.length),
     durationSec: Math.min(95, Math.max(40, frames.length * 3.4)),
   };
 }

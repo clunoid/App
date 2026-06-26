@@ -115,6 +115,7 @@ export async function buildWorldBankRace(opts: WorldBankOpts): Promise<RaceRaw |
   const entities = order.map((iso2, i) => ({
     name: everTop.get(iso2)!.name,
     color: PALETTE[i % PALETTE.length],
+    kind: "country" as const,
     image: flagUrlFromIso2(iso2) || undefined,
   }));
 

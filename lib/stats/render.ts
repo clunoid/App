@@ -42,9 +42,12 @@ function getImg(url?: string | null): HTMLImageElement | null {
 export async function preloadRaceImages(race: RaceData): Promise<void> {
   const urls = new Set<string>();
   for (const e of race.entities) if (e.image) urls.add(e.image);
-  for (const ev of race.events) for (const c of [...(ev.partyCodes || []), ...(ev.vsCodes || [])]) {
-    const u = flagUrlFromIso2(c);
-    if (u) urls.add(u);
+  for (const ev of race.events) {
+    for (const c of [...(ev.partyCodes || []), ...(ev.vsCodes || [])]) {
+      const u = flagUrlFromIso2(c);
+      if (u) urls.add(u);
+    }
+    for (const m of ev.subjectMedia || []) if (m) urls.add(m);
   }
   await Promise.all(
     [...urls].map(
@@ -202,42 +205,61 @@ function drawCertificateBg(ctx: CanvasRenderingContext2D, W: number, H: number) 
   ctx.stroke();
 }
 
-/** Draw a flag image keeping aspect ratio, centered at (cx,cy) with height h. */
-function drawFlag(ctx: CanvasRenderingContext2D, img: HTMLImageElement, cx: number, cy: number, h: number) {
-  const ar = img.width && img.height ? img.width / img.height : 1.5;
-  const fw = h * ar;
-  const x = cx - fw / 2;
+type MediaFit = "cover" | "contain";
+/** The on-screen width of a media chip of height h (so callers can lay out around it). */
+function mediaBoxW(img: HTMLImageElement | null, h: number, fit: MediaFit): number {
+  if (fit === "cover") return h * 1.25; // photos → a slightly-landscape headshot chip
+  const ar = img && img.width && img.height ? img.width / img.height : 1.5;
+  return h * Math.min(2.4, Math.max(0.95, ar)); // flags/logos → chip sized to the artwork
+}
+/** Draw a media chip (flag / logo / photo) centered at (cx,cy), height h. Returns its width. */
+function drawMedia(ctx: CanvasRenderingContext2D, img: HTMLImageElement, cx: number, cy: number, h: number, fit: MediaFit): number {
+  const boxW = mediaBoxW(img, h, fit);
+  const x = cx - boxW / 2;
   const y = cy - h / 2;
+  const r = h * 0.14;
   ctx.save();
   ctx.shadowColor = "rgba(0,0,0,0.22)";
   ctx.shadowBlur = h * 0.12;
   ctx.shadowOffsetY = h * 0.04;
-  roundRect(ctx, x, y, fw, h, h * 0.12);
+  roundRect(ctx, x, y, boxW, h, r);
   ctx.fillStyle = "#fff";
   ctx.fill();
   ctx.restore();
   ctx.save();
-  roundRect(ctx, x, y, fw, h, h * 0.12);
+  roundRect(ctx, x, y, boxW, h, r);
   ctx.clip();
-  ctx.drawImage(img, x, y, fw, h);
+  if (fit === "cover") {
+    const s = Math.max(boxW / img.width, h / img.height);
+    ctx.drawImage(img, cx - (img.width * s) / 2, cy - (img.height * s) / 2, img.width * s, img.height * s);
+  } else {
+    const pad = h * 0.07;
+    const s = Math.min((boxW - 2 * pad) / img.width, (h - 2 * pad) / img.height);
+    ctx.drawImage(img, cx - (img.width * s) / 2, cy - (img.height * s) / 2, img.width * s, img.height * s);
+  }
   ctx.restore();
   ctx.strokeStyle = "rgba(0,0,0,0.14)";
-  ctx.lineWidth = Math.max(1, h * 0.035);
-  roundRect(ctx, x, y, fw, h, h * 0.12);
+  ctx.lineWidth = Math.max(1, h * 0.03);
+  roundRect(ctx, x, y, boxW, h, r);
   ctx.stroke();
+  return boxW;
 }
 
-/** A centered row of flags for an event side (returns its total width). */
-function flagRowWidth(codes: string[], fh: number, gap: number): number {
-  return codes.length ? codes.length * (fh * 1.5) + (codes.length - 1) * gap : 0;
+type MediaItem = { url: string; fit: MediaFit };
+function rowWidth(items: MediaItem[], h: number, gap: number): number {
+  let w = 0;
+  items.forEach((it, i) => {
+    w += mediaBoxW(getImg(it.url), h, it.fit) + (i ? gap : 0);
+  });
+  return w;
 }
-function drawFlagRow(ctx: CanvasRenderingContext2D, codes: string[], startX: number, cy: number, fh: number, gap: number) {
+function drawMediaRowAt(ctx: CanvasRenderingContext2D, items: MediaItem[], startX: number, cy: number, h: number, gap: number) {
   let x = startX;
-  for (const c of codes) {
-    const img = getImg(flagUrlFromIso2(c));
-    const fw = fh * 1.5;
-    if (img) drawFlag(ctx, img, x + fw / 2, cy, fh);
-    x += fw + gap;
+  for (const it of items) {
+    const img = getImg(it.url);
+    const bw = mediaBoxW(img, h, it.fit);
+    if (img) drawMedia(ctx, img, x + bw / 2, cy, h, it.fit);
+    x += bw + gap;
   }
 }
 
@@ -304,9 +326,9 @@ function drawStoryPanel(
       ctx.fillText(ln, x + w * 0.02, dy);
       dy += h * 0.11;
     }
-    // media flags row, centered along the bottom
-    const fh = h * 0.16;
-    drawEventMedia(ctx, ev, cx, y + h * 0.9, w * 0.96, fh);
+    // media row (photos / logos / flags), centered along the bottom
+    const fh = h * 0.18;
+    drawEventMedia(ctx, ev, race, cx, y + h * 0.89, w * 0.96, fh);
   } else {
     ctx.textAlign = "center";
     const titleLines = wrapLines(ctx, ev.title, min * 0.085, 800, w * 0.96, 3);
@@ -325,35 +347,47 @@ function drawStoryPanel(
       ctx.fillText(ln, cx, ty);
       ty += min * 0.072;
     }
-    const fh = min * 0.14;
-    drawEventMedia(ctx, ev, cx, y + h * 0.88, w * 0.96, fh);
+    const fh = min * 0.16;
+    drawEventMedia(ctx, ev, race, cx, y + h * 0.87, w * 0.96, fh);
   }
   ctx.globalAlpha = 1;
   ctx.textAlign = "left";
 }
 
-/** Draw an event's flags — party group, optionally "vs" the opposing group, centered. */
-function drawEventMedia(ctx: CanvasRenderingContext2D, ev: RaceEvent, cx: number, cy: number, maxW: number, fhIn: number) {
-  const party = (ev.partyCodes || []).slice(0, 6);
-  const vs = (ev.vsCodes || []).slice(0, 6);
-  if (!party.length && !vs.length) return;
+/** Draw an event's media — subject photos/logos when present, else country flags ("vs" for conflicts). */
+function drawEventMedia(ctx: CanvasRenderingContext2D, ev: RaceEvent, race: RaceData, cx: number, cy: number, maxW: number, fhIn: number) {
   let fh = fhIn;
   const gap = fh * 0.25;
+
+  // Subject media (people/companies) — the most relevant pictures for the beat.
+  const subj = (ev.subjectMedia || []).filter(Boolean).slice(0, 5);
+  if (subj.length) {
+    const fit: MediaFit = race.entities.some((e) => e.kind === "person") ? "cover" : "contain";
+    const items: MediaItem[] = subj.map((url) => ({ url, fit }));
+    for (let i = 0; i < 8; i++) {
+      if (rowWidth(items, fh, gap) <= maxW || fh < fhIn * 0.4) break;
+      fh *= 0.9;
+    }
+    const total = rowWidth(items, fh, gap);
+    drawMediaRowAt(ctx, items, cx - total / 2, cy, fh, gap);
+    return;
+  }
+
+  // Country flags fallback (with optional "vs" for conflicts).
+  const party: MediaItem[] = (ev.partyCodes || []).slice(0, 6).map((c) => ({ url: flagUrlFromIso2(c) || "", fit: "contain" as MediaFit })).filter((it) => it.url);
+  const vs: MediaItem[] = (ev.vsCodes || []).slice(0, 6).map((c) => ({ url: flagUrlFromIso2(c) || "", fit: "contain" as MediaFit })).filter((it) => it.url);
+  if (!party.length && !vs.length) return;
   const vsGap = fh * 0.7;
-  // shrink to fit width
-  for (let i = 0; i < 6; i++) {
-    const wParty = flagRowWidth(party, fh, gap);
-    const wVs = flagRowWidth(vs, fh, gap);
-    const vsTextW = vs.length ? vsGap * 2 + fh * 0.9 : 0;
-    if (wParty + wVs + vsTextW <= maxW || fh < fhIn * 0.4) break;
+  for (let i = 0; i < 8; i++) {
+    const w = rowWidth(party, fh, gap) + rowWidth(vs, fh, gap) + (vs.length ? vsGap * 2 + fh * 0.9 : 0);
+    if (w <= maxW || fh < fhIn * 0.4) break;
     fh *= 0.9;
   }
-  const wParty = flagRowWidth(party, fh, gap);
-  const wVs = flagRowWidth(vs, fh, gap);
+  const wParty = rowWidth(party, fh, gap);
+  const wVs = rowWidth(vs, fh, gap);
   const vsTextW = vs.length ? vsGap * 2 + fh * 0.9 : 0;
-  const total = wParty + vsTextW + wVs;
-  let x = cx - total / 2;
-  drawFlagRow(ctx, party, x, cy, fh, gap);
+  let x = cx - (wParty + vsTextW + wVs) / 2;
+  drawMediaRowAt(ctx, party, x, cy, fh, gap);
   x += wParty;
   if (vs.length) {
     ctx.textAlign = "center";
@@ -363,7 +397,7 @@ function drawEventMedia(ctx: CanvasRenderingContext2D, ev: RaceEvent, cx: number
     ctx.fillText("vs", x + vsTextW / 2, cy);
     ctx.textBaseline = "alphabetic";
     x += vsTextW;
-    drawFlagRow(ctx, vs, x, cy, fh, gap);
+    drawMediaRowAt(ctx, vs, x, cy, fh, gap);
   }
 }
 
@@ -436,6 +470,7 @@ export function drawRaceFrame(ctx: CanvasRenderingContext2D, W: number, H: numbe
   const minBarW = flagH * 1.55 + maxBarW * 0.08; // keep the lowest bars long enough to read
 
   for (const r of ranked) {
+    if (r.v <= 1e-6) continue; // an entity not present this year (retired / not yet existed) — no "0" bar
     const dispR = state.disp.get(r.e.name)!;
     if (dispR > race.topN - 0.25) continue;
     const alpha = clamp01(race.topN - dispR);
@@ -448,15 +483,17 @@ export function drawRaceFrame(ctx: CanvasRenderingContext2D, W: number, H: numbe
     roundRect(ctx, X0, yMid - barH / 2, w, barH, barH * 0.08);
     ctx.fill();
 
+    // bar-end media: flag (country), logo (company), or photo (person)
+    const fit: MediaFit = r.e.kind === "person" ? "cover" : "contain";
     const flagImg = getImg(r.e.image);
-    const flagW = flagImg ? flagH * (flagImg.width && flagImg.height ? flagImg.width / flagImg.height : 1.5) : 0;
-    // name: inside the bar (right-aligned, before the flag) if it fits, else outside
+    const flagW = flagImg ? mediaBoxW(flagImg, flagH, fit) : 0;
+    // name: inside the bar (right-aligned, before the media) if it fits, else outside
     const innerAvail = w - flagW - innerPad * 2.4;
     setFont(ctx, barH * 0.5, 800);
     const nameW = ctx.measureText(r.e.name).width;
     const flagCx = X0 + w - innerPad - flagW / 2;
     ctx.textBaseline = "middle";
-    if (flagImg) drawFlag(ctx, flagImg, flagCx, yMid, flagH);
+    if (flagImg) drawMedia(ctx, flagImg, flagCx, yMid, flagH, fit);
 
     let valueX: number;
     if (nameW <= innerAvail) {

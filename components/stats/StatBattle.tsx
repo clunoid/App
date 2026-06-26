@@ -7,6 +7,7 @@ import { DocumentBackground } from "@/components/games/DocumentBackground";
 import { ShareModal } from "@/components/share/ShareModal";
 import { buildRace, gdpFallbackRace, PRESETS } from "@/lib/stats/generate";
 import { drawRaceFrame, newRaceState, preloadRaceImages, renderRaceVideo } from "@/lib/stats/render";
+import { resolveRaceMedia } from "@/lib/stats/media";
 import type { RaceData } from "@/lib/stats/types";
 import type { ReelAspect } from "@/lib/share/reel";
 
@@ -15,15 +16,56 @@ const SEAL = "#8a2433";
 
 type Phase = "menu" | "building" | "playing";
 
+/** One optional detail field (module-level so typing never loses focus). */
+function OptField({ label, value, onChange, placeholder }: { label: string; value: string; onChange: (v: string) => void; placeholder: string }) {
+  return (
+    <label className="flex flex-col gap-1 text-left">
+      <span className="text-[10px] font-bold uppercase tracking-wide text-[#2c2823]/50">{label}</span>
+      <input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className="h-10 w-full rounded-xl px-3 text-sm font-semibold text-[#2c2823] outline-none backdrop-blur placeholder:font-normal placeholder:text-[#2c2823]/40"
+        style={{ background: "rgba(0,0,0,0.09)" }}
+      />
+    </label>
+  );
+}
+
 export function StatBattle({ initialRequest }: { initialRequest?: string }) {
   const router = useRouter();
   const [phase, setPhase] = useState<Phase>("menu");
   const [request, setRequest] = useState("");
+  // optional guided details
+  const [range, setRange] = useState("");
+  const [bars, setBars] = useState("");
+  const [units, setUnits] = useState("");
+  const [competitors, setCompetitors] = useState("");
   const [race, setRace] = useState<RaceData | null>(null);
   const [failed, setFailed] = useState(false);
   const [replayKey, setReplayKey] = useState(0);
   const [shareOpen, setShareOpen] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const taRef = useRef<HTMLTextAreaElement | null>(null);
+
+  // Weave the main request + any optional details into one natural-language prompt.
+  const compose = useCallback(() => {
+    let req = request.trim();
+    if (!req) return "";
+    if (competitors.trim()) req += ` — featuring exactly: ${competitors.trim()}`;
+    if (range.trim()) req += ` (${range.trim()})`;
+    if (bars.trim()) req += `, show top ${bars.trim()}`;
+    if (units.trim()) req += `, in ${units.trim()}`;
+    return req;
+  }, [request, range, bars, units, competitors]);
+
+  // The main input grows with its content (an "extending" box).
+  useEffect(() => {
+    const ta = taRef.current;
+    if (!ta) return;
+    ta.style.height = "auto";
+    ta.style.height = `${Math.min(ta.scrollHeight, 200)}px`;
+  }, [request, phase]);
 
   const start = useCallback(async (req: string) => {
     const r = (req || "").trim();
@@ -32,7 +74,8 @@ export function StatBattle({ initialRequest }: { initialRequest?: string }) {
     setPhase("building");
     try {
       const data = await buildRace(r || PRESETS[0].request);
-      await preloadRaceImages(data).catch(() => {}); // flags ready before the race plays
+      await resolveRaceMedia(data).catch(() => {}); // flags / logos / photos by entity kind
+      await preloadRaceImages(data).catch(() => {}); // media ready before the race plays
       setRace(data);
       setReplayKey((n) => n + 1);
       setPhase("playing");
@@ -41,6 +84,7 @@ export function StatBattle({ initialRequest }: { initialRequest?: string }) {
       // (usually a transient model hiccup) ask the user to try again.
       if (isDefault) {
         const fb = gdpFallbackRace();
+        await resolveRaceMedia(fb).catch(() => {});
         await preloadRaceImages(fb).catch(() => {});
         setRace(fb);
         setReplayKey((n) => n + 1);
@@ -71,6 +115,7 @@ export function StatBattle({ initialRequest }: { initialRequest?: string }) {
     const total = race.durationSec + 2.2;
     const t0 = performance.now();
     let raf = 0;
+    drawRaceFrame(ctx, canvas.width, canvas.height, race, state, 0); // paint frame 0 immediately (never blank)
     const loop = () => {
       const el = (performance.now() - t0) / 1000;
       drawRaceFrame(ctx, canvas.width, canvas.height, race, state, Math.min(el, race.durationSec));
@@ -84,7 +129,7 @@ export function StatBattle({ initialRequest }: { initialRequest?: string }) {
   if (phase !== "playing") {
     const building = phase === "building";
     return (
-      <div className="relative grid h-[100dvh] w-screen place-items-center overflow-hidden px-6 select-none">
+      <div className="relative flex h-[100dvh] w-screen flex-col items-center justify-center overflow-y-auto px-6 py-12 select-none">
         <DocumentBackground />
         <button
           onClick={() => router.push("/home")}
@@ -108,45 +153,68 @@ export function StatBattle({ initialRequest }: { initialRequest?: string }) {
             </>
           ) : (
             <>
-              <BarChart3 size={48} style={{ color: SEAL }} />
-              <h1 className="mt-3 text-5xl font-extrabold leading-none tracking-tight sm:text-6xl" style={{ color: INK }}>
+              <BarChart3 size={42} style={{ color: SEAL }} />
+              <h1 className="mt-2 text-4xl font-extrabold leading-none tracking-tight sm:text-5xl" style={{ color: INK }}>
                 Stat <span style={{ color: SEAL }}>Battle</span>
               </h1>
-              <p className="mt-3 text-lg font-bold" style={{ color: "#2c2823cc" }}>
-                Describe any ranking over time — watch history race.
+              <p className="mt-2 text-base font-bold" style={{ color: "#2c2823cc" }}>
+                Describe any ranking over time — watch it race.
               </p>
 
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
-                  void start(request.trim() || PRESETS[0].request);
+                  void start(compose() || PRESETS[0].request);
                 }}
-                className="mt-6 flex w-full items-center gap-2"
+                className="mt-5 w-full"
               >
-                <div className="flex min-w-0 flex-1 items-center gap-2 rounded-full bg-black/10 px-4 backdrop-blur">
-                  <Sparkles size={18} className="shrink-0 text-[#2c2823]/60" />
-                  <input
+                {/* main, extending request box */}
+                <div className="flex w-full items-start gap-2 rounded-2xl px-4 py-3 backdrop-blur" style={{ background: "rgba(0,0,0,0.1)" }}>
+                  <Sparkles size={18} className="mt-1 shrink-0 text-[#2c2823]/60" />
+                  <textarea
+                    ref={taRef}
                     value={request}
                     onChange={(e) => setRequest(e.target.value)}
-                    placeholder="e.g. World's Largest Economies GDP (1960–2026)"
-                    className="h-12 w-full bg-transparent font-bold text-[#2c2823] outline-none placeholder:font-medium placeholder:text-[#2c2823]/55"
+                    rows={2}
+                    placeholder="Describe your stat battle — e.g. Most valuable football players by transfer value, 2004 to 2026"
+                    className="w-full resize-none bg-transparent text-[15px] font-bold leading-snug text-[#2c2823] outline-none placeholder:font-medium placeholder:text-[#2c2823]/50"
                   />
                 </div>
+
+                {/* optional guided details */}
+                <p className="mb-2 mt-3 text-left text-[11px] font-bold uppercase tracking-wide text-[#2c2823]/45">
+                  Optional — add any details to get exactly what you want
+                </p>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                  <OptField label="Time range" value={range} onChange={setRange} placeholder="e.g. 1960–2026, 1 AD–2026" />
+                  <OptField label="Bars to show" value={bars} onChange={setBars} placeholder="e.g. 10, 15, 20" />
+                  <OptField label="Units" value={units} onChange={setUnits} placeholder="millions / billions / exact" />
+                  <OptField label="Only these competitors" value={competitors} onChange={setCompetitors} placeholder="e.g. Messi, Ronaldo, Mbappé" />
+                </div>
+
                 <button
                   type="submit"
-                  aria-label="Generate"
-                  className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-[#2c2823] text-[#f6f4ee] shadow-xl transition hover:scale-[1.05]"
+                  className="mt-4 flex w-full items-center justify-center gap-2 rounded-full bg-[#2c2823] py-3 font-extrabold text-[#f6f4ee] shadow-xl transition hover:scale-[1.02]"
                 >
-                  <Play size={20} fill="currentColor" />
+                  <Play size={18} fill="currentColor" /> Generate stat battle
                 </button>
               </form>
 
-              <div className="mt-4 flex flex-wrap justify-center gap-2">
+              {/* presets fill the box so the user can tweak before generating */}
+              <p className="mb-1.5 mt-5 text-left text-[11px] font-bold uppercase tracking-wide text-[#2c2823]/45 w-full">
+                Or start from a preset, then customize
+              </p>
+              <div className="flex w-full flex-wrap justify-center gap-2">
                 {PRESETS.map((p) => (
                   <button
                     key={p.label}
-                    onClick={() => void start(p.request)}
-                    className="rounded-full bg-black/10 px-4 py-2 text-sm font-extrabold text-[#2c2823] transition hover:bg-black/20"
+                    type="button"
+                    onClick={() => {
+                      setRequest(p.request);
+                      taRef.current?.focus();
+                    }}
+                    className="rounded-full px-4 py-2 text-sm font-extrabold text-[#2c2823] transition hover:opacity-80"
+                    style={{ background: "rgba(0,0,0,0.1)" }}
                   >
                     {p.label}
                   </button>
@@ -155,7 +223,7 @@ export function StatBattle({ initialRequest }: { initialRequest?: string }) {
 
               {failed && <p className="mt-5 text-sm font-bold" style={{ color: SEAL }}>Couldn&apos;t build that one — try rephrasing the topic and range.</p>}
               <p className="mt-4 max-w-sm text-[11px] leading-relaxed text-[#2c2823]/50">
-                Economy &amp; population stats use verified World Bank data; other topics are researched from the live web. Watch it here, or turn it into a video for your projects.
+                Economy &amp; population use verified World Bank data; other topics are researched from the live web, with logos &amp; photos pulled in automatically.
               </p>
             </>
           )}
