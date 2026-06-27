@@ -177,7 +177,7 @@ function valuesAt(race: RaceData, t: number): Map<string, number> {
     let v: number;
     if (va != null && vb != null) v = va + (vb - va) * frac;
     else if (vb != null) v = vb * frac; // entering — grows from 0
-    else if (va != null) v = va * (1 - frac); // leaving — shrinks to 0
+    else if (va != null) v = va; // stopped/overtaken — HOLD the last value (never crater to 0; rank handles it)
     else v = 0;
     out.set(e.name, v);
   }
