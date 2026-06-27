@@ -8,7 +8,8 @@ import { ShareModal } from "@/components/share/ShareModal";
 import { StatReview } from "@/components/stats/StatReview";
 import { StatHistory } from "@/components/stats/StatHistory";
 import { buildRace, buildRaceFromFile, gdpFallbackRace, PRESETS } from "@/lib/stats/generate";
-import { drawRaceFrame, newRaceState, preloadRaceImages, renderRaceVideo } from "@/lib/stats/render";
+import { drawRaceStyle, newRaceState, preloadRaceImages, renderRaceVideo, RACE_STYLES } from "@/lib/stats/render";
+import type { RaceStyle } from "@/lib/stats/render";
 import { resolveRaceMedia } from "@/lib/stats/media";
 import { saveStatBattle } from "@/lib/stats/storage";
 import type { RaceData } from "@/lib/stats/types";
@@ -60,6 +61,46 @@ function OptField({ label, value, onChange, placeholder }: { label: string; valu
   );
 }
 
+/** A selectable design preview — a representative still of the race in one style.
+ *  (Module-level so its canvas effect is stable.) */
+function StyleThumb({ race, styleId, label, selected, onClick }: { race: RaceData; styleId: RaceStyle; label: string; selected: boolean; onClick: () => void }) {
+  const ref = useRef<HTMLCanvasElement | null>(null);
+  useEffect(() => {
+    const cv = ref.current;
+    if (!cv) return;
+    const ctx = cv.getContext("2d");
+    if (!ctx) return;
+    const W = 480;
+    const H = 270;
+    cv.width = W;
+    cv.height = H;
+    const el = race.durationSec * 0.78; // a near-full, representative frame
+    let n = 0;
+    let timer: ReturnType<typeof setTimeout>;
+    const draw = () => drawRaceStyle(ctx, W, H, race, newRaceState(), el, styleId);
+    draw();
+    // redraw a few times so flags / photos appear as they finish loading
+    const tick = () => {
+      draw();
+      if (++n < 6) timer = setTimeout(tick, 350);
+    };
+    timer = setTimeout(tick, 300);
+    return () => clearTimeout(timer);
+  }, [race, styleId]);
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={selected}
+      className="flex flex-col items-center gap-1 rounded-xl p-1.5 transition hover:bg-black/[0.04]"
+      style={{ outline: selected ? `2.5px solid ${SEAL}` : "1px solid rgba(0,0,0,0.12)", outlineOffset: -1, background: selected ? "rgba(0,0,0,0.05)" : "transparent" }}
+    >
+      <canvas ref={ref} className="w-32 rounded-lg sm:w-40" style={{ aspectRatio: "16 / 9", background: "#c8c5bd" }} />
+      <span className="text-[11px] font-extrabold" style={{ color: selected ? SEAL : "#2c2823aa" }}>{label}</span>
+    </button>
+  );
+}
+
 export function StatBattle({ initialRequest }: { initialRequest?: string }) {
   const router = useRouter();
   const [phase, setPhase] = useState<Phase>("menu");
@@ -73,6 +114,7 @@ export function StatBattle({ initialRequest }: { initialRequest?: string }) {
   const [errMsg, setErrMsg] = useState("");
   const [buildKind, setBuildKind] = useState<"gen" | "file">("gen");
   const [replayKey, setReplayKey] = useState(0);
+  const [style, setStyle] = useState<RaceStyle>("bars"); // which visual design to show / export
   const [shareOpen, setShareOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -228,15 +270,15 @@ export function StatBattle({ initialRequest }: { initialRequest?: string }) {
     const total = race.durationSec + 2.2;
     const t0 = performance.now();
     let raf = 0;
-    drawRaceFrame(ctx, canvas.width, canvas.height, race, state, 0); // paint frame 0 immediately (never blank)
+    drawRaceStyle(ctx, canvas.width, canvas.height, race, state, 0, style); // paint frame 0 immediately (never blank)
     const loop = () => {
       const el = (performance.now() - t0) / 1000;
-      drawRaceFrame(ctx, canvas.width, canvas.height, race, state, Math.min(el, race.durationSec));
+      drawRaceStyle(ctx, canvas.width, canvas.height, race, state, Math.min(el, race.durationSec), style);
       if (el < total) raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
-  }, [phase, race, replayKey]);
+  }, [phase, race, replayKey, style]);
 
   // ── Review & edit the data sheet, then approve ───────────────────────────
   if (phase === "review" && race) {
@@ -399,7 +441,7 @@ export function StatBattle({ initialRequest }: { initialRequest?: string }) {
 
   // ── Player ──────────────────────────────────────────────────────────────
   return (
-    <div className="relative grid h-[100dvh] w-screen place-items-center overflow-hidden px-3 select-none" style={{ background: "#bdbab2" }}>
+    <div className="relative h-[100dvh] w-screen overflow-y-auto select-none" style={{ background: "#bdbab2" }}>
       <button
         onClick={() => setPhase("menu")}
         aria-label="New stat battle"
@@ -409,9 +451,31 @@ export function StatBattle({ initialRequest }: { initialRequest?: string }) {
         <ArrowLeft size={18} /> <span className="text-sm font-extrabold">New</span>
       </button>
 
-      <div className="flex w-full max-w-4xl flex-col items-center gap-4">
-        <canvas ref={canvasRef} width={1280} height={720} className="w-full rounded-2xl shadow-2xl" style={{ maxHeight: "72dvh", objectFit: "contain" }} />
-        <div className="flex flex-wrap items-center justify-center gap-3">
+      {/* Top-left layout: the card + its design choices live in the top-left so
+          there's room to grow the design gallery. */}
+      <div className="flex w-full flex-col items-start gap-3 px-4 pb-10 pt-16 sm:px-6 sm:pt-20">
+        {/* design chooser — the SAME data, different modern styles */}
+        {race && (
+          <div className="flex flex-col gap-1.5">
+            <p className="text-[11px] font-bold uppercase tracking-wide text-[#2c2823]/55">Choose a design — same data, different look</p>
+            <div className="flex flex-wrap items-start gap-2.5">
+              {RACE_STYLES.map((s) => (
+                <StyleThumb key={s.id} race={race} styleId={s.id} label={s.label} selected={style === s.id} onClick={() => setStyle(s.id)} />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* main card in the chosen design */}
+        <canvas
+          ref={canvasRef}
+          width={1280}
+          height={720}
+          className="w-full max-w-3xl rounded-2xl shadow-2xl"
+          style={{ maxHeight: "54dvh", objectFit: "contain", background: "#c8c5bd" }}
+        />
+
+        <div className="flex flex-wrap items-center gap-3">
           <button
             onClick={() => setReplayKey((n) => n + 1)}
             className="flex items-center gap-2 rounded-full bg-black/15 px-5 py-3 font-extrabold text-[#2c2823] backdrop-blur transition hover:bg-black/25"
@@ -432,7 +496,7 @@ export function StatBattle({ initialRequest }: { initialRequest?: string }) {
             <Film size={18} /> Create video
           </button>
         </div>
-        <p className="-mt-1 text-center text-xs font-semibold text-[#2c2823]/55">Watch it here, or export a video (optional) for your projects &amp; socials.</p>
+        <p className="text-xs font-semibold text-[#2c2823]/55">Pick a design above, then watch it here or export a video (optional) for your projects &amp; socials.</p>
       </div>
 
       {race && (
@@ -444,7 +508,7 @@ export function StatBattle({ initialRequest }: { initialRequest?: string }) {
           idleHint="Export this stat battle as a video — for your projects & socials."
           caption={`${race.title} — a stat battle from clunoid.com 📊`}
           captionContext={{ title: race.title, subtitle: race.subtitle, source: race.source }}
-          render={(aspect: ReelAspect, opts) => renderRaceVideo(race, aspect, opts)}
+          render={(aspect: ReelAspect, opts) => renderRaceVideo(race, aspect, { ...opts, style })}
         />
       )}
     </div>

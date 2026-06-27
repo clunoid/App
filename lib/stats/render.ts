@@ -137,6 +137,23 @@ export function fmtValue(v: number, race: RaceData): string {
   return (race.unitPrefix || "") + num + (race.unitSuffix || "");
 }
 
+/** Compact value for tight labels (the bubble design): abbreviates large raw
+ *  magnitudes (1.4B, $888B, $3.3T) but keeps small / already-scaled figures exact
+ *  (300 m, 975, $28.8T) so the bars design's full exact values stay untouched. */
+export function fmtValueCompact(v: number, race: RaceData): string {
+  const n = Math.max(0, v);
+  if (n < 1e6) return fmtValue(v, race); // small or already-scaled → keep exact
+  const pre = race.unitPrefix || "";
+  const suf = race.unitSuffix || "";
+  for (const [d, u] of [[1e12, "T"], [1e9, "B"], [1e6, "M"]] as const) {
+    if (n >= d) {
+      const x = n / d;
+      return pre + (x >= 100 ? x.toFixed(0) : x.toFixed(1)) + u + suf;
+    }
+  }
+  return fmtValue(v, race);
+}
+
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 /** A granular time counter: "Sep 2020" for normal spans (months glide by), "YYYY" for very long/ancient spans. */
 function fmtTime(curT: number, span: number): string {
@@ -147,9 +164,9 @@ function fmtTime(curT: number, span: number): string {
 }
 
 /* ── per-frame smoothing state (shared by live preview + export) ──────────── */
-export type RaceState = { disp: Map<string, number>; max: number; init: boolean; lastEl: number; leader: string; evIdx: number; evChange: number; vis: number; peak: number };
+export type RaceState = { disp: Map<string, number>; max: number; init: boolean; lastEl: number; leader: string; evIdx: number; evChange: number; vis: number; peak: number; bub: Map<string, { x: number; y: number }> };
 export function newRaceState(): RaceState {
-  return { disp: new Map(), max: 0, init: false, lastEl: 0, leader: "", evIdx: -1, evChange: 0, vis: 0, peak: 0 };
+  return { disp: new Map(), max: 0, init: false, lastEl: 0, leader: "", evIdx: -1, evChange: 0, vis: 0, peak: 0, bub: new Map() };
 }
 
 /** Interpolated value for every entity at continuous time t (handles enter/leave). */
@@ -695,6 +712,184 @@ export function drawRaceFrame(ctx: CanvasRenderingContext2D, W: number, H: numbe
   drawBrandBadge(ctx, W - padX, H * 0.965, min * 0.034);
 }
 
+/* ── SECOND design: a "bubble" race ───────────────────────────────────────────
+ * The SAME data shown as circles sized by value, laid out in an adaptive grid by
+ * rank, each entity's flag/photo/logo inside a colored ring with its name & value
+ * below. A cleaner, modern alternative to the horizontal bars — gives users a
+ * choice of styles for one prompt. Shares all the chrome (title, year counter,
+ * story panel, source, brand) with drawRaceFrame so the two feel like one feature. */
+function drawRaceBubbles(ctx: CanvasRenderingContext2D, W: number, H: number, race: RaceData, state: RaceState, el: number) {
+  const min = Math.min(W, H);
+  const vertical = H > W;
+  const t0 = race.frames[0].time;
+  const t1 = race.frames[race.frames.length - 1].time;
+  const prog = clamp01(race.durationSec > 0 ? el / race.durationSec : 1);
+  const curT = t0 + (t1 - t0) * prog;
+  const vals = valuesAt(race, curT);
+
+  const ranked = race.entities
+    .map((e) => ({ e, v: vals.get(e.name)?.v || 0, fade: vals.get(e.name)?.fade ?? 1 }))
+    .filter((r) => r.v > 1e-6 && r.fade > 0.05)
+    .sort((a, b) => b.v - a.v)
+    .slice(0, race.topN);
+
+  const dt = state.init ? Math.max(0, Math.min(0.1, el - state.lastEl)) : 0;
+  state.lastEl = el;
+  const kPos = state.init ? 1 - Math.exp(-dt * 6) : 1; // ease circles between grid cells on reorder
+  const kMax = state.init ? 1 - Math.exp(-dt * 5) : 1;
+  const targetMax = Math.max(1e-6, ranked.length ? ranked[0].v : 1);
+  state.max = state.init ? state.max + (targetMax - state.max) * kMax : targetMax;
+  const maxV = Math.max(1e-6, state.max);
+  state.init = true;
+
+  const { ev, idx: evIdx } = activeEvent(race, curT);
+  if (evIdx !== state.evIdx) {
+    state.evIdx = evIdx;
+    state.evChange = el;
+  }
+  const evAlpha = clamp01((el - state.evChange) / 0.45);
+
+  drawCertificateBg(ctx, W, H);
+
+  // regions — match the bars layout so the shared chrome lines up exactly
+  const padX = W * (vertical ? 0.045 : 0.035);
+  const titleY = H * (vertical ? 0.06 : 0.085);
+  const plotTop = H * (vertical ? 0.14 : 0.19);
+  const plotBottom = H * (vertical ? 0.6 : 0.9);
+  const plotLeft = padX;
+  const plotRight = vertical ? W - padX : W * 0.66;
+  const panelX = vertical ? padX : W * 0.675;
+  const panelY = vertical ? H * 0.63 : H * 0.17;
+  const panelW = vertical ? W - 2 * padX : W * 0.965 - panelX;
+  const panelH = vertical ? H * 0.32 : H * 0.9 - H * 0.17;
+
+  // title + subtitle (same as the bars header)
+  ctx.textBaseline = "alphabetic";
+  ctx.textAlign = "left";
+  const titlePx = fitText(ctx, race.title, min * (vertical ? 0.055 : 0.05), 800, plotRight - padX);
+  ctx.fillStyle = INK;
+  ctx.fillText(race.title, padX, titleY);
+  if (race.subtitle) {
+    const subPx = min * (vertical ? 0.03 : 0.026);
+    const subLines = wrapLines(ctx, race.subtitle, subPx, 700, plotRight - padX, 2);
+    setFont(ctx, subPx, 700);
+    ctx.fillStyle = SEAL;
+    let sy = titleY + titlePx * 0.72;
+    for (const ln of subLines) {
+      ctx.fillText(ln, padX, sy);
+      sy += subPx * 1.08;
+    }
+  }
+
+  // ── bubbles in an adaptive grid (cols chosen for the plot's aspect) ──
+  const N = ranked.length;
+  if (N > 0) {
+    const plotW = plotRight - plotLeft;
+    const plotH = plotBottom - plotTop;
+    const cols = Math.min(N, Math.max(1, Math.round(Math.sqrt((N * plotW) / Math.max(1, plotH)))));
+    const rows = Math.ceil(N / cols);
+    const cellW = plotW / cols;
+    const cellH = plotH / rows;
+    const rMax = Math.min(cellW * 0.4, cellH * 0.34);
+
+    ctx.textAlign = "center";
+    ranked.forEach((r, i) => {
+      const row = Math.floor(i / cols);
+      const inRow = row === rows - 1 ? N - row * cols : cols;
+      const col = i - row * cols;
+      const rowLeft = plotLeft + (plotW - inRow * cellW) / 2;
+      const tx = rowLeft + (col + 0.5) * cellW;
+      const ty = plotTop + (row + 0.5) * cellH - cellH * 0.06; // nudge up → room for the label
+      let p = state.bub.get(r.e.name);
+      if (!p) {
+        p = { x: tx, y: ty };
+        state.bub.set(r.e.name, p);
+      }
+      p.x += (tx - p.x) * kPos;
+      p.y += (ty - p.y) * kPos;
+      const rad = rMax * (0.46 + 0.54 * Math.sqrt(clamp01(r.v / maxV)));
+      const ringW = Math.max(2.5, rad * 0.12);
+
+      // base color circle (the entity's identity ring shows around the media)
+      ctx.save();
+      ctx.shadowColor = "rgba(0,0,0,0.20)";
+      ctx.shadowBlur = rad * 0.22;
+      ctx.shadowOffsetY = rad * 0.07;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, rad, 0, Math.PI * 2);
+      ctx.fillStyle = r.e.color;
+      ctx.fill();
+      ctx.restore();
+
+      const img = getImg(r.e.image);
+      if (img) {
+        drawCircleMedia(ctx, img, p.x, p.y, (rad - ringW) * 2);
+      } else {
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, rad - ringW, 0, Math.PI * 2);
+        ctx.clip();
+        ctx.fillStyle = "rgba(255,255,255,0.16)";
+        ctx.fillRect(p.x - rad, p.y - rad, rad * 2, rad * 2);
+        const ini = r.e.name.split(/\s+/).map((w) => w[0] || "").join("").slice(0, 2).toUpperCase();
+        setFont(ctx, (rad - ringW) * 0.9, 800);
+        ctx.fillStyle = "#fff";
+        ctx.textBaseline = "middle";
+        ctx.fillText(ini, p.x, p.y);
+        ctx.textBaseline = "alphabetic";
+        ctx.restore();
+      }
+
+      // small country-of-origin flag badge (non-country entities), bottom-right
+      if (r.e.kind !== "country" && r.e.country) {
+        const cimg = getImg(flagUrlFromIso2(r.e.country));
+        if (cimg) drawCircleMedia(ctx, cimg, p.x + rad * 0.66, p.y + rad * 0.66, rad * 0.5);
+      }
+
+      // name + value below the circle
+      const labelY = p.y + rad + Math.min(cellH * 0.1, rad * 0.3);
+      const namePx = fitText(ctx, r.e.name, Math.min(cellW * 0.2, rMax * 0.46), 800, cellW * 0.95);
+      setFont(ctx, namePx, 800);
+      ctx.fillStyle = INK;
+      ctx.fillText(r.e.name, p.x, labelY + namePx);
+      const vStr = fmtValueCompact(r.v, race); // compact so labels don't crowd under bubbles
+      const valPx = fitText(ctx, vStr, namePx, 800, cellW * 0.95);
+      setFont(ctx, valPx, 800);
+      ctx.fillStyle = SEAL;
+      ctx.fillText(vStr, p.x, labelY + namePx + valPx * 1.18);
+    });
+    // forget circles that have left so the map can't grow unbounded
+    if (state.bub.size > race.entities.length) {
+      const live = new Set(ranked.map((r) => r.e.name));
+      for (const k of [...state.bub.keys()]) if (!live.has(k)) state.bub.delete(k);
+    }
+    ctx.textAlign = "left";
+  }
+
+  drawStoryPanel(ctx, panelX, panelY, panelW, panelH, race, curT, ev, evAlpha, vertical);
+
+  ctx.textAlign = "left";
+  ctx.textBaseline = "alphabetic";
+  if (race.source) {
+    setFont(ctx, min * 0.026, 700);
+    ctx.fillStyle = "rgba(44,40,35,0.45)";
+    ctx.fillText(`Source: ${race.source}`, padX, H * 0.975);
+  }
+  drawBrandBadge(ctx, W - padX, H * 0.965, min * 0.034);
+}
+
+/** The available visual styles for a stat battle (same data, different look). */
+export type RaceStyle = "bars" | "bubbles";
+export const RACE_STYLES: { id: RaceStyle; label: string }[] = [
+  { id: "bars", label: "Bars" },
+  { id: "bubbles", label: "Bubbles" },
+];
+/** Draw one race frame in the chosen visual style. */
+export function drawRaceStyle(ctx: CanvasRenderingContext2D, W: number, H: number, race: RaceData, state: RaceState, el: number, style: RaceStyle = "bars") {
+  if (style === "bubbles") drawRaceBubbles(ctx, W, H, race, state, el);
+  else drawRaceFrame(ctx, W, H, race, state, el);
+}
+
 /** A clear "clunoid.com" pill badge, right edge anchored at (rx, cy). */
 function drawBrandBadge(ctx: CanvasRenderingContext2D, rx: number, cy: number, px: number) {
   setFont(ctx, px, 800);
@@ -824,7 +1019,7 @@ function drawStatOutro(ctx: CanvasRenderingContext2D, W: number, H: number, p: n
 async function renderRaceVideoRec(
   race: RaceData,
   aspect: ReelAspect,
-  opts: { host?: HTMLElement | null; onProgress?: (p: number, l: string) => void; signal?: AbortSignal }
+  opts: { host?: HTMLElement | null; onProgress?: (p: number, l: string) => void; signal?: AbortSignal; style?: RaceStyle }
 ): Promise<RenderResult> {
   const { w: W, h: H } = aspectSize(aspect);
   const rec = createCanvasRecorder(W, H, 30, opts.host);
@@ -846,7 +1041,7 @@ async function renderRaceVideoRec(
     /* fonts / images / voice all optional */
   }
   const state = newRaceState();
-  drawRaceFrame(ctx, W, H, race, state, 0);
+  drawRaceStyle(ctx, W, H, race, state, 0, opts.style);
 
   try {
     await ac.resume();
@@ -881,7 +1076,7 @@ async function renderRaceVideoRec(
       }
       const el = Math.max(0, ac.currentTime - t0);
       try {
-        if (el < raceEnd) drawRaceFrame(ctx, W, H, race, state, Math.min(el, race.durationSec));
+        if (el < raceEnd) drawRaceStyle(ctx, W, H, race, state, Math.min(el, race.durationSec), opts.style);
         else drawStatOutro(ctx, W, H, (el - raceEnd) / outroDur);
       } catch (e) {
         reject(e as Error);
@@ -949,7 +1144,7 @@ async function aacSupported(sampleRate: number, channels: number): Promise<boole
 async function renderRaceVideoWeb(
   race: RaceData,
   aspect: ReelAspect,
-  opts: { host?: HTMLElement | null; onProgress?: (p: number, l: string) => void; signal?: AbortSignal }
+  opts: { host?: HTMLElement | null; onProgress?: (p: number, l: string) => void; signal?: AbortSignal; style?: RaceStyle }
 ): Promise<RenderResult> {
   const { w: W, h: H } = aspectSize(aspect);
   const FPS = 30;
@@ -1122,7 +1317,7 @@ async function renderRaceVideoWeb(
 export async function renderRaceVideo(
   race: RaceData,
   aspect: ReelAspect,
-  opts: { host?: HTMLElement | null; onProgress?: (p: number, l: string) => void; signal?: AbortSignal }
+  opts: { host?: HTMLElement | null; onProgress?: (p: number, l: string) => void; signal?: AbortSignal; style?: RaceStyle }
 ): Promise<RenderResult> {
   if (hasWebCodecs()) {
     try {
