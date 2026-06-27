@@ -884,15 +884,220 @@ function drawRaceBubbles(ctx: CanvasRenderingContext2D, W: number, H: number, ra
   drawBrandBadge(ctx, W - padX, H * 0.965, min * 0.034);
 }
 
+/** Smooth (horizontal-tangent) path through points — gives the bump trails their
+ *  elegant S-curves between rank changes. */
+function drawSmoothPath(ctx: CanvasRenderingContext2D, pts: { x: number; y: number }[]) {
+  if (!pts.length) return;
+  ctx.beginPath();
+  ctx.moveTo(pts[0].x, pts[0].y);
+  if (pts.length === 1) {
+    ctx.lineTo(pts[0].x + 0.01, pts[0].y);
+    return;
+  }
+  for (let i = 0; i < pts.length - 1; i++) {
+    const a = pts[i];
+    const b = pts[i + 1];
+    const mx = (a.x + b.x) / 2;
+    ctx.bezierCurveTo(mx, a.y, mx, b.y, b.x, b.y);
+  }
+}
+
+/* ── THIRD design: a "Trail" bump chart ───────────────────────────────────────
+ * The same data as a RANK-over-time race: each competitor is a smooth trail that
+ * rises and falls through the standings, the lines CROSSING as they overtake one
+ * another (the literal battle for position), with a media avatar + current value
+ * at each trail's head. Rank rows are evenly spaced (no value-scale squashing), so
+ * it's a genuinely different, modern view from the bars (magnitude) and bubbles
+ * (proportion). Shares all the chrome (header, story panel, source, brand). */
+function drawRaceBump(ctx: CanvasRenderingContext2D, W: number, H: number, race: RaceData, state: RaceState, el: number) {
+  const min = Math.min(W, H);
+  const vertical = H > W;
+  const t0 = race.frames[0].time;
+  const t1 = race.frames[race.frames.length - 1].time;
+  const prog = clamp01(race.durationSec > 0 ? el / race.durationSec : 1);
+  const curT = t0 + (t1 - t0) * prog;
+  const vals = valuesAt(race, curT);
+  const ranked = race.entities
+    .map((e) => ({ e, v: vals.get(e.name)?.v || 0, fade: vals.get(e.name)?.fade ?? 1 }))
+    .filter((r) => r.v > 1e-6 && r.fade > 0.05)
+    .sort((a, b) => b.v - a.v);
+  const N = Math.max(1, Math.min(race.topN, ranked.length));
+  const visible = ranked.slice(0, N);
+
+  const dt = state.init ? Math.max(0, Math.min(0.1, el - state.lastEl)) : 0;
+  state.lastEl = el;
+  const kRank = state.init ? 1 - Math.exp(-dt * 8) : 1;
+  visible.forEach((r, idx) => {
+    const cur = state.disp.has(r.e.name) ? state.disp.get(r.e.name)! : idx;
+    state.disp.set(r.e.name, cur + (idx - cur) * kRank);
+  });
+  state.init = true;
+
+  const { ev, idx: evIdx } = activeEvent(race, curT);
+  if (evIdx !== state.evIdx) {
+    state.evIdx = evIdx;
+    state.evChange = el;
+  }
+  const evAlpha = clamp01((el - state.evChange) / 0.45);
+
+  drawCertificateBg(ctx, W, H);
+
+  const padX = W * (vertical ? 0.045 : 0.035);
+  const titleY = H * (vertical ? 0.06 : 0.085);
+  const plotTop = H * (vertical ? 0.15 : 0.2);
+  const plotBottom = H * (vertical ? 0.6 : 0.9);
+  const plotLeft = padX;
+  const plotRight = vertical ? W - padX : W * 0.66;
+  const panelX = vertical ? padX : W * 0.675;
+  const panelY = vertical ? H * 0.63 : H * 0.17;
+  const panelW = vertical ? W - 2 * padX : W * 0.965 - panelX;
+  const panelH = vertical ? H * 0.32 : H * 0.9 - H * 0.17;
+
+  // header (same as the other designs)
+  ctx.textBaseline = "alphabetic";
+  ctx.textAlign = "left";
+  const titlePx = fitText(ctx, race.title, min * (vertical ? 0.055 : 0.05), 800, plotRight - padX);
+  ctx.fillStyle = INK;
+  ctx.fillText(race.title, padX, titleY);
+  if (race.subtitle) {
+    const subPx = min * (vertical ? 0.03 : 0.026);
+    const subLines = wrapLines(ctx, race.subtitle, subPx, 700, plotRight - padX, 2);
+    setFont(ctx, subPx, 700);
+    ctx.fillStyle = SEAL;
+    let sy = titleY + titlePx * 0.72;
+    for (const ln of subLines) {
+      ctx.fillText(ln, padX, sy);
+      sy += subPx * 1.08;
+    }
+  }
+
+  // ── bump plot ──
+  const labelStrip = Math.min((plotRight - plotLeft) * 0.27, min * 0.34);
+  const linesRight = plotRight - labelStrip;
+  const plotW = Math.max(10, linesRight - plotLeft);
+  const plotH = plotBottom - plotTop;
+  const rowH = plotH / N;
+  const rowOf = (rank0: number) => plotTop + (rank0 + 0.5) * rowH;
+  const windowSpan = Math.max(curT - t0, 1e-6); // expanding window: head always at the right edge
+  const xOf = (t: number) => plotLeft + clamp01((t - t0) / windowSpan) * plotW;
+  const lineW = Math.max(2.5, rowH * 0.13);
+  const aR = Math.min(rowH * 0.4, plotW * 0.06); // head avatar radius
+
+  // faint rank guide rows
+  ctx.save();
+  ctx.strokeStyle = "rgba(44,40,35,0.06)";
+  ctx.lineWidth = 1;
+  for (let i = 0; i < N; i++) {
+    const y = rowOf(i);
+    ctx.beginPath();
+    ctx.moveTo(plotLeft, y);
+    ctx.lineTo(linesRight, y);
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  // rank (0-based) of every entity at each keyframe ≤ curT
+  const kfRankMaps = race.frames
+    .filter((f) => f.time <= curT + 1e-6)
+    .map((f) => {
+      const present = Object.keys(f.values)
+        .filter((nm) => f.values[nm] > 1e-6)
+        .sort((a, b) => f.values[b] - f.values[a]);
+      const m = new Map<string, number>();
+      present.forEach((nm, i) => m.set(nm, i));
+      return { time: f.time, m };
+    });
+
+  // trails (non-leaders first so the leader sits on top)
+  for (let vi = visible.length - 1; vi >= 0; vi--) {
+    const r = visible[vi];
+    const pts: { x: number; y: number }[] = [];
+    for (const kf of kfRankMaps) {
+      const rk = kf.m.get(r.e.name);
+      if (rk == null) continue;
+      pts.push({ x: xOf(kf.time), y: rowOf(Math.min(rk, N - 1 + 0.6)) }); // below-topN enters from the bottom
+    }
+    const headRank = state.disp.get(r.e.name) ?? vi;
+    const head = { x: plotLeft + plotW, y: rowOf(Math.min(headRank, N - 1 + 0.6)) };
+    pts.push(head);
+
+    ctx.save();
+    ctx.strokeStyle = r.e.color;
+    ctx.lineWidth = vi === 0 ? lineW * 1.25 : lineW;
+    ctx.lineJoin = "round";
+    ctx.lineCap = "round";
+    drawSmoothPath(ctx, pts);
+    ctx.stroke();
+    ctx.restore();
+
+    // head avatar — best media: own logo/photo/flag → country flag → initials
+    const primary = getImg(r.e.image);
+    const flagImg = r.e.kind !== "country" && r.e.country ? getImg(flagUrlFromIso2(r.e.country)) : null;
+    const mainImg = primary || flagImg;
+    const ringW = Math.max(2, aR * 0.14);
+    ctx.save();
+    ctx.shadowColor = "rgba(0,0,0,0.22)";
+    ctx.shadowBlur = aR * 0.25;
+    ctx.shadowOffsetY = aR * 0.08;
+    ctx.beginPath();
+    ctx.arc(head.x, head.y, aR, 0, Math.PI * 2);
+    ctx.fillStyle = r.e.color;
+    ctx.fill();
+    ctx.restore();
+    if (mainImg) {
+      drawCircleMedia(ctx, mainImg, head.x, head.y, (aR - ringW) * 2);
+    } else {
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(head.x, head.y, aR - ringW, 0, Math.PI * 2);
+      ctx.clip();
+      ctx.fillStyle = "rgba(255,255,255,0.18)";
+      ctx.fillRect(head.x - aR, head.y - aR, aR * 2, aR * 2);
+      const ini = r.e.name.split(/\s+/).map((w) => w[0] || "").join("").slice(0, 2).toUpperCase();
+      setFont(ctx, (aR - ringW) * 0.9, 800);
+      ctx.fillStyle = "#fff";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(ini, head.x, head.y);
+      ctx.restore();
+    }
+
+    // name + current value in the right strip, centered on the head (one per row → no overlap)
+    const lx = head.x + aR + Math.max(6, aR * 0.3);
+    const lw = Math.max(20, plotRight - lx);
+    ctx.textAlign = "left";
+    ctx.textBaseline = "alphabetic";
+    setFont(ctx, fitText(ctx, r.e.name, Math.min(rowH * 0.34, min * 0.026), 800, lw), 800);
+    ctx.fillStyle = INK;
+    ctx.fillText(r.e.name, lx, head.y - rowH * 0.02);
+    const vStr = fmtValueCompact(r.v, race);
+    setFont(ctx, fitText(ctx, vStr, Math.min(rowH * 0.3, min * 0.024), 800, lw), 800);
+    ctx.fillStyle = SEAL;
+    ctx.fillText(vStr, lx, head.y + rowH * 0.32);
+  }
+  ctx.textAlign = "left";
+  ctx.textBaseline = "alphabetic";
+
+  drawStoryPanel(ctx, panelX, panelY, panelW, panelH, race, curT, ev, evAlpha, vertical);
+  if (race.source) {
+    setFont(ctx, min * 0.026, 700);
+    ctx.fillStyle = "rgba(44,40,35,0.45)";
+    ctx.fillText(`Source: ${race.source}`, padX, H * 0.975);
+  }
+  drawBrandBadge(ctx, W - padX, H * 0.965, min * 0.034);
+}
+
 /** The available visual styles for a stat battle (same data, different look). */
-export type RaceStyle = "bars" | "bubbles";
+export type RaceStyle = "bars" | "bubbles" | "trail";
 export const RACE_STYLES: { id: RaceStyle; label: string }[] = [
   { id: "bars", label: "Bars" },
   { id: "bubbles", label: "Bubbles" },
+  { id: "trail", label: "Trail" },
 ];
 /** Draw one race frame in the chosen visual style. */
 export function drawRaceStyle(ctx: CanvasRenderingContext2D, W: number, H: number, race: RaceData, state: RaceState, el: number, style: RaceStyle = "bars") {
   if (style === "bubbles") drawRaceBubbles(ctx, W, H, race, state, el);
+  else if (style === "trail") drawRaceBump(ctx, W, H, race, state, el);
   else drawRaceFrame(ctx, W, H, race, state, el);
 }
 
