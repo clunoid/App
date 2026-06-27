@@ -2,13 +2,15 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Sparkles, Play, RotateCcw, Film, Loader2, BarChart3 } from "lucide-react";
+import { ArrowLeft, Sparkles, Play, RotateCcw, Film, Loader2, BarChart3, Pencil, History } from "lucide-react";
 import { DocumentBackground } from "@/components/games/DocumentBackground";
 import { ShareModal } from "@/components/share/ShareModal";
 import { StatReview } from "@/components/stats/StatReview";
+import { StatHistory } from "@/components/stats/StatHistory";
 import { buildRace, gdpFallbackRace, PRESETS } from "@/lib/stats/generate";
 import { drawRaceFrame, newRaceState, preloadRaceImages, renderRaceVideo } from "@/lib/stats/render";
 import { resolveRaceMedia } from "@/lib/stats/media";
+import { saveStatBattle } from "@/lib/stats/storage";
 import type { RaceData } from "@/lib/stats/types";
 import type { ReelAspect } from "@/lib/share/reel";
 
@@ -47,8 +49,10 @@ export function StatBattle({ initialRequest }: { initialRequest?: string }) {
   const [failed, setFailed] = useState(false);
   const [replayKey, setReplayKey] = useState(0);
   const [shareOpen, setShareOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const taRef = useRef<HTMLTextAreaElement | null>(null);
+  const savedIdRef = useRef<string | null>(null); // Supabase id of the current battle (insert→update)
 
   // Weave the main request + any optional details into one natural-language prompt.
   const compose = useCallback(() => {
@@ -73,6 +77,7 @@ export function StatBattle({ initialRequest }: { initialRequest?: string }) {
     const r = (req || "").trim();
     const isDefault = !r || r === PRESETS[0].request;
     setFailed(false);
+    savedIdRef.current = null; // a brand-new battle → save as a new history entry
     setPhase("building");
     try {
       const data = await buildRace(r || PRESETS[0].request);
@@ -102,6 +107,29 @@ export function StatBattle({ initialRequest }: { initialRequest?: string }) {
     setRace(edited);
     setReplayKey((n) => n + 1);
     setPhase("playing");
+    // Save to history (best-effort, in the background — never blocks the battle).
+    // Insert the first time; update the same row on later edits/regenerations.
+    void saveStatBattle(edited, savedIdRef.current).then((id) => {
+      if (id) savedIdRef.current = id;
+    });
+  }, []);
+
+  // Open a saved battle from history — play it, jump straight to editing, or play + export.
+  const loadSaved = useCallback(async (saved: RaceData, id: string, mode: "play" | "edit" | "video") => {
+    savedIdRef.current = id;
+    setHistoryOpen(false);
+    if (mode === "edit") {
+      setRace(saved);
+      setPhase("review");
+      return;
+    }
+    setPhase("building");
+    await resolveRaceMedia(saved).catch(() => {});
+    await preloadRaceImages(saved).catch(() => {});
+    setRace(saved);
+    setReplayKey((n) => n + 1);
+    setPhase("playing");
+    if (mode === "video") setTimeout(() => setShareOpen(true), 120);
   }, []);
 
   const startedInitial = useRef(false);
@@ -152,6 +180,16 @@ export function StatBattle({ initialRequest }: { initialRequest?: string }) {
         >
           <ArrowLeft size={18} /> <span className="text-sm font-extrabold">Home</span>
         </button>
+        {!building && (
+          <button
+            onClick={() => setHistoryOpen(true)}
+            aria-label="History"
+            className="z-20 flex h-11 items-center gap-1.5 rounded-full px-4 text-[#2c2823] backdrop-blur transition hover:opacity-80"
+            style={{ position: "absolute", right: 16, top: 16, background: "rgba(0,0,0,0.1)" }}
+          >
+            <History size={18} /> <span className="text-sm font-extrabold">History</span>
+          </button>
+        )}
 
         <div className="relative z-10 flex w-full max-w-lg flex-col items-center text-center">
           {building ? (
@@ -241,6 +279,7 @@ export function StatBattle({ initialRequest }: { initialRequest?: string }) {
             </>
           )}
         </div>
+        <StatHistory open={historyOpen} onClose={() => setHistoryOpen(false)} onSelect={loadSaved} />
       </div>
     );
   }
@@ -265,6 +304,12 @@ export function StatBattle({ initialRequest }: { initialRequest?: string }) {
             className="flex items-center gap-2 rounded-full bg-black/15 px-5 py-3 font-extrabold text-[#2c2823] backdrop-blur transition hover:bg-black/25"
           >
             <RotateCcw size={18} /> Replay
+          </button>
+          <button
+            onClick={() => setPhase("review")}
+            className="flex items-center gap-2 rounded-full bg-black/15 px-5 py-3 font-extrabold text-[#2c2823] backdrop-blur transition hover:bg-black/25"
+          >
+            <Pencil size={18} /> Edit
           </button>
           <button
             onClick={() => setShareOpen(true)}

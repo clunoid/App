@@ -138,7 +138,9 @@ export async function buildWorldBankRace(opts: WorldBankOpts): Promise<RaceRaw |
     unitPrefix: ind.prefix,
     unitSuffix,
     timeLabel: "Year",
-    decimals: opts.decimals ?? ind.decimals,
+    // full figures (raw scale) for scalable money/counts → whole numbers; non-scalable
+    // metrics (%, yrs) keep their natural precision so "exact" never rounds them off.
+    decimals: opts.decimals ?? (ind.scalable && (opts.scale || ind.scale) === "raw" ? 0 : ind.decimals),
     topN: opts.topN,
     source: "World Bank",
     entities,

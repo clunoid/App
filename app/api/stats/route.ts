@@ -30,7 +30,10 @@ function detectScale(request: string): { scale?: DisplayScale; decimals?: number
   if (/\bbillions?\b/.test(s)) return { scale: "B" };
   if (/\bmillions?\b/.test(s)) return { scale: "M" };
   if (/\bthousands?\b/.test(s)) return { scale: "K" };
-  return {}; // → the indicator's default (money: millions)
+  // DEFAULT when the user gives no unit: EXACT — full, un-abbreviated figures (no
+  // M/B/T). Decimals stay natural per metric (whole dollars/counts, but % keep their
+  // precision). Users can still ask for "millions"/"billions" etc. above to abbreviate.
+  return { scale: "raw" };
 }
 
 /** Did the user explicitly TYPE a year beyond World Bank's coverage (wants projection)? */
