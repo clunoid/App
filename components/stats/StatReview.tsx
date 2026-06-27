@@ -1,8 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ArrowLeft, Download, Check, Plus, Trash2, BarChart3, Info } from "lucide-react";
+import { ArrowLeft, Download, Check, Plus, Trash2, BarChart3, Info, Sparkles, Loader2 } from "lucide-react";
 import type { RaceData } from "@/lib/stats/types";
+import { aiEditRace } from "@/lib/stats/generate";
 import {
   type EditState,
   editStateFromRace,
@@ -30,6 +31,27 @@ const yearLabel = (t: number) => {
 export function StatReview({ race, onApprove, onBack }: { race: RaceData; onApprove: (edited: RaceData) => void; onBack: () => void }) {
   const [es, setEs] = useState<EditState>(() => editStateFromRace(race));
   const rec = useMemo(() => recommendStart(raceFromEditState(es)), [es]);
+  const [ai, setAi] = useState(""); // plain-English "what to change" instruction
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiErr, setAiErr] = useState(false);
+
+  // Let the user reshape the whole sheet with one instruction ("add more European
+  // banks", "extend to 2030", "make this richest companies instead of people").
+  const applyAi = async () => {
+    const ins = ai.trim();
+    if (!ins || aiBusy) return;
+    setAiBusy(true);
+    setAiErr(false);
+    try {
+      const edited = await aiEditRace(raceFromEditState(es), ins);
+      setEs(editStateFromRace(edited));
+      setAi("");
+    } catch {
+      setAiErr(true);
+    } finally {
+      setAiBusy(false);
+    }
+  };
 
   const patch = (p: Partial<EditState>) => setEs((s) => ({ ...s, ...p }));
   const setCell = (ri: number, ci: number, raw: string) => {
@@ -103,6 +125,51 @@ export function StatReview({ race, onApprove, onBack }: { race: RaceData; onAppr
             <input value={es.subtitle} onChange={(e) => patch({ subtitle: e.target.value })} placeholder="Subtitle (metric · range)" className={`${input} mt-1.5 w-full text-sm font-bold`} style={{ color: SEAL }} />
             <p className="mt-2 text-xs font-semibold text-[#2c2823]/55">
               Check every figure below — fix or add anything, then approve. The present-day column is on the right.
+            </p>
+          </div>
+
+          {/* AI edit — reshape the whole sheet with one plain-English instruction */}
+          <div className="mx-5 mt-3 rounded-xl border border-[#7c3aed]/30 px-4 py-3" style={{ background: "rgba(124,58,237,0.05)" }}>
+            <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-extrabold uppercase tracking-wide" style={{ color: SEAL }}>
+              <Sparkles size={14} /> Tell Clunoid what to change
+            </div>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <input
+                value={ai}
+                onChange={(e) => setAi(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") applyAi();
+                }}
+                placeholder="e.g. add more European banks · extend to 2030 · make this richest companies instead of people"
+                disabled={aiBusy}
+                className={`${input} w-full text-sm disabled:opacity-60`}
+                style={{ color: INK }}
+              />
+              <button
+                onClick={applyAi}
+                disabled={aiBusy || !ai.trim()}
+                className="flex h-10 shrink-0 items-center justify-center gap-1.5 rounded-lg px-4 text-sm font-extrabold text-white shadow transition hover:scale-[1.02] disabled:opacity-50"
+                style={{ background: "linear-gradient(120deg,#7c3aed,#ec4899)" }}
+              >
+                {aiBusy ? (
+                  <>
+                    <Loader2 size={16} className="animate-spin" /> Updating…
+                  </>
+                ) : (
+                  <>
+                    <Sparkles size={16} /> Apply with AI
+                  </>
+                )}
+              </button>
+            </div>
+            <p className="mt-1.5 text-[11px] font-semibold text-[#2c2823]/50">
+              {aiErr ? (
+                <span style={{ color: SEAL }}>Couldn&apos;t apply that — try rephrasing.</span>
+              ) : aiBusy ? (
+                "Clunoid is rebuilding your data — this takes a moment…"
+              ) : (
+                "Clunoid updates the data below from your words; you can still tweak it by hand, then approve. Great for turning a saved battle into a new one."
+              )}
             </p>
           </div>
 

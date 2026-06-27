@@ -153,17 +153,27 @@ export function newRaceState(): RaceState {
 }
 
 /** Interpolated value for every entity at continuous time t (handles enter/leave). */
-function valuesAt(race: RaceData, t: number): Map<string, number> {
+/**
+ * Each entity's value at continuous time t, with a `fade` (1 = solid, 0 = gone).
+ * A LEAVING entity (present then omitted by the brain — e.g. someone whose active
+ * period ended) HOLDS its last value at a SOLID bar, then DROPS off cleanly at the
+ * next keyframe (no fade, no cratering to zero) so the current leaders keep
+ * competing. The brain decides who leaves: for "richest each year" it drops people
+ * once they're past their peak; for cumulative/all-time records it keeps the
+ * holders listed (so they never leave).
+ */
+type Val = { v: number; fade: number };
+function valuesAt(race: RaceData, t: number): Map<string, Val> {
   const f = race.frames;
-  const out = new Map<string, number>();
+  const out = new Map<string, Val>();
   if (f.length === 0) return out;
   if (t <= f[0].time) {
-    for (const e of race.entities) out.set(e.name, f[0].values[e.name] ?? 0);
+    for (const e of race.entities) out.set(e.name, { v: f[0].values[e.name] ?? 0, fade: 1 });
     return out;
   }
   if (t >= f[f.length - 1].time) {
     const last = f[f.length - 1];
-    for (const e of race.entities) out.set(e.name, last.values[e.name] ?? 0);
+    for (const e of race.entities) out.set(e.name, { v: last.values[e.name] ?? 0, fade: 1 });
     return out;
   }
   let i = 0;
@@ -174,12 +184,10 @@ function valuesAt(race: RaceData, t: number): Map<string, number> {
   for (const e of race.entities) {
     const va = a.values[e.name];
     const vb = b.values[e.name];
-    let v: number;
-    if (va != null && vb != null) v = va + (vb - va) * frac;
-    else if (vb != null) v = vb * frac; // entering — grows from 0
-    else if (va != null) v = va; // stopped/overtaken — HOLD the last value (never crater to 0; rank handles it)
-    else v = 0;
-    out.set(e.name, v);
+    if (va != null && vb != null) out.set(e.name, { v: va + (vb - va) * frac, fade: 1 });
+    else if (vb != null) out.set(e.name, { v: vb * frac, fade: 1 }); // entering — grows from 0
+    else if (va != null) out.set(e.name, { v: va, fade: 1 }); // leaving — HOLD the bar solid, then DROP it off cleanly at the next keyframe (no fade, no crater)
+    else out.set(e.name, { v: 0, fade: 0 });
   }
   return out;
 }
@@ -453,7 +461,7 @@ export function drawRaceFrame(ctx: CanvasRenderingContext2D, W: number, H: numbe
   const curT = t0 + (t1 - t0) * prog;
   const vals = valuesAt(race, curT);
 
-  const ranked = race.entities.map((e) => ({ e, v: vals.get(e.name) || 0 })).sort((a, b) => b.v - a.v);
+  const ranked = race.entities.map((e) => ({ e, v: vals.get(e.name)?.v || 0, fade: vals.get(e.name)?.fade ?? 1 })).sort((a, b) => b.v - a.v);
   const dt = state.init ? Math.max(0, Math.min(0.1, el - state.lastEl)) : 0;
   state.lastEl = el;
   const kRank = state.init ? 1 - Math.exp(-dt * 8) : 1; // snappy settle so bars sit at clean rows (overall pace is set by durationSec)
@@ -469,7 +477,7 @@ export function drawRaceFrame(ctx: CanvasRenderingContext2D, W: number, H: numbe
   // to this (smoothed), so the chart is full top-to-bottom when the data is rich
   // and never leaves a big empty void when an early year genuinely has fewer
   // entities (no fake/0 bars are ever shown).
-  const liveCount = ranked.reduce((n, r) => n + (r.v > 1e-6 ? 1 : 0), 0);
+  const liveCount = ranked.reduce((n, r) => n + (r.v > 1e-6 && r.fade > 0.05 ? 1 : 0), 0);
   const targetVis = Math.max(1, Math.min(race.topN, liveCount));
   state.vis = state.vis > 0 ? state.vis + (targetVis - state.vis) * kRank : targetVis;
   state.init = true;
@@ -535,10 +543,10 @@ export function drawRaceFrame(ctx: CanvasRenderingContext2D, W: number, H: numbe
   const minBarW = flagH * 1.55 + maxBarW * 0.08; // keep the lowest bars long enough to read
 
   for (const r of ranked) {
-    if (r.v <= 1e-6) continue; // an entity not present this year (retired / not yet existed) — no "0" bar
+    if (r.v <= 1e-6 || r.fade <= 1e-3) continue; // absent that year, or fully faded out (dropped off)
     const dispR = state.disp.get(r.e.name)!;
     if (dispR > race.topN - 0.25) continue;
-    const alpha = clamp01(race.topN - dispR);
+    const alpha = clamp01(race.topN - dispR) * r.fade; // fade a leaving competitor's bar out as it drops off
     const yMid = barsTop + dispR * rowH + rowH / 2;
     const w = Math.max(minBarW, (r.v / maxV) * maxBarW);
     ctx.globalAlpha = alpha;

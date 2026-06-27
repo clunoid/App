@@ -8,7 +8,6 @@
  * download the whole thing as a branded, self-contained HTML document.
  */
 import type { RaceData, RaceEntity, RaceEvent } from "./types";
-import { holdLastValues } from "./generate";
 
 /** A flat, spreadsheet-friendly view of a RaceData that's easy to edit in a grid. */
 export type EditRow = {
@@ -110,7 +109,6 @@ export function raceFromEditState(es: EditState): RaceData {
     }
     return { time: c.t, values };
   });
-  holdLastValues(frames, entities); // a stopped competitor HOLDS its value, never craters to 0
 
   const span = times.length ? times[times.length - 1] - times[0] : 0;
   return {

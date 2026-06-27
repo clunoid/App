@@ -1,28 +1,8 @@
 "use client";
 
-import { PALETTE, type RaceData, type RaceEntity, type RaceFrame, type RaceRaw } from "./types";
+import { PALETTE, type RaceData, type RaceRaw } from "./types";
 import { GDP_FALLBACK } from "./fallback";
 import { flagUrlForName } from "./flags";
-
-/**
- * Carry each competitor's last real value FORWARD over the keyframes where it's
- * omitted (only AFTER it has first appeared). So a competitor whose data stops —
- * a retired player's career goals, a record that's been beaten — HOLDS its value
- * and is simply overtaken by RANK, instead of the renderer interpolating it down
- * to zero (which looked like a player's goals melting away). Years before a
- * competitor first appears are left untouched (it still grows in from 0), and any
- * genuine rise/fall the brain actually put in a keyframe is preserved exactly.
- */
-export function holdLastValues(frames: RaceFrame[], entities: RaceEntity[]): void {
-  for (const e of entities) {
-    let last: number | undefined;
-    for (const f of frames) {
-      const v = f.values[e.name];
-      if (v != null) last = v; // a real figure → remember it
-      else if (last != null) f.values[e.name] = last; // omitted after appearing → hold
-    }
-  }
-}
 
 /** Quick-start stat battles — natural requests the brain researches. First = GDP. */
 export const PRESETS: { label: string; request: string }[] = [
@@ -48,7 +28,6 @@ export function toRaceData(raw: RaceRaw): RaceData {
     .map((k) => ({ time: k.time, values: Object.fromEntries(k.values.map((v) => [v.name, v.value])) }))
     .sort((a, b) => a.time - b.time);
   const events = (raw.events || []).slice().sort((a, b) => a.time - b.time);
-  holdLastValues(frames, entities); // values hold (never crater to 0) once a competitor stops
   const topN = Math.min(raw.topN && raw.topN >= 3 ? raw.topN : 12, entities.length);
   return {
     title: raw.title || "Stat Battle",
@@ -85,5 +64,20 @@ export async function buildRace(request: string): Promise<RaceData> {
   if (!res.ok) throw new Error("stats generation failed");
   const raw = (await res.json()) as RaceRaw & { error?: boolean };
   if (raw.error || !raw.entities?.length || !raw.keyframes?.length) throw new Error("empty race");
+  return toRaceData(raw);
+}
+
+/** AI-edit an existing race from a plain-English instruction ("add more European
+ *  banks", "extend to 2030", "make Messi's 2026 value 915"). THROWS on failure so the
+ *  review UI can keep the current data and show a retry hint. */
+export async function aiEditRace(current: RaceData, instruction: string): Promise<RaceData> {
+  const res = await fetch("/api/stats/edit", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ data: current, instruction }),
+  });
+  if (!res.ok) throw new Error("stats edit failed");
+  const raw = (await res.json()) as RaceRaw & { error?: boolean };
+  if (raw.error || !raw.entities?.length || !raw.keyframes?.length) throw new Error("edit produced nothing");
   return toRaceData(raw);
 }

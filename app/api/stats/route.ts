@@ -54,6 +54,14 @@ function wantsWorldwide(request: string): boolean {
   return /\b(in the world|world'?s|worldwide|globally?|across the globe|every country|all countries|international(?:ly)?)\b/.test(s);
 }
 
+/**
+ * Is this an ALL-TIME ranking (keep everyone, overtaken by rank) vs the default
+ * "top each year" live snapshot (a competitor drops off once past its peak)?
+ */
+function wantsAllTime(request: string): boolean {
+  return /\b(all[- ]?time|of all time|in history|throughout history|history|ever)\b/.test(request.toLowerCase());
+}
+
 /* ── 1. PLAN + STORY: map the free-text request to a data plan + event timeline ── */
 const planSchema = z.object({
   mode: z.enum(["worldbank", "model"]).describe("'worldbank' ONLY for a modern (1960+) by-country ranking matching a catalogue indicator; 'model' for everything else (historical, people, clubs, projections, custom lists)."),
@@ -137,7 +145,7 @@ const seriesSchema = z.object({
   values: z.array(keyframeItem).max(60).optional().describe("Alias for `keyframes` — only fill this if you did NOT use `keyframes`."),
 });
 
-function seriesSystem(opts: { from: number; to: number; topN: number; nowLabel: string; named?: string[]; context: string; anchor: string; current: string; scaleHint: string; worldwide: boolean; rosterNotes: string }): string {
+function seriesSystem(opts: { from: number; to: number; topN: number; nowLabel: string; named?: string[]; context: string; anchor: string; current: string; scaleHint: string; worldwide: boolean; rosterNotes: string; allTime: boolean }): string {
   return `You assemble ACCURATE ranking-over-time data for an animated bar-chart race. Accuracy is paramount — use the research notes + authoritative anchors below; otherwise use the most credible scholarly figures (e.g. Maddison Project for historical GDP, IMF/World Bank for recent economics, Forbes for net worth, Transfermarkt for football values, recognised historical scholarship for army sizes). NEVER invent fake precision.
 
 REQUIREMENTS:
@@ -154,6 +162,11 @@ REQUIREMENTS:
   • WRONG (this is the exact mistake to avoid) for "top football scorers from ${opts.from}": listing today's stars like Cristiano Ronaldo, Lionel Messi, Lewandowski at value 0 in ${opts.from} → only 3–4 real bars, the chart looks broken and half-empty.
   • RIGHT: fill ${opts.from} with the entities that ACTUALLY led the metric THEN — the genuine top ${opts.topN}+ of THAT era, each with its real value — and let modern names ENTER the race only in the later keyframes, at the year they truly start competing (their first appearance is simply their first keyframe, never a 0 row earlier).
   ROLLING ROSTER: supply a LARGE pool of REAL, widely-recognised names (~2–3× the ${opts.topN} visible bars, up to ~40) spanning ALL eras of the span, so that in EVERY keyframe at least ${opts.topN} of them have real non-zero values; as era leaders fade and newer ones rise, the count of real bars never drops below ${opts.topN}. NEVER invent or pad with obscure filler names to hit the count — if you genuinely cannot name ${opts.topN} real entities for an early year, include as many real ones as exist and they will fill the chart.`
+  }
+- ${
+    opts.allTime
+      ? `ALL-TIME ranking: once a competitor appears, KEEP it listed at its final/peak value in EVERY later keyframe — it never vanishes, only overtaken by RANK. Peak fortunes and cumulative records PERSIST to the end.`
+      : `TOP-EACH-MOMENT (a live snapshot — this is NOT an all-time ranking): show who genuinely ranks AT EACH TIME. For LIVE/fluctuating values (net worth, market cap, transfer value, ELO), once a competitor is clearly past their peak — they died, declined, or were overtaken and are no longer near the top — DROP them from the later keyframes (simply stop listing them) so the current leaders compete and the race keeps MOVING. Do NOT freeze an old leader at a flat value forever (it makes the race stall, e.g. stuck on a 1900s tycoon for a century). Fresh names rise to replace them. (CUMULATIVE metrics — career goals, total titles — only ever rise, so KEEP those record-holders; this drop-off is only for live/fluctuating values.)`
   }
 ${
     opts.worldwide
@@ -421,7 +434,7 @@ export async function POST(req: NextRequest) {
         await generateObject({
           model: MODELS.max(),
           schema: seriesSchema,
-          system: seriesSystem({ from, to, topN, nowLabel: NOW_LABEL, named, context, anchor, current, scaleHint, worldwide: wantsWorldwide(request), rosterNotes: plan.rosterNotes || "" }),
+          system: seriesSystem({ from, to, topN, nowLabel: NOW_LABEL, named, context, anchor, current, scaleHint, worldwide: wantsWorldwide(request), rosterNotes: plan.rosterNotes || "", allTime: wantsAllTime(request) }),
           prompt: `${request}\nProduce the ranking-over-time series for EXACTLY ${from} to ${to}. The final keyframe is TODAY (${NOW_LABEL}) with current real values.`,
           // NOTE: MODELS.max() (Opus) rejects the `temperature` param — omit it here.
           maxRetries: 3,
