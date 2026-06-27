@@ -67,6 +67,26 @@ export async function buildRace(request: string): Promise<RaceData> {
   return toRaceData(raw);
 }
 
+/** Build a stat battle FROM a user-uploaded document (PDF passed as base64, text
+ *  files as plain text). THROWS on failure so the caller can show a retry hint. */
+export async function buildRaceFromFile(payload: {
+  kind: "text" | "pdf";
+  filename: string;
+  text?: string;
+  dataBase64?: string;
+  note?: string;
+}): Promise<RaceData> {
+  const res = await fetch("/api/stats/from-file", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error("file generation failed");
+  const raw = (await res.json()) as RaceRaw & { error?: boolean };
+  if (raw.error || !raw.entities?.length || !raw.keyframes?.length) throw new Error("file produced nothing");
+  return toRaceData(raw);
+}
+
 /** AI-edit an existing race from a plain-English instruction ("add more European
  *  banks", "extend to 2030", "make Messi's 2026 value 915"). THROWS on failure so the
  *  review UI can keep the current data and show a retry hint. */

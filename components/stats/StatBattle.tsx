@@ -2,12 +2,12 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Sparkles, Play, RotateCcw, Film, Loader2, BarChart3, History } from "lucide-react";
+import { ArrowLeft, Sparkles, Play, RotateCcw, Film, Loader2, BarChart3, History, Shuffle, Upload } from "lucide-react";
 import { DocumentBackground } from "@/components/games/DocumentBackground";
 import { ShareModal } from "@/components/share/ShareModal";
 import { StatReview } from "@/components/stats/StatReview";
 import { StatHistory } from "@/components/stats/StatHistory";
-import { buildRace, gdpFallbackRace, PRESETS } from "@/lib/stats/generate";
+import { buildRace, buildRaceFromFile, gdpFallbackRace, PRESETS } from "@/lib/stats/generate";
 import { drawRaceFrame, newRaceState, preloadRaceImages, renderRaceVideo } from "@/lib/stats/render";
 import { resolveRaceMedia } from "@/lib/stats/media";
 import { saveStatBattle } from "@/lib/stats/storage";
@@ -19,6 +19,30 @@ const SEAL = "#8a2433";
 
 // menu → building (research) → review (edit & approve the data) → playing
 type Phase = "menu" | "building" | "review" | "playing";
+
+// Curated, diverse ideas for the "Surprise me" button. Each is a full prompt
+// (with its own range); some carry optional bars/units that we SOMETIMES drop
+// into the guided fields so users see how those work too.
+const SURPRISE: { req: string; bars?: string; units?: string }[] = [
+  { req: "Most valuable football players by transfer value, 2004 to 2026", units: "millions" },
+  { req: "World's largest companies by market cap, 1990 to 2026", units: "billions", bars: "12" },
+  { req: "Richest people in the world, 1980 to 2026" },
+  { req: "Most populous countries, 1950 to 2026", bars: "15" },
+  { req: "Most-subscribed YouTube channels, 2010 to 2026" },
+  { req: "Top international goalscorers in men's football, 1990 to 2026" },
+  { req: "Largest militaries by active personnel, 1816 to 2026" },
+  { req: "Most Grand Slam singles titles (men's tennis), 2000 to 2026" },
+  { req: "World's tallest completed skyscrapers, 1900 to 2026", units: "meters" },
+  { req: "Highest-grossing movie franchises of all time, 1977 to 2026", units: "billions" },
+  { req: "Most Olympic gold medals by country, 1896 to 2024", bars: "12" },
+  { req: "Biggest CO₂-emitting countries, 1960 to 2026" },
+  { req: "Most-streamed artists on Spotify, 2015 to 2026" },
+  { req: "Countries by GDP, 1960 to 2026", units: "trillions" },
+  { req: "Most NBA championships by franchise, 1947 to 2026" },
+  { req: "Top chess players by Elo rating, 1970 to 2026" },
+  { req: "World's busiest airports by passengers, 1990 to 2026" },
+  { req: "Best-selling video game consoles, 1972 to 2026", units: "millions" },
+];
 
 /** One optional detail field (module-level so typing never loses focus). */
 function OptField({ label, value, onChange, placeholder }: { label: string; value: string; onChange: (v: string) => void; placeholder: string }) {
@@ -46,12 +70,14 @@ export function StatBattle({ initialRequest }: { initialRequest?: string }) {
   const [units, setUnits] = useState("");
   const [competitors, setCompetitors] = useState("");
   const [race, setRace] = useState<RaceData | null>(null);
-  const [failed, setFailed] = useState(false);
+  const [errMsg, setErrMsg] = useState("");
+  const [buildKind, setBuildKind] = useState<"gen" | "file">("gen");
   const [replayKey, setReplayKey] = useState(0);
   const [shareOpen, setShareOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const taRef = useRef<HTMLTextAreaElement | null>(null);
+  const fileRef = useRef<HTMLInputElement | null>(null);
   const savedIdRef = useRef<string | null>(null); // Supabase id of the current battle (insert→update)
 
   // Weave the main request + any optional details into one natural-language prompt.
@@ -76,7 +102,8 @@ export function StatBattle({ initialRequest }: { initialRequest?: string }) {
   const start = useCallback(async (req: string) => {
     const r = (req || "").trim();
     const isDefault = !r || r === PRESETS[0].request;
-    setFailed(false);
+    setErrMsg("");
+    setBuildKind("gen");
     savedIdRef.current = null; // a brand-new battle → save as a new history entry
     setPhase("building");
     try {
@@ -93,14 +120,63 @@ export function StatBattle({ initialRequest }: { initialRequest?: string }) {
         setRace(fb);
         setPhase("review");
       } else {
-        setFailed(true);
+        setErrMsg("Couldn't build that one — try rephrasing the topic and range.");
         setPhase("menu");
       }
     }
   }, []);
 
+  // "Surprise me" — drop a random ready-made idea into the box, and SOMETIMES
+  // pre-fill a guided field or two so users discover them.
+  const surprise = useCallback(() => {
+    setErrMsg("");
+    const pick = SURPRISE[Math.floor(Math.random() * SURPRISE.length)];
+    setRequest(pick.req);
+    // these aren't in the prompt text, so filling them won't duplicate anything
+    setRange("");
+    setCompetitors("");
+    const fill = Math.random() < 0.5;
+    setBars(fill && pick.bars && Math.random() < 0.7 ? pick.bars : "");
+    setUnits(fill && pick.units && Math.random() < 0.7 ? pick.units : "");
+    taRef.current?.focus();
+  }, []);
+
+  // Upload a document the user already has and build the battle from it.
+  const onFile = useCallback(async (file: File) => {
+    const MAX = 3 * 1024 * 1024; // 3 MB — keeps the request under the serverless body limit
+    if (file.size > MAX) {
+      setErrMsg("That file is over 3 MB. Please upload a smaller PDF, CSV, TXT or MD file.");
+      return;
+    }
+    setErrMsg("");
+    setBuildKind("file");
+    savedIdRef.current = null;
+    setPhase("building");
+    try {
+      const isPdf = file.type === "application/pdf" || /\.pdf$/i.test(file.name);
+      let data: RaceData;
+      if (isPdf) {
+        const buf = new Uint8Array(await file.arrayBuffer());
+        let bin = "";
+        const CH = 0x8000;
+        for (let i = 0; i < buf.length; i += CH) bin += String.fromCharCode(...buf.subarray(i, i + CH));
+        data = await buildRaceFromFile({ kind: "pdf", filename: file.name, dataBase64: btoa(bin) });
+      } else {
+        const text = await file.text();
+        data = await buildRaceFromFile({ kind: "text", filename: file.name, text });
+      }
+      await resolveRaceMedia(data).catch(() => {});
+      setRace(data);
+      setPhase("review");
+    } catch {
+      setErrMsg("Couldn't read that file — use a PDF, CSV, TXT or MD with a clear ranking and numbers.");
+      setPhase("menu");
+    }
+  }, []);
+
   // User approved the (possibly edited) data sheet → prepare media + play.
   const approve = useCallback(async (edited: RaceData) => {
+    setBuildKind("gen"); // this build is media prep, not file reading
     setPhase("building");
     await resolveRaceMedia(edited).catch(() => {}); // resolve media for any newly-added competitors
     await preloadRaceImages(edited).catch(() => {}); // decode before the race plays
@@ -123,6 +199,7 @@ export function StatBattle({ initialRequest }: { initialRequest?: string }) {
       setPhase("review");
       return;
     }
+    setBuildKind("gen"); // loading a saved battle / media prep, not file reading
     setPhase("building");
     await resolveRaceMedia(saved).catch(() => {});
     await preloadRaceImages(saved).catch(() => {});
@@ -196,10 +273,12 @@ export function StatBattle({ initialRequest }: { initialRequest?: string }) {
             <>
               <div className="h-14 w-14 animate-spin rounded-full border-4 border-[#2c2823]/25 border-t-[#2c2823]" />
               <p className="mt-5 text-xl font-extrabold" style={{ color: INK }}>
-                Researching real data & building the story…
+                {buildKind === "file" ? "Reading your file & building the stat battle…" : "Researching real data & building the story…"}
               </p>
               <p className="mt-2 text-sm font-semibold" style={{ color: "#2c2823aa" }}>
-                Pulling verified figures and writing the timeline — this takes a moment.
+                {buildKind === "file"
+                  ? "Pulling the rankings and figures out of your document — this takes a moment."
+                  : "Pulling verified figures and writing the timeline — this takes a moment."}
               </p>
             </>
           ) : (
@@ -231,6 +310,40 @@ export function StatBattle({ initialRequest }: { initialRequest?: string }) {
                     className="w-full resize-none bg-transparent text-[15px] font-bold leading-snug text-[#2c2823] outline-none placeholder:font-medium placeholder:text-[#2c2823]/50"
                   />
                 </div>
+
+                {/* quick-start helpers: a random idea, or build from a file you already have */}
+                <div className="mt-2.5 flex flex-wrap items-center justify-center gap-2">
+                  <button
+                    type="button"
+                    onClick={surprise}
+                    className="flex items-center gap-1.5 rounded-full px-3.5 py-2 text-[13px] font-extrabold text-[#2c2823] transition hover:opacity-80"
+                    style={{ background: "rgba(0,0,0,0.08)" }}
+                  >
+                    <Shuffle size={15} /> Surprise me
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => fileRef.current?.click()}
+                    className="flex items-center gap-1.5 rounded-full px-3.5 py-2 text-[13px] font-extrabold text-[#2c2823] transition hover:opacity-80"
+                    style={{ background: "rgba(0,0,0,0.08)" }}
+                  >
+                    <Upload size={15} /> Upload a file
+                  </button>
+                  <input
+                    ref={fileRef}
+                    type="file"
+                    accept=".pdf,.csv,.tsv,.txt,.md,.json,application/pdf,text/csv,text/plain,text/markdown,application/json"
+                    className="hidden"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) void onFile(f);
+                      e.target.value = ""; // allow re-uploading the same file
+                    }}
+                  />
+                </div>
+                <p className="mt-1.5 text-center text-[11px] leading-relaxed text-[#2c2823]/50">
+                  Already have the data? Upload a <span className="font-bold">PDF, CSV, TXT or MD</span> file (up to 3 MB) to build from it.
+                </p>
 
                 {/* optional guided details */}
                 <p className="mb-2 mt-3 text-left text-[11px] font-bold uppercase tracking-wide text-[#2c2823]/45">
@@ -272,7 +385,7 @@ export function StatBattle({ initialRequest }: { initialRequest?: string }) {
                 ))}
               </div>
 
-              {failed && <p className="mt-5 text-sm font-bold" style={{ color: SEAL }}>Couldn&apos;t build that one — try rephrasing the topic and range.</p>}
+              {errMsg && <p className="mt-5 text-sm font-bold" style={{ color: SEAL }}>{errMsg}</p>}
               <p className="mt-4 max-w-sm text-[11px] leading-relaxed text-[#2c2823]/50">
                 Economy &amp; population use verified World Bank data; other topics are researched from the live web, with logos &amp; photos pulled in automatically.
               </p>
