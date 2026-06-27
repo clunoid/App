@@ -42,6 +42,18 @@ function wantsBeyondWB(request: string): boolean {
   return yrs.some((y) => y > WB_LATEST);
 }
 
+/**
+ * Does the prompt ask for a GLOBAL/worldwide ranking? If so the roster must span
+ * the whole world (not default to one country, usually the US). Matches genuine
+ * global phrasings but NOT scoped proper nouns where "world" isn't a geography.
+ */
+function wantsWorldwide(request: string): boolean {
+  const s = request.toLowerCase();
+  // exclude proper nouns where "world" isn't a geographic scope
+  if (/\b(world series|world cup|world war|disney\s*world|world of warcraft|wizarding world|world bank|world trade|westworld|world record)\b/.test(s)) return false;
+  return /\b(in the world|world'?s|worldwide|globally?|across the globe|every country|all countries|international(?:ly)?)\b/.test(s);
+}
+
 /* ── 1. PLAN + STORY: map the free-text request to a data plan + event timeline ── */
 const planSchema = z.object({
   mode: z.enum(["worldbank", "model"]).describe("'worldbank' ONLY for a modern (1960+) by-country ranking matching a catalogue indicator; 'model' for everything else (historical, people, clubs, projections, custom lists)."),
@@ -53,11 +65,17 @@ const planSchema = z.object({
   unitSuffix: z.string().optional().describe("[model] suffix e.g. ' pts', '%', 'M', ' troops' (empty if none)."),
   displayScale: z.enum(["raw", "K", "M", "B", "T"]).optional().describe("[model] magnitude. Money → 'M' unless the user says otherwise."),
   decimals: z.number().int().min(0).max(3).optional().describe("Decimals per value (money: 1; counts/ratings: 0)."),
-  fromYear: z.number().int().describe("EXACT start the user asked for (e.g. 1560, or 1 for '1 AD'). Only default (≈1960) when the user gave none."),
-  toYear: z.number().int().describe("EXACT end the user asked for (e.g. 2026). Default the current year when none given."),
+  fromYear: z.number().int().optional().describe("EXACT start the user asked for (e.g. 1560, or 1 for '1 AD'). Only default (≈1960) when the user gave none."),
+  toYear: z.number().int().optional().describe("EXACT end the user asked for (e.g. 2026). Default the current year when none given."),
   topN: z.number().int().min(3).max(25).describe("How many bars are VISIBLE at once. Use the user's number if they gave one (e.g. 'top 15'→15, '5 players'→5); otherwise pick a natural count for the topic (≈10–15). This is the visible window, NOT the total roster."),
   entityKind: z.enum(["country", "company", "person", "mixed", "other"]).describe("What the competitors ARE — drives their bar media: country→flag, company→logo, person→photo. 'mixed' if it varies."),
   namedEntities: z.array(z.string()).optional().describe("If the user EXPLICITLY listed competitors (e.g. 'Elon Musk vs Jeff Bezos vs ...'), list them EXACTLY here; else omit."),
+  rosterNotes: z
+    .string()
+    .optional()
+    .describe(
+      "If the ranking is GLOBAL/WORLDWIDE (e.g. 'richest people in the world', 'biggest companies in the world'), THINK HARD and list the genuine entities to include from ACROSS THE WORLD over the whole span — era by era — so the result isn't skewed to one country (usually the US). Name the real international leaders of EACH period who genuinely ranked, e.g. for worldwide wealth: ~1900s the Nizam of Hyderabad, the Rothschilds, Henri Deterding, Calouste Gulbenkian, Sir Basil Zaharoff, Tsar Nicholas II; mid-century Aristotle Onassis, K. P. Birla, the Sultan of Brunei, Adnan Khashoggi; 1980s–90s Yoshiaki Tsutsumi & Taikichiro Mori (Japan, world #1), Li Ka-shing (Hong Kong); modern Bernard Arnault, Amancio Ortega, Mukesh Ambani, Lakshmi Mittal, Gautam Adani, Masayoshi Son, Jack Ma. Recall the ACTUAL ones for THIS prompt — don't copy these verbatim. Leave EMPTY for country-scoped or local rankings."
+    ),
   events: z
     .array(
       z.object({
@@ -89,6 +107,8 @@ HONOR THE USER EXACTLY — never override an explicit request:
 - entityKind: country (flags), company (logos), person (photos), or mixed.
 - Units — show FULL figures, NEVER abbreviated/rounded (no "0.6B"): national GDP → displayScale "M" (full millions, e.g. 28750956); company market-cap → "raw" (full dollars, e.g. 757423097909); personal net worth → "M" (full millions, e.g. 72751); ratings/counts → "raw". decimals 0 always (full integers). Only use B/T if the user EXPLICITLY asks to abbreviate.
 
+WORLDWIDE COVERAGE: when the request is global ("…in the world", "world's…", "worldwide", "global", "international"), it must NOT default to one country (people most easily recall US names). THINK HARD and fill rosterNotes with the genuine WORLD leaders of EACH era across the whole span (multiple countries/regions) so the race has real global coverage — every entity that legitimately ranked, wherever they're from. Leave rosterNotes empty for country-scoped/local requests (e.g. "richest Americans", "Premier League scorers").
+
 EVENT STORY: the REAL, well-established events across the WHOLE span that explain the movement (wars, crashes, oil shocks, reforms, booms, a person's company IPO, a record transfer). Each beat: punchy title, 1–2 truthful sentences, and media — for COUNTRY topics use partyCodes (flags; vsCodes only for a conflict's other side); for PEOPLE/COMPANY topics use subjects (the names whose photo/logo illustrates the beat). Be exact with dates/facts.`;
 }
 
@@ -117,7 +137,7 @@ const seriesSchema = z.object({
   values: z.array(keyframeItem).max(60).optional().describe("Alias for `keyframes` — only fill this if you did NOT use `keyframes`."),
 });
 
-function seriesSystem(opts: { from: number; to: number; topN: number; nowLabel: string; named?: string[]; context: string; anchor: string; current: string; scaleHint: string }): string {
+function seriesSystem(opts: { from: number; to: number; topN: number; nowLabel: string; named?: string[]; context: string; anchor: string; current: string; scaleHint: string; worldwide: boolean; rosterNotes: string }): string {
   return `You assemble ACCURATE ranking-over-time data for an animated bar-chart race. Accuracy is paramount — use the research notes + authoritative anchors below; otherwise use the most credible scholarly figures (e.g. Maddison Project for historical GDP, IMF/World Bank for recent economics, Forbes for net worth, Transfermarkt for football values, recognised historical scholarship for army sizes). NEVER invent fake precision.
 
 REQUIREMENTS:
@@ -135,7 +155,12 @@ REQUIREMENTS:
   • RIGHT: fill ${opts.from} with the entities that ACTUALLY led the metric THEN — the genuine top ${opts.topN}+ of THAT era, each with its real value — and let modern names ENTER the race only in the later keyframes, at the year they truly start competing (their first appearance is simply their first keyframe, never a 0 row earlier).
   ROLLING ROSTER: supply a LARGE pool of REAL, widely-recognised names (~2–3× the ${opts.topN} visible bars, up to ~40) spanning ALL eras of the span, so that in EVERY keyframe at least ${opts.topN} of them have real non-zero values; as era leaders fade and newer ones rise, the count of real bars never drops below ${opts.topN}. NEVER invent or pad with obscure filler names to hit the count — if you genuinely cannot name ${opts.topN} real entities for an early year, include as many real ones as exist and they will fill the chart.`
   }
-- HISTORICAL VALIDITY: an entity must NOT appear in any keyframe before it existed (e.g. no Ottoman Empire before ~1300, no USA before 1776, no Germany before 1871, a footballer only during their career) and not after it dissolved/retired. Use period-appropriate entities.
+${
+    opts.worldwide
+      ? `- WORLDWIDE COVERAGE (THE REQUEST IS GLOBAL — do not skew to one country): the roster MUST reflect the genuinely top entities FROM AROUND THE WORLD in each era, not just the USA/the West (which are the easiest to recall). In EVERY era include the real international leaders who legitimately ranked — e.g. for worldwide WEALTH, history's richest were often NOT American (the Nizam of Hyderabad was the world's richest man in the 1940s; Japan's Yoshiaki Tsutsumi & Taikichiro Mori were Forbes world #1 in the late 1980s–90s; Li Ka-shing, the Sultan of Brunei, the Rothschilds, Henri Deterding, Calouste Gulbenkian, and today Bernard Arnault, Mukesh Ambani, Lakshmi Mittal, Gautam Adani, Amancio Ortega). Rank STRICTLY by real value — never drop a legitimately higher-ranked non-US entity to make room for a lower-ranked US one. Aim for a genuine mix of countries/regions across the span. Set each entity's "country" correctly so the flags show that mix.
+${opts.rosterNotes ? `  ROSTER TO DRAW FROM (real international names for this topic — include those that genuinely rank, add others you know): ${opts.rosterNotes}\n` : ""}`
+      : ""
+  }- HISTORICAL VALIDITY: an entity must NOT appear in any keyframe before it existed (e.g. no Ottoman Empire before ~1300, no USA before 1776, no Germany before 1871, a footballer only during their career) and not after it dissolved/retired. Use period-appropriate entities.
 - Use 14–24 keyframes (max 28) spaced across the full span so the race moves believably; more for longer spans.
 - Every values[].name must EXACTLY match an entities[].name. Give each a DISTINCT high-contrast hex color. Use widely-recognised names.
 - For EACH entity set its "country" field = the ISO-3166 alpha-2 (lowercase) of its origin (company HQ, person's nationality) — e.g. Apple→"us", Mbappé→"fr", Toyota→"jp". This shows a small flag of where it's from.
@@ -330,8 +355,13 @@ export async function POST(req: NextRequest) {
       maxTokens: 12000, // the long-span event story can be many beats
     });
 
-    const from = Math.min(plan.fromYear, plan.toYear);
-    const to = Math.max(plan.fromYear, plan.toYear);
+    // The model usually returns the years, but can omit them (esp. on long prompts) —
+    // fall back to the years parsed deterministically from the request text.
+    const dy = detectYears(request, NOW);
+    const fromY = plan.fromYear ?? dy.from;
+    const toY = plan.toYear ?? dy.to;
+    const from = Math.min(fromY, toY);
+    const to = Math.max(fromY, toY);
     const topN = plan.topN || 12;
     const key = plan.indicatorKey as IndicatorKey;
     const { scale, decimals } = detectScale(request);
@@ -391,7 +421,7 @@ export async function POST(req: NextRequest) {
         await generateObject({
           model: MODELS.max(),
           schema: seriesSchema,
-          system: seriesSystem({ from, to, topN, nowLabel: NOW_LABEL, named, context, anchor, current, scaleHint }),
+          system: seriesSystem({ from, to, topN, nowLabel: NOW_LABEL, named, context, anchor, current, scaleHint, worldwide: wantsWorldwide(request), rosterNotes: plan.rosterNotes || "" }),
           prompt: `${request}\nProduce the ranking-over-time series for EXACTLY ${from} to ${to}. The final keyframe is TODAY (${NOW_LABEL}) with current real values.`,
           // NOTE: MODELS.max() (Opus) rejects the `temperature` param — omit it here.
           maxRetries: 3,
