@@ -101,7 +101,7 @@ const seriesSchema = z.object({
     )
     .min(2)
     .max(44)
-    .describe("EVERY competitor that appears in ANY keyframe across the whole span (a rolling roster — far more than are visible at once); distinct, readable colors."),
+    .describe("EVERY competitor that appears in ANY keyframe across the whole span (a rolling roster — far more than are visible at once); distinct, readable colors. Include the PERIOD-APPROPRIATE leaders for the START of the span too (whoever actually led the metric back then), not only the names famous at the end — so the very first keyframe already has a full field."),
   keyframes: z
     .array(
       z.object({
@@ -111,7 +111,7 @@ const seriesSchema = z.object({
     )
     .min(2)
     .max(60)
-    .describe("Chronological, ascending; FIRST keyframe = the exact start year, LAST = the exact end year. Each keyframe lists ONLY the entities that genuinely exist/compete that year."),
+    .describe("Chronological, ascending; FIRST keyframe = the exact start year, LAST = the exact end year. EVERY keyframe — ESPECIALLY THE FIRST — must rank a FULL field (at least the visible bar count) so the chart is full top-to-bottom from the very start; list the genuine leaders of that year, omitting only entities that truly didn't exist yet or had retired."),
 });
 
 function seriesSystem(opts: { from: number; to: number; topN: number; nowLabel: string; named?: string[]; context: string; anchor: string; scaleHint: string }): string {
@@ -125,7 +125,7 @@ REQUIREMENTS:
 - ${
     opts.named && opts.named.length >= 2
       ? `Use EXACTLY these competitors (no more, no fewer): ${opts.named.join(", ")}. Include every one in every keyframe of the range.`
-      : `ROLLING ROSTER: provide a LARGE pool of entities (aim for ~2–3× the ${opts.topN} visible bars, up to ~40) so that as leaders fade/retire/are overtaken, FRESH ones rise to replace them — a real race, never a static set. Only include an entity in a keyframe for years it actually competes; a value of essentially 0 means "not present" — simply OMIT it from that keyframe rather than listing 0 (an entity that retires/dissolves should DISAPPEAR, replaced by the next real competitor).`
+      : `FULL CHART AT EVERY MOMENT (THE #1 RULE): the race must be FULL top-to-bottom the instant it starts and stay full the whole way — NEVER begin with just a few bars while the rest pop in later. So EVERY keyframe, and ESPECIALLY THE FIRST (year ${opts.from}), MUST list at least ${opts.topN} entities that genuinely existed/competed that year, each with a real period-accurate value. Build the roster so the START year already has its real ${opts.topN}+ leaders — whoever actually topped the metric back in ${opts.from} (period-appropriate), not only the names famous at the end. ROLLING ROSTER: provide a LARGE pool (~2–3× the ${opts.topN} visible bars, up to ~40) so that as leaders fade/retire/are overtaken, FRESH ones IMMEDIATELY take their slot — the bar count never drops below ${opts.topN}. Only OMIT an entity from a keyframe for years it truly didn't exist yet or had clearly retired/dissolved (never list a 0) — but always keep enough genuine competitors each year to keep the chart full. The result is a true race that is ALWAYS full.`
   }
 - HISTORICAL VALIDITY: an entity must NOT appear in any keyframe before it existed (e.g. no Ottoman Empire before ~1300, no USA before 1776, no Germany before 1871, a footballer only during their career) and not after it dissolved/retired. Use period-appropriate entities.
 - Use 14–24 keyframes (max 28) spaced across the full span so the race moves believably; more for longer spans.
