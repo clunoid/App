@@ -147,9 +147,9 @@ function fmtTime(curT: number, span: number): string {
 }
 
 /* ── per-frame smoothing state (shared by live preview + export) ──────────── */
-export type RaceState = { disp: Map<string, number>; max: number; init: boolean; lastEl: number; leader: string; evIdx: number; evChange: number; vis: number };
+export type RaceState = { disp: Map<string, number>; max: number; init: boolean; lastEl: number; leader: string; evIdx: number; evChange: number; vis: number; peak: number };
 export function newRaceState(): RaceState {
-  return { disp: new Map(), max: 0, init: false, lastEl: 0, leader: "", evIdx: -1, evChange: 0, vis: 0 };
+  return { disp: new Map(), max: 0, init: false, lastEl: 0, leader: "", evIdx: -1, evChange: 0, vis: 0, peak: 0 };
 }
 
 /** Interpolated value for every entity at continuous time t (handles enter/leave). */
@@ -473,12 +473,29 @@ export function drawRaceFrame(ctx: CanvasRenderingContext2D, W: number, H: numbe
     const cur = state.disp.has(r.e.name) ? state.disp.get(r.e.name)! : idx;
     state.disp.set(r.e.name, cur + (idx - cur) * kRank);
   });
-  // How many bars are REAL (non-zero) right now — the renderer fits the row height
-  // to this (smoothed), so the chart is full top-to-bottom when the data is rich
-  // and never leaves a big empty void when an early year genuinely has fewer
-  // entities (no fake/0 bars are ever shown).
+  // The MOST bars ever on screen AT ONCE (≤ topN), computed once. Rows are sized
+  // to this so a sparse early frame keeps bars at their normal, serious size
+  // instead of ballooning; the still-empty rows get a "more to come" placeholder.
+  // It counts the brief overlap during a membership SWAP too — a LEAVING bar is
+  // held on screen until the next keyframe while a new one is already entering —
+  // so bars are sized to fit that transient and never overflow the bars zone.
+  if (!state.peak) {
+    let p = 1;
+    let prev: Set<string> | null = null;
+    for (const f of race.frames) {
+      const cur = new Set<string>();
+      for (const nm in f.values) if (f.values[nm] > 1e-6) cur.add(nm);
+      let simul = cur.size;
+      if (prev) for (const nm of prev) if (!cur.has(nm)) simul++; // leavers still held from the prior keyframe
+      if (simul > p) p = simul;
+      prev = cur;
+    }
+    state.peak = Math.min(p, race.topN);
+  }
+  // How many bars are REAL (non-zero) right now → a smoothed "fill line" used to
+  // place the placeholder below the live bars (no fake/0 bars are ever shown).
   const liveCount = ranked.reduce((n, r) => n + (r.v > 1e-6 && r.fade > 0.05 ? 1 : 0), 0);
-  const targetVis = Math.max(1, Math.min(race.topN, liveCount));
+  const targetVis = Math.max(0, Math.min(state.peak, liveCount));
   state.vis = state.vis > 0 ? state.vis + (targetVis - state.vis) * kRank : targetVis;
   state.init = true;
   state.leader = ranked.length ? ranked[0].e.name : "";
@@ -527,11 +544,11 @@ export function drawRaceFrame(ctx: CanvasRenderingContext2D, W: number, H: numbe
   }
 
   // ── bars ──
-  // Fit the row height to how many real bars are on screen now (smoothed), capped
-  // so bars never balloon when only a couple of entities exist that year. Full
-  // (rich) frames divide by topN exactly; sparse frames divide by ~6 so the bars
-  // stay a sensible thickness rather than 2 giant blocks.
-  const rowDenom = Math.max(state.vis || race.topN, Math.min(race.topN, 4));
+  // Row height is sized for the chart's EVENTUAL fill (state.peak), so bars keep a
+  // consistent, serious thickness instead of ballooning when only a couple exist
+  // early on. A sparse frame shows a few normal-size bars at the top; the unfilled
+  // rows are handled by the "more to come" placeholder below.
+  const rowDenom = Math.max(state.peak, 2);
   const rowH = (barsBottom - barsTop) / rowDenom;
   const barH = rowH * 0.9; // thick bars with a minimal gap (matches the reference look)
   const X0 = padX;
@@ -619,6 +636,49 @@ export function drawRaceFrame(ctx: CanvasRenderingContext2D, W: number, H: numbe
     ctx.globalAlpha = 1;
   }
   ctx.textBaseline = "alphabetic";
+
+  // ── "more to come" placeholder for the not-yet-filled rows ──────────────────
+  // Shown ONLY while more competitors are genuinely still due to appear — i.e. a
+  // LATER keyframe has more live entities than now — so it reads as "filling up".
+  // It never shows once the field is full, nor while entities are dropping out
+  // (a v18 "per-period" race), where the empty rows are exits, not arrivals.
+  let futureMax = 0;
+  for (const f of race.frames) {
+    if (f.time <= curT + 1e-6) continue;
+    let c = 0;
+    for (const nm in f.values) if (f.values[nm] > 1e-6) c++;
+    if (c > futureMax) futureMax = c;
+  }
+  futureMax = Math.min(futureMax, state.peak);
+  const firstEmpty = state.vis; // smoothed fill line
+  if (futureMax > firstEmpty + 0.25) {
+    const phFade = clamp01((futureMax - firstEmpty) / Math.max(1.2, futureMax));
+    const ghostW = Math.min(maxBarW * 0.4, barsRight - X0);
+    ctx.save();
+    ctx.lineCap = "round";
+    ctx.setLineDash([Math.max(3, barH * 0.16), Math.max(3, barH * 0.13)]);
+    ctx.lineWidth = Math.max(1.4, barH * 0.045);
+    for (let i = Math.ceil(firstEmpty - 0.001); i < futureMax; i++) {
+      const depth = (i - firstEmpty) / Math.max(1, futureMax - firstEmpty);
+      const yMid = barsTop + i * rowH + rowH / 2;
+      ctx.strokeStyle = `rgba(44,40,35,${0.16 * (1 - depth * 0.7) * phFade})`;
+      roundRect(ctx, X0, yMid - barH / 2, ghostW * (1 - depth * 0.3), barH, barH * 0.18);
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+    // one brief caption, centered in the empty band (only with room for it)
+    if (futureMax - firstEmpty >= 1.4) {
+      const capY = barsTop + ((firstEmpty + futureMax) / 2) * rowH;
+      setFont(ctx, Math.min(rowH * 0.32, min * 0.026), 700);
+      ctx.fillStyle = `rgba(44,40,35,${0.36 * phFade})`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("More appear as the years roll on", X0 + (barsRight - X0) / 2, capY);
+      ctx.textAlign = "left";
+      ctx.textBaseline = "alphabetic";
+    }
+    ctx.restore();
+  }
 
   // ── story panel ──
   drawStoryPanel(ctx, panelX, panelY, panelW, panelH, race, curT, ev, evAlpha, vertical);
