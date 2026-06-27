@@ -790,7 +790,14 @@ function drawRaceBubbles(ctx: CanvasRenderingContext2D, W: number, H: number, ra
     const rows = Math.ceil(N / cols);
     const cellW = plotW / cols;
     const cellH = plotH / rows;
-    const rMax = Math.min(cellW * 0.4, cellH * 0.34);
+    // Split each cell into a CIRCLE zone (top) and a LABEL zone (bottom) so a
+    // bubble's name + value sit in their own reserved space and can never overlap
+    // the neighbouring bubbles, their labels, or the row below.
+    const labelH = Math.min(cellH * 0.34, cellW * 0.5);
+    const circleH = cellH - labelH;
+    const rMax = Math.min(cellW * 0.42, circleH * 0.46);
+    const namePx = Math.min(labelH * 0.4, cellW * 0.14);
+    const valPx = Math.min(labelH * 0.36, cellW * 0.13);
 
     ctx.textAlign = "center";
     ranked.forEach((r, i) => {
@@ -798,8 +805,9 @@ function drawRaceBubbles(ctx: CanvasRenderingContext2D, W: number, H: number, ra
       const inRow = row === rows - 1 ? N - row * cols : cols;
       const col = i - row * cols;
       const rowLeft = plotLeft + (plotW - inRow * cellW) / 2;
+      const cellTop = plotTop + row * cellH;
       const tx = rowLeft + (col + 0.5) * cellW;
-      const ty = plotTop + (row + 0.5) * cellH - cellH * 0.06; // nudge up → room for the label
+      const ty = cellTop + circleH / 2; // circle centered in its (top) circle-zone
       let p = state.bub.get(r.e.name);
       if (!p) {
         p = { x: tx, y: ty };
@@ -807,7 +815,7 @@ function drawRaceBubbles(ctx: CanvasRenderingContext2D, W: number, H: number, ra
       }
       p.x += (tx - p.x) * kPos;
       p.y += (ty - p.y) * kPos;
-      const rad = rMax * (0.46 + 0.54 * Math.sqrt(clamp01(r.v / maxV)));
+      const rad = rMax * (0.5 + 0.5 * Math.sqrt(clamp01(r.v / maxV))); // min 50% so small bubbles stay readable
       const ringW = Math.max(2.5, rad * 0.12);
 
       // base color circle (the entity's identity ring shows around the media)
@@ -821,15 +829,19 @@ function drawRaceBubbles(ctx: CanvasRenderingContext2D, W: number, H: number, ra
       ctx.fill();
       ctx.restore();
 
-      const img = getImg(r.e.image);
-      if (img) {
-        drawCircleMedia(ctx, img, p.x, p.y, (rad - ringW) * 2);
+      // BEST media for every bubble: its own logo/photo/flag → else its country
+      // flag → else initials. (Both the primary and the flag are preloaded.)
+      const primary = getImg(r.e.image);
+      const flagImg = r.e.kind !== "country" && r.e.country ? getImg(flagUrlFromIso2(r.e.country)) : null;
+      const mainImg = primary || flagImg;
+      if (mainImg) {
+        drawCircleMedia(ctx, mainImg, p.x, p.y, (rad - ringW) * 2);
       } else {
         ctx.save();
         ctx.beginPath();
         ctx.arc(p.x, p.y, rad - ringW, 0, Math.PI * 2);
         ctx.clip();
-        ctx.fillStyle = "rgba(255,255,255,0.16)";
+        ctx.fillStyle = "rgba(255,255,255,0.18)";
         ctx.fillRect(p.x - rad, p.y - rad, rad * 2, rad * 2);
         const ini = r.e.name.split(/\s+/).map((w) => w[0] || "").join("").slice(0, 2).toUpperCase();
         setFont(ctx, (rad - ringW) * 0.9, 800);
@@ -839,24 +851,18 @@ function drawRaceBubbles(ctx: CanvasRenderingContext2D, W: number, H: number, ra
         ctx.textBaseline = "alphabetic";
         ctx.restore();
       }
+      // country badge only when the main media is a logo/photo (avoid a duplicate flag)
+      if (primary && flagImg) drawCircleMedia(ctx, flagImg, p.x + rad * 0.64, p.y + rad * 0.64, rad * 0.5);
 
-      // small country-of-origin flag badge (non-country entities), bottom-right
-      if (r.e.kind !== "country" && r.e.country) {
-        const cimg = getImg(flagUrlFromIso2(r.e.country));
-        if (cimg) drawCircleMedia(ctx, cimg, p.x + rad * 0.66, p.y + rad * 0.66, rad * 0.5);
-      }
-
-      // name + value below the circle
-      const labelY = p.y + rad + Math.min(cellH * 0.1, rad * 0.3);
-      const namePx = fitText(ctx, r.e.name, Math.min(cellW * 0.2, rMax * 0.46), 800, cellW * 0.95);
-      setFont(ctx, namePx, 800);
+      // name + value in the reserved LABEL zone below the circle
+      const nameY = cellTop + circleH + labelH * 0.42;
       ctx.fillStyle = INK;
-      ctx.fillText(r.e.name, p.x, labelY + namePx);
+      setFont(ctx, fitText(ctx, r.e.name, namePx, 800, cellW * 0.95), 800);
+      ctx.fillText(r.e.name, p.x, nameY);
       const vStr = fmtValueCompact(r.v, race); // compact so labels don't crowd under bubbles
-      const valPx = fitText(ctx, vStr, namePx, 800, cellW * 0.95);
-      setFont(ctx, valPx, 800);
       ctx.fillStyle = SEAL;
-      ctx.fillText(vStr, p.x, labelY + namePx + valPx * 1.18);
+      setFont(ctx, fitText(ctx, vStr, valPx, 800, cellW * 0.95), 800);
+      ctx.fillText(vStr, p.x, nameY + labelH * 0.42);
     });
     // forget circles that have left so the map can't grow unbounded
     if (state.bub.size > race.entities.length) {
