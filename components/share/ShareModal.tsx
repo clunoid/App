@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type ComponentType } from "react";
-import { Download, Share2, X, Film, Loader2, Smartphone, Monitor, Instagram, Youtube, Facebook, Sparkles, Copy, Check } from "lucide-react";
+import { Download, Share2, X, Film, Loader2, Smartphone, Monitor, Instagram, Youtube, Facebook, Sparkles, Copy, Check, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { canRecordVideo, type ReelAspect, type ReelSpec } from "@/lib/share/reel";
 import { renderReel } from "@/lib/share/renderer";
 import { TikTokIcon, XIcon, WhatsAppIcon } from "./SocialIcons";
@@ -59,6 +59,9 @@ export function ShareModal({
   const [pct, setPct] = useState(0);
   const [label, setLabel] = useState("");
   const [hadVoice, setHadVoice] = useState(true);
+  // True once the renderer reports it's encoding in the BACKGROUND (WebCodecs path,
+  // tab-safe). Stays false for the real-time recorder, which needs the tab open.
+  const [bgSafe, setBgSafe] = useState(false);
   const [url, setUrl] = useState<string | null>(null);
   const [fileExt, setFileExt] = useState("mp4");
   const [mime, setMime] = useState("video/mp4");
@@ -97,6 +100,7 @@ export function ShareModal({
     cleanupUrl();
     setUrl(null);
     setPct(0);
+    setBgSafe(false);
     setStatus("rendering");
     const ac = new AbortController();
     abortRef.current = ac;
@@ -106,6 +110,7 @@ export function ShareModal({
       const onProgress = (p: number, l: string) => {
         setPct(p);
         setLabel(l);
+        if (l.toLowerCase().includes("background")) setBgSafe(true);
       };
       const res = render
         ? await render(aspect, { host: hostRef.current, signal: ac.signal, onProgress })
@@ -272,7 +277,24 @@ export function ShareModal({
               <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-white/10">
                 <div className="h-full rounded-full bg-white transition-all" style={{ width: `${pct}%` }} />
               </div>
-              <p className="mt-1.5 text-center text-[11px] text-white/45">Recording in real time — hang tight.</p>
+              {bgSafe ? (
+                <div className="mt-2.5 flex items-start gap-2 rounded-xl bg-emerald-500/10 px-3 py-2 ring-1 ring-emerald-400/25">
+                  <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-emerald-300" />
+                  <p className="text-[12px] font-semibold leading-snug text-emerald-100/90">
+                    Encoding in the background — feel free to switch tabs or minimise. Your video will be ready when you come back.
+                  </p>
+                </div>
+              ) : (
+                <div className="mt-2.5 flex items-start gap-2.5 rounded-xl bg-amber-400/15 px-3.5 py-3 ring-1 ring-amber-300/45">
+                  <AlertTriangle size={20} className="mt-0.5 shrink-0 animate-pulse text-amber-300" />
+                  <div>
+                    <p className="text-[13px] font-extrabold leading-snug text-amber-100">Keep this tab open</p>
+                    <p className="mt-0.5 text-[12px] font-medium leading-snug text-amber-100/85">
+                      Your video is recording in real time. Don’t switch tabs or minimise this window until it finishes — or it won’t be saved fully.
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

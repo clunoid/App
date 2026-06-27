@@ -696,9 +696,12 @@ function drawStatOutro(ctx: CanvasRenderingContext2D, W: number, H: number, p: n
   ctx.textAlign = "left";
 }
 
-/* ── render the race into a downloadable/shareable video (SILENT race; Isaac's
- *    voiced clunoid.com call-to-action plays only over the outro) ─────────────── */
-export async function renderRaceVideo(
+/* ── FALLBACK exporter — real-time canvas recording (MediaRecorder + captureStream).
+ *    Used only when the WebCodecs path below isn't available. NOTE: this path is
+ *    tab-focus-dependent: browsers throttle requestAnimationFrame to ~0fps while the
+ *    tab is hidden/minimised, so the recording stalls. The WebCodecs path avoids
+ *    that entirely; ShareModal shows a "keep this tab open" warning for this one. ─── */
+async function renderRaceVideoRec(
   race: RaceData,
   aspect: ReelAspect,
   opts: { host?: HTMLElement | null; onProgress?: (p: number, l: string) => void; signal?: AbortSignal }
@@ -780,4 +783,234 @@ export async function renderRaceVideo(
   const { blob, ext, mime } = await rec.stop();
   opts.onProgress?.(100, "Done");
   return { blob, ext, mime, hadVoice: !!outroBuf };
+}
+
+/* ── WebCodecs feature gate + codec pick ──────────────────────────────────────
+ *  The recording-free path needs the full WebCodecs surface (video + audio
+ *  encoders + the frame/data wrappers) AND a usable H.264 profile for the size. */
+type WC = typeof globalThis & {
+  VideoEncoder?: typeof VideoEncoder;
+  AudioEncoder?: typeof AudioEncoder;
+  VideoFrame?: typeof VideoFrame;
+  AudioData?: typeof AudioData;
+};
+function hasWebCodecs(): boolean {
+  if (typeof window === "undefined") return false;
+  const g = globalThis as WC;
+  return !!(g.VideoEncoder && g.AudioEncoder && g.VideoFrame && g.AudioData);
+}
+async function pickAvcCodec(W: number, H: number): Promise<string | null> {
+  // High → Main → Baseline, high level first (covers 1080×1920 / 1920×1080).
+  for (const codec of ["avc1.640033", "avc1.640032", "avc1.64002A", "avc1.640028", "avc1.4D4028", "avc1.42E028", "avc1.42E01E"]) {
+    try {
+      const r = await VideoEncoder.isConfigSupported({ codec, width: W, height: H, bitrate: 9_000_000, framerate: 30 });
+      if (r.supported) return codec;
+    } catch {
+      /* try next */
+    }
+  }
+  return null;
+}
+async function aacSupported(sampleRate: number, channels: number): Promise<boolean> {
+  try {
+    const r = await AudioEncoder.isConfigSupported({ codec: "mp4a.40.2", sampleRate, numberOfChannels: channels, bitrate: 128_000 });
+    return !!r.supported;
+  } catch {
+    return false;
+  }
+}
+
+/* ── RECORDING-FREE exporter (WebCodecs) ──────────────────────────────────────
+ *  Renders and ENCODES each frame programmatically — faster than real time and
+ *  NOT driven by requestAnimationFrame / captureStream, so it keeps running even
+ *  if the user switches tabs or minimises the window (the bug this fixes). Output
+ *  is a real MP4 (H.264 + AAC). Throws if WebCodecs/H.264/AAC isn't usable so the
+ *  caller can fall back to renderRaceVideoRec. */
+async function renderRaceVideoWeb(
+  race: RaceData,
+  aspect: ReelAspect,
+  opts: { host?: HTMLElement | null; onProgress?: (p: number, l: string) => void; signal?: AbortSignal }
+): Promise<RenderResult> {
+  const { w: W, h: H } = aspectSize(aspect);
+  const FPS = 30;
+
+  const avc = await pickAvcCodec(W, H);
+  if (!avc) throw new Error("no H.264 config");
+
+  opts.onProgress?.(4, "Loading media…");
+  // Isaac's pre-recorded outro voice + fonts + bar/event images, loaded up front.
+  let outroBuf: AudioBuffer | null = null;
+  const ACtor = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+  const ac = new ACtor();
+  try {
+    const [, , resp] = await Promise.all([
+      document.fonts.load('800 120px "Baloo 2"'),
+      preloadRaceImages(race),
+      fetch("/stat-outro.mp3").catch(() => null),
+    ]);
+    if (resp?.ok) outroBuf = await ac.decodeAudioData(await resp.arrayBuffer());
+  } catch {
+    /* fonts / images / voice all optional */
+  }
+
+  const channels = outroBuf ? Math.min(2, outroBuf.numberOfChannels) : 1;
+  const sampleRate = outroBuf ? outroBuf.sampleRate : 48000;
+  const wantAudio = !!outroBuf && (await aacSupported(sampleRate, channels));
+
+  // A standalone canvas we draw + grab frames from (also shown in the host as a
+  // live preview). Hidden tabs throttle compositing, not 2D draws / VideoFrame.
+  const canvas = document.createElement("canvas");
+  canvas.width = W;
+  canvas.height = H;
+  canvas.style.cssText = "display:block;max-width:100%;max-height:100%;margin:0 auto;border-radius:14px";
+  const ctx = canvas.getContext("2d", { alpha: false });
+  if (!ctx) {
+    try {
+      await ac.close();
+    } catch {
+      /* ignore */
+    }
+    throw new Error("Canvas 2D not supported");
+  }
+  if (opts.host) {
+    opts.host.innerHTML = "";
+    opts.host.appendChild(canvas);
+  }
+
+  const { Muxer, ArrayBufferTarget } = await import("mp4-muxer");
+  const target = new ArrayBufferTarget();
+  const muxer = new Muxer({
+    target,
+    fastStart: "in-memory",
+    video: { codec: "avc", width: W, height: H, frameRate: FPS },
+    ...(wantAudio ? { audio: { codec: "aac" as const, numberOfChannels: channels, sampleRate } } : {}),
+  });
+
+  let encErr: unknown = null;
+  const venc = new VideoEncoder({
+    output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
+    error: (e) => {
+      encErr = e;
+    },
+  });
+  venc.configure({ codec: avc, width: W, height: H, bitrate: 9_000_000, framerate: FPS, latencyMode: "quality" });
+
+  let aenc: AudioEncoder | null = null;
+  if (wantAudio) {
+    aenc = new AudioEncoder({
+      output: (chunk, meta) => muxer.addAudioChunk(chunk, meta),
+      error: (e) => {
+        encErr = e;
+      },
+    });
+    aenc.configure({ codec: "mp4a.40.2", sampleRate, numberOfChannels: channels, bitrate: 128_000 });
+  }
+
+  const raceEnd = race.durationSec + END_HOLD;
+  const outroDur = outroBuf ? outroBuf.duration + 1.0 : 3.5;
+  const total = raceEnd + outroDur;
+  const totalFrames = Math.ceil(total * FPS);
+  const usPerFrame = 1e6 / FPS;
+  const state = newRaceState();
+
+  const cleanup = async () => {
+    try {
+      venc.close();
+    } catch {
+      /* ignore */
+    }
+    try {
+      aenc?.close();
+    } catch {
+      /* ignore */
+    }
+    try {
+      await ac.close();
+    } catch {
+      /* ignore */
+    }
+  };
+  const checkAbort = () => {
+    if (opts.signal?.aborted) throw new DOMException("aborted", "AbortError");
+    if (encErr) throw encErr instanceof Error ? encErr : new Error("encode error");
+  };
+
+  try {
+    // ── VIDEO — deterministic, faster-than-real-time. flush() every ~2s both
+    //    bounds memory and drains the queue without rAF/timers (so a hidden tab
+    //    can't stall it). ──
+    opts.onProgress?.(6, "Encoding in the background…");
+    for (let f = 0; f < totalFrames; f++) {
+      checkAbort();
+      const el = f / FPS;
+      if (el < raceEnd) drawRaceFrame(ctx, W, H, race, state, Math.min(el, race.durationSec));
+      else drawStatOutro(ctx, W, H, (el - raceEnd) / outroDur);
+      const frame = new VideoFrame(canvas, { timestamp: Math.round(f * usPerFrame), duration: Math.round(usPerFrame) });
+      venc.encode(frame);
+      frame.close();
+      if ((f + 1) % (FPS * 2) === 0) {
+        await venc.flush();
+        opts.onProgress?.(Math.min(wantAudio ? 86 : 96, 6 + Math.round((f / totalFrames) * (wantAudio ? 80 : 90))), "Encoding in the background…");
+      }
+    }
+    await venc.flush();
+    checkAbort();
+
+    // ── AUDIO — silent through the race, Isaac's outro at the end. Built as
+    //    f32-planar AudioData chunks and AAC-encoded. ──
+    if (aenc && outroBuf) {
+      opts.onProgress?.(90, "Encoding in the background…");
+      const totalSamples = Math.ceil(total * sampleRate);
+      const outroStart = Math.round((raceEnd + 0.3) * sampleRate);
+      const outroCh: Float32Array[] = [];
+      for (let c = 0; c < channels; c++) outroCh.push(outroBuf.getChannelData(Math.min(c, outroBuf.numberOfChannels - 1)));
+      const CHUNK = 4096;
+      for (let off = 0; off < totalSamples; off += CHUNK) {
+        checkAbort();
+        const n = Math.min(CHUNK, totalSamples - off);
+        const data = new Float32Array(n * channels); // planar: [ch0…][ch1…]
+        for (let c = 0; c < channels; c++) {
+          const src = outroCh[c];
+          for (let i = 0; i < n; i++) {
+            const oi = off + i - outroStart;
+            if (oi >= 0 && oi < src.length) data[c * n + i] = src[oi];
+          }
+        }
+        const adata = new AudioData({ format: "f32-planar", sampleRate, numberOfFrames: n, numberOfChannels: channels, timestamp: Math.round((off / sampleRate) * 1e6), data });
+        aenc.encode(adata);
+        adata.close();
+        if ((off / CHUNK) % 16 === 15) await aenc.flush();
+      }
+      await aenc.flush();
+      checkAbort();
+    }
+
+    muxer.finalize();
+    await cleanup();
+    const blob = new Blob([target.buffer], { type: "video/mp4" });
+    if (!blob.size) throw new Error("empty output");
+    opts.onProgress?.(100, "Done");
+    return { blob, ext: "mp4", mime: "video/mp4", hadVoice: !!outroBuf };
+  } catch (e) {
+    await cleanup();
+    throw e;
+  }
+}
+
+/* ── Public exporter: prefer the recording-free WebCodecs path (background-safe),
+ *    fall back to real-time recording when WebCodecs/H.264/AAC isn't available. ── */
+export async function renderRaceVideo(
+  race: RaceData,
+  aspect: ReelAspect,
+  opts: { host?: HTMLElement | null; onProgress?: (p: number, l: string) => void; signal?: AbortSignal }
+): Promise<RenderResult> {
+  if (hasWebCodecs()) {
+    try {
+      return await renderRaceVideoWeb(race, aspect, opts);
+    } catch (e) {
+      if ((e as Error)?.name === "AbortError") throw e; // user cancelled — don't restart
+      console.warn("[stats] WebCodecs export unavailable, falling back to recording:", e);
+    }
+  }
+  return renderRaceVideoRec(race, aspect, opts);
 }
