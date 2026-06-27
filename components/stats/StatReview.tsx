@@ -156,7 +156,8 @@ export function StatReview({ race, onApprove, onBack }: { race: RaceData; onAppr
                           value={r.vals[ci] == null ? "" : String(r.vals[ci])}
                           onChange={(e) => setCell(ri, ci, e.target.value)}
                           placeholder="—"
-                          className={`w-24 rounded-md bg-black/[0.05] px-1.5 py-1 text-right tabular-nums outline-none focus:bg-black/10 ${ci === lastCi ? "font-extrabold" : ""}`}
+                          style={{ color: INK }}
+                          className={`w-24 rounded-md bg-black/[0.05] px-1.5 py-1 text-right tabular-nums outline-none placeholder:text-[#2c2823]/35 focus:bg-black/10 ${ci === lastCi ? "font-extrabold" : "font-semibold"}`}
                         />
                       </td>
                     ))}
@@ -187,6 +188,29 @@ export function StatReview({ race, onApprove, onBack }: { race: RaceData; onAppr
                   <div className="flex w-full flex-col gap-1">
                     <input value={ev.title} onChange={(e) => setEvent(ei, { title: e.target.value })} placeholder="Headline" className={`${input} w-full font-extrabold`} />
                     <textarea value={ev.description} onChange={(e) => setEvent(ei, { description: e.target.value })} placeholder="What happened (1–2 sentences)" rows={2} className={`${input} w-full resize-none text-[13px] font-medium`} />
+                    {(() => {
+                      // the media that illustrates this beat (read-only) — photos/logos of the
+                      // subjects, else the country flags — exactly what shows during the race.
+                      const subj = (ev.subjectMedia || []).filter(Boolean).slice(0, 6);
+                      const flags = [...(ev.partyCodes || []), ...(ev.vsCodes || [])].filter(Boolean).slice(0, 8);
+                      if (subj.length)
+                        return (
+                          <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                            {subj.map((u, k) => (
+                              <img key={k} src={u} alt="" style={{ height: 34, width: 34, objectFit: "cover", borderRadius: 8, background: "#fff", boxShadow: "0 0 0 1px rgba(0,0,0,.12)" }} />
+                            ))}
+                          </div>
+                        );
+                      if (flags.length)
+                        return (
+                          <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                            {flags.map((c, k) => (
+                              <img key={k} src={`https://flagcdn.com/w320/${c}.png`} alt="" style={{ height: 18, width: "auto", borderRadius: 2, boxShadow: "0 0 0 1px rgba(0,0,0,.12)" }} />
+                            ))}
+                          </div>
+                        );
+                      return null;
+                    })()}
                   </div>
                   <button onClick={() => delEvent(ei)} aria-label="Remove" className="grid h-7 w-7 shrink-0 place-items-center rounded-md text-[#2c2823]/45 transition hover:bg-black/10 hover:text-[#8a2433]">
                     <Trash2 size={15} />

@@ -29,7 +29,18 @@ export type EditState = {
   topN: number;
   times: number[];
   rows: EditRow[];
-  events: { time: number; title: string; description: string }[];
+  // text fields are editable; the media (subjectMedia photos/logos, party/vs flags)
+  // is carried READ-ONLY so it still illustrates the story in the review AND in the
+  // race that plays after approval.
+  events: {
+    time: number;
+    title: string;
+    description: string;
+    subjects?: string[];
+    subjectMedia?: string[];
+    partyCodes?: string[];
+    vsCodes?: string[];
+  }[];
 };
 
 /** RaceData → editable matrix (rows × time columns). */
@@ -54,7 +65,15 @@ export function editStateFromRace(race: RaceData): EditState {
     topN: race.topN,
     times: times.slice(),
     rows,
-    events: race.events.map((ev) => ({ time: ev.time, title: ev.title, description: ev.description })),
+    events: race.events.map((ev) => ({
+      time: ev.time,
+      title: ev.title,
+      description: ev.description,
+      subjects: ev.subjects,
+      subjectMedia: ev.subjectMedia,
+      partyCodes: ev.partyCodes,
+      vsCodes: ev.vsCodes,
+    })),
   };
 }
 
@@ -105,7 +124,18 @@ export function raceFromEditState(es: EditState): RaceData {
     frames,
     events: es.events
       .filter((ev) => ev.title.trim() && Number.isFinite(ev.time))
-      .map((ev) => ({ time: ev.time, title: ev.title.trim(), description: ev.description.trim() }) as RaceEvent)
+      .map(
+        (ev) =>
+          ({
+            time: ev.time,
+            title: ev.title.trim(),
+            description: ev.description.trim(),
+            subjects: ev.subjects,
+            subjectMedia: ev.subjectMedia,
+            partyCodes: ev.partyCodes,
+            vsCodes: ev.vsCodes,
+          }) as RaceEvent
+      )
       .sort((a, b) => a.time - b.time),
     topN: Math.max(3, Math.min(es.topN || 12, entities.length || 3)),
     durationSec: PACE(span, frames.length),
