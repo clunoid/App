@@ -10,7 +10,7 @@ import { flagUrlForName } from "@/lib/stats/flags";
 import { hasSearch, webSearch } from "@/lib/data/search";
 
 export const runtime = "nodejs";
-export const maxDuration = 180; // the brain may research + build long historical spans — give it room
+export const maxDuration = 300; // research + plan (Sonnet) + the Opus data series can run long — give it room
 
 const HEX = /^#?[0-9a-fA-F]{6}$/;
 const ISO2 = /^[a-z]{2}$/;
@@ -90,6 +90,12 @@ EVENT STORY: the REAL, well-established events across the WHOLE span that explai
 }
 
 /* ── 2. MODEL DATA: web-researched series for anything the catalogue can't cover ── */
+const keyframeItem = z.object({
+  time: z.number().describe("The year/time, ascending across keyframes."),
+  values: z.array(z.object({ name: z.string().describe("MUST match an entities[].name exactly."), value: z.number() })).min(2).max(44),
+});
+const keyframesDesc =
+  "Chronological, ascending; FIRST keyframe = the exact start year, LAST = the exact end year. EVERY keyframe — ESPECIALLY THE FIRST — must rank a FULL field (at least the visible bar count) so the chart is full top-to-bottom from the very start; list the genuine leaders of that year, omitting only entities that truly didn't exist yet or had retired.";
 const seriesSchema = z.object({
   entities: z
     .array(
@@ -102,16 +108,10 @@ const seriesSchema = z.object({
     .min(2)
     .max(44)
     .describe("EVERY competitor that appears in ANY keyframe across the whole span (a rolling roster — far more than are visible at once); distinct, readable colors. Include the PERIOD-APPROPRIATE leaders for the START of the span too (whoever actually led the metric back then), not only the names famous at the end — so the very first keyframe already has a full field."),
-  keyframes: z
-    .array(
-      z.object({
-        time: z.number().describe("The year/time, ascending across keyframes."),
-        values: z.array(z.object({ name: z.string().describe("MUST match an entities[].name exactly."), value: z.number() })).min(2).max(44),
-      })
-    )
-    .min(2)
-    .max(60)
-    .describe("Chronological, ascending; FIRST keyframe = the exact start year, LAST = the exact end year. EVERY keyframe — ESPECIALLY THE FIRST — must rank a FULL field (at least the visible bar count) so the chart is full top-to-bottom from the very start; list the genuine leaders of that year, omitting only entities that truly didn't exist yet or had retired."),
+  // PRIMARY field. Optional only so that a model which emits the array under the
+  // alias `values` (some do) still validates — we read `keyframes ?? values` below.
+  keyframes: z.array(keyframeItem).min(2).max(60).optional().describe(`The keyframes (USE THIS FIELD NAME). ${keyframesDesc}`),
+  values: z.array(keyframeItem).max(60).optional().describe("Alias for `keyframes` — only fill this if you did NOT use `keyframes`."),
 });
 
 function seriesSystem(opts: { from: number; to: number; topN: number; nowLabel: string; named?: string[]; context: string; anchor: string; scaleHint: string }): string {
@@ -125,7 +125,12 @@ REQUIREMENTS:
 - ${
     opts.named && opts.named.length >= 2
       ? `Use EXACTLY these competitors (no more, no fewer): ${opts.named.join(", ")}. Include every one in every keyframe of the range.`
-      : `FULL CHART AT EVERY MOMENT (THE #1 RULE): the race must be FULL top-to-bottom the instant it starts and stay full the whole way — NEVER begin with just a few bars while the rest pop in later. So EVERY keyframe, and ESPECIALLY THE FIRST (year ${opts.from}), MUST list at least ${opts.topN} entities that genuinely existed/competed that year, each with a real period-accurate value. Build the roster so the START year already has its real ${opts.topN}+ leaders — whoever actually topped the metric back in ${opts.from} (period-appropriate), not only the names famous at the end. ROLLING ROSTER: provide a LARGE pool (~2–3× the ${opts.topN} visible bars, up to ~40) so that as leaders fade/retire/are overtaken, FRESH ones IMMEDIATELY take their slot — the bar count never drops below ${opts.topN}. Only OMIT an entity from a keyframe for years it truly didn't exist yet or had clearly retired/dissolved (never list a 0) — but always keep enough genuine competitors each year to keep the chart full. The result is a true race that is ALWAYS full.`
+      : `FULL CHART OF REAL DATA AT EVERY MOMENT (THE #1 RULE — getting this wrong ruins the whole video):
+  Every keyframe — and ESPECIALLY THE FIRST (year ${opts.from}) — MUST contain at least ${opts.topN} entities whose value is REAL and GREATER THAN ZERO for that year.
+  • A value of 0 (or a tiny placeholder) means "not present": it is DROPPED and leaves an EMPTY ROW. So you must NEVER list an entity at 0, and NEVER pad the early years with future / not-yet-existing famous names set to 0 just to reach the count.
+  • WRONG (this is the exact mistake to avoid) for "top football scorers from ${opts.from}": listing today's stars like Cristiano Ronaldo, Lionel Messi, Lewandowski at value 0 in ${opts.from} → only 3–4 real bars, the chart looks broken and half-empty.
+  • RIGHT: fill ${opts.from} with the entities that ACTUALLY led the metric THEN — the genuine top ${opts.topN}+ of THAT era, each with its real value — and let modern names ENTER the race only in the later keyframes, at the year they truly start competing (their first appearance is simply their first keyframe, never a 0 row earlier).
+  ROLLING ROSTER: supply a LARGE pool of REAL, widely-recognised names (~2–3× the ${opts.topN} visible bars, up to ~40) spanning ALL eras of the span, so that in EVERY keyframe at least ${opts.topN} of them have real non-zero values; as era leaders fade and newer ones rise, the count of real bars never drops below ${opts.topN}. NEVER invent or pad with obscure filler names to hit the count — if you genuinely cannot name ${opts.topN} real entities for an early year, include as many real ones as exist and they will fill the chart.`
   }
 - HISTORICAL VALIDITY: an entity must NOT appear in any keyframe before it existed (e.g. no Ottoman Empire before ~1300, no USA before 1776, no Germany before 1871, a footballer only during their career) and not after it dissolved/retired. Use period-appropriate entities.
 - Use 14–24 keyframes (max 28) spaced across the full span so the race moves believably; more for longer spans.
@@ -350,13 +355,16 @@ export async function POST(req: NextRequest) {
 
       // Reuse the SINGLE research pass (no second search) — it already carries the
       // current figures (advanced depth), so the series can ground today's value from it.
+      // The SERIES (the actual historical data + present-day values) is the hardest
+      // factual task, so it runs on the strongest model (MODELS.max = Opus) for the
+      // best recall/accuracy. The plan/routing/story stays on genius (Sonnet).
       const series = (
         await generateObject({
-          model: MODELS.genius(),
+          model: MODELS.max(),
           schema: seriesSchema,
           system: seriesSystem({ from, to, topN, nowLabel: NOW_LABEL, named, context, anchor, scaleHint }),
           prompt: `${request}\nProduce the ranking-over-time series for EXACTLY ${from} to ${to}. The final keyframe is TODAY (${NOW_LABEL}) with current real values.`,
-          temperature: 0.2,
+          // NOTE: MODELS.max() (Opus) rejects the `temperature` param — omit it here.
           maxRetries: 3,
           maxTokens: 24000, // many entities × keyframes of JSON — never truncate the series
         })
@@ -375,7 +383,7 @@ export async function POST(req: NextRequest) {
         topN: named.length >= 2 ? named.length : topN,
         source: hasSearch() ? "Researched data" : "",
         entities: (series.entities || []).map((e) => ({ name: e.name, color: e.color || "", kind: kindOf(e.name), country: e.country })),
-        keyframes: series.keyframes || [],
+        keyframes: series.keyframes ?? series.values ?? [],
       };
     }
 

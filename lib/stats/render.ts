@@ -147,9 +147,9 @@ function fmtTime(curT: number, span: number): string {
 }
 
 /* ── per-frame smoothing state (shared by live preview + export) ──────────── */
-export type RaceState = { disp: Map<string, number>; max: number; init: boolean; lastEl: number; leader: string; evIdx: number; evChange: number };
+export type RaceState = { disp: Map<string, number>; max: number; init: boolean; lastEl: number; leader: string; evIdx: number; evChange: number; vis: number };
 export function newRaceState(): RaceState {
-  return { disp: new Map(), max: 0, init: false, lastEl: 0, leader: "", evIdx: -1, evChange: 0 };
+  return { disp: new Map(), max: 0, init: false, lastEl: 0, leader: "", evIdx: -1, evChange: 0, vis: 0 };
 }
 
 /** Interpolated value for every entity at continuous time t (handles enter/leave). */
@@ -465,6 +465,13 @@ export function drawRaceFrame(ctx: CanvasRenderingContext2D, W: number, H: numbe
     const cur = state.disp.has(r.e.name) ? state.disp.get(r.e.name)! : idx;
     state.disp.set(r.e.name, cur + (idx - cur) * kRank);
   });
+  // How many bars are REAL (non-zero) right now — the renderer fits the row height
+  // to this (smoothed), so the chart is full top-to-bottom when the data is rich
+  // and never leaves a big empty void when an early year genuinely has fewer
+  // entities (no fake/0 bars are ever shown).
+  const liveCount = ranked.reduce((n, r) => n + (r.v > 1e-6 ? 1 : 0), 0);
+  const targetVis = Math.max(1, Math.min(race.topN, liveCount));
+  state.vis = state.vis > 0 ? state.vis + (targetVis - state.vis) * kRank : targetVis;
   state.init = true;
   state.leader = ranked.length ? ranked[0].e.name : "";
 
@@ -502,7 +509,12 @@ export function drawRaceFrame(ctx: CanvasRenderingContext2D, W: number, H: numbe
   }
 
   // ── bars ──
-  const rowH = (barsBottom - barsTop) / race.topN;
+  // Fit the row height to how many real bars are on screen now (smoothed), capped
+  // so bars never balloon when only a couple of entities exist that year. Full
+  // (rich) frames divide by topN exactly; sparse frames divide by ~6 so the bars
+  // stay a sensible thickness rather than 2 giant blocks.
+  const rowDenom = Math.max(state.vis || race.topN, Math.min(race.topN, 4));
+  const rowH = (barsBottom - barsTop) / rowDenom;
   const barH = rowH * 0.9; // thick bars with a minimal gap (matches the reference look)
   const X0 = padX;
   const flagH = barH * 0.82;
