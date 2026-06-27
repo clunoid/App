@@ -114,14 +114,14 @@ const seriesSchema = z.object({
   values: z.array(keyframeItem).max(60).optional().describe("Alias for `keyframes` — only fill this if you did NOT use `keyframes`."),
 });
 
-function seriesSystem(opts: { from: number; to: number; topN: number; nowLabel: string; named?: string[]; context: string; anchor: string; scaleHint: string }): string {
+function seriesSystem(opts: { from: number; to: number; topN: number; nowLabel: string; named?: string[]; context: string; anchor: string; current: string; scaleHint: string }): string {
   return `You assemble ACCURATE ranking-over-time data for an animated bar-chart race. Accuracy is paramount — use the research notes + authoritative anchors below; otherwise use the most credible scholarly figures (e.g. Maddison Project for historical GDP, IMF/World Bank for recent economics, Forbes for net worth, Transfermarkt for football values, recognised historical scholarship for army sizes). NEVER invent fake precision.
 
 REQUIREMENTS:
 - Span EXACTLY ${opts.from} to ${opts.to}: the FIRST keyframe's time = ${opts.from}, the LAST = ${opts.to}. For years beyond the latest real data, give the best current projection/estimate; for ancient/historical years, the best scholarly estimate.
 - ${opts.scaleHint}
 - METRIC DEFINITION: use the single most standard, widely-cited definition of the metric and apply it CONSISTENTLY across every year (e.g. army size = ACTIVE military personnel, not reserves or total available manpower; GDP = nominal). State nothing — just be consistent.
-- PRESENT-DAY ACCURACY (MOST IMPORTANT): the FINAL keyframe represents TODAY (${opts.nowLabel}). Its ranking AND values MUST equal the figure for RIGHT NOW from the research notes — use the "CURRENT (${opts.nowLabel})" line and the sourced numbers, specifically the value for "today"/"current"/"as of ${opts.nowLabel}", NOT a recent peak, all-time high, or a month-ago value (e.g. if research says "$4.82T today, down from a $5.22T peak", use 4,820,000,000,000). Use the MOST PRECISE figure the research gives (avoid suspiciously round numbers when a precise one is available). Sanity-check against common knowledge (today's biggest economies are USA>China>Germany/Japan/India/UK; largest active militaries China/India/USA/NK/Russia).
+- PRESENT-DAY ACCURACY (THE MOST IMPORTANT REQUIREMENT — users fact-check this against Google): the FINAL keyframe represents TODAY (${opts.nowLabel}). Its ranking AND values MUST equal the live figure for RIGHT NOW taken from the "CURRENT STANDINGS" block below (and the "CURRENT (${opts.nowLabel})" research line). Your own training knowledge is STALE for fast-moving stats — if the research shows a current number that differs from what you remember, TRUST THE RESEARCH, not your memory (e.g. a footballer's career-goal tally keeps climbing: if you "remember" ~900 but the research says 975 today, use 975). Use the value labelled today/current/latest, NOT a recent peak, all-time high, season total, or a months-old value. Use the MOST PRECISE figure the research gives (avoid suspiciously round numbers when a precise one exists). Sanity-check against common knowledge (today's biggest economies are USA>China>Germany/Japan/India/UK; largest active militaries China/India/USA/NK/Russia).
 - ${
     opts.named && opts.named.length >= 2
       ? `Use EXACTLY these competitors (no more, no fewer): ${opts.named.join(", ")}. Include every one in every keyframe of the range.`
@@ -138,7 +138,7 @@ REQUIREMENTS:
 - For EACH entity set its "country" field = the ISO-3166 alpha-2 (lowercase) of its origin (company HQ, person's nationality) — e.g. Apple→"us", Mbappé→"fr", Toyota→"jp". This shows a small flag of where it's from.
 - Be exact with the most recent / present-day standing.
 
-${opts.anchor ? `AUTHORITATIVE ANCHORS (real World Bank actuals, NOMINAL current-US$, in the SAME units you must output). Match these for the listed years, and CRUCIALLY keep the SAME measure for ALL years — figures BEFORE the earliest anchor year must be SMALLER than that anchor and trend smoothly into it with NO jump or discontinuity (e.g. if US 1960 ≈ 543,000 (millions), then US 1929 must be far lower like ~100,000, not higher). Do NOT switch to inflation-adjusted or PPP dollars for the historical part.\n${opts.anchor}\n` : ""}RESEARCH NOTES:
+${opts.current ? `CURRENT STANDINGS — the EXACT present-day reality as of ${opts.nowLabel}, freshly researched. The FINAL keyframe (${opts.to}) MUST match these latest figures for the present-day leaders; do NOT override them with older remembered values:\n${opts.current}\n\n` : ""}${opts.anchor ? `AUTHORITATIVE ANCHORS (real World Bank actuals, NOMINAL current-US$, in the SAME units you must output). Match these for the listed years, and CRUCIALLY keep the SAME measure for ALL years — figures BEFORE the earliest anchor year must be SMALLER than that anchor and trend smoothly into it with NO jump or discontinuity (e.g. if US 1960 ≈ 543,000 (millions), then US 1929 must be far lower like ~100,000, not higher). Do NOT switch to inflation-adjusted or PPP dollars for the historical part.\n${opts.anchor}\n` : ""}RESEARCH NOTES:
 ${opts.context || "(none — use well-established knowledge; do not fabricate precision)"}`;
 }
 
@@ -168,6 +168,27 @@ async function research(request: string, nowLabel: string): Promise<string> {
     lines.push(`• ${x.title}: ${x.content}`);
   }
   return lines.join("\n").slice(0, 9000);
+}
+
+/* ── targeted PRESENT-DAY research: the broad pass often misses the EXACT current
+ *  figure (e.g. a footballer's live goal tally — the model's training cutoff is
+ *  stale), so this focused advanced search fetches the up-to-the-moment top values
+ *  to lock the FINAL keyframe to today's reality. ── */
+async function currentStandings(title: string, valueLabel: string, nowLabel: string, named?: string[]): Promise<string> {
+  if (!hasSearch()) return "";
+  const who = named && named.length ? named.join(", ") : "the present-day top contenders";
+  const q = `${title}: the EXACT up-to-date ${valueLabel || "figures"} as of ${nowLabel} for ${who} — each one's precise current number RIGHT NOW (latest live total, not a historical or season figure)`;
+  const r = await webSearch(q, { depth: "advanced", maxResults: 6 }).catch(() => null);
+  if (!r) return "";
+  const lines: string[] = [];
+  const seen = new Set<string>();
+  if (r.answer) lines.push(r.answer);
+  for (const x of r.results.slice(0, 6)) {
+    if (seen.has(x.url)) continue;
+    seen.add(x.url);
+    lines.push(`• ${x.title}: ${x.content}`);
+  }
+  return lines.join("\n").slice(0, 6000);
 }
 
 /** Compact World Bank "anchor" (a few sampled years' top values) to ground the brain. */
@@ -351,10 +372,15 @@ export async function POST(req: NextRequest) {
       const scaleHint = scaleHintFor(money, chosenScale, plan.valueLabel || "", unitSuffix);
 
       const anchorKey = INDICATOR_KEYS.includes(key) ? key : guess; // anchor GDP/etc. to WB reality
-      const anchor = anchorKey ? await wbAnchor(anchorKey, from, to, chosenScale) : "";
+      // Run the WB anchor + a TARGETED present-day search together (one extra search,
+      // worth it for accuracy): the broad pass grounds history, this nails the exact
+      // up-to-the-minute figures so the final keyframe matches reality (not training).
+      const reachesToday = to >= NOW;
+      const [anchor, current] = await Promise.all([
+        anchorKey ? wbAnchor(anchorKey, from, to, chosenScale) : Promise.resolve(""),
+        reachesToday ? currentStandings(plan.title, plan.valueLabel || "", NOW_LABEL, named) : Promise.resolve(""),
+      ]);
 
-      // Reuse the SINGLE research pass (no second search) — it already carries the
-      // current figures (advanced depth), so the series can ground today's value from it.
       // The SERIES (the actual historical data + present-day values) is the hardest
       // factual task, so it runs on the strongest model (MODELS.max = Opus) for the
       // best recall/accuracy. The plan/routing/story stays on genius (Sonnet).
@@ -362,7 +388,7 @@ export async function POST(req: NextRequest) {
         await generateObject({
           model: MODELS.max(),
           schema: seriesSchema,
-          system: seriesSystem({ from, to, topN, nowLabel: NOW_LABEL, named, context, anchor, scaleHint }),
+          system: seriesSystem({ from, to, topN, nowLabel: NOW_LABEL, named, context, anchor, current, scaleHint }),
           prompt: `${request}\nProduce the ranking-over-time series for EXACTLY ${from} to ${to}. The final keyframe is TODAY (${NOW_LABEL}) with current real values.`,
           // NOTE: MODELS.max() (Opus) rejects the `temperature` param — omit it here.
           maxRetries: 3,
