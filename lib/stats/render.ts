@@ -511,9 +511,19 @@ export function drawRaceFrame(ctx: CanvasRenderingContext2D, W: number, H: numbe
   ctx.fillStyle = INK;
   ctx.fillText(race.title, padX, titleY);
   if (race.subtitle) {
-    setFont(ctx, min * (vertical ? 0.03 : 0.026), 700);
+    // Constrain the subtitle to the bars' width and WRAP to a second line if
+    // needed (ellipsized) so a long subtitle never runs off the canvas edge on
+    // narrow / small layouts (it used to draw at a fixed size with no fit).
+    const subPx = min * (vertical ? 0.03 : 0.026);
+    const subMaxW = barsRight - padX;
+    const subLines = wrapLines(ctx, race.subtitle, subPx, 700, subMaxW, 2);
+    setFont(ctx, subPx, 700);
     ctx.fillStyle = SEAL;
-    ctx.fillText(race.subtitle, padX, titleY + titlePx * 0.72);
+    let sy = titleY + titlePx * 0.72;
+    for (const ln of subLines) {
+      ctx.fillText(ln, padX, sy);
+      sy += subPx * 1.08;
+    }
   }
 
   // ── bars ──
@@ -651,7 +661,56 @@ function drawBrandBadge(ctx: CanvasRenderingContext2D, rx: number, cy: number, p
   ctx.textBaseline = "alphabetic";
 }
 
-/* ── Isaac's closing screen — brief & clean: "Made on clunoid.com" ─────────────
+/* The "Stat Battle" brand mark — a bar-chart glyph that matches the lucide
+ * BarChart3 icon used on the data sheet. Drawn in a square box at (x, y, size). */
+function drawBarsIcon(ctx: CanvasRenderingContext2D, x: number, y: number, s: number, color: string) {
+  const u = s / 24;
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  // L-shaped axis (M3 3 v18 h18)
+  ctx.lineWidth = 2.1 * u;
+  ctx.beginPath();
+  ctx.moveTo(x + 3 * u, y + 3 * u);
+  ctx.lineTo(x + 3 * u, y + 21 * u);
+  ctx.lineTo(x + 21 * u, y + 21 * u);
+  ctx.stroke();
+  // three ascending bars (thick rounded strokes), like BarChart3
+  ctx.lineWidth = 3 * u;
+  const bar = (bx: number, topY: number) => {
+    ctx.beginPath();
+    ctx.moveTo(x + bx * u, y + 17 * u);
+    ctx.lineTo(x + bx * u, y + topY * u);
+    ctx.stroke();
+  };
+  bar(8, 14);
+  bar(13, 5);
+  bar(18, 9);
+  ctx.restore();
+}
+
+/* The "Stat Battle" logo lockup (bar-chart mark + wordmark), centered at
+ * (cx, cy). h = wordmark cap height; the mark scales with it. */
+function drawStatBattleLogo(ctx: CanvasRenderingContext2D, cx: number, cy: number, h: number) {
+  const word = "Stat Battle";
+  setFont(ctx, h, 800);
+  const ww = ctx.measureText(word).width;
+  const iconS = h * 1.2;
+  const gap = h * 0.4;
+  const total = iconS + gap + ww;
+  let x = cx - total / 2;
+  drawBarsIcon(ctx, x, cy - iconS / 2, iconS, SEAL);
+  x += iconS + gap;
+  ctx.fillStyle = INK;
+  ctx.textAlign = "left";
+  ctx.textBaseline = "middle";
+  ctx.fillText(word, x, cy);
+  ctx.textAlign = "center";
+  ctx.textBaseline = "alphabetic";
+}
+
+/* ── Isaac's closing screen — the Stat Battle logo paired with clunoid.com ─────
  * The voice-over is a single PRE-RECORDED clip (public/stat-outro.mp3, Isaac
  * saying "Made on clunoid dot com. Make your own.") reused for every outro, so
  * we never call TTS per video. Re-record with scripts/genoutro.mjs if the line
@@ -662,20 +721,18 @@ function drawStatOutro(ctx: CanvasRenderingContext2D, W: number, H: number, p: n
   ctx.textAlign = "center";
   ctx.textBaseline = "alphabetic";
 
-  // Hero "clunoid.com" centered. The eyebrow + subline are anchored to the
-  // hero's baseline by heroPx (NOT fixed H-fractions), so the phrase keeps its
-  // spacing in BOTH portrait (9:16) and landscape (16:9) — where H, but not
-  // min, shrinks. fitText also caps the glyph to the canvas width.
-  const heroPx = fitText(ctx, "clunoid.com", Math.min(W, H) * 0.165, 800, W * 0.9);
-  const cy = H * 0.5;
+  // Everything is anchored to the hero's size (heroPx), NOT fixed H-fractions,
+  // so the lockup keeps its spacing in BOTH portrait (9:16) and landscape (16:9)
+  // — where H, but not min, shrinks. fitText also caps each line to the width.
+  const heroPx = fitText(ctx, "clunoid.com", Math.min(W, H) * 0.155, 800, W * 0.9);
+  const cy = H * 0.52;
   const small = heroPx * 0.3;
 
-  // "Made on" eyebrow — just above the hero's cap so they read as one phrase.
-  setFont(ctx, small, 700);
-  ctx.fillStyle = "rgba(44,40,35,0.58)";
-  ctx.fillText("Made on", W / 2, cy - heroPx * 0.92);
+  // Stat Battle logo lockup (mark + wordmark), centered above the hero.
+  drawStatBattleLogo(ctx, W / 2, cy - heroPx * 1.2, heroPx * 0.4);
 
-  const sc = 0.88 + 0.12 * clamp01(p * 3);
+  // hero "clunoid.com" — the dominant element, with a gentle pop-in.
+  const sc = 0.9 + 0.1 * clamp01(p * 3);
   ctx.save();
   ctx.translate(W / 2, cy);
   ctx.scale(sc, sc);
@@ -684,14 +741,17 @@ function drawStatOutro(ctx: CanvasRenderingContext2D, W: number, H: number, p: n
   ctx.shadowOffsetY = heroPx * 0.04;
   ctx.fillStyle = SEAL;
   setFont(ctx, heroPx, 800);
+  ctx.textAlign = "center";
+  ctx.textBaseline = "alphabetic";
   ctx.fillText("clunoid.com", 0, 0);
   ctx.restore();
 
-  // "Make your own stat battle" subline — fit to width so it never overruns.
-  const subPx = fitText(ctx, "Make your own stat battle", small, 700, W * 0.9);
+  // "Make your own" subline (matches the voice-over) — fit so it never overruns.
+  const subPx = fitText(ctx, "Make your own", small, 700, W * 0.9);
   setFont(ctx, subPx, 700);
   ctx.fillStyle = "rgba(44,40,35,0.72)";
-  ctx.fillText("Make your own stat battle", W / 2, cy + heroPx * 0.9);
+  ctx.textAlign = "center";
+  ctx.fillText("Make your own", W / 2, cy + heroPx * 0.86);
   ctx.globalAlpha = 1;
   ctx.textAlign = "left";
 }
