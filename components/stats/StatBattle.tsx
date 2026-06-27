@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { ArrowLeft, Sparkles, Play, RotateCcw, Film, Loader2, BarChart3 } from "lucide-react";
 import { DocumentBackground } from "@/components/games/DocumentBackground";
 import { ShareModal } from "@/components/share/ShareModal";
+import { StatReview } from "@/components/stats/StatReview";
 import { buildRace, gdpFallbackRace, PRESETS } from "@/lib/stats/generate";
 import { drawRaceFrame, newRaceState, preloadRaceImages, renderRaceVideo } from "@/lib/stats/render";
 import { resolveRaceMedia } from "@/lib/stats/media";
@@ -14,7 +15,8 @@ import type { ReelAspect } from "@/lib/share/reel";
 const INK = "#2c2823";
 const SEAL = "#8a2433";
 
-type Phase = "menu" | "building" | "playing";
+// menu → building (research) → review (edit & approve the data) → playing
+type Phase = "menu" | "building" | "review" | "playing";
 
 /** One optional detail field (module-level so typing never loses focus). */
 function OptField({ label, value, onChange, placeholder }: { label: string; value: string; onChange: (v: string) => void; placeholder: string }) {
@@ -75,25 +77,31 @@ export function StatBattle({ initialRequest }: { initialRequest?: string }) {
     try {
       const data = await buildRace(r || PRESETS[0].request);
       await resolveRaceMedia(data).catch(() => {}); // flags / logos / photos by entity kind
-      await preloadRaceImages(data).catch(() => {}); // media ready before the race plays
       setRace(data);
-      setReplayKey((n) => n + 1);
-      setPhase("playing");
+      setPhase("review"); // user reviews/edits the data, then approves → it plays
     } catch {
       // The GDP default always works (offline fallback); other topics that fail
       // (usually a transient model hiccup) ask the user to try again.
       if (isDefault) {
         const fb = gdpFallbackRace();
         await resolveRaceMedia(fb).catch(() => {});
-        await preloadRaceImages(fb).catch(() => {});
         setRace(fb);
-        setReplayKey((n) => n + 1);
-        setPhase("playing");
+        setPhase("review");
       } else {
         setFailed(true);
         setPhase("menu");
       }
     }
+  }, []);
+
+  // User approved the (possibly edited) data sheet → prepare media + play.
+  const approve = useCallback(async (edited: RaceData) => {
+    setPhase("building");
+    await resolveRaceMedia(edited).catch(() => {}); // resolve media for any newly-added competitors
+    await preloadRaceImages(edited).catch(() => {}); // decode before the race plays
+    setRace(edited);
+    setReplayKey((n) => n + 1);
+    setPhase("playing");
   }, []);
 
   const startedInitial = useRef(false);
@@ -124,6 +132,11 @@ export function StatBattle({ initialRequest }: { initialRequest?: string }) {
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
   }, [phase, race, replayKey]);
+
+  // ── Review & edit the data sheet, then approve ───────────────────────────
+  if (phase === "review" && race) {
+    return <StatReview race={race} onApprove={approve} onBack={() => setPhase("menu")} />;
+  }
 
   // ── Menu ────────────────────────────────────────────────────────────────
   if (phase !== "playing") {
