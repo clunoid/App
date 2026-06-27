@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, Download, Check, Plus, Trash2, BarChart3, Info, Sparkles, Loader2 } from "lucide-react";
 import type { RaceData } from "@/lib/stats/types";
 import { aiEditRace } from "@/lib/stats/generate";
@@ -34,6 +34,15 @@ export function StatReview({ race, onApprove, onBack }: { race: RaceData; onAppr
   const [ai, setAi] = useState(""); // plain-English "what to change" instruction
   const [aiBusy, setAiBusy] = useState(false);
   const [aiErr, setAiErr] = useState(false);
+  const aiRef = useRef<HTMLTextAreaElement | null>(null);
+
+  // The AI instruction box grows with its content (an "extending" box).
+  useEffect(() => {
+    const t = aiRef.current;
+    if (!t) return;
+    t.style.height = "auto";
+    t.style.height = `${Math.min(t.scrollHeight, 200)}px`;
+  }, [ai]);
 
   // Let the user reshape the whole sheet with one instruction ("add more European
   // banks", "extend to 2030", "make this richest companies instead of people").
@@ -128,49 +137,57 @@ export function StatReview({ race, onApprove, onBack }: { race: RaceData; onAppr
             </p>
           </div>
 
-          {/* AI edit — reshape the whole sheet with one plain-English instruction */}
-          <div className="mx-5 mt-3 rounded-xl border border-[#7c3aed]/30 px-4 py-3" style={{ background: "rgba(124,58,237,0.05)" }}>
-            <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-extrabold uppercase tracking-wide" style={{ color: SEAL }}>
-              <Sparkles size={14} /> Tell Clunoid what to change
+          {/* Edit with AI — reshape the whole sheet with one plain-English instruction */}
+          <div className="mx-5 mt-4 rounded-2xl px-4 py-4" style={{ border: "2px solid rgba(124,58,237,0.45)", background: "rgba(124,58,237,0.08)" }}>
+            <div className="mb-1 flex items-center gap-2 text-base font-extrabold" style={{ color: INK }}>
+              <Sparkles size={18} style={{ color: "#7c3aed" }} /> Edit with AI
             </div>
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <input
-                value={ai}
-                onChange={(e) => setAi(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") applyAi();
-                }}
-                placeholder="e.g. add more European banks · extend to 2030 · make this richest companies instead of people"
-                disabled={aiBusy}
-                className={`${input} w-full text-sm disabled:opacity-60`}
-                style={{ color: INK }}
-              />
+            <p className="mb-2.5 text-[13px] font-semibold text-[#2c2823]/60">
+              Tell Clunoid what to change in plain English — it rewrites the data below. You can still tweak it by hand, then approve.
+            </p>
+            <textarea
+              ref={aiRef}
+              value={ai}
+              onChange={(e) => setAi(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                  e.preventDefault();
+                  applyAi();
+                }
+              }}
+              rows={2}
+              placeholder="e.g. Add more European banks  ·  Extend the range to 2030  ·  Make this the richest companies instead of people  ·  Set Messi's 2026 value to 915"
+              disabled={aiBusy}
+              className="w-full resize-none rounded-xl px-3.5 py-2.5 text-[15px] font-semibold leading-snug outline-none transition placeholder:font-medium placeholder:text-[#2c2823]/40 disabled:opacity-60"
+              style={{ color: INK, background: "#ffffffcc", border: "1px solid rgba(44,40,35,0.18)" }}
+            />
+            <div className="mt-2.5 flex flex-wrap items-center justify-between gap-3">
+              <p className="text-[12px] font-semibold text-[#2c2823]/55">
+                {aiErr ? (
+                  <span style={{ color: SEAL }}>Couldn&apos;t apply that — try rephrasing.</span>
+                ) : aiBusy ? (
+                  "Clunoid is rebuilding your data — this takes a moment…"
+                ) : (
+                  "Great for turning a saved battle into a new one — just say what you want."
+                )}
+              </p>
               <button
                 onClick={applyAi}
                 disabled={aiBusy || !ai.trim()}
-                className="flex h-10 shrink-0 items-center justify-center gap-1.5 rounded-lg px-4 text-sm font-extrabold text-white shadow transition hover:scale-[1.02] disabled:opacity-50"
+                className="flex h-11 shrink-0 items-center justify-center gap-2 rounded-full px-6 text-[15px] font-extrabold text-white shadow-lg transition hover:scale-[1.03] disabled:opacity-50"
                 style={{ background: "linear-gradient(120deg,#7c3aed,#ec4899)" }}
               >
                 {aiBusy ? (
                   <>
-                    <Loader2 size={16} className="animate-spin" /> Updating…
+                    <Loader2 size={18} className="animate-spin" /> Updating…
                   </>
                 ) : (
                   <>
-                    <Sparkles size={16} /> Apply with AI
+                    <Sparkles size={18} /> Apply with AI
                   </>
                 )}
               </button>
             </div>
-            <p className="mt-1.5 text-[11px] font-semibold text-[#2c2823]/50">
-              {aiErr ? (
-                <span style={{ color: SEAL }}>Couldn&apos;t apply that — try rephrasing.</span>
-              ) : aiBusy ? (
-                "Clunoid is rebuilding your data — this takes a moment…"
-              ) : (
-                "Clunoid updates the data below from your words; you can still tweak it by hand, then approve. Great for turning a saved battle into a new one."
-              )}
-            </p>
           </div>
 
           {/* sparse-data recommendation */}

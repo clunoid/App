@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Sparkles, Play, RotateCcw, Film, Loader2, BarChart3, Pencil, History } from "lucide-react";
+import { ArrowLeft, Sparkles, Play, RotateCcw, Film, Loader2, BarChart3, History } from "lucide-react";
 import { DocumentBackground } from "@/components/games/DocumentBackground";
 import { ShareModal } from "@/components/share/ShareModal";
 import { StatReview } from "@/components/stats/StatReview";
@@ -309,7 +309,7 @@ export function StatBattle({ initialRequest }: { initialRequest?: string }) {
             onClick={() => setPhase("review")}
             className="flex items-center gap-2 rounded-full bg-black/15 px-5 py-3 font-extrabold text-[#2c2823] backdrop-blur transition hover:bg-black/25"
           >
-            <Pencil size={18} /> Edit
+            <Sparkles size={18} /> Edit with AI
           </button>
           <button
             onClick={() => setShareOpen(true)}
