@@ -924,13 +924,7 @@ function drawRaceBump(ctx: CanvasRenderingContext2D, W: number, H: number, race:
   const N = Math.max(1, Math.min(race.topN, ranked.length));
   const visible = ranked.slice(0, N);
 
-  const dt = state.init ? Math.max(0, Math.min(0.1, el - state.lastEl)) : 0;
   state.lastEl = el;
-  const kRank = state.init ? 1 - Math.exp(-dt * 8) : 1;
-  visible.forEach((r, idx) => {
-    const cur = state.disp.has(r.e.name) ? state.disp.get(r.e.name)! : idx;
-    state.disp.set(r.e.name, cur + (idx - cur) * kRank);
-  });
   state.init = true;
 
   const { ev, idx: evIdx } = activeEvent(race, curT);
@@ -978,10 +972,18 @@ function drawRaceBump(ctx: CanvasRenderingContext2D, W: number, H: number, race:
   const plotH = plotBottom - plotTop;
   const rowH = plotH / N;
   const rowOf = (rank0: number) => plotTop + (rank0 + 0.5) * rowH;
-  const windowSpan = Math.max(curT - t0, 1e-6); // expanding window: head always at the right edge
-  const xOf = (t: number) => plotLeft + clamp01((t - t0) / windowSpan) * plotW;
+  const lo = N - 1 + 0.6; // resting row for below-topN / entering trails
   const lineW = Math.max(2.5, rowH * 0.13);
   const aR = Math.min(rowH * 0.4, plotW * 0.06); // head avatar radius
+
+  // SCROLLING window: show the most recent `windowSpan` of time so the trails flow
+  // briskly (more engaging) WITHOUT touching the data speed. The window start is
+  // clamped to t0, and every trail begins exactly at the left edge, so the back of
+  // each trail stays attached to the left and never detaches.
+  const windowSpan = Math.max((t1 - t0) * 0.5, 1e-6);
+  const wStart = Math.max(t0, curT - windowSpan);
+  const wEnd = Math.max(curT, wStart + 1e-6); // head pinned at the right edge
+  const xOf = (t: number) => plotLeft + clamp01((t - wStart) / (wEnd - wStart)) * plotW;
 
   // faint rank guide rows
   ctx.save();
@@ -996,29 +998,54 @@ function drawRaceBump(ctx: CanvasRenderingContext2D, W: number, H: number, race:
   }
   ctx.restore();
 
-  // rank (0-based) of every entity at each keyframe ≤ curT
-  const kfRankMaps = race.frames
-    .filter((f) => f.time <= curT + 1e-6)
-    .map((f) => {
-      const present = Object.keys(f.values)
-        .filter((nm) => f.values[nm] > 1e-6)
-        .sort((a, b) => f.values[b] - f.values[a]);
-      const m = new Map<string, number>();
-      present.forEach((nm, i) => m.set(nm, i));
-      return { time: f.time, m };
-    });
+  // rank (0-based) of every entity at EVERY keyframe (for the rank-vs-time curve)
+  const frames = race.frames;
+  const kfRankMaps = frames.map((f) => {
+    const present = Object.keys(f.values)
+      .filter((nm) => f.values[nm] > 1e-6)
+      .sort((a, b) => f.values[b] - f.values[a]);
+    const m = new Map<string, number>();
+    present.forEach((nm, i) => m.set(nm, i));
+    return m;
+  });
+  // An entity's smooth, continuous rank at any time τ — interpolated between the
+  // surrounding keyframes (smoothstep for crisp crossings) and clamped to just
+  // below the last row. This is what makes the trail gap-free and kink-free.
+  const rankAt = (name: string, tau: number): number => {
+    if (tau <= frames[0].time) {
+      const r = kfRankMaps[0].get(name);
+      return r == null ? lo : Math.min(r, lo);
+    }
+    if (tau >= frames[frames.length - 1].time) {
+      const r = kfRankMaps[frames.length - 1].get(name);
+      return r == null ? lo : Math.min(r, lo);
+    }
+    let i = 0;
+    while (i < frames.length - 1 && !(frames[i].time <= tau && tau < frames[i + 1].time)) i++;
+    const ra = kfRankMaps[i].get(name);
+    const rb = kfRankMaps[i + 1].get(name);
+    const f = (tau - frames[i].time) / Math.max(1e-9, frames[i + 1].time - frames[i].time);
+    const ss = f * f * (3 - 2 * f); // smoothstep → snappy, crisp crossings
+    if (ra != null && rb != null) return Math.min(ra + (rb - ra) * ss, lo);
+    if (ra != null) return Math.min(ra, lo); // leaving → hold its row
+    if (rb != null) return Math.min(lo + (rb - lo) * ss, lo); // entering → rises from below
+    return lo;
+  };
 
   // trails (non-leaders first so the leader sits on top)
   for (let vi = visible.length - 1; vi >= 0; vi--) {
     const r = visible[vi];
+    const nm = r.e.name;
     const pts: { x: number; y: number }[] = [];
-    for (const kf of kfRankMaps) {
-      const rk = kf.m.get(r.e.name);
-      if (rk == null) continue;
-      pts.push({ x: xOf(kf.time), y: rowOf(Math.min(rk, N - 1 + 0.6)) }); // below-topN enters from the bottom
+    pts.push({ x: plotLeft, y: rowOf(rankAt(nm, wStart)) }); // ATTACHED to the left edge
+    for (let fi = 0; fi < frames.length; fi++) {
+      const ft = frames[fi].time;
+      if (ft > wStart + 1e-6 && ft < curT - 1e-6) {
+        const rk = kfRankMaps[fi].get(nm);
+        pts.push({ x: xOf(ft), y: rowOf(rk == null ? lo : Math.min(rk, lo)) });
+      }
     }
-    const headRank = state.disp.get(r.e.name) ?? vi;
-    const head = { x: plotLeft + plotW, y: rowOf(Math.min(headRank, N - 1 + 0.6)) };
+    const head = { x: plotLeft + plotW, y: rowOf(rankAt(nm, curT)) };
     pts.push(head);
 
     ctx.save();
@@ -1030,46 +1057,16 @@ function drawRaceBump(ctx: CanvasRenderingContext2D, W: number, H: number, race:
     ctx.stroke();
     ctx.restore();
 
-    // head avatar — best media: own logo/photo/flag → country flag → initials
-    const primary = getImg(r.e.image);
-    const flagImg = r.e.kind !== "country" && r.e.country ? getImg(flagUrlFromIso2(r.e.country)) : null;
-    const mainImg = primary || flagImg;
-    const ringW = Math.max(2, aR * 0.14);
-    ctx.save();
-    ctx.shadowColor = "rgba(0,0,0,0.22)";
-    ctx.shadowBlur = aR * 0.25;
-    ctx.shadowOffsetY = aR * 0.08;
-    ctx.beginPath();
-    ctx.arc(head.x, head.y, aR, 0, Math.PI * 2);
-    ctx.fillStyle = r.e.color;
-    ctx.fill();
-    ctx.restore();
-    if (mainImg) {
-      drawCircleMedia(ctx, mainImg, head.x, head.y, (aR - ringW) * 2);
-    } else {
-      ctx.save();
-      ctx.beginPath();
-      ctx.arc(head.x, head.y, aR - ringW, 0, Math.PI * 2);
-      ctx.clip();
-      ctx.fillStyle = "rgba(255,255,255,0.18)";
-      ctx.fillRect(head.x - aR, head.y - aR, aR * 2, aR * 2);
-      const ini = r.e.name.split(/\s+/).map((w) => w[0] || "").join("").slice(0, 2).toUpperCase();
-      setFont(ctx, (aR - ringW) * 0.9, 800);
-      ctx.fillStyle = "#fff";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText(ini, head.x, head.y);
-      ctx.restore();
-    }
+    drawEntityAvatar(ctx, r.e, head.x, head.y, aR);
 
     // name + current value in the right strip, centered on the head (one per row → no overlap)
     const lx = head.x + aR + Math.max(6, aR * 0.3);
     const lw = Math.max(20, plotRight - lx);
     ctx.textAlign = "left";
     ctx.textBaseline = "alphabetic";
-    setFont(ctx, fitText(ctx, r.e.name, Math.min(rowH * 0.34, min * 0.026), 800, lw), 800);
+    setFont(ctx, fitText(ctx, nm, Math.min(rowH * 0.34, min * 0.026), 800, lw), 800);
     ctx.fillStyle = INK;
-    ctx.fillText(r.e.name, lx, head.y - rowH * 0.02);
+    ctx.fillText(nm, lx, head.y - rowH * 0.02);
     const vStr = fmtValueCompact(r.v, race);
     setFont(ctx, fitText(ctx, vStr, Math.min(rowH * 0.3, min * 0.024), 800, lw), 800);
     ctx.fillStyle = SEAL;
