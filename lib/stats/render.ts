@@ -164,7 +164,7 @@ function fmtTime(curT: number, span: number): string {
 }
 
 /* ── per-frame smoothing state (shared by live preview + export) ──────────── */
-export type RaceState = { disp: Map<string, number>; max: number; init: boolean; lastEl: number; leader: string; evIdx: number; evChange: number; vis: number; peak: number; bub: Map<string, { x: number; y: number }> };
+export type RaceState = { disp: Map<string, number>; max: number; init: boolean; lastEl: number; leader: string; evIdx: number; evChange: number; vis: number; peak: number; bub: Map<string, { x: number; y: number; r?: number }> };
 export function newRaceState(): RaceState {
   return { disp: new Map(), max: 0, init: false, lastEl: 0, leader: "", evIdx: -1, evChange: 0, vis: 0, peak: 0, bub: new Map() };
 }
@@ -1087,17 +1087,267 @@ function drawRaceBump(ctx: CanvasRenderingContext2D, W: number, H: number, race:
   drawBrandBadge(ctx, W - padX, H * 0.965, min * 0.034);
 }
 
+/** A circular entity avatar: color identity ring + best media (own logo/photo/flag
+ *  → its country flag → initials). Centered at (cx, cy), outer radius rad. */
+function drawEntityAvatar(ctx: CanvasRenderingContext2D, e: RaceData["entities"][number], cx: number, cy: number, rad: number) {
+  if (rad < 1) return;
+  const ringW = Math.max(2, rad * 0.12);
+  ctx.save();
+  ctx.shadowColor = "rgba(0,0,0,0.22)";
+  ctx.shadowBlur = rad * 0.22;
+  ctx.shadowOffsetY = rad * 0.07;
+  ctx.beginPath();
+  ctx.arc(cx, cy, rad, 0, Math.PI * 2);
+  ctx.fillStyle = e.color;
+  ctx.fill();
+  ctx.restore();
+  const primary = getImg(e.image);
+  const flagImg = e.kind !== "country" && e.country ? getImg(flagUrlFromIso2(e.country)) : null;
+  const mainImg = primary || flagImg;
+  if (mainImg) {
+    drawCircleMedia(ctx, mainImg, cx, cy, (rad - ringW) * 2);
+  } else {
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, rad - ringW, 0, Math.PI * 2);
+    ctx.clip();
+    ctx.fillStyle = "rgba(255,255,255,0.18)";
+    ctx.fillRect(cx - rad, cy - rad, rad * 2, rad * 2);
+    const ini = e.name.split(/\s+/).map((w) => w[0] || "").join("").slice(0, 2).toUpperCase();
+    setFont(ctx, (rad - ringW) * 0.9, 800);
+    ctx.fillStyle = "#fff";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(ini, cx, cy);
+    ctx.restore();
+  }
+}
+
+const PODIUM_ACCENT = ["#D4AF37", "#9AA1AC", "#CD7F32"]; // gold / silver / bronze, by rank
+
+/* ── FOURTH design: a "Podium" / Champions race ───────────────────────────────
+ * The most dramatic view — the top 3 stand on a gold/silver/bronze medal podium
+ * (#1 center & tallest) with big avatars, names & values, while the rest race
+ * below as "chasers". Every competitor eases between its podium slot or chaser
+ * spot, so they climb onto and fall off the podium as the standings change — a
+ * literal battle for the rostrum. Shares all the chrome with the other designs. */
+function drawRacePodium(ctx: CanvasRenderingContext2D, W: number, H: number, race: RaceData, state: RaceState, el: number) {
+  const min = Math.min(W, H);
+  const vertical = H > W;
+  const t0 = race.frames[0].time;
+  const t1 = race.frames[race.frames.length - 1].time;
+  const prog = clamp01(race.durationSec > 0 ? el / race.durationSec : 1);
+  const curT = t0 + (t1 - t0) * prog;
+  const vals = valuesAt(race, curT);
+  const ranked = race.entities
+    .map((e) => ({ e, v: vals.get(e.name)?.v || 0, fade: vals.get(e.name)?.fade ?? 1 }))
+    .filter((r) => r.v > 1e-6 && r.fade > 0.05)
+    .sort((a, b) => b.v - a.v);
+  const N = Math.max(1, Math.min(race.topN, ranked.length));
+  const visible = ranked.slice(0, N);
+
+  const dt = state.init ? Math.max(0, Math.min(0.1, el - state.lastEl)) : 0;
+  state.lastEl = el;
+  const k = state.init ? 1 - Math.exp(-dt * 6) : 1;
+  state.init = true;
+
+  const { ev, idx: evIdx } = activeEvent(race, curT);
+  if (evIdx !== state.evIdx) {
+    state.evIdx = evIdx;
+    state.evChange = el;
+  }
+  const evAlpha = clamp01((el - state.evChange) / 0.45);
+
+  drawCertificateBg(ctx, W, H);
+
+  const padX = W * (vertical ? 0.045 : 0.035);
+  const titleY = H * (vertical ? 0.06 : 0.085);
+  const plotTop = H * (vertical ? 0.14 : 0.19);
+  const plotBottom = H * (vertical ? 0.6 : 0.9);
+  const plotLeft = padX;
+  const plotRight = vertical ? W - padX : W * 0.66;
+  const panelX = vertical ? padX : W * 0.675;
+  const panelY = vertical ? H * 0.63 : H * 0.17;
+  const panelW = vertical ? W - 2 * padX : W * 0.965 - panelX;
+  const panelH = vertical ? H * 0.32 : H * 0.9 - H * 0.17;
+
+  // header (same as the other designs)
+  ctx.textBaseline = "alphabetic";
+  ctx.textAlign = "left";
+  const titlePx = fitText(ctx, race.title, min * (vertical ? 0.055 : 0.05), 800, plotRight - padX);
+  ctx.fillStyle = INK;
+  ctx.fillText(race.title, padX, titleY);
+  if (race.subtitle) {
+    const subPx = min * (vertical ? 0.03 : 0.026);
+    const subLines = wrapLines(ctx, race.subtitle, subPx, 700, plotRight - padX, 2);
+    setFont(ctx, subPx, 700);
+    ctx.fillStyle = SEAL;
+    let sy = titleY + titlePx * 0.72;
+    for (const ln of subLines) {
+      ctx.fillText(ln, padX, sy);
+      sy += subPx * 1.08;
+    }
+  }
+
+  // ── layout ──
+  const regL = plotLeft;
+  const regR = plotRight;
+  const regT = plotTop;
+  const regB = plotBottom;
+  const regW = regR - regL;
+  const regH = regB - regT;
+  const hasChasers = visible.length > 3;
+  const podiumH = regH * (hasChasers ? 0.66 : 0.94);
+  const baseY = regT + podiumH;
+  const slotX = [regL + regW * 0.5, regL + regW * 0.21, regL + regW * 0.79]; // by rank0: #1 centre, #2 left, #3 right
+  const pedW = Math.min(regW * 0.23, podiumH * 0.62);
+  const pedH = [podiumH * 0.42, podiumH * 0.31, podiumH * 0.23]; // by rank0
+  const aBase = Math.min(pedW * 0.46, podiumH * 0.2);
+  const aRad = [aBase, aBase * 0.86, aBase * 0.78]; // by rank0
+  const pedTop = (r0: number) => baseY - pedH[r0];
+  const avatarYP = (r0: number) => pedTop(r0) - aRad[r0] - podiumH * 0.05;
+
+  // chasers (rank 4..N) — up to two rows
+  const nCh = Math.max(0, visible.length - 3);
+  const chCols = nCh <= 6 ? Math.max(1, nCh) : Math.ceil(nCh / 2);
+  const chRows = nCh > 0 ? Math.ceil(nCh / chCols) : 1;
+  const chTop = baseY + regH * 0.05;
+  const chZoneH = regB - chTop;
+  const chRowH = chZoneH / chRows;
+  const chR = nCh > 0 ? Math.min((regW / chCols) * 0.16, chRowH * 0.34) : 0;
+  const chCx = (ci: number) => regL + ((ci % chCols) + 0.5) * (regW / chCols);
+  const chCy = (ci: number) => chTop + (Math.floor(ci / chCols) + 0.42) * chRowH;
+
+  const targetFor = (r0: number) => {
+    if (r0 < 3) return { x: slotX[r0], y: avatarYP(r0), r: aRad[r0] };
+    const ci = r0 - 3;
+    return { x: chCx(ci), y: chCy(ci), r: chR };
+  };
+
+  visible.forEach((rr, r0) => {
+    const tgt = targetFor(r0);
+    let p = state.bub.get(rr.e.name);
+    if (!p) {
+      p = { x: tgt.x, y: tgt.y, r: tgt.r };
+      state.bub.set(rr.e.name, p);
+    }
+    p.x += (tgt.x - p.x) * k;
+    p.y += (tgt.y - p.y) * k;
+    p.r = (p.r ?? tgt.r) + (tgt.r - (p.r ?? tgt.r)) * k;
+  });
+  if (state.bub.size > race.entities.length) {
+    const live = new Set(visible.map((r) => r.e.name));
+    for (const kk of [...state.bub.keys()]) if (!live.has(kk)) state.bub.delete(kk);
+  }
+
+  // pedestals (static, only for occupied slots)
+  const topSlots = Math.min(3, visible.length);
+  for (let r0 = topSlots - 1; r0 >= 0; r0--) {
+    const x = slotX[r0];
+    const top = pedTop(r0);
+    const grad = ctx.createLinearGradient(0, top, 0, baseY);
+    grad.addColorStop(0, "rgba(255,255,255,0.55)");
+    grad.addColorStop(1, "rgba(110,103,92,0.3)");
+    ctx.save();
+    ctx.shadowColor = "rgba(0,0,0,0.14)";
+    ctx.shadowBlur = pedW * 0.07;
+    ctx.shadowOffsetY = pedW * 0.03;
+    roundRect(ctx, x - pedW / 2, top, pedW, baseY - top, pedW * 0.05);
+    ctx.fillStyle = grad;
+    ctx.fill();
+    ctx.restore();
+    ctx.fillStyle = PODIUM_ACCENT[r0]; // medal-colour cap
+    roundRect(ctx, x - pedW / 2, top, pedW, Math.max(4, podiumH * 0.02), pedW * 0.03);
+    ctx.fill();
+    setFont(ctx, pedH[r0] * 0.46, 800); // big faint rank numeral
+    ctx.fillStyle = "rgba(44,40,35,0.14)";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(String(r0 + 1), x, top + (baseY - top) * 0.6);
+  }
+  ctx.textBaseline = "alphabetic";
+
+  // baseline
+  ctx.strokeStyle = "rgba(44,40,35,0.12)";
+  ctx.lineWidth = Math.max(1, regH * 0.004);
+  ctx.beginPath();
+  ctx.moveTo(regL, baseY);
+  ctx.lineTo(regR, baseY);
+  ctx.stroke();
+
+  // entities — chasers + lower medals first, #1 last (on top)
+  const order = visible.map((_, i) => i).sort((a, b) => b - a);
+  for (const r0 of order) {
+    const rr = visible[r0];
+    const p = state.bub.get(rr.e.name)!;
+    const rad = p.r ?? targetFor(r0).r;
+    drawEntityAvatar(ctx, rr.e, p.x, p.y, rad);
+    ctx.textAlign = "center";
+    if (r0 < 3) {
+      // medal ring
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, rad + Math.max(2, rad * 0.08), 0, Math.PI * 2);
+      ctx.lineWidth = Math.max(2.5, rad * 0.12);
+      ctx.strokeStyle = PODIUM_ACCENT[r0];
+      ctx.stroke();
+      ctx.restore();
+      // value above the avatar
+      ctx.fillStyle = INK;
+      setFont(ctx, fitText(ctx, fmtValueCompact(rr.v, race), rad * 0.55, 800, pedW * 1.1), 800);
+      ctx.fillText(fmtValueCompact(rr.v, race), p.x, p.y - rad - rad * 0.22);
+      // name on the pedestal face
+      ctx.fillStyle = INK;
+      setFont(ctx, fitText(ctx, rr.e.name, Math.min(pedW * 0.15, podiumH * 0.07), 800, pedW * 0.9), 800);
+      ctx.fillText(rr.e.name, slotX[r0], pedTop(r0) + (baseY - pedTop(r0)) * 0.32);
+    } else {
+      // chaser: small rank badge + name + value
+      const bx = p.x - rad * 0.78;
+      const by = p.y - rad * 0.78;
+      const br = rad * 0.5;
+      ctx.beginPath();
+      ctx.arc(bx, by, br, 0, Math.PI * 2);
+      ctx.fillStyle = SEAL;
+      ctx.fill();
+      ctx.fillStyle = "#fff";
+      ctx.textBaseline = "middle";
+      setFont(ctx, br * 1.0, 800);
+      ctx.fillText(String(r0 + 1), bx, by + br * 0.05);
+      ctx.textBaseline = "alphabetic";
+      const cw = regW / chCols;
+      ctx.fillStyle = INK;
+      setFont(ctx, fitText(ctx, rr.e.name, Math.min(chR * 0.52, min * 0.02), 800, cw * 0.92), 800);
+      ctx.fillText(rr.e.name, p.x, p.y + rad + chR * 0.5);
+      ctx.fillStyle = SEAL;
+      setFont(ctx, fitText(ctx, fmtValueCompact(rr.v, race), Math.min(chR * 0.48, min * 0.018), 800, cw * 0.92), 800);
+      ctx.fillText(fmtValueCompact(rr.v, race), p.x, p.y + rad + chR * 1.05);
+    }
+  }
+  ctx.textAlign = "left";
+  ctx.textBaseline = "alphabetic";
+
+  drawStoryPanel(ctx, panelX, panelY, panelW, panelH, race, curT, ev, evAlpha, vertical);
+  if (race.source) {
+    setFont(ctx, min * 0.026, 700);
+    ctx.fillStyle = "rgba(44,40,35,0.45)";
+    ctx.fillText(`Source: ${race.source}`, padX, H * 0.975);
+  }
+  drawBrandBadge(ctx, W - padX, H * 0.965, min * 0.034);
+}
+
 /** The available visual styles for a stat battle (same data, different look). */
-export type RaceStyle = "bars" | "bubbles" | "trail";
+export type RaceStyle = "bars" | "bubbles" | "trail" | "podium";
 export const RACE_STYLES: { id: RaceStyle; label: string }[] = [
   { id: "bars", label: "Bars" },
   { id: "bubbles", label: "Bubbles" },
   { id: "trail", label: "Trail" },
+  { id: "podium", label: "Podium" },
 ];
 /** Draw one race frame in the chosen visual style. */
 export function drawRaceStyle(ctx: CanvasRenderingContext2D, W: number, H: number, race: RaceData, state: RaceState, el: number, style: RaceStyle = "bars") {
   if (style === "bubbles") drawRaceBubbles(ctx, W, H, race, state, el);
   else if (style === "trail") drawRaceBump(ctx, W, H, race, state, el);
+  else if (style === "podium") drawRacePodium(ctx, W, H, race, state, el);
   else drawRaceFrame(ctx, W, H, race, state, el);
 }
 
