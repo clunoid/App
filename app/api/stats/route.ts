@@ -121,7 +121,7 @@ REQUIREMENTS:
 - Span EXACTLY ${opts.from} to ${opts.to}: the FIRST keyframe's time = ${opts.from}, the LAST = ${opts.to}. For years beyond the latest real data, give the best current projection/estimate; for ancient/historical years, the best scholarly estimate.
 - ${opts.scaleHint}
 - METRIC DEFINITION: use the single most standard, widely-cited definition of the metric and apply it CONSISTENTLY across every year (e.g. army size = ACTIVE military personnel, not reserves or total available manpower; GDP = nominal). State nothing — just be consistent.
-- PRESENT-DAY ACCURACY (THE MOST IMPORTANT REQUIREMENT — users fact-check this against Google): the FINAL keyframe represents TODAY (${opts.nowLabel}). Its ranking AND values MUST equal the live figure for RIGHT NOW taken from the "CURRENT STANDINGS" block below (and the "CURRENT (${opts.nowLabel})" research line). Your own training knowledge is STALE for fast-moving stats — if the research shows a current number that differs from what you remember, TRUST THE RESEARCH, not your memory (e.g. a footballer's career-goal tally keeps climbing: if you "remember" ~900 but the research says 975 today, use 975). Use the value labelled today/current/latest, NOT a recent peak, all-time high, season total, or a months-old value. Use the MOST PRECISE figure the research gives (avoid suspiciously round numbers when a precise one exists). Sanity-check against common knowledge (today's biggest economies are USA>China>Germany/Japan/India/UK; largest active militaries China/India/USA/NK/Russia).
+- PRESENT-DAY ACCURACY (THE MOST IMPORTANT REQUIREMENT — users fact-check this against Google): the FINAL keyframe represents TODAY (${opts.nowLabel}). Its ranking AND values MUST equal the live figure for RIGHT NOW taken from the "CURRENT STANDINGS" block below (and the "CURRENT (${opts.nowLabel})" research line). Your own training knowledge is STALE for fast-moving stats — if the research shows a current number that differs from what you remember, TRUST THE RESEARCH, not your memory (e.g. a footballer's career-goal tally keeps climbing: if you "remember" ~900 but the research says 975 today, use 975). Use the value labelled today/current/latest, NOT a recent peak, all-time high, season total, or a months-old value. Use the MOST PRECISE figure the research gives (avoid suspiciously round numbers when a precise one exists). When sources cite DIFFERENT totals for the same entity (e.g. club-only vs all-competitions goals, or one source vs another), use the LARGER, most-commonly-cited HEADLINE figure — the number someone sees when they Google that entity — and apply that SAME definition consistently to EVERY competitor (so e.g. if Ronaldo is counted as ~975 all-competition goals, Messi must be his comparable ~870–915 all-competition figure, not a club-only count). Pin a real present-day number for EVERY top entity, not just the leader. Sanity-check against common knowledge (today's biggest economies are USA>China>Germany/Japan/India/UK; largest active militaries China/India/USA/NK/Russia).
 - ${
     opts.named && opts.named.length >= 2
       ? `Use EXACTLY these competitors (no more, no fewer): ${opts.named.join(", ")}. Include every one in every keyframe of the range.`
@@ -176,14 +176,14 @@ async function research(request: string, nowLabel: string): Promise<string> {
  *  to lock the FINAL keyframe to today's reality. ── */
 async function currentStandings(title: string, valueLabel: string, nowLabel: string, named?: string[]): Promise<string> {
   if (!hasSearch()) return "";
-  const who = named && named.length ? named.join(", ") : "the present-day top contenders";
+  const who = named && named.length ? named.join(", ") : "EACH of the present-day top contenders (name every one of the current leaders with their own number)";
   const q = `${title}: the EXACT up-to-date ${valueLabel || "figures"} as of ${nowLabel} for ${who} — each one's precise current number RIGHT NOW (latest live total, not a historical or season figure)`;
-  const r = await webSearch(q, { depth: "advanced", maxResults: 6 }).catch(() => null);
+  const r = await webSearch(q, { depth: "advanced", maxResults: 8 }).catch(() => null);
   if (!r) return "";
   const lines: string[] = [];
   const seen = new Set<string>();
   if (r.answer) lines.push(r.answer);
-  for (const x of r.results.slice(0, 6)) {
+  for (const x of r.results.slice(0, 8)) {
     if (seen.has(x.url)) continue;
     seen.add(x.url);
     lines.push(`• ${x.title}: ${x.content}`);
