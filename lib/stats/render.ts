@@ -902,6 +902,25 @@ function drawSmoothPath(ctx: CanvasRenderingContext2D, pts: { x: number; y: numb
   }
 }
 
+/** Per-keyframe rank (0-based, by value desc among present) of every entity —
+ *  a pure function of the race, so it's computed once and cached per RaceData. */
+const bumpRankCache = new WeakMap<RaceData, Map<string, number>[]>();
+function bumpRankMapsFor(race: RaceData): Map<string, number>[] {
+  let maps = bumpRankCache.get(race);
+  if (!maps) {
+    maps = race.frames.map((f) => {
+      const present = Object.keys(f.values)
+        .filter((nm) => f.values[nm] > 1e-6)
+        .sort((a, b) => f.values[b] - f.values[a]);
+      const m = new Map<string, number>();
+      present.forEach((nm, i) => m.set(nm, i));
+      return m;
+    });
+    bumpRankCache.set(race, maps);
+  }
+  return maps;
+}
+
 /* ── THIRD design: a "Trail" bump chart ───────────────────────────────────────
  * The same data as a RANK-over-time race: each competitor is a smooth trail that
  * rises and falls through the standings, the lines CROSSING as they overtake one
@@ -924,6 +943,15 @@ function drawRaceBump(ctx: CanvasRenderingContext2D, W: number, H: number, race:
   const N = Math.max(1, Math.min(race.topN, ranked.length));
   const visible = ranked.slice(0, N);
 
+  // Ease each visible entity's row toward its current (value-sorted) rank, so the
+  // head avatars + labels move smoothly AND sit on unique rows that match the
+  // values (the trail BODY uses the continuous rankAt below for smooth crossings).
+  const dt = state.init ? Math.max(0, Math.min(0.1, el - state.lastEl)) : 0;
+  const kRank = state.init ? 1 - Math.exp(-dt * 8) : 1;
+  visible.forEach((r, idx) => {
+    const cur = state.disp.has(r.e.name) ? state.disp.get(r.e.name)! : idx;
+    state.disp.set(r.e.name, cur + (idx - cur) * kRank);
+  });
   state.lastEl = el;
   state.init = true;
 
@@ -998,16 +1026,10 @@ function drawRaceBump(ctx: CanvasRenderingContext2D, W: number, H: number, race:
   }
   ctx.restore();
 
-  // rank (0-based) of every entity at EVERY keyframe (for the rank-vs-time curve)
+  // rank (0-based) of every entity at EVERY keyframe (for the rank-vs-time curve) —
+  // independent of time, so it's computed once per race and cached.
   const frames = race.frames;
-  const kfRankMaps = frames.map((f) => {
-    const present = Object.keys(f.values)
-      .filter((nm) => f.values[nm] > 1e-6)
-      .sort((a, b) => f.values[b] - f.values[a]);
-    const m = new Map<string, number>();
-    present.forEach((nm, i) => m.set(nm, i));
-    return m;
-  });
+  const kfRankMaps = bumpRankMapsFor(race);
   // An entity's smooth, continuous rank at any time τ — interpolated between the
   // surrounding keyframes (smoothstep for crisp crossings) and clamped to just
   // below the last row. This is what makes the trail gap-free and kink-free.
@@ -1045,7 +1067,9 @@ function drawRaceBump(ctx: CanvasRenderingContext2D, W: number, H: number, race:
         pts.push({ x: xOf(ft), y: rowOf(rk == null ? lo : Math.min(rk, lo)) });
       }
     }
-    const head = { x: plotLeft + plotW, y: rowOf(rankAt(nm, curT)) };
+    // head sits on the entity's eased value-sorted row → unique rows that match
+    // the labels (no overlapping avatars), while the trail body stays smooth.
+    const head = { x: plotLeft + plotW, y: rowOf(Math.min(state.disp.get(nm) ?? vi, lo)) };
     pts.push(head);
 
     ctx.save();
