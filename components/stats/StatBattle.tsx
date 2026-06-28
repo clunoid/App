@@ -101,6 +101,8 @@ function StyleThumb({ race, styleId, label, selected, onClick }: { race: RaceDat
   );
 }
 
+const STORE_KEY = "clunoid_stat_battle_v1"; // per-tab snapshot so a refresh keeps your view
+
 export function StatBattle({ initialRequest }: { initialRequest?: string }) {
   const router = useRouter();
   const [phase, setPhase] = useState<Phase>("menu");
@@ -251,13 +253,57 @@ export function StatBattle({ initialRequest }: { initialRequest?: string }) {
     if (mode === "video") setTimeout(() => setShareOpen(true), 120);
   }, []);
 
-  const startedInitial = useRef(false);
+  // On mount: an explicit ?q request starts a new battle; otherwise restore the
+  // last view from this tab so a REFRESH keeps you exactly where you were.
+  const mounted = useRef(false);
   useEffect(() => {
-    if (initialRequest && !startedInitial.current) {
-      startedInitial.current = true;
+    if (mounted.current) return;
+    mounted.current = true;
+    if (initialRequest) {
       void start(initialRequest);
+      return;
+    }
+    try {
+      const raw = sessionStorage.getItem(STORE_KEY);
+      if (!raw) return;
+      const s = JSON.parse(raw) as {
+        phase?: Phase; request?: string; range?: string; bars?: string; units?: string;
+        competitors?: string; style?: RaceStyle; savedId?: string | null; race?: RaceData | null;
+      };
+      setRequest(s.request || "");
+      setRange(s.range || "");
+      setBars(s.bars || "");
+      setUnits(s.units || "");
+      setCompetitors(s.competitors || "");
+      if (s.style) setStyle(s.style);
+      if (s.savedId) savedIdRef.current = s.savedId;
+      if (s.race && (s.phase === "review" || s.phase === "playing")) {
+        setRace(s.race);
+        if (s.phase === "playing") {
+          void preloadRaceImages(s.race).catch(() => {});
+          setReplayKey((n) => n + 1);
+        }
+        setPhase(s.phase);
+      }
+    } catch {
+      /* ignore a corrupt snapshot */
     }
   }, [initialRequest, start]);
+
+  // Persist the current view to this tab (skip the transient "building" state) so a
+  // refresh restores it rather than dumping the user back to the start.
+  useEffect(() => {
+    try {
+      if (phase === "building") return;
+      const keepRace = phase === "review" || phase === "playing";
+      sessionStorage.setItem(
+        STORE_KEY,
+        JSON.stringify({ phase, request, range, bars, units, competitors, style, savedId: savedIdRef.current, race: keepRace ? race : null })
+      );
+    } catch {
+      /* storage unavailable — non-fatal */
+    }
+  }, [phase, request, range, bars, units, competitors, style, race]);
 
   // Live preview loop (visual only; the export adds sound).
   useEffect(() => {
@@ -289,24 +335,24 @@ export function StatBattle({ initialRequest }: { initialRequest?: string }) {
   if (phase !== "playing") {
     const building = phase === "building";
     return (
-      <div className="relative flex h-[100dvh] w-screen flex-col items-center justify-center overflow-y-auto px-6 py-12 select-none">
+      <div className={`relative flex h-[100dvh] w-screen flex-col items-center overflow-y-auto overflow-x-hidden px-4 pb-10 pt-20 select-none sm:px-6 sm:pb-12 ${building ? "justify-center" : ""}`}>
         <DocumentBackground />
         <button
           onClick={() => router.push("/home")}
           aria-label="Back"
-          className="z-20 flex h-11 items-center gap-1.5 rounded-full px-4 text-[#2c2823] backdrop-blur transition hover:opacity-80"
-          style={{ position: "absolute", left: 16, top: 16, background: "rgba(0,0,0,0.1)" }}
+          className="z-20 flex h-9 items-center gap-1.5 rounded-full px-3 text-[#2c2823] backdrop-blur transition hover:opacity-80"
+          style={{ position: "absolute", left: 12, top: 12, background: "rgba(0,0,0,0.1)" }}
         >
-          <ArrowLeft size={18} /> <span className="text-sm font-extrabold">Home</span>
+          <ArrowLeft size={16} /> <span className="text-[13px] font-extrabold">Home</span>
         </button>
         {!building && (
           <button
             onClick={() => setHistoryOpen(true)}
             aria-label="History"
-            className="z-20 flex h-11 items-center gap-1.5 rounded-full px-4 text-[#2c2823] backdrop-blur transition hover:opacity-80"
-            style={{ position: "absolute", right: 16, top: 16, background: "rgba(0,0,0,0.1)" }}
+            className="z-20 flex h-9 items-center gap-1.5 rounded-full px-3 text-[#2c2823] backdrop-blur transition hover:opacity-80"
+            style={{ position: "absolute", right: 12, top: 12, background: "rgba(0,0,0,0.1)" }}
           >
-            <History size={18} /> <span className="text-sm font-extrabold">History</span>
+            <History size={16} /> <span className="text-[13px] font-extrabold">History</span>
           </button>
         )}
 
@@ -410,7 +456,7 @@ export function StatBattle({ initialRequest }: { initialRequest?: string }) {
               <p className="mb-1.5 mt-5 text-left text-[11px] font-bold uppercase tracking-wide text-[#2c2823]/45 w-full">
                 Or start from a preset, then customize
               </p>
-              <div className="flex w-full flex-wrap justify-center gap-2">
+              <div className="flex w-full flex-wrap justify-center gap-1.5">
                 {PRESETS.map((p) => (
                   <button
                     key={p.label}
@@ -419,7 +465,7 @@ export function StatBattle({ initialRequest }: { initialRequest?: string }) {
                       setRequest(p.request);
                       taRef.current?.focus();
                     }}
-                    className="rounded-full px-4 py-2 text-sm font-extrabold text-[#2c2823] transition hover:opacity-80"
+                    className="rounded-full px-2.5 py-1 text-[11px] font-bold text-[#2c2823] transition hover:opacity-80"
                     style={{ background: "rgba(0,0,0,0.1)" }}
                   >
                     {p.label}
