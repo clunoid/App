@@ -17,7 +17,7 @@ type BillingState = {
   openUpgrade: () => void;
   closeUpgrade: () => void;
   setNotice: (s: string | null) => void;
-  startCheckout: (plan: "pro" | "max") => Promise<void>;
+  startCheckout: (plan: "pro" | "max", interval?: "monthly" | "annual") => Promise<void>;
   openPortal: () => Promise<void>;
 };
 
@@ -56,13 +56,13 @@ export const useBilling = create<BillingState>((set) => ({
   closeUpgrade: () => set({ upgradeOpen: false }),
   setNotice: (s) => set({ notice: s }),
 
-  startCheckout: async (plan) => {
+  startCheckout: async (plan, interval = "monthly") => {
     set({ busyPlan: plan });
     try {
       const res = await fetch("/api/billing/checkout", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ plan }),
+        body: JSON.stringify({ plan, interval }),
       });
       if (res.status === 401) {
         const { useClunoid } = await import("@/lib/store/useClunoid");

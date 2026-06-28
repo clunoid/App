@@ -6,14 +6,14 @@ import { planForProduct, grantForPlan } from "@/lib/billing/polar";
 
 export const runtime = "nodejs";
 
-/** Minimal, defensive view of the subscription/order fields we need. */
+/** Defensive view of the subscription fields we need. */
 type EventData = {
   id?: string;
+  status?: string;
   productId?: string | null;
   customerId?: string | null;
   currentPeriodEnd?: string | Date | null;
   customer?: { externalId?: string | null; email?: string | null };
-  subscription?: { id?: string; currentPeriodEnd?: string | Date | null } | null;
   metadata?: Record<string, unknown> | null;
 };
 
@@ -24,41 +24,36 @@ function resolveUserId(d: EventData): string | null {
 }
 
 function periodEndIso(d: EventData): string | null {
-  const v = d.currentPeriodEnd ?? d.subscription?.currentPeriodEnd ?? null;
+  const v = d.currentPeriodEnd ?? null;
   if (!v) return null;
   const date = v instanceof Date ? v : new Date(v);
   return isNaN(date.getTime()) ? null : date.toISOString();
 }
 
-/** Set/refresh a paid plan + refill its monthly credit grant. */
+/** Set/refresh the plan and grant its credits. Idempotent + carry-over on upgrade
+ *  is handled in the DB (apply_subscription, keyed on `plan:period`). */
 async function activate(admin: SupabaseClient, d: EventData): Promise<void> {
   const userId = resolveUserId(d);
   const plan = planForProduct(d.productId);
   if (!userId || !plan) return;
+  const periodEnd = periodEndIso(d);
   await admin.rpc("apply_subscription", {
     p_user: userId,
     p_plan: plan,
-    p_status: "active",
+    p_status: d.status || "active",
     p_grant: grantForPlan(plan),
     p_polar_customer: d.customerId ?? null,
-    p_polar_subscription: d.subscription?.id ?? d.id ?? null,
-    p_period_end: periodEndIso(d),
+    p_polar_subscription: d.id ?? null,
+    p_period_end: periodEnd,
+    p_grant_key: `${plan}:${periodEnd ?? ""}`,
   });
 }
 
-/** Subscription ended → back to the free plan + free grant. */
+/** Subscription ended → back to the free plan. */
 async function downgrade(admin: SupabaseClient, d: EventData): Promise<void> {
   const userId = resolveUserId(d);
   if (!userId) return;
-  await admin.rpc("apply_subscription", {
-    p_user: userId,
-    p_plan: "free",
-    p_status: "canceled",
-    p_grant: grantForPlan("free"),
-    p_polar_customer: d.customerId ?? null,
-    p_polar_subscription: d.id ?? null,
-    p_period_end: null,
-  });
+  await admin.rpc("downgrade_to_free", { p_user: userId });
 }
 
 export async function POST(req: NextRequest) {
@@ -83,16 +78,16 @@ export async function POST(req: NextRequest) {
   try {
     const d = event.data as unknown as EventData;
     switch (event.type) {
-      // A payment landed (initial purchase OR a renewal) → grant the month's credits.
-      case "order.paid":
-      // Activation events also set/refresh the plan (idempotent — apply_subscription SETS, not adds).
+      // Initial activation, renewal (new period), and upgrades (new product) all
+      // grant once per (plan, period) — duplicates are idempotent in the DB.
       case "subscription.created":
       case "subscription.active":
+      case "subscription.updated":
       case "subscription.uncanceled":
         await activate(admin, d);
         break;
-      // Subscription truly ended → drop to free. (canceled = scheduled-at-period-end,
-      // past_due, updated → ignored; the user keeps access until it's revoked.)
+      // Paid period truly ended → drop to free. (canceled = scheduled-at-period-end
+      // and past_due are handled by the period key staying the same → no grant.)
       case "subscription.revoked":
         await downgrade(admin, d);
         break;

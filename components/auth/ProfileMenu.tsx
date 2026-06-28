@@ -155,15 +155,26 @@ export function ProfileMenu() {
                     <CreditCard size={16} /> Upgrade plan
                   </Link>
                 ) : (
-                  <button
-                    onClick={() => {
-                      closeProfile();
-                      void openPortal();
-                    }}
-                    className="mt-1 flex items-center gap-2 rounded-lg px-2 py-2 text-spark-soft transition hover:bg-surface-2"
-                  >
-                    <CreditCard size={16} /> Manage subscription
-                  </button>
+                  <>
+                    {plan === "pro" && (
+                      <Link
+                        href="/pricing"
+                        onClick={closeProfile}
+                        className="mt-1 flex items-center gap-2 rounded-lg px-2 py-2 font-medium text-clay-soft transition hover:bg-surface-2"
+                      >
+                        <Sparkles size={16} className="text-clay" /> Upgrade to Max
+                      </Link>
+                    )}
+                    <button
+                      onClick={() => {
+                        closeProfile();
+                        void openPortal();
+                      }}
+                      className="mt-1 flex items-center gap-2 rounded-lg px-2 py-2 text-spark-soft transition hover:bg-surface-2"
+                    >
+                      <CreditCard size={16} /> Manage subscription
+                    </button>
+                  </>
                 )}
                 <button
                   onClick={() => signOut()}

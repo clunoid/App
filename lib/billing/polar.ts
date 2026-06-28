@@ -11,18 +11,24 @@ export function polarClient(): Polar | null {
   return new Polar({ accessToken, server: polarServer });
 }
 
-/** Our paid plan id → Polar product id. */
-export const PLAN_PRODUCT: Record<Exclude<PlanId, "free">, string | undefined> = {
-  pro: process.env.POLAR_PRODUCT_PRO,
-  max: process.env.POLAR_PRODUCT_MAX,
-};
+export type Interval = "monthly" | "annual";
+export type PaidPlan = "pro" | "max";
 
-/** Polar product id → our plan id (used by the webhook). */
+/** plan + interval → Polar product id. */
+export function productFor(plan: PaidPlan, interval: Interval): string | undefined {
+  if (plan === "pro") return interval === "annual" ? process.env.POLAR_PRODUCT_PRO_ANNUAL : process.env.POLAR_PRODUCT_PRO;
+  return interval === "annual" ? process.env.POLAR_PRODUCT_MAX_ANNUAL : process.env.POLAR_PRODUCT_MAX;
+}
+
+/** Polar product id → our plan id (covers BOTH monthly and annual products). */
 export function planForProduct(productId: string | null | undefined): PlanId | null {
   if (!productId) return null;
-  if (productId === process.env.POLAR_PRODUCT_PRO) return "pro";
-  if (productId === process.env.POLAR_PRODUCT_MAX) return "max";
+  if (productId === process.env.POLAR_PRODUCT_PRO || productId === process.env.POLAR_PRODUCT_PRO_ANNUAL) return "pro";
+  if (productId === process.env.POLAR_PRODUCT_MAX || productId === process.env.POLAR_PRODUCT_MAX_ANNUAL) return "max";
   return null;
 }
 
 export const grantForPlan = (plan: PlanId): number => PLAN_GRANTS[plan];
+
+/** Discount id for the Pro→Max upgrade incentive (set per environment; optional). */
+export const upgradeDiscountId = (): string | undefined => process.env.POLAR_DISCOUNT_UPGRADE || undefined;
