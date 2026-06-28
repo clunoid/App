@@ -6,6 +6,8 @@
  * fully dynamic (any region/difficulty/count/theme) and nothing is hardcoded.
  */
 
+import { reportBillingStatus, refreshCredits } from "@/lib/billing/bus";
+
 export type Difficulty = "easy" | "medium" | "hard";
 export type Round = { code: string; name: string; aliases: string[]; difficulty: Difficulty; flag: string };
 export type Game = { title: string; subtitle?: string; secondsPerRound: number; rounds: Round[] };
@@ -32,8 +34,12 @@ async function post(payload: Record<string, unknown>): Promise<Game> {
       headers: { "content-type": "application/json" },
       body: JSON.stringify(payload),
     });
-    if (!res.ok) throw new Error("generation failed");
+    if (!res.ok) {
+      reportBillingStatus(res.status);
+      throw new Error("generation failed");
+    }
     const data = (await res.json()) as Partial<Game>;
+    refreshCredits();
     return {
       title: data.title || "Flags",
       subtitle: typeof data.subtitle === "string" && data.subtitle.trim() ? data.subtitle.trim() : undefined,

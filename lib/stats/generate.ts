@@ -3,6 +3,7 @@
 import { PALETTE, type RaceData, type RaceRaw } from "./types";
 import { GDP_FALLBACK } from "./fallback";
 import { flagUrlForName } from "./flags";
+import { reportBillingStatus, refreshCredits } from "@/lib/billing/bus";
 
 /** Quick-start stat battles — natural requests the brain researches. First = GDP. */
 export const PRESETS: { label: string; request: string }[] = [
@@ -61,9 +62,13 @@ export async function buildRace(request: string): Promise<RaceData> {
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ request }),
   });
-  if (!res.ok) throw new Error("stats generation failed");
+  if (!res.ok) {
+    reportBillingStatus(res.status);
+    throw new Error("stats generation failed");
+  }
   const raw = (await res.json()) as RaceRaw & { error?: boolean };
   if (raw.error || !raw.entities?.length || !raw.keyframes?.length) throw new Error("empty race");
+  refreshCredits();
   return toRaceData(raw);
 }
 
@@ -81,9 +86,13 @@ export async function buildRaceFromFile(payload: {
     headers: { "content-type": "application/json" },
     body: JSON.stringify(payload),
   });
-  if (!res.ok) throw new Error("file generation failed");
+  if (!res.ok) {
+    reportBillingStatus(res.status);
+    throw new Error("file generation failed");
+  }
   const raw = (await res.json()) as RaceRaw & { error?: boolean };
   if (raw.error || !raw.entities?.length || !raw.keyframes?.length) throw new Error("file produced nothing");
+  refreshCredits();
   return toRaceData(raw);
 }
 
@@ -96,8 +105,12 @@ export async function aiEditRace(current: RaceData, instruction: string): Promis
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ data: current, instruction }),
   });
-  if (!res.ok) throw new Error("stats edit failed");
+  if (!res.ok) {
+    reportBillingStatus(res.status);
+    throw new Error("stats edit failed");
+  }
   const raw = (await res.json()) as RaceRaw & { error?: boolean };
   if (raw.error || !raw.entities?.length || !raw.keyframes?.length) throw new Error("edit produced nothing");
+  refreshCredits();
   return toRaceData(raw);
 }

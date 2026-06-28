@@ -4,6 +4,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { SpeechPlayer } from "@/lib/voice/speech";
 import { getSupabaseBrowser } from "@/lib/supabase/client";
+import { reportBillingStatus, refreshCredits } from "@/lib/billing/bus";
 import type { Scene, Experience, ExplainerExperience } from "@/lib/brain/scene";
 import type { BrainRequest, Turn } from "@/lib/brain/types";
 
@@ -111,7 +112,10 @@ async function postBrain(req: BrainRequest): Promise<Scene> {
     headers: { "content-type": "application/json" },
     body: JSON.stringify(req),
   });
-  if (!res.ok) throw new Error("brain failed");
+  if (!res.ok) {
+    reportBillingStatus(res.status);
+    throw new Error("brain failed");
+  }
   return (await res.json()) as Scene;
 }
 
@@ -196,6 +200,7 @@ export const useClunoid = create<ClunoidStore>()(
             client: clientCtx(),
           });
           await applyScene(scene);
+          refreshCredits();
         } catch {
           await applyScene({ say: "Say that once more for me?", expectsInput: "voice" });
         }

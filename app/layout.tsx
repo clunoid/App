@@ -3,6 +3,8 @@ import { Inter, Source_Serif_4 } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { SessionProvider } from "@/components/auth/SessionProvider";
+import { AuthPrompt } from "@/components/auth/AuthPrompt";
+import { BillingGate } from "@/components/billing/BillingGate";
 import "./globals.css";
 
 const sans = Inter({
@@ -62,6 +64,9 @@ export default function RootLayout({
     <html lang="en" className={`${sans.variable} ${serif.variable}`}>
       <body>
         <SessionProvider>{children}</SessionProvider>
+        {/* Auth + billing overlays, mounted once so they work on every page. */}
+        <AuthPrompt />
+        <BillingGate />
         <Analytics />
         <SpeedInsights />
       </body>
