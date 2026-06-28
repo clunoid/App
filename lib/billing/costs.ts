@@ -14,9 +14,12 @@ export const ACTION_COSTS = {
   search: 10, // /api/brain        — Groq + Tavily + Haiku/Sonnet      (~$0.02–0.08)
   game: 8, // /api/games/flags      — Sonnet/Groq classify             (~$0.02)
   caption: 2, // /api/share-caption — Haiku                            (~$0.002)
-  stats_generate: 120, // /api/stats           — Sonnet plan + series + Tavily (~$0.4 Sonnet / ~$2 Opus)
-  stats_edit: 120, // /api/stats/edit          — full-dataset rewrite
-  stats_file: 150, // /api/stats/from-file     — read a document + assemble
+  // Stat Battle is charged in two parts so catalogue (World Bank) topics — which
+  // never touch Opus — stay cheap, while a custom AI battle pays for Opus:
+  stats_plan: 40, //  base: Sonnet routing/plan + Tavily research (~$0.2). Always charged.
+  stats_opus: 460, // added ONLY when the heavy Opus data series runs (~$2) → custom battle = 500.
+  stats_edit: 500, // /api/stats/edit      — full-dataset rewrite on Opus
+  stats_file: 600, // /api/stats/from-file — read a document + assemble on Opus (larger input)
 } as const;
 export type Chargeable = keyof typeof ACTION_COSTS;
 
@@ -31,7 +34,7 @@ export function ttsCost(chars: number): number {
  * gives the operator reaction time). Enforced by the rate_check DB function.
  */
 export const RATE_LIMITS: Record<string, [number, number]> = {
-  stats_generate: [8, 60],
+  stats_plan: [8, 60],
   stats_edit: [10, 60],
   stats_file: [6, 60],
   search: [40, 60],

@@ -24,7 +24,7 @@ const TIERS: Tier[] = [
     per: "",
     credits: "150 credits / month",
     blurb: "Try every feature.",
-    features: ["~1 Stat Battle a month", "~15 searches + a few games", "Isaac's voice", "Free video export"],
+    features: ["Try Stat Battle (presets & data)", "Searches, games & Isaac's voice", "Free video export"],
   },
   {
     id: "pro",
@@ -33,7 +33,7 @@ const TIERS: Tier[] = [
     per: "/mo",
     credits: "2,000 credits / month",
     blurb: "For regular creators.",
-    features: ["~16 Stat Battles a month", "Hundreds of searches", "Games + Isaac's voice", "Free video export"],
+    features: ["Custom AI Stat Battles", "Hundreds of searches", "Games & Isaac's voice", "Free video export"],
     highlight: true,
   },
   {
@@ -43,7 +43,7 @@ const TIERS: Tier[] = [
     per: "/mo",
     credits: "6,000 credits / month",
     blurb: "For power users & creators.",
-    features: ["~50 Stat Battles a month", "Everything in Pro", "The most monthly credits"],
+    features: ["The most monthly credits", "Custom AI Stat Battles", "Everything in Pro"],
   },
 ];
 

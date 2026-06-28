@@ -360,9 +360,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: true }, { status: 200 });
   }
 
-  // Auth passed — meter the AI build (Sonnet plan + series + Tavily).
-  const charge = await chargeCredits("stats_generate", ACTION_COSTS.stats_generate, { request: request.slice(0, 80) });
-  if (!charge.ok) return chargeError(charge);
+  // Meter the BASE build (Sonnet routing/plan + Tavily research). Catalogue topics
+  // that resolve to verified World Bank data are charged only this; a custom battle
+  // additionally pays for Opus below.
+  const base = await chargeCredits("stats_plan", ACTION_COSTS.stats_plan, { request: request.slice(0, 80) });
+  if (!base.ok) return chargeError(base);
+  let opusCharged = false;
 
   try {
     const context = await research(request, NOW_LABEL);
@@ -410,6 +413,13 @@ export async function POST(req: NextRequest) {
 
     // Web-researched model path — honors the EXACT span, named entities, projections.
     if (!race) {
+      // Custom data needs Opus — charge the extra now (refund the base if they can't afford it).
+      const opus = await chargeCredits("stats_opus", ACTION_COSTS.stats_opus, {});
+      if (!opus.ok) {
+        await refund(user.id, ACTION_COSTS.stats_plan, "stats_plan");
+        return chargeError(opus);
+      }
+      opusCharged = true;
       const money = plan.unitPrefix === "$";
       // Scale is DETERMINISTIC (the brain's choice is unreliable) and always FULL — no
       // "0.6B" abbreviation. Company market-cap → raw full dollars (the classic look);
@@ -483,9 +493,10 @@ export async function POST(req: NextRequest) {
     console.error("[stats] build failed:", e);
   }
 
-  // The brain failed (transient) — refund the charge, then for catalogue topics
-  // still hand back VERIFIED (free) World Bank data.
-  await refund(user.id, ACTION_COSTS.stats_generate, "stats_generate");
+  // The brain failed (transient) — refund whatever was charged, then for catalogue
+  // topics still hand back VERIFIED (free) World Bank data.
+  await refund(user.id, ACTION_COSTS.stats_plan, "stats_plan");
+  if (opusCharged) await refund(user.id, ACTION_COSTS.stats_opus, "stats_opus");
   if (guess) {
     const v = await buildVerified(guess, request).catch(() => null);
     if (v) return NextResponse.json(normalize(v));
