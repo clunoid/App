@@ -1,12 +1,18 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type ComponentType } from "react";
-import { Download, Share2, X, Film, Loader2, Smartphone, Monitor, Instagram, Youtube, Facebook, Sparkles, Copy, Check, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { Download, Share2, X, Film, Loader2, Smartphone, Monitor, Layers, Instagram, Youtube, Facebook, Sparkles, Copy, Check, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { canRecordVideo, type ReelAspect, type ReelSpec } from "@/lib/share/reel";
 import { renderReel } from "@/lib/share/renderer";
 import { TikTokIcon, XIcon, WhatsAppIcon } from "./SocialIcons";
 
 type Status = "idle" | "rendering" | "ready" | "unsupported" | "error";
+// What the user picks: a single size, or both at once.
+type AspectChoice = ReelAspect | "both";
+// One finished video.
+type RenderItem = { aspect: ReelAspect; url: string; blob: Blob; ext: string; mime: string; hadVoice: boolean };
+
+const ASPECT_LABEL: Record<ReelAspect, string> = { "9:16": "Vertical", "16:9": "Wide" };
 
 const DEFAULT_CAPTION = "I played Guess the Country on clunoid.com 🌍 Can you beat me?";
 const SHARE_URL = "https://clunoid.com";
@@ -27,6 +33,9 @@ function buildPlatforms(caption: string): { key: string; label: string; color: s
  * Generic, reusable "share your game as a video" modal. Any game passes a
  * makeSpec(aspect) that returns a ReelSpec; this component handles the rest
  * (render → preview → download / Web Share). No game-specific code here.
+ *
+ * Users can render one size, or BOTH (9:16 + 16:9) in a single action — handy
+ * for posting to both feed and stories without doing it twice.
  */
 export function ShareModal({
   open,
@@ -54,24 +63,22 @@ export function ShareModal({
   const [cap, setCap] = useState<{ title: string; caption: string; hashtags: string[] } | null>(null);
   const [capLoading, setCapLoading] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [aspect, setAspect] = useState<ReelAspect>("9:16");
+  const [aspect, setAspect] = useState<AspectChoice>("9:16");
   const [status, setStatus] = useState<Status>("idle");
   const [pct, setPct] = useState(0);
   const [label, setLabel] = useState("");
-  const [hadVoice, setHadVoice] = useState(true);
   // True once the renderer reports it's encoding in the BACKGROUND (WebCodecs path,
   // tab-safe). Stays false for the real-time recorder, which needs the tab open.
   const [bgSafe, setBgSafe] = useState(false);
-  const [url, setUrl] = useState<string | null>(null);
-  const [fileExt, setFileExt] = useState("mp4");
-  const [mime, setMime] = useState("video/mp4");
+  const [results, setResults] = useState<RenderItem[]>([]);
   const hostRef = useRef<HTMLDivElement | null>(null);
   const abortRef = useRef<AbortController | null>(null);
-  const blobRef = useRef<Blob | null>(null);
+  const resultsRef = useRef<RenderItem[]>([]);
+  resultsRef.current = results;
 
-  const cleanupUrl = useCallback(() => {
-    if (url) URL.revokeObjectURL(url);
-  }, [url]);
+  const cleanupUrls = useCallback(() => {
+    for (const r of resultsRef.current) URL.revokeObjectURL(r.url);
+  }, []);
 
   useEffect(() => {
     if (open && !canRecordVideo()) setStatus("unsupported");
@@ -80,85 +87,115 @@ export function ShareModal({
   // Reset everything when closing.
   const handleClose = useCallback(() => {
     abortRef.current?.abort();
-    cleanupUrl();
+    cleanupUrls();
+    setResults([]);
     setStatus(canRecordVideo() ? "idle" : "unsupported");
     setPct(0);
-    setUrl(null);
-    blobRef.current = null;
     setCap(null);
     setCapLoading(false);
     onClose();
-  }, [cleanupUrl, onClose]);
+  }, [cleanupUrls, onClose]);
 
-  useEffect(() => () => abortRef.current?.abort(), []);
+  // On unmount (e.g. a client navigation away while results are showing), abort
+  // any render and revoke committed blob URLs so they don't leak.
+  useEffect(() => () => {
+    abortRef.current?.abort();
+    cleanupUrls();
+  }, [cleanupUrls]);
 
   const generate = useCallback(async () => {
     if (!canRecordVideo()) {
       setStatus("unsupported");
       return;
     }
-    cleanupUrl();
-    setUrl(null);
+    if (!render && !makeSpec) {
+      setStatus("error"); // misconfigured caller — nothing to render
+      return;
+    }
+    cleanupUrls();
+    setResults([]);
     setPct(0);
     setBgSafe(false);
     setStatus("rendering");
     const ac = new AbortController();
     abortRef.current = ac;
+    const targets: ReelAspect[] = aspect === "both" ? ["9:16", "16:9"] : [aspect];
+    const out: RenderItem[] = [];
     try {
       // let the "rendering" view (host div) mount before we draw into it
       await new Promise((r) => requestAnimationFrame(() => r(null)));
-      const onProgress = (p: number, l: string) => {
-        setPct(p);
-        setLabel(l);
-        if (l.toLowerCase().includes("background")) setBgSafe(true);
-      };
-      const res = render
-        ? await render(aspect, { host: hostRef.current, signal: ac.signal, onProgress })
-        : await renderReel(makeSpec!(aspect), { host: hostRef.current, signal: ac.signal, onProgress });
-      if (ac.signal.aborted) return;
-      blobRef.current = res.blob;
-      setFileExt(res.ext);
-      setMime(res.mime);
-      setHadVoice(res.hadVoice);
-      setUrl(URL.createObjectURL(res.blob));
+      for (let i = 0; i < targets.length; i++) {
+        const a = targets[i];
+        const base = (i / targets.length) * 100;
+        const span = 100 / targets.length;
+        const onProgress = (p: number, l: string) => {
+          setPct(Math.round(base + (p / 100) * span));
+          setLabel(targets.length > 1 ? `${l} · ${ASPECT_LABEL[a]} (${i + 1}/${targets.length})` : l);
+          if (l.toLowerCase().includes("background")) setBgSafe(true);
+        };
+        const res = render
+          ? await render(a, { host: hostRef.current, signal: ac.signal, onProgress })
+          : await renderReel(makeSpec!(a), { host: hostRef.current, signal: ac.signal, onProgress });
+        if (ac.signal.aborted) {
+          out.forEach((r) => URL.revokeObjectURL(r.url)); // don't orphan an already-finished size
+          return;
+        }
+        out.push({ aspect: a, url: URL.createObjectURL(res.blob), blob: res.blob, ext: res.ext, mime: res.mime, hadVoice: res.hadVoice });
+      }
+      setResults(out);
       setStatus("ready");
     } catch (e) {
+      // Renderers THROW AbortError on abort (they don't resolve) — revoke any
+      // size that already finished so its blob URL isn't orphaned.
+      out.forEach((r) => URL.revokeObjectURL(r.url));
       if ((e as Error)?.name === "AbortError") return;
       console.error("reel render failed", e);
       setStatus("error");
     }
-  }, [aspect, cleanupUrl, makeSpec, render]);
+  }, [aspect, cleanupUrls, makeSpec, render]);
 
-  const download = useCallback(() => {
-    const blob = blobRef.current;
-    if (!blob) return;
-    const a = document.createElement("a");
-    const u = URL.createObjectURL(blob);
-    a.href = u;
-    a.download = `${fileName}.${fileExt}`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(u), 4000);
-  }, [fileExt, fileName]);
+  const nameFor = useCallback(
+    (item: RenderItem) => (resultsRef.current.length > 1 ? `${fileName}-${item.aspect.replace(":", "x")}` : fileName),
+    [fileName]
+  );
 
-  const share = useCallback(async () => {
-    const blob = blobRef.current;
-    if (!blob) return;
-    try {
-      const file = new File([blob], `${fileName}.${fileExt}`, { type: mime });
-      const nav = navigator as Navigator & { canShare?: (d: ShareData) => boolean };
-      if (nav.canShare && nav.canShare({ files: [file] })) {
-        await nav.share({ files: [file], title: heading, text: caption });
-        return;
+  const download = useCallback(
+    (item: RenderItem) => {
+      const a = document.createElement("a");
+      const u = URL.createObjectURL(item.blob);
+      a.href = u;
+      a.download = `${nameFor(item)}.${item.ext}`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(u), 4000);
+    },
+    [nameFor]
+  );
+
+  const downloadAll = useCallback(() => {
+    // Slight stagger so browsers don't drop the second download.
+    resultsRef.current.forEach((r, i) => setTimeout(() => download(r), i * 350));
+  }, [download]);
+
+  const share = useCallback(
+    async (item: RenderItem) => {
+      try {
+        const file = new File([item.blob], `${nameFor(item)}.${item.ext}`, { type: item.mime });
+        const nav = navigator as Navigator & { canShare?: (d: ShareData) => boolean };
+        if (nav.canShare && nav.canShare({ files: [file] })) {
+          await nav.share({ files: [file], title: heading, text: caption });
+          return;
+        }
+      } catch (e) {
+        if ((e as Error)?.name === "AbortError") return;
       }
-    } catch (e) {
-      if ((e as Error)?.name === "AbortError") return;
-    }
-    download(); // no file-share support (most desktops) → download instead
-  }, [download, fileExt, fileName, mime, caption, heading]);
+      download(item); // no file-share support (most desktops) → download instead
+    },
+    [download, nameFor, caption, heading]
+  );
 
-  // Open a specific platform: save the video first, then open the app (its https
+  // Open a specific platform: save the video(s) first, then open the app (its https
   // link routes to the installed app on the device, else the web) so the user can
   // attach the just-saved clip / post the link.
   const postTo = useCallback(
@@ -168,9 +205,9 @@ export function ShareModal({
       } catch {
         /* ignore */
       }
-      download();
+      downloadAll();
     },
-    [download]
+    [downloadAll]
   );
 
   // Ask the brain for a ready-to-paste title + caption + hashtags.
@@ -206,6 +243,9 @@ export function ShareModal({
 
   if (!open) return null;
 
+  const ready = status === "ready" && results.length > 0;
+  const multi = results.length > 1;
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm" onClick={handleClose}>
       <div
@@ -222,11 +262,12 @@ export function ShareModal({
         </div>
 
         <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-5 py-4">
-          {/* aspect toggle */}
+          {/* size choice */}
           <div className="flex items-center justify-center gap-2">
             {([
               { v: "9:16", label: "Vertical", Icon: Smartphone },
               { v: "16:9", label: "Wide", Icon: Monitor },
+              { v: "both", label: "Both", Icon: Layers },
             ] as const).map(({ v, label: l, Icon }) => (
               <button
                 key={v}
@@ -234,36 +275,64 @@ export function ShareModal({
                 onClick={() => {
                   if (v === aspect) return;
                   setAspect(v);
-                  cleanupUrl();
-                  setUrl(null);
+                  cleanupUrls();
+                  setResults([]);
                   if (status === "ready") setStatus("idle");
                 }}
-                className={`flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-bold transition disabled:opacity-50 ${
+                className={`flex items-center gap-1.5 rounded-full px-3.5 py-2 text-[13px] font-bold transition disabled:opacity-50 ${
                   aspect === v ? "bg-white text-black" : "bg-white/10 text-white/80 hover:bg-white/20"
                 }`}
               >
-                <Icon size={15} /> {l} <span className="opacity-60">{v}</span>
+                <Icon size={15} /> {l}
               </button>
             ))}
           </div>
 
-          {/* preview area */}
-          <div className="flex items-center justify-center rounded-2xl bg-black/40" style={{ height: "48dvh" }}>
-            {status === "unsupported" ? (
-              <p className="px-6 text-center text-sm text-white/70">
-                Video creation isn’t supported in this browser. Try Chrome on desktop or Android.
-              </p>
-            ) : status === "error" ? (
-              <p className="px-6 text-center text-sm text-white/70">Something went wrong creating the video. Please try again.</p>
-            ) : status === "ready" && url ? (
-              // eslint-disable-next-line jsx-a11y/media-has-caption
-              <video src={url} controls playsInline autoPlay loop className="max-h-full max-w-full rounded-xl" />
-            ) : (
-              <div ref={hostRef} className="flex h-full w-full items-center justify-center p-2">
-                {status === "idle" && <p className="px-6 text-center text-sm text-white/55">{idleHint || `Create a ${aspect} video of your game, narrated by Isaac.`}</p>}
-              </div>
-            )}
-          </div>
+          {/* preview / results */}
+          {ready && multi ? (
+            <div className="flex flex-col gap-3">
+              {results.map((r) => (
+                <div key={r.aspect} className="overflow-hidden rounded-2xl bg-black/40 ring-1 ring-white/10">
+                  <div className="flex items-center justify-between px-3 py-2">
+                    <span className="flex items-center gap-1.5 text-xs font-bold text-white/80">
+                      {r.aspect === "9:16" ? <Smartphone size={14} /> : <Monitor size={14} />} {ASPECT_LABEL[r.aspect]} <span className="opacity-50">{r.aspect}</span>
+                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <button onClick={() => download(r)} className="flex items-center gap-1 rounded-full bg-white/10 px-3 py-1.5 text-xs font-bold transition hover:bg-white/20">
+                        <Download size={13} /> Save
+                      </button>
+                      <button onClick={() => share(r)} className="flex items-center gap-1 rounded-full bg-white px-3 py-1.5 text-xs font-bold text-black transition hover:bg-white/90">
+                        <Share2 size={13} /> Share
+                      </button>
+                    </div>
+                  </div>
+                  {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+                  <video src={r.url} controls playsInline loop className="max-h-[34dvh] w-full bg-black object-contain" />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="flex items-center justify-center rounded-2xl bg-black/40" style={{ height: "48dvh" }}>
+              {status === "unsupported" ? (
+                <p className="px-6 text-center text-sm text-white/70">
+                  Video creation isn’t supported in this browser. Try Chrome on desktop or Android.
+                </p>
+              ) : status === "error" ? (
+                <p className="px-6 text-center text-sm text-white/70">Something went wrong creating the video. Please try again.</p>
+              ) : ready && results[0] ? (
+                // eslint-disable-next-line jsx-a11y/media-has-caption
+                <video src={results[0].url} controls playsInline autoPlay loop className="max-h-full max-w-full rounded-xl" />
+              ) : (
+                <div ref={hostRef} className="flex h-full w-full items-center justify-center p-2">
+                  {status === "idle" && (
+                    <p className="px-6 text-center text-sm text-white/55">
+                      {idleHint || `Create a ${aspect === "both" ? "vertical + wide" : aspect} video of your game, narrated by Isaac.`}
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* progress */}
           {status === "rendering" && (
@@ -281,7 +350,7 @@ export function ShareModal({
                 <div className="mt-2.5 flex items-start gap-2 rounded-xl bg-emerald-500/10 px-3 py-2 ring-1 ring-emerald-400/25">
                   <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-emerald-300" />
                   <p className="text-[12px] font-semibold leading-snug text-emerald-100/90">
-                    Encoding in the background — feel free to switch tabs or minimise. Your video will be ready when you come back.
+                    Encoding in the background — feel free to switch tabs or minimise. Your {aspect === "both" ? "videos" : "video"} will be ready when you come back.
                   </p>
                 </div>
               ) : (
@@ -298,12 +367,12 @@ export function ShareModal({
             </div>
           )}
 
-          {status === "ready" && !hadVoice && (
-            <p className="text-center text-[11px] text-amber-300/80">Isaac’s voice wasn’t available for this clip.</p>
+          {ready && results.some((r) => !r.hadVoice) && (
+            <p className="text-center text-[11px] text-amber-300/80">Isaac’s voice wasn’t available for {multi ? "one of these clips" : "this clip"}.</p>
           )}
 
           {/* AI caption generator — a ready-to-paste title + caption + hashtags. */}
-          {status === "ready" && captionContext && (
+          {ready && captionContext && (
             <div className="rounded-2xl bg-white/[0.04] p-3 ring-1 ring-white/10">
               {!cap ? (
                 <button
@@ -336,7 +405,7 @@ export function ShareModal({
           )}
 
           {/* Post-to-platform shortcuts — open the app (or web) so it's easy to post. */}
-          {status === "ready" && (
+          {ready && (
             <div>
               <p className="mb-2 text-center text-xs font-semibold text-white/55">Post to</p>
               <div className="flex flex-wrap items-center justify-center gap-2.5">
@@ -345,7 +414,7 @@ export function ShareModal({
                     key={p.key}
                     onClick={() => postTo(p.href)}
                     aria-label={`Post to ${p.label}`}
-                    title={`Save the video & open ${p.label}`}
+                    title={`Save the ${multi ? "videos" : "video"} & open ${p.label}`}
                     className="grid h-11 w-11 place-items-center rounded-full text-white shadow-md ring-1 ring-white/15 transition hover:scale-110"
                     style={{ backgroundColor: p.color }}
                   >
@@ -353,22 +422,28 @@ export function ShareModal({
                   </button>
                 ))}
               </div>
-              <p className="mt-2 text-center text-[11px] text-white/45">We’ll save the video — attach it in the app.</p>
+              <p className="mt-2 text-center text-[11px] text-white/45">We’ll save the {multi ? "videos" : "video"} — attach in the app.</p>
             </div>
           )}
         </div>
 
         {/* actions */}
         <div className="flex gap-2 border-t border-white/10 p-4">
-          {status === "ready" ? (
-            <>
-              <button onClick={download} className="flex flex-1 items-center justify-center gap-2 rounded-full bg-white/10 py-3 font-extrabold text-white transition hover:bg-white/20">
-                <Download size={18} /> Download
+          {ready ? (
+            multi ? (
+              <button onClick={downloadAll} className="flex flex-1 items-center justify-center gap-2 rounded-full bg-white py-3 font-extrabold text-black transition hover:bg-white/90">
+                <Download size={18} /> Download both
               </button>
-              <button onClick={share} className="flex flex-1 items-center justify-center gap-2 rounded-full bg-white py-3 font-extrabold text-black transition hover:bg-white/90">
-                <Share2 size={18} /> Share
-              </button>
-            </>
+            ) : (
+              <>
+                <button onClick={() => download(results[0])} className="flex flex-1 items-center justify-center gap-2 rounded-full bg-white/10 py-3 font-extrabold text-white transition hover:bg-white/20">
+                  <Download size={18} /> Download
+                </button>
+                <button onClick={() => share(results[0])} className="flex flex-1 items-center justify-center gap-2 rounded-full bg-white py-3 font-extrabold text-black transition hover:bg-white/90">
+                  <Share2 size={18} /> Share
+                </button>
+              </>
+            )
           ) : (
             <button
               onClick={generate}
@@ -376,7 +451,7 @@ export function ShareModal({
               className="flex flex-1 items-center justify-center gap-2 rounded-full bg-white py-3 font-extrabold text-black transition hover:bg-white/90 disabled:opacity-50"
             >
               {status === "rendering" ? <Loader2 size={18} className="animate-spin" /> : <Film size={18} />}
-              {status === "rendering" ? "Creating…" : "Create video"}
+              {status === "rendering" ? "Creating…" : aspect === "both" ? "Create both videos" : "Create video"}
             </button>
           )}
         </div>

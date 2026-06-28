@@ -80,6 +80,10 @@ type ClunoidStore = {
   authMode: "signup" | "login";
   profileOpen: boolean;
 
+  // Silent mode — Isaac shows text but doesn't speak (saves TTS credits).
+  muted: boolean;
+  setMuted: (v: boolean) => void;
+
   setUser: (u: UserState) => void;
   setAuthChecked: (v: boolean) => void;
   setMicLevel: (v: number) => void;
@@ -139,6 +143,7 @@ export const useClunoid = create<ClunoidStore>()(
       }
 
       async function applyScene(scene: Scene) {
+        getPlayer(set).setMuted(get().muted); // honor silent mode (also after rehydrate)
         const seq = ++playSeq;
         const exp = scene.experience ?? null;
         const newExplainer = !scene.keep && exp?.type === "explainer" ? exp : null;
@@ -228,6 +233,16 @@ export const useClunoid = create<ClunoidStore>()(
         authMode: "signup",
         profileOpen: false,
 
+        muted: false,
+        setMuted: (v) => {
+          set({ muted: v });
+          getPlayer(set).setMuted(v);
+          if (v) {
+            stopPlayback(); // immediate silence
+            set({ isaac: "idle", amplitude: 0 });
+          }
+        },
+
         setUser: (u) => set({ user: u }),
         setAuthChecked: (v) => set({ authChecked: v }),
         setMicLevel: (v) => set({ micLevel: v }),
@@ -299,6 +314,7 @@ export const useClunoid = create<ClunoidStore>()(
         caption: s.caption,
         spokenChars: s.spokenChars,
         historyLog: s.historyLog,
+        muted: s.muted,
       }),
     }
   )

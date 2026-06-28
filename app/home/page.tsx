@@ -15,6 +15,7 @@ import { HistoryPanel } from "@/components/stage/HistoryPanel";
 import { ProfileMenu } from "@/components/auth/ProfileMenu";
 import { FeatureNotes } from "@/components/home/FeatureNotes";
 import { FeatureChooser } from "@/components/home/FeatureChooser";
+import { SilenceToggle } from "@/components/home/SilenceToggle";
 import { FEATURES, matchFeature, type FeatureDef } from "@/lib/features";
 import { cn } from "@/lib/utils";
 
@@ -54,7 +55,10 @@ export default function Home() {
 
   // Restore the saved session (current result + history) once on mount.
   useEffect(() => {
-    void useClunoid.persist.rehydrate();
+    Promise.resolve(useClunoid.persist.rehydrate()).then(() => {
+      // Keep the voice player in sync with a persisted silent preference.
+      if (useClunoid.getState().muted) useClunoid.getState().setMuted(true);
+    });
   }, []);
 
   function handleInput(text: string) {
@@ -314,6 +318,9 @@ export default function Home() {
           </button>
         </form>
       </div>
+
+      {/* Floating control to silence Isaac (quiet time + saves credits) */}
+      <SilenceToggle />
 
       {/* Captions float as an overlay so cards get the full screen */}
       <div className="pointer-events-none absolute inset-x-0 bottom-24 z-20 flex justify-center px-4">

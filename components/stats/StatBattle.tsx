@@ -2,11 +2,12 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Sparkles, Play, RotateCcw, Film, Loader2, BarChart3, History, Shuffle, Upload } from "lucide-react";
+import { ArrowLeft, Sparkles, Play, RotateCcw, Film, Loader2, BarChart3, History, Shuffle, Upload, ChevronLeft, ChevronRight, Maximize2, Smartphone, Monitor } from "lucide-react";
 import { DocumentBackground } from "@/components/games/DocumentBackground";
 import { ShareModal } from "@/components/share/ShareModal";
 import { StatReview } from "@/components/stats/StatReview";
 import { StatHistory } from "@/components/stats/StatHistory";
+import { StatViewer, requestLandscape } from "@/components/stats/StatViewer";
 import { buildRace, buildRaceFromFile, gdpFallbackRace, PRESETS } from "@/lib/stats/generate";
 import { drawRaceStyle, newRaceState, preloadRaceImages, renderRaceVideo, RACE_STYLES } from "@/lib/stats/render";
 import type { RaceStyle } from "@/lib/stats/render";
@@ -119,6 +120,8 @@ export function StatBattle({ initialRequest }: { initialRequest?: string }) {
   const [style, setStyle] = useState<RaceStyle>("bars"); // which visual design to show / export
   const [shareOpen, setShareOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [chooserOpen, setChooserOpen] = useState(false); // "view fullscreen" prompt
+  const [viewerMode, setViewerMode] = useState<"landscape" | "portrait" | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const taRef = useRef<HTMLTextAreaElement | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
@@ -305,9 +308,19 @@ export function StatBattle({ initialRequest }: { initialRequest?: string }) {
     }
   }, [phase, request, range, bars, units, competitors, style, race]);
 
-  // Live preview loop (visual only; the export adds sound).
+  // Flip through the design gallery with ease (wraps both ways).
+  const cycleStyle = useCallback((dir: 1 | -1) => {
+    setStyle((cur) => {
+      const i = RACE_STYLES.findIndex((s) => s.id === cur);
+      const n = RACE_STYLES.length;
+      return RACE_STYLES[((i < 0 ? 0 : i) + dir + n) % n].id;
+    });
+  }, []);
+
+  // Live preview loop (visual only; the export adds sound). Pauses while the
+  // fullscreen viewer is open so we don't animate an occluded canvas.
   useEffect(() => {
-    if (phase !== "playing" || !race) return;
+    if (phase !== "playing" || !race || viewerMode) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
@@ -324,7 +337,7 @@ export function StatBattle({ initialRequest }: { initialRequest?: string }) {
     };
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
-  }, [phase, race, replayKey, style]);
+  }, [phase, race, replayKey, style, viewerMode]);
 
   // ── Review & edit the data sheet, then approve ───────────────────────────
   if (phase === "review" && race) {
@@ -512,14 +525,37 @@ export function StatBattle({ initialRequest }: { initialRequest?: string }) {
           </div>
         )}
 
-        {/* main card in the chosen design */}
-        <canvas
-          ref={canvasRef}
-          width={1280}
-          height={720}
-          className="w-full max-w-3xl rounded-2xl shadow-2xl"
-          style={{ maxHeight: "54dvh", objectFit: "contain", background: "#c8c5bd" }}
-        />
+        {/* main card in the chosen design — tap to view bigger; arrows flip designs */}
+        <div className="relative w-full max-w-3xl">
+          <button type="button" onClick={() => setChooserOpen(true)} aria-label="View fullscreen" className="block w-full">
+            <canvas
+              ref={canvasRef}
+              width={1280}
+              height={720}
+              className="w-full rounded-2xl shadow-2xl"
+              style={{ maxHeight: "54dvh", objectFit: "contain", background: "#c8c5bd" }}
+            />
+            <span className="pointer-events-none absolute right-3 top-3 flex items-center gap-1 rounded-full bg-black/45 px-2.5 py-1 text-[11px] font-bold text-white backdrop-blur">
+              <Maximize2 size={13} /> Fullscreen
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => cycleStyle(-1)}
+            aria-label="Previous design"
+            className="absolute left-2 top-1/2 grid h-10 w-10 -translate-y-1/2 place-items-center rounded-full bg-black/35 text-white backdrop-blur transition hover:bg-black/55"
+          >
+            <ChevronLeft size={22} />
+          </button>
+          <button
+            type="button"
+            onClick={() => cycleStyle(1)}
+            aria-label="Next design"
+            className="absolute right-2 top-1/2 grid h-10 w-10 -translate-y-1/2 place-items-center rounded-full bg-black/35 text-white backdrop-blur transition hover:bg-black/55"
+          >
+            <ChevronRight size={22} />
+          </button>
+        </div>
 
         <div className="flex flex-wrap items-center gap-3">
           <button
@@ -544,6 +580,59 @@ export function StatBattle({ initialRequest }: { initialRequest?: string }) {
         </div>
         <p className="text-xs font-semibold text-[#2c2823]/55">Pick a design above, then watch it here or export a video (optional) for your projects &amp; socials.</p>
       </div>
+
+      {/* "View fullscreen" prompt — landscape (rotate) or phone-size portrait */}
+      {chooserOpen && (
+        <div
+          className="fixed inset-0 z-[65] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"
+          onClick={() => setChooserOpen(false)}
+        >
+          <div className="w-full max-w-xs rounded-2xl bg-[#f3f1ea] p-5 text-[#2c2823] shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <p className="text-center text-base font-extrabold">View fullscreen</p>
+            <p className="mt-1 text-center text-xs font-semibold text-[#2c2823]/60">Bigger is better — pick how you want to watch.</p>
+            <div className="mt-4 flex flex-col gap-2.5">
+              <button
+                onClick={() => {
+                  void requestLandscape(); // inside the user gesture so fullscreen is permitted
+                  setViewerMode("landscape");
+                  setChooserOpen(false);
+                }}
+                className="flex items-center gap-3 rounded-xl bg-[#2c2823] px-4 py-3 text-left text-[#f6f4ee] transition hover:opacity-90"
+              >
+                <Monitor size={20} className="shrink-0" />
+                <span>
+                  <span className="block font-extrabold">Landscape</span>
+                  <span className="block text-[11px] font-semibold opacity-70">Rotate your phone — fills the screen</span>
+                </span>
+              </button>
+              <button
+                onClick={() => {
+                  setViewerMode("portrait");
+                  setChooserOpen(false);
+                }}
+                className="flex items-center gap-3 rounded-xl bg-black/10 px-4 py-3 text-left transition hover:bg-black/15"
+              >
+                <Smartphone size={20} className="shrink-0" />
+                <span>
+                  <span className="block font-extrabold">Phone view</span>
+                  <span className="block text-[11px] font-semibold opacity-60">Stay upright — fits your screen</span>
+                </span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {viewerMode && race && (
+        <StatViewer
+          race={race}
+          style={style}
+          initialMode={viewerMode}
+          onPrev={() => cycleStyle(-1)}
+          onNext={() => cycleStyle(1)}
+          onClose={() => setViewerMode(null)}
+        />
+      )}
 
       {race && (
         <ShareModal
