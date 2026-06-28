@@ -134,7 +134,7 @@ begin
         status                = excluded.status,
         polar_customer_id     = coalesce(excluded.polar_customer_id, public.subscriptions.polar_customer_id),
         polar_subscription_id = coalesce(excluded.polar_subscription_id, public.subscriptions.polar_subscription_id),
-        current_period_end    = excluded.current_period_end,
+        current_period_end    = coalesce(excluded.current_period_end, public.subscriptions.current_period_end),
         updated_at            = now();
 
   -- refill credits to the plan's monthly grant and reset the period
