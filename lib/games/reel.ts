@@ -55,8 +55,8 @@ export function buildGameReel(s: GameSnapshot, aspect: ReelAspect): ReelSpec {
     outro: {
       headline: "Your turn!",
       scoreText: `I scored ${s.score}/${s.total}`,
-      sub: "Free to play · Guess the Country & more",
-      narration: `I scored ${s.score} out of ${s.total}. Think you can beat me? Come play Guess the Country — free — at clunoid dot com. Your turn!`,
+      sub: "Play this game on clunoid.com",
+      narration: `I scored ${s.score} out of ${s.total}. Think you can beat me? Play this game on clunoid dot com. Your turn!`,
     },
   };
 }
