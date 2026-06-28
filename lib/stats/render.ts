@@ -2829,7 +2829,7 @@ async function renderRaceVideoWeb(
     for (let f = 0; f < totalFrames; f++) {
       checkAbort();
       const el = f / FPS;
-      if (el < raceEnd) drawRaceFrame(ctx, W, H, race, state, Math.min(el, race.durationSec));
+      if (el < raceEnd) drawRaceStyle(ctx, W, H, race, state, Math.min(el, race.durationSec), opts.style);
       else drawStatOutro(ctx, W, H, (el - raceEnd) / outroDur);
       const frame = new VideoFrame(canvas, { timestamp: Math.round(f * usPerFrame), duration: Math.round(usPerFrame) });
       venc.encode(frame);
