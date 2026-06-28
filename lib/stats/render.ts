@@ -338,6 +338,47 @@ function activeEvent(race: RaceData, t: number): { ev: RaceEvent | null; idx: nu
 }
 
 /* ── the story panel: big year + event title + description + flag media ────── */
+/** Whether an event has any media to draw (so the description can reserve room). */
+function hasEventMedia(ev: RaceEvent): boolean {
+  return (ev.subjectMedia || []).filter(Boolean).length > 0 || (ev.partyCodes || []).length > 0 || (ev.vsCodes || []).length > 0;
+}
+
+/** Largest font ≤ startPx (≥ minPx) at which the FULL text wraps within `maxW`
+ * (every line, including an unbreakable long token) AND fits above `bottom` when
+ * drawn from `firstBaseline` with line pitch px·lh. Long copy shrinks to fit
+ * instead of being clipped; text that already fits keeps startPx (normal cases
+ * unchanged). Only if it still can't fit at minPx does it cap the line count to
+ * the band (wrapLines then ellipsizes the tail) so it never overdraws the media /
+ * source / brand chrome below — but real 1–2 sentence beats fit well before that. */
+function fitWrapLines(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  maxW: number,
+  firstBaseline: number,
+  bottom: number,
+  startPx: number,
+  weight: number,
+  lh: number,
+  minPx: number
+): { px: number; lines: string[] } {
+  let px = startPx;
+  for (let i = 0; i < 48; i++) {
+    const lines = wrapLines(ctx, text, px, weight, maxW, 99);
+    setFont(ctx, px, weight);
+    let widest = 0;
+    for (const ln of lines) {
+      const lw = ctx.measureText(ln).width;
+      if (lw > widest) widest = lw;
+    }
+    const fits = firstBaseline + (lines.length - 1) * px * lh <= bottom && widest <= maxW + 0.5;
+    if (fits) return { px, lines };
+    if (px <= minPx) break;
+    px = Math.max(minPx, px * 0.93);
+  }
+  const cap = Math.max(1, Math.floor((bottom - firstBaseline) / (px * lh)) + 1);
+  return { px, lines: wrapLines(ctx, text, px, weight, maxW, cap) };
+}
+
 function drawStoryPanel(
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -376,43 +417,46 @@ function drawStoryPanel(
     const tx = x + w * 0.42;
     const tw = x + w - tx - w * 0.02;
     ctx.textAlign = "left";
-    const titleLines = wrapLines(ctx, ev.title, h * 0.13, 800, tw, 2);
+    const fitTv = fitWrapLines(ctx, ev.title, tw, y + h * 0.16, y + h * 0.5, h * 0.13, 800, 1.08, h * 0.08);
     let ty = y + h * 0.16;
     ctx.fillStyle = INK;
-    for (const ln of titleLines) {
-      setFont(ctx, h * 0.13, 800);
+    for (const ln of fitTv.lines) {
+      setFont(ctx, fitTv.px, 800);
       ctx.fillText(ln, tx, ty);
-      ty += h * 0.14;
+      ty += fitTv.px * 1.08;
     }
-    // description spans full width below
-    const descLines = wrapLines(ctx, ev.description, h * 0.092, 600, w * 0.96, 3);
-    let dy = y + h * 0.58;
+    // description spans full width below — shrinks to fit so the FULL text shows
+    const dStartV = y + h * 0.555;
+    const dBotV = hasEventMedia(ev) ? y + h * 0.77 : y + h * 0.97;
+    const fitV = fitWrapLines(ctx, ev.description, w * 0.96, dStartV, dBotV, h * 0.092, 600, 1.196, h * 0.036);
+    let dy = dStartV;
     ctx.fillStyle = "rgba(44,40,35,0.82)";
-    for (const ln of descLines) {
-      setFont(ctx, h * 0.092, 600);
+    for (const ln of fitV.lines) {
+      setFont(ctx, fitV.px, 600);
       ctx.fillText(ln, x + w * 0.02, dy);
-      dy += h * 0.11;
+      dy += fitV.px * 1.196;
     }
     // media row (photos / logos / flags), centered along the bottom
     const fh = h * 0.18;
     drawEventMedia(ctx, ev, race, cx, y + h * 0.89, w * 0.96, fh);
   } else {
     ctx.textAlign = "center";
-    const titleLines = wrapLines(ctx, ev.title, min * 0.085, 800, w * 0.96, 3);
+    const fitTl = fitWrapLines(ctx, ev.title, w * 0.96, y + h * 0.4, y + h * 0.4 + min * 0.3, min * 0.085, 800, 1.082, min * 0.05);
     let ty = y + h * 0.4;
     ctx.fillStyle = INK;
-    for (const ln of titleLines) {
-      setFont(ctx, min * 0.085, 800);
+    for (const ln of fitTl.lines) {
+      setFont(ctx, fitTl.px, 800);
       ctx.fillText(ln, cx, ty);
-      ty += min * 0.092;
+      ty += fitTl.px * 1.082;
     }
     ty += min * 0.02;
-    const descLines = wrapLines(ctx, ev.description, min * 0.058, 600, w * 0.96, 5);
+    const dBotL = hasEventMedia(ev) ? y + h * 0.87 - min * 0.1 : y + h - min * 0.04;
+    const fitL = fitWrapLines(ctx, ev.description, w * 0.96, ty, dBotL, min * 0.058, 600, 1.241, min * 0.034);
     ctx.fillStyle = "rgba(44,40,35,0.82)";
-    for (const ln of descLines) {
-      setFont(ctx, min * 0.058, 600);
+    for (const ln of fitL.lines) {
+      setFont(ctx, fitL.px, 600);
       ctx.fillText(ln, cx, ty);
-      ty += min * 0.072;
+      ty += fitL.px * 1.241;
     }
     const fh = min * 0.16;
     drawEventMedia(ctx, ev, race, cx, y + h * 0.87, w * 0.96, fh);
@@ -2024,21 +2068,22 @@ function drawArenaScoreboard(
     if (ev) {
       // ── event beat ──
       ctx.globalAlpha = evAlpha;
-      const titleLines = wrapLines(ctx, ev.title, min * 0.062, 800, w - padIn * 1.4, 3);
+      const fitTa = fitWrapLines(ctx, ev.title, w - padIn * 1.4, cy + min * 0.07, cy + min * 0.29, min * 0.062, 800, 1.097, min * 0.04);
       let ty = cy + min * 0.07;
       ctx.fillStyle = "#f4f6fa";
-      for (const ln of titleLines) {
-        setFont(ctx, min * 0.062, 800);
+      for (const ln of fitTa.lines) {
+        setFont(ctx, fitTa.px, 800);
         ctx.fillText(ln, cx, ty);
-        ty += min * 0.068;
+        ty += fitTa.px * 1.097;
       }
       ty += min * 0.02;
-      const descLines = wrapLines(ctx, ev.description, min * 0.044, 600, w - padIn * 1.2, 5);
+      const dBotA = hasEventMedia(ev) ? bottomY - h * 0.07 - min * 0.07 : bottomY - h * 0.05;
+      const fitA = fitWrapLines(ctx, ev.description, w - padIn * 1.2, ty, dBotA, min * 0.044, 600, 1.273, min * 0.03);
       ctx.fillStyle = "rgba(214,222,234,0.85)";
-      for (const ln of descLines) {
-        setFont(ctx, min * 0.044, 600);
+      for (const ln of fitA.lines) {
+        setFont(ctx, fitA.px, 600);
         ctx.fillText(ln, cx, ty);
-        ty += min * 0.056;
+        ty += fitA.px * 1.273;
       }
       drawEventMedia(ctx, ev, race, cx, bottomY - h * 0.07, w - padIn * 1.2, min * 0.13);
       ctx.globalAlpha = 1;
@@ -2072,51 +2117,65 @@ function drawArenaScoreboard(
       ctx.restore();
     }
   } else {
-    // ── vertical: time on the left, event or LEADER callout on the right ──
+    // ── vertical card ──
     const padIn = h * 0.1;
-    const leftW = w * 0.42;
-    const dx = x + leftW;
-    ctx.textAlign = "left";
-    const timePx = fitText(ctx, sample, h * 0.34, 800, leftW - padIn * 1.4);
-    setFont(ctx, timePx, 800);
-    ctx.save();
-    ctx.shadowColor = "rgba(120,150,210,0.55)";
-    ctx.shadowBlur = h * 0.05;
-    ctx.fillStyle = "#f4f6fa";
-    ctx.fillText(fmtTime(curT, span), x + padIn, y + h * 0.44);
-    ctx.restore();
-    // divider between time and the right zone
-    ctx.strokeStyle = "rgba(245,196,81,0.22)";
-    ctx.lineWidth = Math.max(1, min * 0.008);
-    ctx.beginPath();
-    ctx.moveTo(dx, y + h * 0.16);
-    ctx.lineTo(dx, y + h * 0.84);
-    ctx.stroke();
-    const zw = x + w - dx - padIn * 1.6; // text width in the right zone
-    const rcx = dx + (x + w - dx) / 2; // right-zone centre
-
     if (ev) {
+      // EVENT: a compact time header, then title + description across the FULL
+      // card width (so a long 1–2 sentence beat is never squeezed into a narrow
+      // column and clipped), media along the bottom.
       ctx.globalAlpha = evAlpha;
-      const tx = dx + padIn;
-      const titleLines = wrapLines(ctx, ev.title, h * 0.12, 800, zw, 3);
-      let ty = y + h * 0.19;
+      const fullW = w - padIn * 2;
+      const tPx = fitText(ctx, sample, h * 0.2, 800, w * 0.52);
+      setFont(ctx, tPx, 800);
+      ctx.textAlign = "left";
+      ctx.save();
+      ctx.shadowColor = "rgba(120,150,210,0.5)";
+      ctx.shadowBlur = h * 0.04;
       ctx.fillStyle = "#f4f6fa";
-      for (const ln of titleLines) {
-        setFont(ctx, h * 0.12, 800);
-        ctx.fillText(ln, tx, ty);
-        ty += h * 0.13;
+      ctx.fillText(fmtTime(curT, span), x + padIn, y + h * 0.21);
+      ctx.restore();
+      const titleTop = y + h * 0.36;
+      const fitT = fitWrapLines(ctx, ev.title, fullW, titleTop, y + h * 0.56, h * 0.115, 800, 1.08, h * 0.07);
+      let ty = titleTop;
+      ctx.fillStyle = "#f4f6fa";
+      for (const ln of fitT.lines) {
+        setFont(ctx, fitT.px, 800);
+        ctx.fillText(ln, x + padIn, ty);
+        ty += fitT.px * 1.08;
       }
-      const descLines = wrapLines(ctx, ev.description, h * 0.08, 600, zw, 3);
-      let dy = ty + h * 0.04;
+      const dStartP = ty + h * 0.05;
+      const dBotP = hasEventMedia(ev) ? y + h * 0.9 - h * 0.09 : y + h * 0.97;
+      const fitP = fitWrapLines(ctx, ev.description, fullW, dStartP, dBotP, h * 0.078, 600, 1.2, h * 0.04);
+      let dy = dStartP;
       ctx.fillStyle = "rgba(214,222,234,0.85)";
-      for (const ln of descLines) {
-        setFont(ctx, h * 0.08, 600);
-        ctx.fillText(ln, tx, dy);
-        dy += h * 0.095;
+      for (const ln of fitP.lines) {
+        setFont(ctx, fitP.px, 600);
+        ctx.fillText(ln, x + padIn, dy);
+        dy += fitP.px * 1.2;
       }
-      drawEventMedia(ctx, ev, race, rcx, y + h * 0.9, zw, h * 0.14);
+      drawEventMedia(ctx, ev, race, x + w / 2, y + h * 0.9, fullW, h * 0.14);
       ctx.globalAlpha = 1;
     } else if (leader) {
+      // time on the left, LEADER callout on the right
+      const leftW = w * 0.42;
+      const dx = x + leftW;
+      const zw = x + w - dx - padIn * 1.6;
+      const rcx = dx + (x + w - dx) / 2;
+      ctx.textAlign = "left";
+      const timePx = fitText(ctx, sample, h * 0.34, 800, leftW - padIn * 1.4);
+      setFont(ctx, timePx, 800);
+      ctx.save();
+      ctx.shadowColor = "rgba(120,150,210,0.55)";
+      ctx.shadowBlur = h * 0.05;
+      ctx.fillStyle = "#f4f6fa";
+      ctx.fillText(fmtTime(curT, span), x + padIn, y + h * 0.44);
+      ctx.restore();
+      ctx.strokeStyle = "rgba(245,196,81,0.22)";
+      ctx.lineWidth = Math.max(1, min * 0.008);
+      ctx.beginPath();
+      ctx.moveTo(dx, y + h * 0.16);
+      ctx.lineTo(dx, y + h * 0.84);
+      ctx.stroke();
       // ◆ LEADER under the time counter
       setFont(ctx, h * 0.085, 800);
       ctx.fillStyle = ARENA_GOLD;
@@ -2141,6 +2200,18 @@ function drawArenaScoreboard(
       ctx.shadowBlur = h * 0.06;
       ctx.fillStyle = mixHex(leader.e.color, 255, 0.5);
       ctx.fillText(vStr, rcx, y + h * 0.94);
+      ctx.restore();
+    } else {
+      // idle frame (no active event, no live leader) — still show the time counter
+      // so the vertical card is never blank (matches the landscape branch).
+      ctx.textAlign = "center";
+      const tPx = fitText(ctx, sample, h * 0.34, 800, w - padIn * 2);
+      setFont(ctx, tPx, 800);
+      ctx.save();
+      ctx.shadowColor = "rgba(120,150,210,0.5)";
+      ctx.shadowBlur = h * 0.05;
+      ctx.fillStyle = "#f4f6fa";
+      ctx.fillText(fmtTime(curT, span), x + w / 2, y + h / 2 + tPx * 0.35);
       ctx.restore();
     }
   }
