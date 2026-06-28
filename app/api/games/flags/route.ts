@@ -3,6 +3,9 @@ import { generateObject } from "ai";
 import { z } from "zod";
 import { MODELS, hasAnthropic, hasGroq } from "@/lib/models";
 import { WORLD_ORDER, WORLD_ALIASES } from "@/lib/games/world";
+import { requireUser } from "@/lib/auth/requireUser";
+import { chargeCredits, chargeError, refund } from "@/lib/billing/meter";
+import { ACTION_COSTS } from "@/lib/billing/costs";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -164,6 +167,9 @@ export async function POST(req: NextRequest) {
     return new Response(null, { status: 400 });
   }
 
+  const user = await requireUser();
+  if (!user) return NextResponse.json({ error: "auth" }, { status: 401 });
+
   const names = await loadFlagNames();
 
   // ── "All countries" mode (Continue) — every country, shuffled within tiers ─
@@ -181,6 +187,10 @@ export async function POST(req: NextRequest) {
   if (!hasGroq() && !hasAnthropic()) {
     return NextResponse.json({ title: "World Flags", secondsPerRound: 7, rounds: worldSpread(names, DEFAULT_SPREAD) });
   }
+
+  // Charge for the AI classification of a specific category request.
+  const charge = await chargeCredits("game", ACTION_COSTS.game, { request: request.slice(0, 60) });
+  if (!charge.ok) return chargeError(charge);
 
   const model = hasAnthropic() ? MODELS.genius() : MODELS.fast();
   let object: z.infer<typeof genSchema> | null = null;
@@ -226,8 +236,10 @@ export async function POST(req: NextRequest) {
   }
 
   // If the LLM hiccupped (rate limit / transient / empty), still hand back a
-  // playable game: a fresh worldwide spread from the dataset.
+  // playable game: a fresh worldwide spread from the dataset — and refund the
+  // credits since the AI didn't deliver.
   if (!rounds.length) {
+    await refund(user.id, ACTION_COSTS.game, "game");
     return NextResponse.json({ title: "World Flags", secondsPerRound: 7, rounds: worldSpread(names, DEFAULT_SPREAD) });
   }
 

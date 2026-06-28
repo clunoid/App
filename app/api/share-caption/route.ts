@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { generateObject } from "ai";
 import { z } from "zod";
 import { MODELS, hasAnthropic } from "@/lib/models";
+import { gate, refund } from "@/lib/billing/meter";
+import { ACTION_COSTS } from "@/lib/billing/costs";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -24,6 +26,9 @@ export async function POST(req: NextRequest) {
   const title = (body.title || "").trim();
   if (!title || !hasAnthropic()) return NextResponse.json({ error: true }, { status: 200 });
 
+  const g = await gate("caption", ACTION_COSTS.caption, { title: title.slice(0, 60) });
+  if (!g.ok) return g.res;
+
   try {
     const { object } = await generateObject({
       model: MODELS.smart(), // cheap + fast is plenty for a caption
@@ -37,6 +42,7 @@ export async function POST(req: NextRequest) {
     const hashtags = (object.hashtags || []).map((h) => "#" + String(h).replace(/[^a-zA-Z0-9]/g, "")).filter((h) => h.length > 1).slice(0, 14);
     return NextResponse.json({ title: object.title, caption: object.caption, hashtags });
   } catch {
+    await refund(g.userId, ACTION_COSTS.caption, "caption");
     return NextResponse.json({ error: true }, { status: 200 });
   }
 }

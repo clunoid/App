@@ -8,6 +8,9 @@ import { INDICATORS, INDICATOR_KEYS, indicatorMenu, guessIndicatorKey, detectYea
 import { buildWorldBankRace } from "@/lib/stats/sources/worldbank";
 import { flagUrlForName } from "@/lib/stats/flags";
 import { hasSearch, webSearch } from "@/lib/data/search";
+import { requireUser } from "@/lib/auth/requireUser";
+import { chargeCredits, chargeError, refund } from "@/lib/billing/meter";
+import { ACTION_COSTS, INPUT_CAPS } from "@/lib/billing/costs";
 
 export const runtime = "nodejs";
 export const maxDuration = 300; // research + plan (Sonnet) + the Opus data series can run long — give it room
@@ -339,7 +342,9 @@ export async function POST(req: NextRequest) {
   } catch {
     return new Response(null, { status: 400 });
   }
-  const request = (body.request || "").trim();
+  const user = await requireUser();
+  if (!user) return NextResponse.json({ error: "auth" }, { status: 401 });
+  const request = (body.request || "").trim().slice(0, INPUT_CAPS.statsRequest);
   const guess = guessIndicatorKey(request); // keyword → verified indicator (no AI)
 
   if (!request) {
@@ -354,6 +359,10 @@ export async function POST(req: NextRequest) {
     }
     return NextResponse.json({ error: true }, { status: 200 });
   }
+
+  // Auth passed — meter the AI build (Sonnet plan + series + Tavily).
+  const charge = await chargeCredits("stats_generate", ACTION_COSTS.stats_generate, { request: request.slice(0, 80) });
+  if (!charge.ok) return chargeError(charge);
 
   try {
     const context = await research(request, NOW_LABEL);
@@ -474,7 +483,9 @@ export async function POST(req: NextRequest) {
     console.error("[stats] build failed:", e);
   }
 
-  // The brain failed (transient). For catalogue topics, still return VERIFIED data.
+  // The brain failed (transient) — refund the charge, then for catalogue topics
+  // still hand back VERIFIED (free) World Bank data.
+  await refund(user.id, ACTION_COSTS.stats_generate, "stats_generate");
   if (guess) {
     const v = await buildVerified(guess, request).catch(() => null);
     if (v) return NextResponse.json(normalize(v));

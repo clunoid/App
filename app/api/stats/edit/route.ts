@@ -4,6 +4,8 @@ import { z } from "zod";
 import { MODELS, hasAnthropic } from "@/lib/models";
 import { flagUrlForName } from "@/lib/stats/flags";
 import { PALETTE, type EntityKind, type RaceRaw } from "@/lib/stats/types";
+import { gate, refund } from "@/lib/billing/meter";
+import { ACTION_COSTS, INPUT_CAPS } from "@/lib/billing/costs";
 
 export const runtime = "nodejs";
 export const maxDuration = 300; // an Opus rewrite of the full dataset can run long
@@ -66,8 +68,11 @@ export async function POST(req: NextRequest) {
     return new Response(null, { status: 400 });
   }
   const cur = body.data;
-  const instruction = (body.instruction || "").trim();
+  const instruction = (body.instruction || "").trim().slice(0, INPUT_CAPS.editInstruction);
   if (!cur || !instruction || !cur.entities?.length) return NextResponse.json({ error: true }, { status: 200 });
+
+  const g = await gate("stats_edit", ACTION_COSTS.stats_edit, {});
+  if (!g.ok) return g.res;
 
   try {
     const system = `You EDIT an existing animated bar-chart-race ("stat battle") dataset to match the user's instruction. You are given the CURRENT dataset and one instruction. Return the FULL updated dataset in the schema — apply ONLY what the instruction asks and keep everything else IDENTICAL (same competitors, values, years, units) unless the instruction changes them.
@@ -122,5 +127,6 @@ RULES: keep figures ACCURATE and real (never invent fake precision); keep the SA
   } catch (e) {
     console.error("[stats/edit] failed:", e);
   }
+  await refund(g.userId, ACTION_COSTS.stats_edit, "stats_edit");
   return NextResponse.json({ error: true }, { status: 200 });
 }

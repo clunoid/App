@@ -4,6 +4,8 @@ import { z } from "zod";
 import { MODELS, hasAnthropic } from "@/lib/models";
 import { flagUrlForName } from "@/lib/stats/flags";
 import { PALETTE, type EntityKind, type RaceRaw } from "@/lib/stats/types";
+import { gate, refund } from "@/lib/billing/meter";
+import { ACTION_COSTS } from "@/lib/billing/costs";
 
 export const runtime = "nodejs";
 export const maxDuration = 300; // Opus reading a document + assembling the dataset can run long
@@ -59,6 +61,10 @@ export async function POST(req: NextRequest) {
   if (isPdf && body.dataBase64!.length > MAX_B64) return NextResponse.json({ error: true, reason: "too-large" }, { status: 200 });
   if (!isPdf && !text) return NextResponse.json({ error: true }, { status: 200 });
 
+  // Auth + rate + pre-charge (this runs Opus on a whole document — the priciest action).
+  const g = await gate("stats_file", ACTION_COSTS.stats_file, { filename });
+  if (!g.ok) return g.res;
+
   const system = `You turn a USER-PROVIDED DOCUMENT into an animated bar-chart-race ("stat battle") dataset. Extract the ranking / quantitative data from the document and structure it for the schema.
 RULES:
 - Use the document's OWN figures — EXACT, never invented. Do not add competitors or numbers the document doesn't support.
@@ -87,7 +93,10 @@ RULES:
       })
     ).object;
 
-    if (out.notEnoughData) return NextResponse.json({ error: true, reason: "no-data" }, { status: 200 });
+    if (out.notEnoughData) {
+      await refund(g.userId, ACTION_COSTS.stats_file, "stats_file");
+      return NextResponse.json({ error: true, reason: "no-data" }, { status: 200 });
+    }
 
     const keyframes = (out.keyframes ?? out.values ?? []) as { time: number; values: { name: string; value: number }[] }[];
     const seen = new Set<string>();
@@ -124,5 +133,6 @@ RULES:
   } catch (e) {
     console.error("[stats/from-file] failed:", e);
   }
+  await refund(g.userId, ACTION_COSTS.stats_file, "stats_file");
   return NextResponse.json({ error: true }, { status: 200 });
 }

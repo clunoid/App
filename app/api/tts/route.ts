@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import { chargeCredits, chargeError } from "@/lib/billing/meter";
+import { ttsCost, INPUT_CAPS } from "@/lib/billing/costs";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -19,6 +21,12 @@ export async function POST(req: NextRequest) {
     return new Response(null, { status: 400 });
   }
   if (!key || !text?.trim()) return new Response(null, { status: 204 });
+  if (text.length > INPUT_CAPS.ttsChars) text = text.slice(0, INPUT_CAPS.ttsChars);
+
+  // Meter: signed-in + pay per ~100 chars (one credit RPC; auth enforced in-DB via
+  // auth.uid()). 401/402 here just means "no audio" to the client — voice is optional.
+  const charge = await chargeCredits("tts", ttsCost(text.length), { chars: text.length });
+  if (!charge.ok) return chargeError(charge);
 
   const res = await fetch(
     `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/with-timestamps`,
