@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { Volume2, VolumeX, Mic, MicOff, Play, RotateCcw, Trophy, ArrowLeft, Sparkles, X, Globe, Check, Grid2x2, Keyboard, Film, Instagram, Youtube } from "lucide-react";
+import { Volume2, VolumeX, Mic, MicOff, Play, RotateCcw, Trophy, ArrowLeft, Sparkles, X, Globe, Check, Grid2x2, Keyboard, Film, Instagram, Youtube, History } from "lucide-react";
 import { RaysBackground } from "./RaysBackground";
 import { DocumentBackground } from "./DocumentBackground";
 import { ShareModal } from "@/components/share/ShareModal";
@@ -15,15 +15,10 @@ import { getAudio } from "@/lib/games/audio";
 import { getHost } from "@/lib/games/host";
 import { useListen } from "@/lib/games/useListen";
 import { similarCodes } from "@/lib/games/similar";
+import { GameHistory } from "@/components/games/GameHistory";
+import { saveGameResult, type AnswerMode, type ReplayRound, type GameSnapshot } from "@/lib/games/storage";
+import { QUESTIONS, buildGameReel } from "@/lib/games/reel";
 
-const QUESTIONS = [
-  "Which country is this?",
-  "Do you know this flag?",
-  "Whose flag is this?",
-  "Can you recognize this one?",
-  "Name this country.",
-  "Quick — which country?",
-];
 const DIFFS: Difficulty[] = ["easy", "medium", "hard"];
 const HUES = [222, 145, 282, 200, 324, 168, 255, 30, 192, 305, 130, 244];
 // distractors of last resort, if a game is too small to supply 3 others
@@ -39,9 +34,7 @@ const STRIPES = "repeating-linear-gradient(45deg, rgba(255,255,255,0.28) 0 13px,
 
 type Phase = "menu" | "loading" | "answering" | "reveal" | "complete";
 type SetMode = "set" | "all";
-type AnswerMode = "choice" | "input";
-// One per played round — the raw material for the shareable recap video.
-type ReplayRound = { code: string; flag: string; name: string; said: string; correct: boolean; difficulty: Difficulty };
+// AnswerMode + ReplayRound now live in lib/games/storage (shared with history).
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 const barColor = (frac: number) => `hsl(${Math.max(0, frac * 125)}, 90%, 48%)`;
@@ -120,6 +113,8 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
   const [results, setResults] = useState<boolean[]>([]);
   const [replay, setReplay] = useState<ReplayRound[]>([]); // per-round log for the share video
   const [shareOpen, setShareOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyVideo, setHistoryVideo] = useState<GameSnapshot | null>(null); // a saved game's recap, opened from history
   const [typed, setTyped] = useState("");
   const [interim, setInterim] = useState("");
   const [choices, setChoices] = useState<string[]>([]);
@@ -155,6 +150,7 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
   const flagRef = useRef<HTMLImageElement | null>(null);
   const preloadedRef = useRef<Set<string>>(new Set());
   const recentCodesRef = useRef<string[]>([]); // flags shown lately → kept out of wrong choices
+  const savedRunRef = useRef<number | null>(null); // which runId has been saved to history
   phaseRef.current = phase;
   typedRef.current = typed;
   mutedRef.current = muted;
@@ -476,66 +472,60 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
     if (phaseRef.current === "answering") lockRound();
   }
 
-  // Map this game's replay into the GENERIC reel spec the share module renders.
-  // (This is the only flag-specific mapping — it lives in the game, not the
-  // reusable share folder, so future games supply their own builder.)
-  const buildReelSpec = useCallback(
-    (aspect: ReelAspect): ReelSpec => {
-      const theme = choiceMode
-        ? { mode: "document" as const, bg: "#c8c5bd", accent: "#8a2433", ink: "#2c2823" }
-        : { mode: "rays" as const, bg: `hsl(${hue}, 80%, 56%)`, accent: "#FFD400", ink: "#fff", hue };
-      // Keep the clip short + shareable: at most ~8 flags, sampled evenly (each now
-      // plays as a full round — Isaac asks, the timer ticks, then the reveal).
-      const MAX = 8;
-      const picks = replay.length <= MAX ? replay : Array.from({ length: MAX }, (_, i) => replay[Math.floor((i * replay.length) / MAX)]);
-      const category = subtitle ? subtitle.replace(/\s*flags?$/i, "") : "";
-      return {
-        aspect,
-        theme,
-        title: "Guess The Country",
-        subtitle,
-        brand: "clunoid.com",
-        intro: {
-          headline: "Guess The Country",
-          sub: subtitle ? "Can you name them all?" : "Can you name these flags?",
-          narration: category
-            ? `Let's play Guess the Country — ${category}! Can you name them all?`
-            : "Let's play Guess the Country! Can you name these flags?",
-        },
-        // Each scene plays like a round: the flag + question + a beat, then the reveal.
-        scenes: picks.map((r, i) => ({
-          imageUrl: r.flag,
-          questionText: QUESTIONS[i % QUESTIONS.length],
-          questionNarration: QUESTIONS[i % QUESTIONS.length], // Isaac asks, like the game
-          bigText: r.name,
-          userText: !r.correct && r.said ? r.said : undefined,
-          correct: r.correct,
-          badge: cap(r.difficulty),
-          narration: r.correct ? `Yes! ${r.name}.` : `It's ${r.name}.`,
-        })),
-        // Outro = Isaac's call to action: come play at clunoid.com.
-        outro: {
-          headline: "Your turn!",
-          scoreText: `I scored ${score}/${total}`,
-          sub: "Free to play · Guess the Country & more",
-          narration: `I scored ${score} out of ${total}. Think you can beat me? Come play Guess the Country — free — at clunoid dot com. Your turn!`,
-        },
-      };
-    },
-    [choiceMode, hue, subtitle, score, total, replay]
+  // A snapshot of the game just played — for history (re-play / recap video).
+  const snapshot = useCallback(
+    (): GameSnapshot => ({ title, subtitle, score, total, answerMode, hue, secs: secsRef.current, rounds, replay }),
+    [title, subtitle, score, total, answerMode, hue, rounds, replay]
   );
+
+  // Save each finished game to history once (Supabase, best-effort).
+  useEffect(() => {
+    if (phase !== "complete" || !replay.length) return;
+    if (savedRunRef.current === runId) return;
+    savedRunRef.current = runId;
+    void saveGameResult(snapshot());
+  }, [phase, runId, replay, snapshot]);
+
+  // Re-play the exact flags from a saved game.
+  const replayFromSnapshot = useCallback(
+    (snap: GameSnapshot) => {
+      launch({ title: snap.title, subtitle: snap.subtitle, secondsPerRound: snap.secs, rounds: snap.rounds }, "set", snap.answerMode);
+    },
+    [launch]
+  );
+
+  // Map a game (live or saved-from-history) into the share module's reel spec.
+  const buildReelSpec = useCallback((aspect: ReelAspect): ReelSpec => buildGameReel(snapshot(), aspect), [snapshot]);
 
   // ── Screens ──────────────────────────────────────────────────────────────
   if (phase === "menu") {
     return (
-      <MenuScreen
-        building={building}
-        failed={failed}
-        onPlay={startGame}
-        onHome={() => router.push("/games")}
-        muted={muted}
-        onMute={toggleMute}
-      />
+      <>
+        <MenuScreen
+          building={building}
+          failed={failed}
+          onPlay={startGame}
+          onHome={() => router.push("/games")}
+          muted={muted}
+          onMute={toggleMute}
+          onHistory={() => setHistoryOpen(true)}
+        />
+        <GameHistory
+          open={historyOpen}
+          onClose={() => setHistoryOpen(false)}
+          onReplay={(snap) => {
+            setHistoryOpen(false);
+            replayFromSnapshot(snap);
+          }}
+          onVideo={(snap) => {
+            setHistoryOpen(false);
+            setHistoryVideo(snap);
+          }}
+        />
+        {historyVideo && (
+          <ShareModal open onClose={() => setHistoryVideo(null)} makeSpec={(a) => buildGameReel(historyVideo, a)} fileName="clunoid-flags" />
+        )}
+      </>
     );
   }
   if (phase === "complete") {
@@ -823,6 +813,7 @@ function MenuScreen({
   onHome,
   muted,
   onMute,
+  onHistory,
 }: {
   building: boolean;
   failed: boolean;
@@ -830,6 +821,7 @@ function MenuScreen({
   onHome: () => void;
   muted: boolean;
   onMute: () => void;
+  onHistory: () => void;
 }) {
   const [request, setRequest] = useState("");
   const [am, setAm] = useState<AnswerMode>("choice");
@@ -861,15 +853,27 @@ function MenuScreen({
       >
         <ArrowLeft size={18} /> <span className="text-sm font-extrabold">Games</span>
       </button>
-      <button
-        onClick={onMute}
-        aria-label={muted ? "Unmute" : "Mute"}
-        className={`absolute right-4 top-4 z-20 grid h-11 w-11 place-items-center rounded-full backdrop-blur transition ${
-          doc ? "bg-black/10 text-[#2c2823] hover:bg-black/20" : "bg-black/25 text-white hover:bg-black/40"
-        }`}
-      >
-        {muted ? <VolumeX size={20} /> : <Volume2 size={20} />}
-      </button>
+      <div className="absolute right-4 top-4 z-20 flex items-center gap-2">
+        <button
+          onClick={onHistory}
+          aria-label="Your games"
+          title="Your games"
+          className={`flex h-11 items-center gap-1.5 rounded-full px-3.5 backdrop-blur transition ${
+            doc ? "bg-black/10 text-[#2c2823] hover:bg-black/20" : "bg-black/25 text-white hover:bg-black/40"
+          }`}
+        >
+          <History size={18} /> <span className="hidden text-sm font-extrabold sm:inline">History</span>
+        </button>
+        <button
+          onClick={onMute}
+          aria-label={muted ? "Unmute" : "Mute"}
+          className={`grid h-11 w-11 place-items-center rounded-full backdrop-blur transition ${
+            doc ? "bg-black/10 text-[#2c2823] hover:bg-black/20" : "bg-black/25 text-white hover:bg-black/40"
+          }`}
+        >
+          {muted ? <VolumeX size={20} /> : <Volume2 size={20} />}
+        </button>
+      </div>
 
       <div className="relative z-10 flex w-full max-w-lg flex-col items-center text-center">
         <motion.h1
