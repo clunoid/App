@@ -1881,7 +1881,9 @@ function drawRaceOrbit(ctx: CanvasRenderingContext2D, W: number, H: number, race
     const lx = cx + lr * ca;
     const ly = cy + lr * sa;
     const align: CanvasTextAlign = ca > 0.3 ? "left" : ca < -0.3 ? "right" : "center";
-    const lw = R * 0.42;
+    // cap each label to its angular slot (the chord to the neighbouring spoke) so
+    // fitText shrinks names that would otherwise collide when N is large / names long.
+    const lw = Math.min(R * 0.42, 2 * lr * Math.sin(Math.PI / N) * 0.9);
     ctx.textAlign = align;
     ctx.textBaseline = "alphabetic";
     const vpx = Math.min(R * 0.05, avatarR * 1.05);
