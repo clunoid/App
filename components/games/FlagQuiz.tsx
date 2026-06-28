@@ -14,6 +14,7 @@ import { isCorrect, pickCountry } from "@/lib/games/grade";
 import { getAudio } from "@/lib/games/audio";
 import { getHost } from "@/lib/games/host";
 import { useListen } from "@/lib/games/useListen";
+import { similarCodes } from "@/lib/games/similar";
 
 const QUESTIONS = [
   "Which country is this?",
@@ -60,14 +61,48 @@ function reshuffleWithin(rounds: Round[]): Round[] {
   for (const r of rounds) t[r.difficulty].push(r);
   return [...shuffle(t.easy), ...shuffle(t.medium), ...shuffle(t.hard)];
 }
-function makeChoices(answer: string, names: string[]): string[] {
-  const pool = shuffle([...new Set(names)].filter((n) => n !== answer));
-  const out = pool.slice(0, 3);
-  for (let i = 0; out.length < 3 && i < FALLBACK_NAMES.length; i++) {
-    const f = FALLBACK_NAMES[i];
-    if (f !== answer && !out.includes(f)) out.push(f);
+// How many of the most-recently-shown flags to keep out of the wrong choices, so
+// a player can't decide by "I just saw that one" instead of knowing the flag.
+const RECENT_CAP = 9;
+
+/**
+ * Build the 4 choices for a round. The wrong ones are chosen to make it HARDER:
+ *  1) prefer flags that LOOK LIKE the answer's flag (so you must know it, not just
+ *     spot the odd one out), and
+ *  2) avoid flags shown in the last few rounds (no easy elimination).
+ * Freshness wins ties over similarity (a just-seen look-alike is easy to rule out).
+ * Returns the shuffled choice names plus the codes used, so the caller can track
+ * recency. Falls back to generic names only if the game is too small.
+ */
+function makeChoices(answer: Round, rounds: Round[], recent: Set<string>): { choices: string[]; codes: string[] } {
+  const sim = new Set(similarCodes(answer.code));
+  // unique candidate countries (by code), excluding the answer
+  const seen = new Set<string>([answer.code]);
+  const pool: Round[] = [];
+  for (const r of rounds) {
+    if (r.code === answer.code || r.name === answer.name || seen.has(r.code)) continue;
+    seen.add(r.code);
+    pool.push(r);
   }
-  return shuffle([answer, ...out]);
+
+  const isSim = (r: Round) => sim.has(r.code);
+  const fresh = (r: Round) => !recent.has(r.code);
+  // fresh look-alikes → fresh others → seen look-alikes → seen others
+  const ordered = [
+    ...shuffle(pool.filter((r) => isSim(r) && fresh(r))),
+    ...shuffle(pool.filter((r) => !isSim(r) && fresh(r))),
+    ...shuffle(pool.filter((r) => isSim(r) && !fresh(r))),
+    ...shuffle(pool.filter((r) => !isSim(r) && !fresh(r))),
+  ];
+
+  const picked = ordered.slice(0, 3);
+  const names = picked.map((r) => r.name);
+  const codes = picked.map((r) => r.code);
+  for (let i = 0; names.length < 3 && i < FALLBACK_NAMES.length; i++) {
+    const f = FALLBACK_NAMES[i];
+    if (f !== answer.name && !names.includes(f)) names.push(f);
+  }
+  return { choices: shuffle([answer.name, ...names]), codes };
 }
 
 export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
@@ -119,6 +154,7 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
   const tickRef = useRef(-1);
   const flagRef = useRef<HTMLImageElement | null>(null);
   const preloadedRef = useRef<Set<string>>(new Set());
+  const recentCodesRef = useRef<string[]>([]); // flags shown lately → kept out of wrong choices
   phaseRef.current = phase;
   typedRef.current = typed;
   mutedRef.current = muted;
@@ -299,7 +335,12 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
     setPicked(null);
     pickedRef.current = "";
     voiceRef.current = "";
-    setChoices(makeChoices(r.name, rounds.map((x) => x.name)));
+    if (idx === 0) recentCodesRef.current = []; // fresh run → clear recency
+    const { choices: roundChoices, codes: usedCodes } = makeChoices(r, rounds, new Set(recentCodesRef.current));
+    setChoices(roundChoices);
+    // Remember this round's flags (answer + its decoys) so the next few rounds
+    // don't reuse them as easy-to-eliminate options.
+    recentCodesRef.current = [r.code, ...usedCodes, ...recentCodesRef.current].slice(0, RECENT_CAP);
     setTimeLeft(secsRef.current * 1000);
     setPhase("loading");
 
