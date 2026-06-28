@@ -59,8 +59,8 @@ export function buildGameReel(s: GameSnapshot, aspect: ReelAspect, branded = tru
       sub: branded ? "Play this game on clunoid.com" : undefined,
       // No site name in Isaac's voice when unbranded — the subscriber owns the clip.
       narration: branded
-        ? `I scored ${s.score} out of ${s.total}. Think you can beat me? Play this game on clunoid dot com. Your turn!`
-        : `I scored ${s.score} out of ${s.total}. Think you can beat me? Your turn!`,
+        ? `I scored ${s.score} out of ${s.total}. Think you can beat me? Play this game on clunoid dot com.`
+        : `I scored ${s.score} out of ${s.total}. Think you can beat me?`,
     },
   };
 }
