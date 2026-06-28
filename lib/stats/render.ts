@@ -1731,8 +1731,181 @@ function drawRaceColumns(ctx: CanvasRenderingContext2D, W: number, H: number, ra
   drawBrandBadge(ctx, W - padX, H * 0.965, min * 0.034);
 }
 
+/* ── SEVENTH design: "Orbit" — a radial sunburst race ─────────────────────────
+ * The same data as glossy spokes radiating from a central hub: each competitor's
+ * spoke length ∝ value (a minimum length keeps the small ones from collapsing into
+ * the centre), with its avatar at the tip and value + name fanning outward, the
+ * labels filling the side margins. Spokes rotate to new angular slots (shortest
+ * path) as the standings change. The one circular view in the set. Shares the
+ * header, story panel, source and brand chrome with the others. */
+function drawRaceOrbit(ctx: CanvasRenderingContext2D, W: number, H: number, race: RaceData, state: RaceState, el: number) {
+  const min = Math.min(W, H);
+  const vertical = H > W;
+  const t0 = race.frames[0].time;
+  const t1 = race.frames[race.frames.length - 1].time;
+  const prog = clamp01(race.durationSec > 0 ? el / race.durationSec : 1);
+  const curT = t0 + (t1 - t0) * prog;
+  const vals = valuesAt(race, curT);
+  const ranked = race.entities
+    .map((e) => ({ e, v: vals.get(e.name)?.v || 0, fade: vals.get(e.name)?.fade ?? 1 }))
+    .filter((r) => r.v > 1e-6 && r.fade > 0.05)
+    .sort((a, b) => b.v - a.v);
+  const N = Math.max(1, Math.min(race.topN, ranked.length));
+  const visible = ranked.slice(0, N);
+
+  // ease each spoke's ANGLE toward its rank slot (shortest path so it never spins
+  // the long way round); state.disp stores the eased angle (radians) for this design.
+  const dt = state.init ? Math.max(0, Math.min(0.1, el - state.lastEl)) : 0;
+  const kRank = state.init ? 1 - Math.exp(-dt * 8) : 1;
+  const kMax = state.init ? 1 - Math.exp(-dt * 5) : 1;
+  const TAU = Math.PI * 2;
+  const targetAngle = (rank: number) => -Math.PI / 2 + (rank / N) * TAU;
+  visible.forEach((r, idx) => {
+    const ta = targetAngle(idx);
+    let cur = state.disp.has(r.e.name) ? state.disp.get(r.e.name)! : ta;
+    let d = ta - cur;
+    while (d > Math.PI) d -= TAU;
+    while (d < -Math.PI) d += TAU;
+    state.disp.set(r.e.name, cur + d * kRank);
+  });
+  const targetMax = Math.max(1e-6, visible.length ? visible[0].v : 1);
+  state.max = state.init ? state.max + (targetMax - state.max) * kMax : targetMax;
+  const maxV = Math.max(1e-6, state.max);
+  state.lastEl = el;
+  state.init = true;
+
+  const { ev, idx: evIdx } = activeEvent(race, curT);
+  if (evIdx !== state.evIdx) {
+    state.evIdx = evIdx;
+    state.evChange = el;
+  }
+  const evAlpha = clamp01((el - state.evChange) / 0.45);
+
+  drawCertificateBg(ctx, W, H);
+
+  const padX = W * (vertical ? 0.045 : 0.035);
+  const titleY = H * (vertical ? 0.06 : 0.085);
+  const plotTop = H * (vertical ? 0.14 : 0.18);
+  const plotBottom = H * (vertical ? 0.6 : 0.92);
+  const plotLeft = padX;
+  const plotRight = vertical ? W - padX : W * 0.66;
+  const panelX = vertical ? padX : W * 0.675;
+  const panelY = vertical ? H * 0.63 : H * 0.17;
+  const panelW = vertical ? W - 2 * padX : W * 0.965 - panelX;
+  const panelH = vertical ? H * 0.32 : H * 0.9 - H * 0.17;
+
+  // header (same as the other designs)
+  ctx.textBaseline = "alphabetic";
+  ctx.textAlign = "left";
+  const titlePx = fitText(ctx, race.title, min * (vertical ? 0.055 : 0.05), 800, plotRight - padX);
+  ctx.fillStyle = INK;
+  ctx.fillText(race.title, padX, titleY);
+  if (race.subtitle) {
+    const subPx = min * (vertical ? 0.03 : 0.026);
+    const subLines = wrapLines(ctx, race.subtitle, subPx, 700, plotRight - padX, 2);
+    setFont(ctx, subPx, 700);
+    ctx.fillStyle = SEAL;
+    let sy = titleY + titlePx * 0.72;
+    for (const ln of subLines) {
+      ctx.fillText(ln, padX, sy);
+      sy += subPx * 1.08;
+    }
+  }
+
+  // ── orbit ──
+  const regL = plotLeft;
+  const regR = plotRight;
+  const regT = plotTop;
+  const regB = plotBottom;
+  const cx = (regL + regR) / 2;
+  const cy = (regT + regB) / 2;
+  const R = (Math.min(regR - regL, regB - regT) / 2) * 0.96;
+  const r0 = R * 0.18; // hub radius
+  const maxSpoke = R * 0.72; // avatar tips reach out to here at most
+  const range = Math.max(1, maxSpoke - r0);
+  const minLen = range * 0.4; // floor so small spokes don't collapse into the hub
+  const barThick = Math.min((TAU * r0) / N * 0.62, R * 0.06);
+  const avatarR = Math.min(barThick * 1.5, R * 0.082);
+
+  // center hub
+  ctx.beginPath();
+  ctx.arc(cx, cy, r0 * 0.96, 0, TAU);
+  ctx.fillStyle = "rgba(255,255,255,0.42)";
+  ctx.fill();
+  ctx.lineWidth = Math.max(1.5, R * 0.006);
+  ctx.strokeStyle = "rgba(44,40,35,0.16)";
+  ctx.stroke();
+  if (race.valueLabel) {
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = "rgba(44,40,35,0.6)";
+    setFont(ctx, fitText(ctx, race.valueLabel, r0 * 0.42, 800, r0 * 1.5), 800);
+    ctx.fillText(race.valueLabel, cx, cy);
+  }
+
+  // spokes (non-leaders first so the leader sits on top)
+  for (let vi = visible.length - 1; vi >= 0; vi--) {
+    const r = visible[vi];
+    const ang = state.disp.get(r.e.name) ?? targetAngle(vi);
+    const ca = Math.cos(ang);
+    const sa = Math.sin(ang);
+    const spokeEnd = r0 + minLen + clamp01(r.v / maxV) * (range - minLen);
+
+    // spoke bar (rotated rounded rect from r0 → spokeEnd) + a gloss
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(ang);
+    if (vi === 0) {
+      ctx.shadowColor = rgbaOf(r.e.color, 0.5);
+      ctx.shadowBlur = barThick * 0.9;
+    }
+    roundRect(ctx, r0, -barThick / 2, spokeEnd - r0, barThick, barThick / 2);
+    ctx.fillStyle = r.e.color;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    const gl = ctx.createLinearGradient(0, -barThick / 2, 0, barThick / 2);
+    gl.addColorStop(0, "rgba(255,255,255,0.3)");
+    gl.addColorStop(0.5, "rgba(255,255,255,0)");
+    ctx.fillStyle = gl;
+    roundRect(ctx, r0, -barThick / 2, spokeEnd - r0, barThick, barThick / 2);
+    ctx.fill();
+    ctx.restore();
+
+    // avatar at the tip (upright)
+    const tx = cx + spokeEnd * ca;
+    const ty = cy + spokeEnd * sa;
+    drawEntityAvatar(ctx, r.e, tx, ty, avatarR);
+
+    // value + name fanning outward from the tip (per-quadrant aligned)
+    const lr = spokeEnd + avatarR + R * 0.03;
+    const lx = cx + lr * ca;
+    const ly = cy + lr * sa;
+    const align: CanvasTextAlign = ca > 0.3 ? "left" : ca < -0.3 ? "right" : "center";
+    const lw = R * 0.42;
+    ctx.textAlign = align;
+    ctx.textBaseline = "alphabetic";
+    const vpx = Math.min(R * 0.05, avatarR * 1.05);
+    setFont(ctx, fitText(ctx, fmtValueCompact(r.v, race), vpx, 800, lw), 800);
+    ctx.fillStyle = SEAL;
+    ctx.fillText(fmtValueCompact(r.v, race), lx, ly);
+    setFont(ctx, fitText(ctx, r.e.name, vpx * 0.82, 800, lw), 800);
+    ctx.fillStyle = INK;
+    ctx.fillText(r.e.name, lx, ly + vpx * 1.04);
+  }
+  ctx.textAlign = "left";
+  ctx.textBaseline = "alphabetic";
+
+  drawStoryPanel(ctx, panelX, panelY, panelW, panelH, race, curT, ev, evAlpha, vertical);
+  if (race.source) {
+    setFont(ctx, min * 0.026, 700);
+    ctx.fillStyle = "rgba(44,40,35,0.45)";
+    ctx.fillText(`Source: ${race.source}`, padX, H * 0.975);
+  }
+  drawBrandBadge(ctx, W - padX, H * 0.965, min * 0.034);
+}
+
 /** The available visual styles for a stat battle (same data, different look). */
-export type RaceStyle = "bars" | "bubbles" | "trail" | "podium" | "race" | "columns";
+export type RaceStyle = "bars" | "bubbles" | "trail" | "podium" | "race" | "columns" | "orbit";
 export const RACE_STYLES: { id: RaceStyle; label: string }[] = [
   { id: "bars", label: "Bars" },
   { id: "bubbles", label: "Bubbles" },
@@ -1740,6 +1913,7 @@ export const RACE_STYLES: { id: RaceStyle; label: string }[] = [
   { id: "podium", label: "Podium" },
   { id: "race", label: "Race" },
   { id: "columns", label: "Columns" },
+  { id: "orbit", label: "Orbit" },
 ];
 /** Draw one race frame in the chosen visual style. */
 export function drawRaceStyle(ctx: CanvasRenderingContext2D, W: number, H: number, race: RaceData, state: RaceState, el: number, style: RaceStyle = "bars") {
@@ -1748,6 +1922,7 @@ export function drawRaceStyle(ctx: CanvasRenderingContext2D, W: number, H: numbe
   else if (style === "podium") drawRacePodium(ctx, W, H, race, state, el);
   else if (style === "race") drawRaceLanes(ctx, W, H, race, state, el);
   else if (style === "columns") drawRaceColumns(ctx, W, H, race, state, el);
+  else if (style === "orbit") drawRaceOrbit(ctx, W, H, race, state, el);
   else drawRaceFrame(ctx, W, H, race, state, el);
 }
 
