@@ -1565,14 +1565,181 @@ function drawRaceLanes(ctx: CanvasRenderingContext2D, W: number, H: number, race
   drawBrandBadge(ctx, W - padX, H * 0.965, min * 0.034);
 }
 
+/** Path for a column: rounded TOP corners, square bottom sitting on the baseline. */
+function columnPath(ctx: CanvasRenderingContext2D, x: number, top: number, w: number, h: number, r: number) {
+  const rr = Math.max(0, Math.min(r, w / 2, h));
+  ctx.beginPath();
+  ctx.moveTo(x, top + h);
+  ctx.lineTo(x, top + rr);
+  ctx.arcTo(x, top, x + rr, top, rr);
+  ctx.lineTo(x + w - rr, top);
+  ctx.arcTo(x + w, top, x + w, top + rr, rr);
+  ctx.lineTo(x + w, top + h);
+  ctx.closePath();
+}
+
+/* ── SIXTH design: "Columns" — a vertical skyline race ─────────────────────────
+ * The same data as glossy vertical columns rising from a baseline, ordered by rank
+ * left→right, each with its avatar perched on top, its live value above and its
+ * name below; the leader is tallest with a soft glow. The only VERTICAL view in the
+ * set — columns slide between slots as the standings change. Shares all the chrome. */
+function drawRaceColumns(ctx: CanvasRenderingContext2D, W: number, H: number, race: RaceData, state: RaceState, el: number) {
+  const min = Math.min(W, H);
+  const vertical = H > W;
+  const t0 = race.frames[0].time;
+  const t1 = race.frames[race.frames.length - 1].time;
+  const prog = clamp01(race.durationSec > 0 ? el / race.durationSec : 1);
+  const curT = t0 + (t1 - t0) * prog;
+  const vals = valuesAt(race, curT);
+  const ranked = race.entities
+    .map((e) => ({ e, v: vals.get(e.name)?.v || 0, fade: vals.get(e.name)?.fade ?? 1 }))
+    .filter((r) => r.v > 1e-6 && r.fade > 0.05)
+    .sort((a, b) => b.v - a.v);
+  const N = Math.max(1, Math.min(race.topN, ranked.length));
+  const visible = ranked.slice(0, N);
+
+  const dt = state.init ? Math.max(0, Math.min(0.1, el - state.lastEl)) : 0;
+  const kRank = state.init ? 1 - Math.exp(-dt * 8) : 1;
+  const kMax = state.init ? 1 - Math.exp(-dt * 5) : 1;
+  visible.forEach((r, idx) => {
+    const cur = state.disp.has(r.e.name) ? state.disp.get(r.e.name)! : idx;
+    state.disp.set(r.e.name, cur + (idx - cur) * kRank);
+  });
+  const targetMax = Math.max(1e-6, visible.length ? visible[0].v : 1);
+  state.max = state.init ? state.max + (targetMax - state.max) * kMax : targetMax;
+  const maxV = Math.max(1e-6, state.max);
+  state.lastEl = el;
+  state.init = true;
+
+  const { ev, idx: evIdx } = activeEvent(race, curT);
+  if (evIdx !== state.evIdx) {
+    state.evIdx = evIdx;
+    state.evChange = el;
+  }
+  const evAlpha = clamp01((el - state.evChange) / 0.45);
+
+  drawCertificateBg(ctx, W, H);
+
+  const padX = W * (vertical ? 0.045 : 0.035);
+  const titleY = H * (vertical ? 0.06 : 0.085);
+  const plotTop = H * (vertical ? 0.16 : 0.21);
+  const plotBottom = H * (vertical ? 0.6 : 0.9);
+  const plotLeft = padX;
+  const plotRight = vertical ? W - padX : W * 0.66;
+  const panelX = vertical ? padX : W * 0.675;
+  const panelY = vertical ? H * 0.63 : H * 0.17;
+  const panelW = vertical ? W - 2 * padX : W * 0.965 - panelX;
+  const panelH = vertical ? H * 0.32 : H * 0.9 - H * 0.17;
+
+  // header (same as the other designs)
+  ctx.textBaseline = "alphabetic";
+  ctx.textAlign = "left";
+  const titlePx = fitText(ctx, race.title, min * (vertical ? 0.055 : 0.05), 800, plotRight - padX);
+  ctx.fillStyle = INK;
+  ctx.fillText(race.title, padX, titleY);
+  if (race.subtitle) {
+    const subPx = min * (vertical ? 0.03 : 0.026);
+    const subLines = wrapLines(ctx, race.subtitle, subPx, 700, plotRight - padX, 2);
+    setFont(ctx, subPx, 700);
+    ctx.fillStyle = SEAL;
+    let sy = titleY + titlePx * 0.72;
+    for (const ln of subLines) {
+      ctx.fillText(ln, padX, sy);
+      sy += subPx * 1.08;
+    }
+  }
+
+  // ── columns ──
+  const regL = plotLeft;
+  const regR = plotRight;
+  const regT = plotTop;
+  const regB = plotBottom;
+  const regW = regR - regL;
+  const regH = regB - regT;
+  const nameZoneH = regH * 0.12; // names below the baseline
+  const baselineY = regB - nameZoneH;
+  const topZoneH = regH * 0.22; // avatar + value above each column top
+  const maxColH = Math.max(20, baselineY - regT - topZoneH);
+  const slotW = regW / N;
+  const colW = Math.min(slotW * 0.62, regH * 0.13);
+  const colX = (rank: number) => regL + (rank + 0.5) * slotW;
+  const avatarR = Math.min(colW * 0.6, topZoneH * 0.42);
+
+  // ground baseline
+  ctx.strokeStyle = "rgba(44,40,35,0.18)";
+  ctx.lineWidth = Math.max(1.5, regH * 0.005);
+  ctx.beginPath();
+  ctx.moveTo(regL, baselineY);
+  ctx.lineTo(regR, baselineY);
+  ctx.stroke();
+
+  // columns — non-leaders first so the leader (glow) sits on top during slides
+  for (let vi = visible.length - 1; vi >= 0; vi--) {
+    const r = visible[vi];
+    const nm = r.e.name;
+    const cx = colX(Math.min(state.disp.get(nm) ?? vi, N - 1));
+    const colH = Math.max(colW * 0.5, clamp01(r.v / maxV) * maxColH);
+    const colTop = baselineY - colH;
+    const left = cx - colW / 2;
+
+    // column body (solid colour) with a soft drop shadow + a top gloss
+    ctx.save();
+    if (vi === 0) {
+      ctx.shadowColor = rgbaOf(r.e.color, 0.5);
+      ctx.shadowBlur = colW * 0.5;
+    } else {
+      ctx.shadowColor = "rgba(0,0,0,0.16)";
+      ctx.shadowBlur = colW * 0.18;
+      ctx.shadowOffsetY = colW * 0.06;
+    }
+    columnPath(ctx, left, colTop, colW, colH, colW * 0.22);
+    ctx.fillStyle = r.e.color;
+    ctx.fill();
+    ctx.restore();
+    columnPath(ctx, left, colTop, colW, colH, colW * 0.22); // re-path for the gloss (no shadow)
+    const gl = ctx.createLinearGradient(0, colTop, 0, colTop + Math.min(colH, maxColH * 0.5));
+    gl.addColorStop(0, "rgba(255,255,255,0.34)");
+    gl.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = gl;
+    ctx.fill();
+
+    // avatar perched on top of the column
+    const ay = colTop - avatarR - colW * 0.12;
+    drawEntityAvatar(ctx, r.e, cx, ay, avatarR);
+
+    // value above the avatar
+    ctx.textAlign = "center";
+    ctx.textBaseline = "alphabetic";
+    ctx.fillStyle = SEAL;
+    setFont(ctx, fitText(ctx, fmtValueCompact(r.v, race), Math.min(avatarR * 0.95, slotW * 0.3), 800, slotW * 0.96), 800);
+    ctx.fillText(fmtValueCompact(r.v, race), cx, ay - avatarR - avatarR * 0.2);
+
+    // name below the baseline
+    ctx.fillStyle = INK;
+    setFont(ctx, fitText(ctx, nm, Math.min(nameZoneH * 0.42, slotW * 0.2), 800, slotW * 0.96), 800);
+    ctx.fillText(nm, cx, baselineY + nameZoneH * 0.5);
+  }
+  ctx.textAlign = "left";
+  ctx.textBaseline = "alphabetic";
+
+  drawStoryPanel(ctx, panelX, panelY, panelW, panelH, race, curT, ev, evAlpha, vertical);
+  if (race.source) {
+    setFont(ctx, min * 0.026, 700);
+    ctx.fillStyle = "rgba(44,40,35,0.45)";
+    ctx.fillText(`Source: ${race.source}`, padX, H * 0.975);
+  }
+  drawBrandBadge(ctx, W - padX, H * 0.965, min * 0.034);
+}
+
 /** The available visual styles for a stat battle (same data, different look). */
-export type RaceStyle = "bars" | "bubbles" | "trail" | "podium" | "race";
+export type RaceStyle = "bars" | "bubbles" | "trail" | "podium" | "race" | "columns";
 export const RACE_STYLES: { id: RaceStyle; label: string }[] = [
   { id: "bars", label: "Bars" },
   { id: "bubbles", label: "Bubbles" },
   { id: "trail", label: "Trail" },
   { id: "podium", label: "Podium" },
   { id: "race", label: "Race" },
+  { id: "columns", label: "Columns" },
 ];
 /** Draw one race frame in the chosen visual style. */
 export function drawRaceStyle(ctx: CanvasRenderingContext2D, W: number, H: number, race: RaceData, state: RaceState, el: number, style: RaceStyle = "bars") {
@@ -1580,6 +1747,7 @@ export function drawRaceStyle(ctx: CanvasRenderingContext2D, W: number, H: numbe
   else if (style === "trail") drawRaceBump(ctx, W, H, race, state, el);
   else if (style === "podium") drawRacePodium(ctx, W, H, race, state, el);
   else if (style === "race") drawRaceLanes(ctx, W, H, race, state, el);
+  else if (style === "columns") drawRaceColumns(ctx, W, H, race, state, el);
   else drawRaceFrame(ctx, W, H, race, state, el);
 }
 
