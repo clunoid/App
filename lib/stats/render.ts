@@ -1906,8 +1906,468 @@ function drawRaceOrbit(ctx: CanvasRenderingContext2D, W: number, H: number, race
   drawBrandBadge(ctx, W - padX, H * 0.965, min * 0.034);
 }
 
+/** Mix an entity hex toward black (target 0) or white (target 255) by amount t. */
+function mixHex(hex: string, target: number, t: number): string {
+  const [r, g, b] = hexToRgb(hex);
+  return `rgb(${Math.round(r + (target - r) * t)},${Math.round(g + (target - g) * t)},${Math.round(b + (target - b) * t)})`;
+}
+
+const ARENA_GOLD = "#f5c451";
+
+/** Dark, spotlit "arena" background — only used by the Arena design. */
+function drawArenaBg(ctx: CanvasRenderingContext2D, W: number, H: number) {
+  ctx.fillStyle = "#0d1016";
+  ctx.fillRect(0, 0, W, H);
+  const g = ctx.createRadialGradient(W * 0.42, H * 0.42, 0, W * 0.42, H * 0.42, Math.hypot(W, H) * 0.62);
+  g.addColorStop(0, "rgba(48,63,92,0.6)");
+  g.addColorStop(0.5, "rgba(22,29,43,0.28)");
+  g.addColorStop(1, "rgba(5,7,11,0)");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, W, H);
+  ctx.strokeStyle = "rgba(130,160,210,0.045)"; // faint tech grid
+  ctx.lineWidth = 1;
+  const step = Math.max(38, W * 0.038);
+  ctx.beginPath();
+  for (let x = step; x < W; x += step) {
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, H);
+  }
+  for (let y = step; y < H; y += step) {
+    ctx.moveTo(0, y);
+    ctx.lineTo(W, y);
+  }
+  ctx.stroke();
+  const v = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.32, W / 2, H / 2, Math.hypot(W, H) * 0.6);
+  v.addColorStop(0, "rgba(0,0,0,0)");
+  v.addColorStop(1, "rgba(0,0,0,0.5)");
+  ctx.fillStyle = v;
+  ctx.fillRect(0, 0, W, H);
+}
+
+/** Dark, glowing "scoreboard" for the Arena: a glassy gold-rimmed card that shows
+ * the time counter and — when a beat is active — the event, otherwise a dramatic
+ * LEADER callout (big glowing avatar + name + value). Never blank, never crowded. */
+function drawArenaScoreboard(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  race: RaceData,
+  curT: number,
+  ev: RaceEvent | null,
+  evAlpha: number,
+  vertical: boolean,
+  leader: { e: RaceData["entities"][number]; v: number } | null
+) {
+  const min = Math.min(w, h);
+  const rad = min * 0.05;
+  const span = race.frames.length ? race.frames[race.frames.length - 1].time - race.frames[0].time : 0;
+  const sample = span > 160 ? "8888" : "Sep 8888"; // constant-width sample → steady font
+
+  // glassy dark card
+  ctx.save();
+  ctx.shadowColor = "rgba(0,0,0,0.5)";
+  ctx.shadowBlur = min * 0.05;
+  ctx.shadowOffsetY = min * 0.012;
+  roundRect(ctx, x, y, w, h, rad);
+  const pg = ctx.createLinearGradient(x, y, x, y + h);
+  pg.addColorStop(0, "rgba(30,38,56,0.94)");
+  pg.addColorStop(1, "rgba(12,16,24,0.96)");
+  ctx.fillStyle = pg;
+  ctx.fill();
+  ctx.restore();
+  // top sheen + glowing gold rim
+  ctx.save();
+  roundRect(ctx, x, y, w, h, rad);
+  ctx.clip();
+  const sheen = ctx.createLinearGradient(x, y, x, y + h * 0.42);
+  sheen.addColorStop(0, "rgba(255,255,255,0.07)");
+  sheen.addColorStop(1, "rgba(255,255,255,0)");
+  ctx.fillStyle = sheen;
+  ctx.fillRect(x, y, w, h * 0.42);
+  ctx.restore();
+  ctx.save();
+  roundRect(ctx, x + 1, y + 1, w - 2, h - 2, rad);
+  ctx.strokeStyle = "rgba(245,196,81,0.5)";
+  ctx.lineWidth = Math.max(1.5, min * 0.005);
+  ctx.shadowColor = "rgba(245,196,81,0.45)";
+  ctx.shadowBlur = min * 0.025;
+  ctx.stroke();
+  ctx.restore();
+
+  ctx.textBaseline = "alphabetic";
+
+  if (!vertical) {
+    const cx = x + w / 2;
+    const padIn = w * 0.08;
+    // ── time counter (hero) ──
+    const timePx = fitText(ctx, sample, w * 0.3, 800, w - padIn * 2);
+    setFont(ctx, timePx, 800);
+    ctx.textAlign = "center";
+    ctx.save();
+    ctx.shadowColor = "rgba(120,150,210,0.55)";
+    ctx.shadowBlur = w * 0.04;
+    ctx.fillStyle = "#f4f6fa";
+    ctx.fillText(fmtTime(curT, span), cx, y + padIn + timePx);
+    ctx.restore();
+    let cy = y + padIn + timePx + h * 0.04;
+    ctx.strokeStyle = "rgba(245,196,81,0.28)";
+    ctx.lineWidth = Math.max(1, min * 0.004);
+    ctx.beginPath();
+    ctx.moveTo(x + padIn, cy);
+    ctx.lineTo(x + w - padIn, cy);
+    ctx.stroke();
+    cy += h * 0.02;
+    const bottomY = y + h;
+
+    if (ev) {
+      // ── event beat ──
+      ctx.globalAlpha = evAlpha;
+      const titleLines = wrapLines(ctx, ev.title, min * 0.062, 800, w - padIn * 1.4, 3);
+      let ty = cy + min * 0.07;
+      ctx.fillStyle = "#f4f6fa";
+      for (const ln of titleLines) {
+        setFont(ctx, min * 0.062, 800);
+        ctx.fillText(ln, cx, ty);
+        ty += min * 0.068;
+      }
+      ty += min * 0.02;
+      const descLines = wrapLines(ctx, ev.description, min * 0.044, 600, w - padIn * 1.2, 5);
+      ctx.fillStyle = "rgba(214,222,234,0.85)";
+      for (const ln of descLines) {
+        setFont(ctx, min * 0.044, 600);
+        ctx.fillText(ln, cx, ty);
+        ty += min * 0.056;
+      }
+      drawEventMedia(ctx, ev, race, cx, bottomY - h * 0.07, w - padIn * 1.2, min * 0.13);
+      ctx.globalAlpha = 1;
+    } else if (leader) {
+      // ── LEADER callout (fills the card when there's no event) ──
+      const labY = cy + h * 0.075;
+      setFont(ctx, min * 0.052, 800);
+      ctx.fillStyle = ARENA_GOLD;
+      ctx.fillText("◆ LEADER", cx, labY);
+      const zoneTop = labY + min * 0.03;
+      const zoneBot = bottomY - h * 0.06;
+      const avRad = Math.min(w * 0.24, (zoneBot - zoneTop) * 0.32);
+      const avCy = zoneTop + avRad + (zoneBot - zoneTop) * 0.05;
+      ctx.save();
+      ctx.shadowColor = leader.e.color;
+      ctx.shadowBlur = avRad * 0.7;
+      drawEntityAvatar(ctx, leader.e, cx, avCy, avRad);
+      ctx.restore();
+      const nameY = avCy + avRad + min * 0.085;
+      setFont(ctx, fitText(ctx, leader.e.name, min * 0.07, 800, w - padIn * 1.2), 800);
+      ctx.fillStyle = "#ffffff";
+      ctx.fillText(leader.e.name, cx, nameY);
+      const vStr = fmtValue(leader.v, race);
+      const vpx = fitText(ctx, vStr, min * 0.1, 800, w - padIn * 1.2);
+      setFont(ctx, vpx, 800);
+      ctx.save();
+      ctx.shadowColor = leader.e.color;
+      ctx.shadowBlur = w * 0.05;
+      ctx.fillStyle = mixHex(leader.e.color, 255, 0.5);
+      ctx.fillText(vStr, cx, nameY + vpx * 1.12);
+      ctx.restore();
+    }
+  } else {
+    // ── vertical: time on the left, event or LEADER callout on the right ──
+    const padIn = h * 0.1;
+    const leftW = w * 0.42;
+    const dx = x + leftW;
+    ctx.textAlign = "left";
+    const timePx = fitText(ctx, sample, h * 0.34, 800, leftW - padIn * 1.4);
+    setFont(ctx, timePx, 800);
+    ctx.save();
+    ctx.shadowColor = "rgba(120,150,210,0.55)";
+    ctx.shadowBlur = h * 0.05;
+    ctx.fillStyle = "#f4f6fa";
+    ctx.fillText(fmtTime(curT, span), x + padIn, y + h * 0.44);
+    ctx.restore();
+    // divider between time and the right zone
+    ctx.strokeStyle = "rgba(245,196,81,0.22)";
+    ctx.lineWidth = Math.max(1, min * 0.008);
+    ctx.beginPath();
+    ctx.moveTo(dx, y + h * 0.16);
+    ctx.lineTo(dx, y + h * 0.84);
+    ctx.stroke();
+    const zw = x + w - dx - padIn * 1.6; // text width in the right zone
+    const rcx = dx + (x + w - dx) / 2; // right-zone centre
+
+    if (ev) {
+      ctx.globalAlpha = evAlpha;
+      const tx = dx + padIn;
+      const titleLines = wrapLines(ctx, ev.title, h * 0.12, 800, zw, 3);
+      let ty = y + h * 0.19;
+      ctx.fillStyle = "#f4f6fa";
+      for (const ln of titleLines) {
+        setFont(ctx, h * 0.12, 800);
+        ctx.fillText(ln, tx, ty);
+        ty += h * 0.13;
+      }
+      const descLines = wrapLines(ctx, ev.description, h * 0.08, 600, zw, 3);
+      let dy = ty + h * 0.04;
+      ctx.fillStyle = "rgba(214,222,234,0.85)";
+      for (const ln of descLines) {
+        setFont(ctx, h * 0.08, 600);
+        ctx.fillText(ln, tx, dy);
+        dy += h * 0.095;
+      }
+      drawEventMedia(ctx, ev, race, rcx, y + h * 0.9, zw, h * 0.14);
+      ctx.globalAlpha = 1;
+    } else if (leader) {
+      // ◆ LEADER under the time counter
+      setFont(ctx, h * 0.085, 800);
+      ctx.fillStyle = ARENA_GOLD;
+      ctx.fillText("◆ LEADER", x + padIn, y + h * 0.66);
+      // avatar centred in the right zone, name + value stacked below
+      const avRad = h * 0.24;
+      const avCy = y + h * 0.38;
+      ctx.save();
+      ctx.shadowColor = leader.e.color;
+      ctx.shadowBlur = avRad * 0.7;
+      drawEntityAvatar(ctx, leader.e, rcx, avCy, avRad);
+      ctx.restore();
+      ctx.textAlign = "center";
+      setFont(ctx, fitText(ctx, leader.e.name, h * 0.13, 800, zw), 800);
+      ctx.fillStyle = "#ffffff";
+      ctx.fillText(leader.e.name, rcx, y + h * 0.79);
+      const vStr = fmtValue(leader.v, race);
+      const vpx = fitText(ctx, vStr, h * 0.18, 800, zw);
+      setFont(ctx, vpx, 800);
+      ctx.save();
+      ctx.shadowColor = leader.e.color;
+      ctx.shadowBlur = h * 0.06;
+      ctx.fillStyle = mixHex(leader.e.color, 255, 0.5);
+      ctx.fillText(vStr, rcx, y + h * 0.94);
+      ctx.restore();
+    }
+  }
+  ctx.textAlign = "left";
+  ctx.textBaseline = "alphabetic";
+}
+
+/* ── EIGHTH design: "Arena" — a cinematic, dark, glowing battle ────────────────
+ * The flagship look: on a dark spotlit arena, each competitor is a GLOWING energy
+ * bar (vibrant gradient + colour glow + a bright leading edge) with particle
+ * SPARKS streaming off its front (the kinetic "battle" energy), a glowing avatar,
+ * a white name inside and a glowing value after. The leader burns brightest (extra
+ * glow + more sparks). The story/year sits on a clean light "scoreboard" card so
+ * the chrome stays crisp. Reuses the bar layout, media + story-panel logic. */
+function drawRaceArena(ctx: CanvasRenderingContext2D, W: number, H: number, race: RaceData, state: RaceState, el: number) {
+  const min = Math.min(W, H);
+  const vertical = H > W;
+  const t0 = race.frames[0].time;
+  const t1 = race.frames[race.frames.length - 1].time;
+  const prog = clamp01(race.durationSec > 0 ? el / race.durationSec : 1);
+  const curT = t0 + (t1 - t0) * prog;
+  const vals = valuesAt(race, curT);
+  const ranked = race.entities
+    .map((e) => ({ e, v: vals.get(e.name)?.v || 0, fade: vals.get(e.name)?.fade ?? 1 }))
+    .sort((a, b) => b.v - a.v);
+
+  if (!state.peak) {
+    let p = 1;
+    let prev: Set<string> | null = null;
+    for (const f of race.frames) {
+      const cur = new Set<string>();
+      for (const nm in f.values) if (f.values[nm] > 1e-6) cur.add(nm);
+      let simul = cur.size;
+      if (prev) for (const nm of prev) if (!cur.has(nm)) simul++;
+      if (simul > p) p = simul;
+      prev = cur;
+    }
+    state.peak = Math.min(p, race.topN);
+  }
+
+  const dt = state.init ? Math.max(0, Math.min(0.1, el - state.lastEl)) : 0;
+  const kRank = state.init ? 1 - Math.exp(-dt * 8) : 1;
+  const kMax = state.init ? 1 - Math.exp(-dt * 5) : 1;
+  const live = ranked.filter((r) => r.v > 1e-6 && r.fade > 0.05);
+  live.forEach((r, idx) => {
+    const cur = state.disp.has(r.e.name) ? state.disp.get(r.e.name)! : idx;
+    state.disp.set(r.e.name, cur + (idx - cur) * kRank);
+  });
+  const targetMax = Math.max(1e-6, live.length ? live[0].v : 1);
+  state.max = state.init ? state.max + (targetMax - state.max) * kMax : targetMax;
+  const maxV = Math.max(1e-6, state.max);
+  state.lastEl = el;
+  state.init = true;
+
+  const { ev, idx: evIdx } = activeEvent(race, curT);
+  if (evIdx !== state.evIdx) {
+    state.evIdx = evIdx;
+    state.evChange = el;
+  }
+  const evAlpha = clamp01((el - state.evChange) / 0.45);
+
+  drawArenaBg(ctx, W, H);
+
+  const padX = W * (vertical ? 0.045 : 0.035);
+  const titleY = H * (vertical ? 0.06 : 0.085);
+  const barsTop = H * (vertical ? 0.12 : 0.17);
+  const barsBottom = H * (vertical ? 0.6 : 0.9);
+  const barsRight = vertical ? W - padX : W * 0.66;
+  const panelX = vertical ? padX : W * 0.675;
+  const panelY = vertical ? H * 0.63 : barsTop;
+  const panelW = vertical ? W - 2 * padX : W * 0.965 - panelX;
+  const panelH = vertical ? H * 0.32 : barsBottom - barsTop;
+
+  // title (white) + subtitle (gold)
+  ctx.textBaseline = "alphabetic";
+  ctx.textAlign = "left";
+  const titlePx = fitText(ctx, race.title, min * (vertical ? 0.055 : 0.05), 800, barsRight - padX);
+  ctx.fillStyle = "#f4f6fa";
+  ctx.fillText(race.title, padX, titleY);
+  if (race.subtitle) {
+    const subPx = min * (vertical ? 0.03 : 0.026);
+    const subLines = wrapLines(ctx, race.subtitle, subPx, 700, barsRight - padX, 2);
+    setFont(ctx, subPx, 700);
+    ctx.fillStyle = ARENA_GOLD;
+    let sy = titleY + titlePx * 0.72;
+    for (const ln of subLines) {
+      ctx.fillText(ln, padX, sy);
+      sy += subPx * 1.08;
+    }
+  }
+
+  // ── glowing energy bars ──
+  const rowDenom = Math.max(state.peak, 2);
+  const rowH = (barsBottom - barsTop) / rowDenom;
+  const barH = rowH * 0.82;
+  const X0 = padX;
+  const ip = barH * 0.2;
+  let globalMax = 1;
+  for (const f of race.frames) for (const nm in f.values) if (f.values[nm] > globalMax) globalMax = f.values[nm];
+  const valuePx = barH * 0.42;
+  setFont(ctx, valuePx, 800);
+  const hasCFlag = race.entities.some((e) => e.kind !== "country" && e.country);
+  const valueReserve = Math.min((vertical ? W : barsRight) * 0.34, ctx.measureText(fmtValue(globalMax, race)).width + (hasCFlag ? barH * 0.64 + ip : 0) + ip * 2.4);
+  const maxBarW = Math.max(barH * 2, barsRight - X0 - valueReserve);
+  const minBarW = barH * 1.5;
+
+  for (let vi = live.length - 1; vi >= 0; vi--) {
+    const r = live[vi];
+    const dispR = state.disp.get(r.e.name)!;
+    if (dispR > race.topN - 0.25) continue;
+    const alpha = clamp01(race.topN - dispR) * r.fade;
+    const yMid = barsTop + dispR * rowH + rowH / 2;
+    const w = Math.max(minBarW, (r.v / maxV) * maxBarW);
+    const isLeader = vi === 0;
+    ctx.globalAlpha = alpha;
+
+    // glowing gradient bar
+    ctx.save();
+    ctx.shadowColor = r.e.color;
+    ctx.shadowBlur = barH * (isLeader ? 0.6 : 0.4);
+    const grad = ctx.createLinearGradient(X0, 0, X0 + w, 0);
+    grad.addColorStop(0, mixHex(r.e.color, 0, 0.4));
+    grad.addColorStop(0.82, r.e.color);
+    grad.addColorStop(1, mixHex(r.e.color, 255, 0.5));
+    roundRect(ctx, X0, yMid - barH / 2, w, barH, barH * 0.22);
+    ctx.fillStyle = grad;
+    ctx.fill();
+    ctx.restore();
+
+    // sparks streaming off the leading edge (deterministic → smooth + export-safe)
+    const leadX = X0 + w;
+    const sn = isLeader ? 6 : 3;
+    ctx.save();
+    for (let s = 0; s < sn; s++) {
+      const seed = vi * 0.37 + s * 0.613;
+      const phase = (el * 0.5 + seed) % 1;
+      const px = leadX + phase * barH * 1.5;
+      const py = yMid + Math.sin(seed * 12.9 + s) * barH * 0.55 * phase;
+      const pr = Math.max(1, barH * 0.07 * (1 - phase * 0.5));
+      ctx.beginPath();
+      ctx.arc(px, py, pr, 0, Math.PI * 2);
+      ctx.fillStyle = mixHex(r.e.color, 255, 0.55);
+      ctx.globalAlpha = (1 - phase) * 0.85 * alpha;
+      ctx.shadowColor = r.e.color;
+      ctx.shadowBlur = pr * 2.5;
+      ctx.fill();
+    }
+    ctx.restore();
+    ctx.globalAlpha = alpha;
+
+    // avatar at the bar end (glowing)
+    const fit: MediaFit = r.e.kind === "person" ? "cover" : "contain";
+    const flagImg = getImg(r.e.image);
+    const flagH = barH * 0.82;
+    const flagW = flagImg ? mediaBoxW(flagImg, flagH, fit) : 0;
+    const flagCx = X0 + w - ip - flagW / 2;
+    ctx.textBaseline = "middle";
+    if (flagImg) {
+      ctx.save();
+      ctx.shadowColor = r.e.color;
+      ctx.shadowBlur = barH * 0.3;
+      drawMedia(ctx, flagImg, flagCx, yMid, flagH, fit);
+      ctx.restore();
+    }
+
+    // name (white inside, else light outside) + value (glowing)
+    setFont(ctx, barH * 0.5, 800);
+    const nameW = ctx.measureText(r.e.name).width;
+    const innerAvail = w - flagW - ip * 2.4;
+    let afterX: number;
+    if (nameW <= innerAvail) {
+      ctx.save();
+      ctx.shadowColor = "rgba(0,0,0,0.55)";
+      ctx.shadowBlur = barH * 0.14;
+      ctx.textAlign = "right";
+      ctx.fillStyle = "#ffffff";
+      ctx.fillText(r.e.name, X0 + w - flagW - ip * 1.6, yMid);
+      ctx.restore();
+      afterX = X0 + w + ip * 1.3;
+    } else {
+      ctx.textAlign = "left";
+      ctx.fillStyle = "#e8ecf2";
+      setFont(ctx, barH * 0.48, 800);
+      const nx = X0 + w + ip * 1.3;
+      ctx.fillText(r.e.name, nx, yMid);
+      setFont(ctx, barH * 0.5, 800);
+      afterX = nx + ctx.measureText(r.e.name).width + ip * 0.9;
+    }
+
+    // country-of-origin flag chip (round) for non-country entities
+    if (r.e.kind !== "country" && r.e.country) {
+      const cimg = getImg(flagUrlFromIso2(r.e.country));
+      if (cimg) {
+        drawCircleMedia(ctx, cimg, afterX + barH * 0.32, yMid, barH * 0.64);
+        afterX += barH * 0.64 + ip * 0.7;
+      }
+    }
+
+    // value — bright with a colour glow
+    ctx.textAlign = "left";
+    const vStr = fmtValue(r.v, race);
+    ctx.save();
+    ctx.shadowColor = r.e.color;
+    ctx.shadowBlur = barH * 0.18;
+    ctx.fillStyle = "#f4f6fa";
+    fitText(ctx, vStr, valuePx, 800, (vertical ? W * 0.97 : panelX) - afterX - ip);
+    ctx.fillText(vStr, afterX, yMid);
+    ctx.restore();
+    ctx.textBaseline = "alphabetic";
+    ctx.globalAlpha = 1;
+  }
+
+  // dark, glowing scoreboard — time counter + event, or a LEADER callout when idle
+  drawArenaScoreboard(ctx, panelX, panelY, panelW, panelH, race, curT, ev, evAlpha, vertical, live[0] || null);
+
+  ctx.textAlign = "left";
+  ctx.textBaseline = "alphabetic";
+  if (race.source) {
+    setFont(ctx, min * 0.026, 700);
+    ctx.fillStyle = "rgba(220,226,235,0.5)";
+    ctx.fillText(`Source: ${race.source}`, padX, H * 0.975);
+  }
+  drawBrandBadge(ctx, W - padX, H * 0.965, min * 0.034);
+}
+
 /** The available visual styles for a stat battle (same data, different look). */
-export type RaceStyle = "bars" | "bubbles" | "trail" | "podium" | "race" | "columns" | "orbit";
+export type RaceStyle = "bars" | "bubbles" | "trail" | "podium" | "race" | "columns" | "orbit" | "arena";
 export const RACE_STYLES: { id: RaceStyle; label: string }[] = [
   { id: "bars", label: "Bars" },
   { id: "bubbles", label: "Bubbles" },
@@ -1916,6 +2376,7 @@ export const RACE_STYLES: { id: RaceStyle; label: string }[] = [
   { id: "race", label: "Race" },
   { id: "columns", label: "Columns" },
   { id: "orbit", label: "Orbit" },
+  { id: "arena", label: "Arena" },
 ];
 /** Draw one race frame in the chosen visual style. */
 export function drawRaceStyle(ctx: CanvasRenderingContext2D, W: number, H: number, race: RaceData, state: RaceState, el: number, style: RaceStyle = "bars") {
@@ -1925,6 +2386,7 @@ export function drawRaceStyle(ctx: CanvasRenderingContext2D, W: number, H: numbe
   else if (style === "race") drawRaceLanes(ctx, W, H, race, state, el);
   else if (style === "columns") drawRaceColumns(ctx, W, H, race, state, el);
   else if (style === "orbit") drawRaceOrbit(ctx, W, H, race, state, el);
+  else if (style === "arena") drawRaceArena(ctx, W, H, race, state, el);
   else drawRaceFrame(ctx, W, H, race, state, el);
 }
 
