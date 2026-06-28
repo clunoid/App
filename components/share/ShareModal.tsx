@@ -173,11 +173,6 @@ export function ShareModal({
     [nameFor]
   );
 
-  const downloadAll = useCallback(() => {
-    // Slight stagger so browsers don't drop the second download.
-    resultsRef.current.forEach((r, i) => setTimeout(() => download(r), i * 350));
-  }, [download]);
-
   const share = useCallback(
     async (item: RenderItem) => {
       try {
@@ -195,9 +190,10 @@ export function ShareModal({
     [download, nameFor, caption, heading]
   );
 
-  // Open a specific platform: save the video(s) first, then open the app (its https
-  // link routes to the installed app on the device, else the web) so the user can
-  // attach the just-saved clip / post the link.
+  // Open a specific platform: save ONE clip first (the vertical when both exist —
+  // browsers reliably allow only a single programmatic download per gesture), then
+  // open the app (its https link routes to the installed app, else the web) so the
+  // user can attach the just-saved clip / post the link.
   const postTo = useCallback(
     (href: string) => {
       try {
@@ -205,9 +201,10 @@ export function ShareModal({
       } catch {
         /* ignore */
       }
-      downloadAll();
+      const first = resultsRef.current[0];
+      if (first) download(first);
     },
-    [downloadAll]
+    [download]
   );
 
   // Ask the brain for a ready-to-paste title + caption + hashtags.
@@ -414,7 +411,7 @@ export function ShareModal({
                     key={p.key}
                     onClick={() => postTo(p.href)}
                     aria-label={`Post to ${p.label}`}
-                    title={`Save the ${multi ? "videos" : "video"} & open ${p.label}`}
+                    title={`Save the video & open ${p.label}`}
                     className="grid h-11 w-11 place-items-center rounded-full text-white shadow-md ring-1 ring-white/15 transition hover:scale-110"
                     style={{ backgroundColor: p.color }}
                   >
@@ -422,7 +419,7 @@ export function ShareModal({
                   </button>
                 ))}
               </div>
-              <p className="mt-2 text-center text-[11px] text-white/45">We’ll save the {multi ? "videos" : "video"} — attach in the app.</p>
+              <p className="mt-2 text-center text-[11px] text-white/45">We’ll save the video — attach in the app.</p>
             </div>
           )}
         </div>
@@ -431,9 +428,9 @@ export function ShareModal({
         <div className="flex gap-2 border-t border-white/10 p-4">
           {ready ? (
             multi ? (
-              <button onClick={downloadAll} className="flex flex-1 items-center justify-center gap-2 rounded-full bg-white py-3 font-extrabold text-black transition hover:bg-white/90">
-                <Download size={18} /> Download both
-              </button>
+              <p className="flex-1 py-1 text-center text-xs font-medium leading-snug text-white/55">
+                Tap <span className="font-bold text-white/80">Save</span> on each size above to download it.
+              </p>
             ) : (
               <>
                 <button onClick={() => download(results[0])} className="flex flex-1 items-center justify-center gap-2 rounded-full bg-white/10 py-3 font-extrabold text-white transition hover:bg-white/20">
