@@ -26,7 +26,7 @@ const TIERS: Tier[] = [
     monthly: "$0",
     credits: "150 credits / month",
     blurb: "Try every feature.",
-    features: ["Try Stat Battle (presets & data)", "Searches, games & Isaac's voice", "Free video export"],
+    features: ["Meet Isaac, your AI host", "Try Stat Battles, search & games", "Free HD video export"],
   },
   {
     id: "pro",
@@ -35,8 +35,17 @@ const TIERS: Tier[] = [
     annual: "$120",
     annualNote: "2 months free",
     credits: "2,000 credits / month",
-    blurb: "For regular creators.",
-    features: ["Custom AI Stat Battles", "Hundreds of searches", "Games & Isaac's voice", "Free video export"],
+    blurb: "Everything you need to create.",
+    features: [
+      "Isaac — your super-intelligent AI host & voice",
+      "Custom, fully-researched AI Stat Battles",
+      "8 cinematic chart designs",
+      "Top-tier AI accuracy on your data",
+      "File analyzer — turn PDFs, CSVs & docs into battles",
+      "Edit any battle just by asking",
+      "Boosted, web-grounded search & games",
+      "Fast, free HD video export",
+    ],
     highlight: true,
   },
   {
@@ -46,8 +55,14 @@ const TIERS: Tier[] = [
     annual: "$300",
     annualNote: "2 months free",
     credits: "6,000 credits / month",
-    blurb: "For power users & creators.",
-    features: ["The most monthly credits", "Custom AI Stat Battles", "Everything in Pro"],
+    blurb: "For power users & studios.",
+    features: [
+      "Everything in Pro — every design & the file analyzer",
+      "6,000 credits — about 3× the Stat Battles",
+      "Maximum AI usage every month",
+      "Best value — more per credit",
+      "Headroom for your most ambitious projects",
+    ],
   },
 ];
 
@@ -85,16 +100,16 @@ export function PricingTiers() {
   const isPro = plan === "pro";
 
   return (
-    <div className="mx-auto w-full max-w-5xl px-5 py-12">
-      <Link href="/home" className="mb-8 inline-flex items-center gap-1.5 text-sm text-ink-faint transition hover:text-ink">
+    <div className="mx-auto w-full max-w-5xl px-5 py-8">
+      <Link href="/home" className="mb-4 inline-flex items-center gap-1.5 text-sm text-ink-faint transition hover:text-ink">
         <ArrowLeft size={15} /> Back to Clunoid
       </Link>
 
       <div className="text-center">
-        <h1 className="font-serif text-4xl text-ink sm:text-5xl">Simple, fair pricing</h1>
-        <p className="mx-auto mt-3 max-w-xl text-ink-muted">
-          One pool of credits powers everything — Stat Battles, search, games and Isaac&apos;s voice. Exporting your
-          videos is always free.
+        <h1 className="font-serif text-2xl text-ink sm:text-3xl">Simple, fair pricing</h1>
+        <p className="mx-auto mt-1.5 max-w-lg text-sm text-ink-muted">
+          One pool of credits powers everything — Stat Battles, search, games &amp; Isaac&apos;s voice. Video export is
+          always free.
         </p>
         {loaded && (
           <p className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-border bg-surface px-3 py-1 text-sm text-clay-soft">
@@ -122,7 +137,7 @@ export function PricingTiers() {
       )}
 
       {/* Monthly / Annual toggle */}
-      <div className="mt-8 flex items-center justify-center">
+      <div className="mt-5 flex items-center justify-center">
         <div className="inline-flex rounded-full border border-border bg-surface p-1 text-sm">
           {(["monthly", "annual"] as Interval[]).map((iv) => (
             <button
@@ -140,7 +155,7 @@ export function PricingTiers() {
         </div>
       </div>
 
-      <div className="mt-8 grid gap-5 sm:grid-cols-3">
+      <div className="mt-6 grid gap-5 sm:grid-cols-3">
         {TIERS.map((t) => {
           const current = plan === t.id;
           const proToMax = isPro && t.id === "max";
