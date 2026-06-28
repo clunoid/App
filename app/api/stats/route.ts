@@ -366,6 +366,7 @@ export async function POST(req: NextRequest) {
   const base = await chargeCredits("stats_plan", ACTION_COSTS.stats_plan, { request: request.slice(0, 80) });
   if (!base.ok) return chargeError(base);
   let opusCharged = false;
+  let opusInvoked = false; // true once the Opus call actually RAN (so we never refund real compute)
 
   try {
     const context = await research(request, NOW_LABEL);
@@ -460,6 +461,7 @@ export async function POST(req: NextRequest) {
           maxTokens: 24000, // many entities × keyframes of JSON — never truncate the series
         })
       ).object;
+      opusInvoked = true; // Opus produced output — its compute cost is real, never refund it
 
       const ek = plan.entityKind;
       const kindOf = (name: string): EntityKind =>
@@ -493,10 +495,11 @@ export async function POST(req: NextRequest) {
     console.error("[stats] build failed:", e);
   }
 
-  // The brain failed (transient) — refund whatever was charged, then for catalogue
-  // topics still hand back VERIFIED (free) World Bank data.
+  // The brain failed — refund the cheap routing fee, but KEEP the Opus charge if
+  // Opus actually ran (real compute; prevents free-Opus abuse via prompts crafted
+  // to fail normalization). Only refund Opus when it was charged but never ran.
   await refund(user.id, ACTION_COSTS.stats_plan, "stats_plan");
-  if (opusCharged) await refund(user.id, ACTION_COSTS.stats_opus, "stats_opus");
+  if (opusCharged && !opusInvoked) await refund(user.id, ACTION_COSTS.stats_opus, "stats_opus");
   if (guess) {
     const v = await buildVerified(guess, request).catch(() => null);
     if (v) return NextResponse.json(normalize(v));

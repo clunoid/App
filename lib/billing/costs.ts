@@ -40,8 +40,9 @@ export const RATE_LIMITS: Record<string, [number, number]> = {
   search: [40, 60],
   game: [20, 60],
   caption: [20, 60],
-  // (no "tts" entry on purpose — voice fires per line and is latency-sensitive, so
-  // it's metered with a single credit RPC; the credit ceiling bounds total spend.)
+  // Voice fires per line; a generous cap that normal beat-by-beat playback never
+  // hits, but which bounds a burst of tiny concurrent calls (vendor overhead).
+  tts: [120, 60],
 };
 
 /** Hard input caps so a single request can't be oversized. */
