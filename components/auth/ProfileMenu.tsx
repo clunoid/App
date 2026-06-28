@@ -82,7 +82,9 @@ export function ProfileMenu() {
         <Link
           href="/pricing"
           title="Credits — view plans"
-          className="flex items-center gap-1 rounded-full border border-border bg-surface px-2.5 py-1 text-sm font-medium text-clay-soft transition hover:bg-surface-2"
+          // Hidden on small screens to de-congest the bar; credits stay visible
+          // inside the profile card below.
+          className="hidden items-center gap-1 rounded-full border border-border bg-surface px-2.5 py-1 text-sm font-medium text-clay-soft transition hover:bg-surface-2 sm:flex"
         >
           <Zap size={13} className="text-clay" /> {balance}
         </Link>

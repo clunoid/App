@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { Mic, MicOff, Send, Loader2, Search, History, Gamepad2, BarChart3 } from "lucide-react";
+import { Mic, MicOff, Send, Loader2, Search, History } from "lucide-react";
 import { useClunoid } from "@/lib/store/useClunoid";
 import { useSpeechInput } from "@/lib/voice/useSpeechInput";
 import { useMicLevel } from "@/lib/voice/useMicLevel";
@@ -13,6 +13,9 @@ import { SceneRenderer } from "@/components/stage/SceneRenderer";
 import { Caption } from "@/components/stage/Caption";
 import { HistoryPanel } from "@/components/stage/HistoryPanel";
 import { ProfileMenu } from "@/components/auth/ProfileMenu";
+import { FeatureNotes } from "@/components/home/FeatureNotes";
+import { FeatureChooser } from "@/components/home/FeatureChooser";
+import { FEATURES, matchFeature, type FeatureDef } from "@/lib/features";
 import { cn } from "@/lib/utils";
 
 /** Per-feature badge shown top-left while content is on the Stage. As we add
@@ -21,28 +24,6 @@ const BADGES: Record<string, { label: string }> = {
   explainer: { label: "Search" },
   rich_card: { label: "Search" },
 };
-
-/** A flag-game request → routed to the (brain-built) game instead of a search. */
-function isGameRequest(t: string): boolean {
-  const s = t.toLowerCase();
-  if (/\bguess\s+the\s+(flag|countr)/.test(s)) return true;
-  if (/\bflags?\b/.test(s) && /\b(game|quiz|challenge|play|guess|round|mode)\b/.test(s)) return true;
-  if (/\bflag\s+(game|quiz)\b/.test(s)) return true;
-  if (/\b(play|start)\b.*\b(flag|country|countries)\b/.test(s)) return true;
-  return false;
-}
-
-/** A stat-battle / bar-chart-race request → routed to the /stats feature. */
-function isStatRequest(t: string): boolean {
-  const s = t.toLowerCase();
-  if (/\b(bar[-\s]?chart\s*race|stat\s*(battle|race)|ranking\s*over\s*time|race\s*chart)\b/.test(s)) return true;
-  if (
-    /\b(gdp|elo|population|net worth|market cap|subscribers?|medals?|emissions|co2|military spending|defen[cs]e spending|life expectancy|inflation|per capita|largest economies|richest countries|most populous)\b/.test(s) &&
-    /\b(over time|race|battle|history|ranking|rankings|\d{4})\b/.test(s)
-  )
-    return true;
-  return false;
-}
 
 /**
  * The authenticated app — Clunoid's full-screen Stage. Type (or speak) anything;
@@ -60,6 +41,8 @@ export default function Home() {
   const [interim, setInterim] = useState("");
   const [typed, setTyped] = useState("");
   const [micOn, setMicOn] = useState(false);
+  // When a query looks like a feature (Games, Stat Battle, …) we ask first.
+  const [pending, setPending] = useState<{ feature: FeatureDef; query: string } | null>(null);
   const bufferRef = useRef("");
   const silenceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const taRef = useRef<HTMLTextAreaElement | null>(null);
@@ -76,19 +59,30 @@ export default function Home() {
 
   function handleInput(text: string) {
     setInterim("");
-    // Flag-game requests go through the brain-built game, not a search. Stop any
-    // in-progress Isaac speech here so it doesn't carry over into the game.
-    if (isGameRequest(text)) {
-      useClunoid.getState().interrupt();
-      router.push(`/games/flags?q=${encodeURIComponent(text)}`);
-      return;
-    }
-    if (isStatRequest(text)) {
-      useClunoid.getState().interrupt();
-      router.push(`/stats?q=${encodeURIComponent(text)}`);
+    // If it looks like a feature (Games, Stat Battle, …), ask whether to open it
+    // or just search — instead of silently routing away from Isaac.
+    const feature = matchFeature(text);
+    if (feature) {
+      setPending({ feature, query: text });
       return;
     }
     send(text);
+  }
+
+  // Chooser actions: open the matched feature with the query, or run it as a
+  // normal search. Either way the prompt closes.
+  function openPending() {
+    if (!pending) return;
+    const href = pending.feature.open(pending.query);
+    setPending(null);
+    useClunoid.getState().interrupt(); // don't let Isaac speech carry into the feature
+    router.push(href);
+  }
+  function searchPending() {
+    if (!pending) return;
+    const q = pending.query;
+    setPending(null);
+    send(q);
   }
 
   const { supported, enable, disable } = useSpeechInput({
@@ -204,18 +198,18 @@ export default function Home() {
         <div className="flex shrink-0 items-center justify-between gap-3 px-5 py-4">
           <div className="flex items-center gap-3">
             <span className="font-serif text-lg text-ink/80">clunoid</span>
-            <Link
-              href="/games"
-              className="inline-flex items-center gap-1.5 rounded-full border border-border bg-surface/70 px-3 py-1 text-sm text-ink-muted transition hover:border-clay hover:text-ink"
-            >
-              <Gamepad2 size={15} /> Games
-            </Link>
-            <Link
-              href="/stats"
-              className="inline-flex items-center gap-1.5 rounded-full border border-border bg-surface/70 px-3 py-1 text-sm text-ink-muted transition hover:border-clay hover:text-ink"
-            >
-              <BarChart3 size={15} /> Stat Battle
-            </Link>
+            {/* Driven by the feature registry. Hidden on small screens to keep
+                the bar uncluttered — the sticky notes below and typing a feature
+                name cover access there. */}
+            {FEATURES.map((f) => (
+              <Link
+                key={f.id}
+                href={f.hub}
+                className="hidden items-center gap-1.5 rounded-full border border-border bg-surface/70 px-3 py-1 text-sm text-ink-muted transition hover:border-clay hover:text-ink sm:inline-flex"
+              >
+                <f.Icon size={15} /> {f.label}
+              </Link>
+            ))}
           </div>
           {isaac === "thinking" ? (
             <div className="inline-flex shrink-0 items-center gap-2 rounded-full border border-border bg-surface/90 px-3 py-1 backdrop-blur">
@@ -236,12 +230,13 @@ export default function Home() {
           {experience ? (
             <SceneRenderer />
           ) : isaac === "idle" ? (
-            <div className="mt-[12vh] flex max-w-md flex-col items-center text-center">
+            <div className="mt-[7vh] flex max-w-md flex-col items-center text-center sm:mt-[10vh]">
               <p className="font-serif text-2xl text-ink/90 sm:text-3xl">Ask Isaac anything</p>
               <p className="mt-3 text-ink-muted">
                 A word, a person, a place, today&apos;s news — type it below and Clunoid
                 will think it through and show you.
               </p>
+              <FeatureNotes />
             </div>
           ) : null}
         </div>
@@ -326,6 +321,15 @@ export default function Home() {
       </div>
 
       <HistoryPanel />
+
+      {/* "Open the feature, or just search?" — shown when a query matches one. */}
+      <FeatureChooser
+        feature={pending?.feature ?? null}
+        query={pending?.query ?? ""}
+        onOpen={openPending}
+        onSearch={searchPending}
+        onClose={() => setPending(null)}
+      />
     </main>
   );
 }
