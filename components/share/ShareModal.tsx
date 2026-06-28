@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState, type ComponentType } from "re
 import { Download, Share2, X, Film, Loader2, Smartphone, Monitor, Layers, Instagram, Youtube, Facebook, Sparkles, Copy, Check, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { canRecordVideo, type ReelAspect, type ReelSpec } from "@/lib/share/reel";
 import { renderReel } from "@/lib/share/renderer";
+import { useBilling } from "@/lib/billing/store";
 import { TikTokIcon, XIcon, WhatsAppIcon } from "./SocialIcons";
 
 type Status = "idle" | "rendering" | "ready" | "unsupported" | "error";
@@ -50,9 +51,9 @@ export function ShareModal({
 }: {
   open: boolean;
   onClose: () => void;
-  makeSpec?: (aspect: ReelAspect) => ReelSpec;
+  makeSpec?: (aspect: ReelAspect, opts: { branded: boolean }) => ReelSpec;
   // Optional custom renderer (e.g. the Stat Battle race). Defaults to renderReel(makeSpec).
-  render?: (aspect: ReelAspect, opts: { host: HTMLElement | null; signal: AbortSignal; onProgress: (p: number, l: string) => void }) => Promise<{ blob: Blob; ext: string; mime: string; hadVoice: boolean }>;
+  render?: (aspect: ReelAspect, opts: { host: HTMLElement | null; signal: AbortSignal; onProgress: (p: number, l: string) => void; branded: boolean }) => Promise<{ blob: Blob; ext: string; mime: string; hadVoice: boolean }>;
   fileName?: string;
   heading?: string; // modal title (e.g. "Share your stat battle")
   idleHint?: string; // the idle preview hint (defaults to the game wording)
@@ -64,6 +65,10 @@ export function ShareModal({
   const [capLoading, setCapLoading] = useState(false);
   const [copied, setCopied] = useState(false);
   const [aspect, setAspect] = useState<AspectChoice>("9:16");
+  // Pro/Max can export an unbranded video (no watermark, no clunoid mention).
+  const plan = useBilling((s) => s.plan);
+  const isSubscriber = plan === "pro" || plan === "max";
+  const [branded, setBranded] = useState(true);
   const [status, setStatus] = useState<Status>("idle");
   const [pct, setPct] = useState(0);
   const [label, setLabel] = useState("");
@@ -134,8 +139,8 @@ export function ShareModal({
           if (l.toLowerCase().includes("background")) setBgSafe(true);
         };
         const res = render
-          ? await render(a, { host: hostRef.current, signal: ac.signal, onProgress })
-          : await renderReel(makeSpec!(a), { host: hostRef.current, signal: ac.signal, onProgress });
+          ? await render(a, { host: hostRef.current, signal: ac.signal, onProgress, branded })
+          : await renderReel(makeSpec!(a, { branded }), { host: hostRef.current, signal: ac.signal, onProgress });
         if (ac.signal.aborted) {
           out.forEach((r) => URL.revokeObjectURL(r.url)); // don't orphan an already-finished size
           return;
@@ -152,7 +157,7 @@ export function ShareModal({
       console.error("reel render failed", e);
       setStatus("error");
     }
-  }, [aspect, cleanupUrls, makeSpec, render]);
+  }, [aspect, branded, cleanupUrls, makeSpec, render]);
 
   const nameFor = useCallback(
     (item: RenderItem) => (resultsRef.current.length > 1 ? `${fileName}-${item.aspect.replace(":", "x")}` : fileName),
@@ -284,6 +289,35 @@ export function ShareModal({
               </button>
             ))}
           </div>
+
+          {/* Pro/Max: choose to remove the watermark (and any clunoid mention). */}
+          {isSubscriber && (
+            <button
+              type="button"
+              disabled={status === "rendering"}
+              onClick={() => {
+                setBranded((b) => !b);
+                cleanupUrls();
+                setResults([]);
+                if (status === "ready") setStatus("idle");
+              }}
+              aria-pressed={!branded}
+              className="flex items-center justify-between gap-3 rounded-2xl bg-white/[0.04] px-4 py-3 text-left ring-1 ring-white/10 transition hover:bg-white/[0.07] disabled:opacity-50"
+            >
+              <span className="flex items-center gap-2">
+                <Sparkles size={16} className="shrink-0 text-violet-300" />
+                <span>
+                  <span className="block text-sm font-bold">Remove watermark</span>
+                  <span className="block text-[11px] text-white/55">
+                    {branded ? "Pro & Max — your video, no clunoid mark or mention" : "Unbranded — no watermark, no clunoid, Isaac won't name the site"}
+                  </span>
+                </span>
+              </span>
+              <span className={`relative h-6 w-11 shrink-0 rounded-full transition ${!branded ? "bg-violet-500" : "bg-white/20"}`}>
+                <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-all ${!branded ? "left-[1.375rem]" : "left-0.5"}`} />
+              </span>
+            </button>
+          )}
 
           {/* preview / results */}
           {ready && multi ? (

@@ -208,6 +208,7 @@ function drawBg(ctx: CanvasRenderingContext2D, W: number, H: number, theme: Reel
 }
 
 function drawBrand(ctx: CanvasRenderingContext2D, W: number, H: number, spec: ReelSpec) {
+  if (!spec.brand) return; // unbranded (subscriber) export — no watermark
   const ink = spec.theme.mode === "rays" ? "rgba(255,255,255,0.85)" : "rgba(44,40,35,0.55)";
   text(ctx, spec.brand, W / 2, H * 0.965, Math.min(W, H) * 0.032, ink, { weight: 800 });
 }
@@ -324,12 +325,14 @@ function drawOutro(ctx: CanvasRenderingContext2D, W: number, H: number, spec: Re
   // Call to action — invite viewers to play (clunoid.com is the hero).
   text(ctx, spec.outro.headline, W / 2, H * 0.32, min * 0.082, spec.theme.accent, { weight: 800, shadow, maxW: W * 0.9 });
   if (spec.outro.scoreText) text(ctx, spec.outro.scoreText, W / 2, H * 0.42, min * 0.044, ink, { weight: 700, shadow, maxW: W * 0.85 });
-  const sc = 0.82 + 0.18 * ease(p * 3);
-  ctx.save();
-  ctx.translate(W / 2, H * 0.57);
-  ctx.scale(sc, sc);
-  text(ctx, spec.brand, 0, 0, min * 0.11, spec.theme.accent, { weight: 800, shadow });
-  ctx.restore();
+  if (spec.brand) {
+    const sc = 0.82 + 0.18 * ease(p * 3);
+    ctx.save();
+    ctx.translate(W / 2, H * 0.57);
+    ctx.scale(sc, sc);
+    text(ctx, spec.brand, 0, 0, min * 0.11, spec.theme.accent, { weight: 800, shadow });
+    ctx.restore();
+  }
   if (spec.outro.sub) text(ctx, spec.outro.sub, W / 2, H * 0.67, min * 0.04, ink, { weight: 700, shadow, maxW: W * 0.85 });
   ctx.globalAlpha = 1;
 }

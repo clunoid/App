@@ -495,7 +495,10 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
   );
 
   // Map a game (live or saved-from-history) into the share module's reel spec.
-  const buildReelSpec = useCallback((aspect: ReelAspect): ReelSpec => buildGameReel(snapshot(), aspect), [snapshot]);
+  const buildReelSpec = useCallback(
+    (aspect: ReelAspect, opts: { branded: boolean }): ReelSpec => buildGameReel(snapshot(), aspect, opts.branded),
+    [snapshot]
+  );
 
   // ── Screens ──────────────────────────────────────────────────────────────
   if (phase === "menu") {
@@ -523,7 +526,7 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
           }}
         />
         {historyVideo && (
-          <ShareModal open onClose={() => setHistoryVideo(null)} makeSpec={(a) => buildGameReel(historyVideo, a)} fileName="clunoid-flags" />
+          <ShareModal open onClose={() => setHistoryVideo(null)} makeSpec={(a, o) => buildGameReel(historyVideo, a, o.branded)} fileName="clunoid-flags" />
         )}
       </>
     );

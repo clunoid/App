@@ -19,7 +19,7 @@ export const QUESTIONS = [
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
-export function buildGameReel(s: GameSnapshot, aspect: ReelAspect): ReelSpec {
+export function buildGameReel(s: GameSnapshot, aspect: ReelAspect, branded = true): ReelSpec {
   const choiceMode = s.answerMode === "choice";
   const theme = choiceMode
     ? { mode: "document" as const, bg: "#c8c5bd", accent: "#8a2433", ink: "#2c2823" }
@@ -34,7 +34,8 @@ export function buildGameReel(s: GameSnapshot, aspect: ReelAspect): ReelSpec {
     theme,
     title: "Guess The Country",
     subtitle: s.subtitle,
-    brand: "clunoid.com",
+    brand: branded ? "clunoid.com" : "", // unbranded export → no watermark / outro hero
+
     intro: {
       headline: "Guess The Country",
       sub: s.subtitle ? "Can you name them all?" : "Can you name these flags?",
@@ -55,8 +56,11 @@ export function buildGameReel(s: GameSnapshot, aspect: ReelAspect): ReelSpec {
     outro: {
       headline: "Your turn!",
       scoreText: `I scored ${s.score}/${s.total}`,
-      sub: "Play this game on clunoid.com",
-      narration: `I scored ${s.score} out of ${s.total}. Think you can beat me? Play this game on clunoid dot com. Your turn!`,
+      sub: branded ? "Play this game on clunoid.com" : undefined,
+      // No site name in Isaac's voice when unbranded — the subscriber owns the clip.
+      narration: branded
+        ? `I scored ${s.score} out of ${s.total}. Think you can beat me? Play this game on clunoid dot com. Your turn!`
+        : `I scored ${s.score} out of ${s.total}. Think you can beat me? Your turn!`,
     },
   };
 }

@@ -164,7 +164,7 @@ function fmtTime(curT: number, span: number): string {
 }
 
 /* ── per-frame smoothing state (shared by live preview + export) ──────────── */
-export type RaceState = { disp: Map<string, number>; max: number; init: boolean; lastEl: number; leader: string; evIdx: number; evChange: number; vis: number; peak: number; bub: Map<string, { x: number; y: number; r?: number }> };
+export type RaceState = { disp: Map<string, number>; max: number; init: boolean; lastEl: number; leader: string; evIdx: number; evChange: number; vis: number; peak: number; bub: Map<string, { x: number; y: number; r?: number }>; branded?: boolean };
 export function newRaceState(): RaceState {
   return { disp: new Map(), max: 0, init: false, lastEl: 0, leader: "", evIdx: -1, evChange: 0, vis: 0, peak: 0, bub: new Map() };
 }
@@ -753,7 +753,7 @@ export function drawRaceFrame(ctx: CanvasRenderingContext2D, W: number, H: numbe
     ctx.fillText(`Source: ${race.source}`, padX, H * 0.975);
   }
   // brand badge (bottom-right) — clearly visible, out of the way of the data
-  drawBrandBadge(ctx, W - padX, H * 0.965, min * 0.034);
+  if (state.branded !== false) drawBrandBadge(ctx, W - padX, H * 0.965, min * 0.034);
 }
 
 /* ── SECOND design: a "bubble" race ───────────────────────────────────────────
@@ -925,7 +925,7 @@ function drawRaceBubbles(ctx: CanvasRenderingContext2D, W: number, H: number, ra
     ctx.fillStyle = "rgba(44,40,35,0.45)";
     ctx.fillText(`Source: ${race.source}`, padX, H * 0.975);
   }
-  drawBrandBadge(ctx, W - padX, H * 0.965, min * 0.034);
+  if (state.branded !== false) drawBrandBadge(ctx, W - padX, H * 0.965, min * 0.034);
 }
 
 /** Smooth (horizontal-tangent) path through points — gives the bump trails their
@@ -1149,7 +1149,7 @@ function drawRaceBump(ctx: CanvasRenderingContext2D, W: number, H: number, race:
     ctx.fillStyle = "rgba(44,40,35,0.45)";
     ctx.fillText(`Source: ${race.source}`, padX, H * 0.975);
   }
-  drawBrandBadge(ctx, W - padX, H * 0.965, min * 0.034);
+  if (state.branded !== false) drawBrandBadge(ctx, W - padX, H * 0.965, min * 0.034);
 }
 
 /** A circular entity avatar: color identity ring + best media (own logo/photo/flag
@@ -1397,7 +1397,7 @@ function drawRacePodium(ctx: CanvasRenderingContext2D, W: number, H: number, rac
     ctx.fillStyle = "rgba(44,40,35,0.45)";
     ctx.fillText(`Source: ${race.source}`, padX, H * 0.975);
   }
-  drawBrandBadge(ctx, W - padX, H * 0.965, min * 0.034);
+  if (state.branded !== false) drawBrandBadge(ctx, W - padX, H * 0.965, min * 0.034);
 }
 
 /* ── small colour helper (entity hex → rgba, for the comet gradients) ───────── */
@@ -1606,7 +1606,7 @@ function drawRaceLanes(ctx: CanvasRenderingContext2D, W: number, H: number, race
     ctx.fillStyle = "rgba(44,40,35,0.45)";
     ctx.fillText(`Source: ${race.source}`, padX, H * 0.975);
   }
-  drawBrandBadge(ctx, W - padX, H * 0.965, min * 0.034);
+  if (state.branded !== false) drawBrandBadge(ctx, W - padX, H * 0.965, min * 0.034);
 }
 
 /** Path for a column: rounded TOP corners, square bottom sitting on the baseline. */
@@ -1772,7 +1772,7 @@ function drawRaceColumns(ctx: CanvasRenderingContext2D, W: number, H: number, ra
     ctx.fillStyle = "rgba(44,40,35,0.45)";
     ctx.fillText(`Source: ${race.source}`, padX, H * 0.975);
   }
-  drawBrandBadge(ctx, W - padX, H * 0.965, min * 0.034);
+  if (state.branded !== false) drawBrandBadge(ctx, W - padX, H * 0.965, min * 0.034);
 }
 
 /* ── SEVENTH design: "Orbit" — a radial sunburst race ─────────────────────────
@@ -1947,7 +1947,7 @@ function drawRaceOrbit(ctx: CanvasRenderingContext2D, W: number, H: number, race
     ctx.fillStyle = "rgba(44,40,35,0.45)";
     ctx.fillText(`Source: ${race.source}`, padX, H * 0.975);
   }
-  drawBrandBadge(ctx, W - padX, H * 0.965, min * 0.034);
+  if (state.branded !== false) drawBrandBadge(ctx, W - padX, H * 0.965, min * 0.034);
 }
 
 /** Mix an entity hex toward black (target 0) or white (target 255) by amount t. */
@@ -2434,7 +2434,7 @@ function drawRaceArena(ctx: CanvasRenderingContext2D, W: number, H: number, race
     ctx.fillStyle = "rgba(220,226,235,0.5)";
     ctx.fillText(`Source: ${race.source}`, padX, H * 0.975);
   }
-  drawBrandBadge(ctx, W - padX, H * 0.965, min * 0.034);
+  if (state.branded !== false) drawBrandBadge(ctx, W - padX, H * 0.965, min * 0.034);
 }
 
 /** The available visual styles for a stat battle (same data, different look). */
@@ -2590,12 +2590,15 @@ function drawStatOutro(ctx: CanvasRenderingContext2D, W: number, H: number, p: n
 async function renderRaceVideoRec(
   race: RaceData,
   aspect: ReelAspect,
-  opts: { host?: HTMLElement | null; onProgress?: (p: number, l: string) => void; signal?: AbortSignal; style?: RaceStyle }
+  opts: { host?: HTMLElement | null; onProgress?: (p: number, l: string) => void; signal?: AbortSignal; style?: RaceStyle; branded?: boolean }
 ): Promise<RenderResult> {
   const { w: W, h: H } = aspectSize(aspect);
   const rec = createCanvasRecorder(W, H, 30, opts.host);
   const { ctx, ac, dest } = rec;
   opts.onProgress?.(4, "Loading media…");
+  // Subscribers can export an UNBRANDED video — no watermark, no clunoid outro,
+  // and Isaac never names the site (they own the clip).
+  const branded = opts.branded !== false;
   // Isaac's outro voice — a single PRE-RECORDED clip reused for every video
   // (no per-render TTS). Loaded up front so we know its exact length.
   let outroBuf: AudioBuffer | null = null;
@@ -2603,7 +2606,7 @@ async function renderRaceVideoRec(
     const [, , resp] = await Promise.all([
       document.fonts.load('800 120px "Baloo 2"'),
       preloadRaceImages(race),
-      fetch("/stat-outro.mp3").catch(() => null),
+      branded ? fetch("/stat-outro.mp3").catch(() => null) : Promise.resolve(null),
     ]);
     if (resp?.ok) {
       outroBuf = await ac.decodeAudioData(await resp.arrayBuffer());
@@ -2612,6 +2615,7 @@ async function renderRaceVideoRec(
     /* fonts / images / voice all optional */
   }
   const state = newRaceState();
+  state.branded = branded;
   drawRaceStyle(ctx, W, H, race, state, 0, opts.style);
 
   try {
@@ -2620,7 +2624,7 @@ async function renderRaceVideoRec(
     /* ignore */
   }
   const raceEnd = race.durationSec + END_HOLD;
-  const outroDur = outroBuf ? outroBuf.duration + 1.0 : 3.5;
+  const outroDur = !branded ? 0 : outroBuf ? outroBuf.duration + 1.0 : 3.5;
   const total = raceEnd + outroDur;
   const t0 = ac.currentTime + 0.1;
 
@@ -2647,7 +2651,7 @@ async function renderRaceVideoRec(
       }
       const el = Math.max(0, ac.currentTime - t0);
       try {
-        if (el < raceEnd) drawRaceStyle(ctx, W, H, race, state, Math.min(el, race.durationSec), opts.style);
+        if (el < raceEnd || !branded) drawRaceStyle(ctx, W, H, race, state, Math.min(el, race.durationSec), opts.style);
         else drawStatOutro(ctx, W, H, (el - raceEnd) / outroDur);
       } catch (e) {
         reject(e as Error);
@@ -2668,7 +2672,7 @@ async function renderRaceVideoRec(
 
   const { blob, ext, mime } = await rec.stop();
   opts.onProgress?.(100, "Done");
-  return { blob, ext, mime, hadVoice: !!outroBuf };
+  return { blob, ext, mime, hadVoice: branded ? !!outroBuf : true };
 }
 
 /* ── WebCodecs feature gate + codec pick ──────────────────────────────────────
@@ -2715,7 +2719,7 @@ async function aacSupported(sampleRate: number, channels: number): Promise<boole
 async function renderRaceVideoWeb(
   race: RaceData,
   aspect: ReelAspect,
-  opts: { host?: HTMLElement | null; onProgress?: (p: number, l: string) => void; signal?: AbortSignal; style?: RaceStyle }
+  opts: { host?: HTMLElement | null; onProgress?: (p: number, l: string) => void; signal?: AbortSignal; style?: RaceStyle; branded?: boolean }
 ): Promise<RenderResult> {
   const { w: W, h: H } = aspectSize(aspect);
   const FPS = 30;
@@ -2724,6 +2728,8 @@ async function renderRaceVideoWeb(
   if (!avc) throw new Error("no H.264 config");
 
   opts.onProgress?.(4, "Loading media…");
+  // Subscribers can export an UNBRANDED video (no watermark / outro / site name).
+  const branded = opts.branded !== false;
   // Isaac's pre-recorded outro voice + fonts + bar/event images, loaded up front.
   let outroBuf: AudioBuffer | null = null;
   const ACtor = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
@@ -2732,7 +2738,7 @@ async function renderRaceVideoWeb(
     const [, , resp] = await Promise.all([
       document.fonts.load('800 120px "Baloo 2"'),
       preloadRaceImages(race),
-      fetch("/stat-outro.mp3").catch(() => null),
+      branded ? fetch("/stat-outro.mp3").catch(() => null) : Promise.resolve(null),
     ]);
     if (resp?.ok) outroBuf = await ac.decodeAudioData(await resp.arrayBuffer());
   } catch {
@@ -2793,11 +2799,12 @@ async function renderRaceVideoWeb(
   }
 
   const raceEnd = race.durationSec + END_HOLD;
-  const outroDur = outroBuf ? outroBuf.duration + 1.0 : 3.5;
+  const outroDur = !branded ? 0 : outroBuf ? outroBuf.duration + 1.0 : 3.5;
   const total = raceEnd + outroDur;
   const totalFrames = Math.ceil(total * FPS);
   const usPerFrame = 1e6 / FPS;
   const state = newRaceState();
+  state.branded = branded;
 
   const cleanup = async () => {
     try {
@@ -2829,7 +2836,7 @@ async function renderRaceVideoWeb(
     for (let f = 0; f < totalFrames; f++) {
       checkAbort();
       const el = f / FPS;
-      if (el < raceEnd) drawRaceStyle(ctx, W, H, race, state, Math.min(el, race.durationSec), opts.style);
+      if (el < raceEnd || !branded) drawRaceStyle(ctx, W, H, race, state, Math.min(el, race.durationSec), opts.style);
       else drawStatOutro(ctx, W, H, (el - raceEnd) / outroDur);
       const frame = new VideoFrame(canvas, { timestamp: Math.round(f * usPerFrame), duration: Math.round(usPerFrame) });
       venc.encode(frame);
@@ -2876,7 +2883,7 @@ async function renderRaceVideoWeb(
     const blob = new Blob([target.buffer], { type: "video/mp4" });
     if (!blob.size) throw new Error("empty output");
     opts.onProgress?.(100, "Done");
-    return { blob, ext: "mp4", mime: "video/mp4", hadVoice: !!outroBuf };
+    return { blob, ext: "mp4", mime: "video/mp4", hadVoice: branded ? !!outroBuf : true };
   } catch (e) {
     await cleanup();
     throw e;
@@ -2888,7 +2895,7 @@ async function renderRaceVideoWeb(
 export async function renderRaceVideo(
   race: RaceData,
   aspect: ReelAspect,
-  opts: { host?: HTMLElement | null; onProgress?: (p: number, l: string) => void; signal?: AbortSignal; style?: RaceStyle }
+  opts: { host?: HTMLElement | null; onProgress?: (p: number, l: string) => void; signal?: AbortSignal; style?: RaceStyle; branded?: boolean }
 ): Promise<RenderResult> {
   if (hasWebCodecs()) {
     try {
