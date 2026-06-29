@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Zap, Loader2, RefreshCw, Check, Plus } from "lucide-react";
 import { useBilling } from "@/lib/billing/store";
 import { CREDITS_PER_USD, MIN_TOPUP_CENTS } from "@/lib/billing/costs";
@@ -93,40 +93,73 @@ export function BuyCreditsCard() {
   );
 }
 
-/** Auto-reload — charge the saved card off-session when the balance gets low. */
+/** Auto-reload — charge the saved card off-session when the balance gets low.
+ *  No Save button: flipping the switch (or editing a value while it's on) saves
+ *  and activates instantly, so the green "on" state always means it's truly
+ *  active — never a pending change waiting on a Save click. */
 export function AutoReloadCard() {
   const autoReload = useBilling((s) => s.autoReload);
   const saveAutoReload = useBilling((s) => s.saveAutoReload);
+  const loaded = useBilling((s) => s.loaded);
 
-  // Until the user has saved their prefs, suggest a sensible setup ON by default
-  // (toggle on + 100 / $100 prefilled) so they can just hit Save to activate — or
-  // turn it off. Once saved, reflect exactly what they chose.
-  const cfg = autoReload.configured;
-  const [arEnabled, setArEnabled] = useState(cfg ? autoReload.enabled : true);
-  const [arThreshold, setArThreshold] = useState(String(cfg ? autoReload.threshold : 100));
-  const [arDollars, setArDollars] = useState(String(cfg ? Math.round(autoReload.amountCents / 100) : 100));
+  // The toggle reflects the *real* saved state (off until the user turns it on),
+  // so green ⟺ active. Threshold/amount come prefilled (100 / $100) for a
+  // first-time setup, then mirror whatever the user saved.
+  const [arEnabled, setArEnabled] = useState(autoReload.configured ? autoReload.enabled : false);
+  const [arThreshold, setArThreshold] = useState(String(autoReload.configured ? autoReload.threshold : 100));
+  const [arDollars, setArDollars] = useState(String(autoReload.configured ? Math.round(autoReload.amountCents / 100) : 100));
   const [arSaving, setArSaving] = useState(false);
   const [arSaved, setArSaved] = useState(false);
 
+  // Seed the fields once from the server (when /me first lands). After that the
+  // local fields are authoritative — we never overwrite the user mid-edit.
+  const hydrated = useRef(false);
   useEffect(() => {
+    if (hydrated.current || !loaded) return;
+    hydrated.current = true;
     const c = autoReload.configured;
-    setArEnabled(c ? autoReload.enabled : true);
+    setArEnabled(c ? autoReload.enabled : false);
     setArThreshold(String(c ? autoReload.threshold : 100));
     setArDollars(String(c ? Math.round(autoReload.amountCents / 100) : 100));
-  }, [autoReload.configured, autoReload.enabled, autoReload.threshold, autoReload.amountCents]);
+  }, [loaded, autoReload]);
 
-  const onSaveAr = async () => {
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (saveTimer.current) clearTimeout(saveTimer.current); }, []);
+
+  // Persist the given config and flash a "Saved" confirmation. Returns success.
+  const persist = async (next: { enabled: boolean; threshold: string; dollars: string }) => {
     setArSaving(true);
     const ok = await saveAutoReload({
-      enabled: arEnabled,
-      threshold: Math.max(0, Math.round(parseFloat(arThreshold) || 0)),
-      amountCents: Math.max(MIN_TOPUP_CENTS, Math.round((parseFloat(arDollars) || MIN_DOLLARS) * 100)),
+      enabled: next.enabled,
+      threshold: Math.max(0, Math.round(parseFloat(next.threshold) || 0)),
+      amountCents: Math.max(MIN_TOPUP_CENTS, Math.round((parseFloat(next.dollars) || MIN_DOLLARS) * 100)),
     });
     setArSaving(false);
     if (ok) {
       setArSaved(true);
-      setTimeout(() => setArSaved(false), 2000);
+      setTimeout(() => setArSaved(false), 1800);
     }
+    return ok;
+  };
+
+  // Flip = save immediately. Revert on failure so green never lies about being active.
+  const onToggle = async () => {
+    const next = !arEnabled;
+    setArEnabled(next);
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    const ok = await persist({ enabled: next, threshold: arThreshold, dollars: arDollars });
+    if (!ok) setArEnabled(!next);
+  };
+
+  // Editing a value while on auto-saves (debounced so we don't POST per keystroke).
+  const edit = (field: "threshold" | "dollars", v: string) => {
+    const nextT = field === "threshold" ? v : arThreshold;
+    const nextD = field === "dollars" ? v : arDollars;
+    if (field === "threshold") setArThreshold(v);
+    else setArDollars(v);
+    if (!arEnabled) return;
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => void persist({ enabled: true, threshold: nextT, dollars: nextD }), 700);
   };
 
   return (
@@ -142,15 +175,13 @@ export function AutoReloadCard() {
         </span>
         <div>
           <h3 className="font-serif text-lg text-ink">Auto-reload</h3>
-          <p className="text-xs text-ink-muted">
-            {!arEnabled ? "Never run out mid-flow." : cfg && autoReload.enabled ? "On — tops up when you run low." : "Save to switch it on."}
-          </p>
+          <p className="text-xs text-ink-muted">{arEnabled ? "On — tops up when you run low." : "Never run out mid-flow."}</p>
         </div>
         <button
           type="button"
           role="switch"
           aria-checked={arEnabled}
-          onClick={() => setArEnabled((v) => !v)}
+          onClick={() => void onToggle()}
           className={cn("relative ml-auto h-6 w-11 shrink-0 rounded-full transition", arEnabled ? "bg-ok" : "bg-border")}
         >
           <span className={cn("absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all", arEnabled ? "left-[1.375rem]" : "left-0.5")} />
@@ -166,7 +197,7 @@ export function AutoReloadCard() {
               min={0}
               inputMode="numeric"
               value={arThreshold}
-              onChange={(e) => setArThreshold(e.target.value)}
+              onChange={(e) => edit("threshold", e.target.value)}
               aria-label="Threshold in credits"
               className="w-full min-w-0 bg-transparent font-semibold text-ink outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none"
             />
@@ -182,7 +213,7 @@ export function AutoReloadCard() {
               min={MIN_DOLLARS}
               inputMode="decimal"
               value={arDollars}
-              onChange={(e) => setArDollars(e.target.value)}
+              onChange={(e) => edit("dollars", e.target.value)}
               aria-label="Reload amount in dollars"
               className="w-full min-w-0 bg-transparent font-semibold text-ink outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none"
             />
@@ -191,16 +222,19 @@ export function AutoReloadCard() {
         </label>
       </div>
 
-      <button
-        type="button"
-        onClick={onSaveAr}
-        disabled={arSaving}
-        className="mt-4 flex w-full items-center justify-center gap-2 rounded-full border border-border bg-surface-2 py-3 text-sm font-extrabold text-ink transition hover:bg-surface disabled:opacity-50"
-      >
-        {arSaving ? <Loader2 size={16} className="animate-spin" /> : arSaved ? <Check size={16} className="text-ok" /> : null}
-        {arSaved ? "Saved" : arEnabled ? "Save auto-reload" : "Save (off)"}
-      </button>
-      <p className="mt-2 text-center text-[11px] text-ink-faint">Charges the card from your last purchase. Make one top-up first to save a card.</p>
+      <p className="mt-4 flex min-h-[1.1rem] items-center justify-center gap-1.5 text-center text-[11px] text-ink-faint">
+        {arSaving ? (
+          <>
+            <Loader2 size={12} className="animate-spin" /> Saving…
+          </>
+        ) : arSaved ? (
+          <span className="flex items-center gap-1 font-semibold text-ok">
+            <Check size={12} /> Saved
+          </span>
+        ) : (
+          "Charges the card from your last purchase. Make one top-up first to save a card."
+        )}
+      </p>
     </div>
   );
 }
