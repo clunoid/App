@@ -58,7 +58,7 @@ export function ShareModal({
   heading?: string; // modal title (e.g. "Share your stat battle")
   idleHint?: string; // the idle preview hint (defaults to the game wording)
   caption?: string; // prefilled social caption
-  captionContext?: { title: string; subtitle?: string; source?: string }; // enables the AI caption generator
+  captionContext?: { title: string; subtitle?: string; source?: string; kind?: string }; // enables the AI caption generator
 }) {
   const platforms = buildPlatforms(caption);
   const [cap, setCap] = useState<{ title: string; caption: string; hashtags: string[] } | null>(null);

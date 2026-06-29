@@ -541,7 +541,13 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
           }}
         />
         {historyVideo && (
-          <ShareModal open onClose={() => setHistoryVideo(null)} makeSpec={(a, o) => buildGameReel(historyVideo, a, o.branded)} fileName="clunoid-flags" />
+          <ShareModal
+            open
+            onClose={() => setHistoryVideo(null)}
+            makeSpec={(a, o) => buildGameReel(historyVideo, a, o.branded)}
+            fileName="clunoid-flags"
+            captionContext={{ title: "Guess the Country", subtitle: historyVideo.subtitle, kind: "flag quiz game" }}
+          />
         )}
       </>
     );
@@ -564,7 +570,14 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
           onReplay={replaySame}
           onMenu={exitToMenu}
         />
-        <ShareModal open={shareOpen} onClose={() => setShareOpen(false)} makeSpec={buildReelSpec} fileName="clunoid-flags" />
+        <ShareModal
+          open={shareOpen}
+          onClose={() => setShareOpen(false)}
+          makeSpec={buildReelSpec}
+          fileName="clunoid-flags"
+          caption={`I played Guess the Country${subtitle ? ` (${subtitle})` : ""} on clunoid.com 🌍 Can you beat me?`}
+          captionContext={{ title: "Guess the Country", subtitle, kind: "flag quiz game" }}
+        />
       </>
     );
   }
