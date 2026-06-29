@@ -83,9 +83,9 @@ export function ProfileMenu() {
   return (
     <div className="flex items-center gap-2">
       {billingLoaded && (
-        <button
-          onClick={() => openCredit()}
-          title="Your credits — tap to add more"
+        <Link
+          href="/pricing"
+          title="Your credits — view plans"
           // Hidden on small screens to de-congest the bar; credits stay visible
           // inside the profile card below. Red under $5 of credits, green at $5+.
           className={cn(
@@ -94,7 +94,7 @@ export function ProfileMenu() {
           )}
         >
           <Zap size={13} /> {balance.toLocaleString()}
-        </button>
+        </Link>
       )}
       <div ref={ref} className="relative">
         <button
@@ -133,25 +133,19 @@ export function ProfileMenu() {
                   </span>
                   <span className="font-medium text-spark-soft">{planLabel}</span>
                 </div>
-                <button
-                  onClick={() => {
-                    closeProfile();
-                    openCredit();
-                  }}
-                  className="flex items-center justify-between gap-3 rounded-lg px-2 py-1.5 text-left transition hover:bg-surface-2"
-                >
+                <div className="flex items-center justify-between gap-3 rounded-lg px-2 py-1.5">
                   <span className="flex items-center gap-1.5 text-ink-faint">
-                    <Plus size={14} /> Add credit
+                    <Zap size={14} /> Credits
                   </span>
                   <span
                     className={cn(
-                      "rounded-full px-2 py-0.5 text-xs font-bold",
-                      lowBalance ? "bg-bad/15 text-bad" : "bg-ok/15 text-ok"
+                      "rounded-full px-2.5 py-0.5 text-xs font-extrabold tabular-nums",
+                      lowBalance ? "bg-bad/15 text-bad ring-1 ring-bad/30" : "bg-ok/15 text-ok ring-1 ring-ok/30"
                     )}
                   >
                     {balance.toLocaleString()}
                   </span>
-                </button>
+                </div>
                 {location && (
                   <div className="flex items-center justify-between gap-3 rounded-lg px-2 py-1.5">
                     <span className="flex items-center gap-1.5 text-ink-faint">
@@ -198,6 +192,15 @@ export function ProfileMenu() {
                     </button>
                   </>
                 )}
+                <button
+                  onClick={() => {
+                    closeProfile();
+                    openCredit();
+                  }}
+                  className="mt-2 flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-clay to-clay-soft px-3 py-2.5 text-sm font-extrabold text-[#1F1E1C] shadow-sm transition hover:brightness-105"
+                >
+                  <Plus size={16} strokeWidth={2.5} /> Add credit
+                </button>
                 <Link
                   href="/settings"
                   onClick={closeProfile}

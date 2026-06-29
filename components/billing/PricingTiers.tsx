@@ -101,7 +101,7 @@ export function PricingTiers() {
   const isPro = plan === "pro";
 
   return (
-    <div className="mx-auto w-full max-w-6xl px-5 py-8">
+    <div className="mx-auto w-full max-w-[1920px] px-4 py-8 sm:px-6 lg:px-10 xl:px-14">
       <Link href="/home" className="mb-4 inline-flex items-center gap-1.5 text-sm text-ink-faint transition hover:text-ink">
         <ArrowLeft size={15} /> Back to Clunoid
       </Link>
@@ -156,7 +156,7 @@ export function PricingTiers() {
         </div>
       </div>
 
-      <div className="mt-6 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mt-6 grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
         {TIERS.map((t) => {
           const current = plan === t.id;
           const proToMax = isPro && t.id === "max";
