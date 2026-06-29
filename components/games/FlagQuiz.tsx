@@ -896,31 +896,39 @@ function MenuScreen({
   const [am, setAm] = useState<AnswerMode>("choice");
 
   if (building) {
-    const doc = am === "choice";
     return (
-      <div className="relative grid h-[100dvh] w-screen place-items-center overflow-hidden px-5 py-6 select-none">
-        {doc ? <DocumentBackground /> : <RaysBackground hue={222} />}
-        <div className="relative z-10 w-full max-w-sm">
-          <div className="max-h-[88dvh] overflow-y-auto rounded-3xl border border-white/10 bg-[#1b1916]/95 p-4 shadow-[0_24px_70px_-20px_rgba(0,0,0,0.7)] backdrop-blur">
-            <p className="text-center text-base font-extrabold text-white">Choose your host</p>
-            <p className="mb-3 mt-0.5 text-center text-xs text-white/55">Who narrates your game? You can change it any time.</p>
-            <HostVoicePicker mode="game" />
-            <button
-              onClick={onStart}
-              disabled={!readyToStart}
-              className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl bg-white py-3 text-sm font-extrabold text-black transition hover:bg-white/90 disabled:cursor-default disabled:opacity-50"
-            >
-              {readyToStart ? (
-                <>
-                  <Play size={16} fill="currentColor" /> Start game
-                </>
-              ) : (
-                <>
-                  <Loader2 size={16} className="animate-spin" /> Building your game…
-                </>
-              )}
-            </button>
+      <div className="relative grid h-[100dvh] w-screen place-items-center overflow-hidden select-none">
+        <RaysBackground hue={222} />
+        {/* readability scrim so the floating content reads cleanly over the rays */}
+        <div
+          className="absolute inset-0"
+          style={{ background: "radial-gradient(125% 95% at 50% 36%, rgba(10,13,22,0.40), rgba(7,9,15,0.80) 95%)" }}
+        />
+        <div className="relative z-10 flex h-full w-full max-w-md flex-col px-5 pb-[max(env(safe-area-inset-bottom),1.25rem)] pt-[max(env(safe-area-inset-top),1.5rem)]">
+          <div className="shrink-0 text-center">
+            <h2 className="text-3xl font-extrabold leading-none text-white sm:text-4xl" style={{ textShadow: TITLE_SHADOW }}>
+              Choose your <span style={{ color: YELLOW }}>host</span>
+            </h2>
+            <p className="mt-2 text-sm font-semibold text-white/70">Who narrates your game? You can change it any time.</p>
           </div>
+          <div className="mt-5 min-h-0 flex-1 overflow-y-auto pb-2">
+            <HostVoicePicker mode="game" />
+          </div>
+          <button
+            onClick={onStart}
+            disabled={!readyToStart}
+            className="mt-4 flex w-full shrink-0 items-center justify-center gap-2 rounded-full bg-white py-4 text-base font-extrabold text-black shadow-[0_12px_34px_-10px_rgba(0,0,0,0.7)] transition hover:bg-white/90 disabled:cursor-default disabled:opacity-60"
+          >
+            {readyToStart ? (
+              <>
+                <Play size={18} fill="currentColor" /> Start game
+              </>
+            ) : (
+              <>
+                <Loader2 size={18} className="animate-spin" /> Building your game…
+              </>
+            )}
+          </button>
         </div>
       </div>
     );
