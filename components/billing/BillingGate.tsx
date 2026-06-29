@@ -20,6 +20,7 @@ export function BillingGate() {
   const authed = useClunoid((s) => s.user.isAuthed);
   const refresh = useBilling((s) => s.refresh);
   const upgradeOpen = useBilling((s) => s.upgradeOpen);
+  const upgradeReason = useBilling((s) => s.upgradeReason);
   const closeUpgrade = useBilling((s) => s.closeUpgrade);
   const notice = useBilling((s) => s.notice);
   const setNotice = useBilling((s) => s.setNotice);
@@ -37,10 +38,10 @@ export function BillingGate() {
   // Bind the fetch bus → real actions (once).
   useEffect(() => {
     bindBilling({
-      status: (status) => {
+      status: (status, reason) => {
         if (status === 401) useClunoid.getState().openAuth("login");
         else if (status === 402) {
-          useBilling.getState().openUpgrade();
+          useBilling.getState().openUpgrade(reason);
           void useBilling.getState().refresh();
         } else if (status === 429) {
           useBilling.getState().setNotice("You're going a little fast — give it a moment.");
@@ -89,15 +90,21 @@ export function BillingGate() {
             >
               <div className="mb-3 flex items-center justify-between">
                 <h2 className="flex items-center gap-2 font-serif text-xl text-ink">
-                  <Zap size={18} className="text-clay" /> Out of credits
+                  <Zap size={18} className="text-clay" /> {upgradeReason ? "Not enough credits" : "Out of credits"}
                 </h2>
                 <button onClick={closeUpgrade} className="text-ink-faint hover:text-ink" aria-label="Close">
                   <X size={18} />
                 </button>
               </div>
               <p className="text-sm text-ink-muted">
-                You&apos;ve used your {plan === "free" ? "free" : plan} credits ({balance} left). Buy more now and keep
-                going, or upgrade for a bigger monthly allowance.
+                {upgradeReason ? (
+                  upgradeReason
+                ) : (
+                  <>
+                    You&apos;ve used your {plan === "free" ? "free" : plan} credits ({balance} left). Buy more now and keep
+                    going, or upgrade for a bigger monthly allowance.
+                  </>
+                )}
               </p>
 
               {/* Buy credits right here — enter an amount and go. */}

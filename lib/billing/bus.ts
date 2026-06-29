@@ -6,7 +6,7 @@
  * React stores — which would create import cycles. `BillingGate` binds the real
  * handlers on mount.
  */
-type StatusFn = (status: number) => void;
+type StatusFn = (status: number, reason?: string) => void;
 let onStatus: StatusFn | null = null;
 let onRefresh: (() => void) | null = null;
 
@@ -16,10 +16,12 @@ export function bindBilling(handlers: { status: StatusFn; refresh: () => void })
 }
 
 /** Report a metered response's status. Returns true if it was a billing rejection
- *  (401 / 402 / 429), so the caller knows the request was blocked (not a real failure). */
-export function reportBillingStatus(status: number): boolean {
+ *  (401 / 402 / 429), so the caller knows the request was blocked (not a real
+ *  failure). `reason` (for a 402) is shown in the out-of-credits modal so the
+ *  feature can explain why it needs more credits. */
+export function reportBillingStatus(status: number, reason?: string): boolean {
   if (status === 401 || status === 402 || status === 429) {
-    onStatus?.(status);
+    onStatus?.(status, reason);
     return true;
   }
   return false;

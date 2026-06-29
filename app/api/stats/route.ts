@@ -9,7 +9,7 @@ import { buildWorldBankRace } from "@/lib/stats/sources/worldbank";
 import { flagUrlForName } from "@/lib/stats/flags";
 import { hasSearch, webSearch } from "@/lib/data/search";
 import { requireUser } from "@/lib/auth/requireUser";
-import { chargeCredits, chargeError, refund } from "@/lib/billing/meter";
+import { chargeCredits, chargeError, refund, creditsAvailable } from "@/lib/billing/meter";
 import { ACTION_COSTS, INPUT_CAPS } from "@/lib/billing/costs";
 
 export const runtime = "nodejs";
@@ -358,6 +358,18 @@ export async function POST(req: NextRequest) {
       if (v) return NextResponse.json(normalize(v));
     }
     return NextResponse.json({ error: true }, { status: 200 });
+  }
+
+  // A likely-CUSTOM battle (no catalogue keyword match) will need Opus — the most
+  // intense compute we run. PRE-CHECK that the user can afford the FULL build BEFORE
+  // we spend anything on research/planning, so heavy AI never runs for a request
+  // that can't complete (and they get a clear "this feature is power-intensive"
+  // prompt to top up). Catalogue topics (cheap, ~stats_plan) skip this.
+  if (!guess) {
+    const avail = await creditsAvailable();
+    if (avail !== null && avail < ACTION_COSTS.stats_plan + ACTION_COSTS.stats_opus) {
+      return NextResponse.json({ error: "credits", feature: "stats", balance: avail }, { status: 402 });
+    }
   }
 
   // Meter the BASE build (Sonnet routing/plan + Tavily research). Catalogue topics

@@ -5,6 +5,12 @@ import { GDP_FALLBACK } from "./fallback";
 import { flagUrlForName } from "./flags";
 import { reportBillingStatus, refreshCredits } from "@/lib/billing/bus";
 
+// Shown in the out-of-credits modal when a Stat Battle can't be afforded — it's
+// the most compute-intensive feature (live research + an Opus-built data series +
+// an animated render), so users understand WHY it needs more credits.
+const STAT_BATTLE_CREDIT_REASON =
+  "Stat Battles use serious AI power — Clunoid researches real data across the years, builds an accurate series, and renders your animated chart. That needs more credits than you have right now. Add credits or subscribe to keep creating.";
+
 /** Quick-start stat battles — natural requests the brain researches. First = GDP. */
 export const PRESETS: { label: string; request: string }[] = [
   { label: "GDP Battle", request: "World's Largest Economies by GDP — epic battle, 1960 to today" },
@@ -63,7 +69,7 @@ export async function buildRace(request: string): Promise<RaceData> {
     body: JSON.stringify({ request }),
   });
   if (!res.ok) {
-    reportBillingStatus(res.status);
+    reportBillingStatus(res.status, STAT_BATTLE_CREDIT_REASON);
     throw new Error("stats generation failed");
   }
   const raw = (await res.json()) as RaceRaw & { error?: boolean };
@@ -87,7 +93,7 @@ export async function buildRaceFromFile(payload: {
     body: JSON.stringify(payload),
   });
   if (!res.ok) {
-    reportBillingStatus(res.status);
+    reportBillingStatus(res.status, STAT_BATTLE_CREDIT_REASON);
     throw new Error("file generation failed");
   }
   const raw = (await res.json()) as RaceRaw & { error?: boolean };
@@ -106,7 +112,7 @@ export async function aiEditRace(current: RaceData, instruction: string): Promis
     body: JSON.stringify({ data: current, instruction }),
   });
   if (!res.ok) {
-    reportBillingStatus(res.status);
+    reportBillingStatus(res.status, STAT_BATTLE_CREDIT_REASON);
     throw new Error("stats edit failed");
   }
   const raw = (await res.json()) as RaceRaw & { error?: boolean };

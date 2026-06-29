@@ -19,6 +19,34 @@ import { RATE_LIMITS } from "./costs";
 
 export type Charge = { ok: true; balance: number } | { ok: false; status: 402 | 429; balance: number };
 
+/** Read the current user's spendable credits (monthly balance + purchased),
+ *  accounting for a due monthly refill. Read-only — for a PRE-CHECK before an
+ *  expensive action so we never run heavy compute a user can't pay for. Returns
+ *  null when unauthenticated. Lenient on the refill boundary (never false-blocks). */
+export async function creditsAvailable(): Promise<number | null> {
+  const supabase = await getSupabaseServer();
+  let user: User | null = null;
+  try {
+    ({
+      data: { user },
+    } = await supabase.auth.getUser());
+  } catch {
+    user = null;
+  }
+  if (!user) return null;
+  const { data } = await supabase
+    .from("credit_balances")
+    .select("balance, purchased, monthly_grant, period_start")
+    .eq("user_id", user.id)
+    .maybeSingle();
+  if (!data) return 0;
+  const periodMs = new Date(data.period_start as string).getTime();
+  // ~1 month, slightly lenient so a user about to refill is never blocked.
+  const refillDue = Number.isFinite(periodMs) && Date.now() - periodMs >= 27 * 24 * 3600 * 1000;
+  const monthly = refillDue ? (data.monthly_grant as number) : (data.balance as number);
+  return (monthly || 0) + ((data.purchased as number) || 0);
+}
+
 /** Rate-limit + atomically pre-charge the CURRENT user (call after auth). */
 export async function chargeCredits(action: string, amount: number, meta: Record<string, unknown> = {}): Promise<Charge> {
   const supabase = await getSupabaseServer();

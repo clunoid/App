@@ -15,12 +15,13 @@ type BillingState = {
   autoReload: AutoReload;
   loaded: boolean;
   upgradeOpen: boolean;
+  upgradeReason: string | null;
   creditOpen: boolean;
   notice: string | null;
   busyPlan: string | null;
   buyingCredits: boolean;
   refresh: () => Promise<void>;
-  openUpgrade: () => void;
+  openUpgrade: (reason?: string) => void;
   closeUpgrade: () => void;
   openCredit: () => void;
   closeCredit: () => void;
@@ -47,6 +48,7 @@ export const useBilling = create<BillingState>((set, get) => ({
   autoReload: { enabled: false, threshold: 100, amountCents: 10000, configured: false },
   loaded: false,
   upgradeOpen: false,
+  upgradeReason: null,
   creditOpen: false,
   notice: null,
   busyPlan: null,
@@ -77,8 +79,8 @@ export const useBilling = create<BillingState>((set, get) => ({
     }
   },
 
-  openUpgrade: () => set({ upgradeOpen: true }),
-  closeUpgrade: () => set({ upgradeOpen: false }),
+  openUpgrade: (reason) => set({ upgradeOpen: true, upgradeReason: reason ?? null }),
+  closeUpgrade: () => set({ upgradeOpen: false, upgradeReason: null }),
   openCredit: () => set({ creditOpen: true, upgradeOpen: false }),
   closeCredit: () => set({ creditOpen: false }),
   setNotice: (s) => set({ notice: s }),
