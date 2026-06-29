@@ -1,6 +1,6 @@
 "use client";
 
-import { aspectSize, type ReelSpec, type ReelScene, type ReelTheme } from "./reel";
+import { type ReelSpec, type ReelScene, type ReelTheme } from "./reel";
 import { fetchNarrationBytes } from "./tts";
 import { sfxComplete, sfxCorrect, sfxPop, sfxTick, sfxWrong } from "./sfx";
 
@@ -363,22 +363,6 @@ export async function renderReel(spec: ReelSpec, opts: RenderOpts = {}): Promise
   const prog = (p: number, l: string) => onProgress?.(p, l);
   // Voice-agnostic label — reflects whichever voice the user picked (not always Isaac).
   const voiceLine = voiceName ? `Loading ${voiceName}’s voice…` : "Loading the voice…";
-  const { w: W, h: H } = aspectSize(spec.aspect);
-
-  const canvas = document.createElement("canvas");
-  canvas.width = W;
-  canvas.height = H;
-  canvas.style.display = "block";
-  canvas.style.maxWidth = "100%";
-  canvas.style.maxHeight = "100%";
-  canvas.style.margin = "0 auto";
-  canvas.style.borderRadius = "14px";
-  const ctx = canvas.getContext("2d");
-  if (!ctx) throw new Error("Canvas 2D not supported");
-  if (host) {
-    host.innerHTML = "";
-    host.appendChild(canvas);
-  }
 
   prog(3, "Preparing…");
   try {
@@ -386,146 +370,187 @@ export async function renderReel(spec: ReelSpec, opts: RenderOpts = {}): Promise
   } catch {
     /* fonts optional */
   }
-  // first frame so the preview isn't blank during the fetch
-  drawFrame(ctx, W, H, spec, [], { introDur: 1, sceneDurs: [], qDurs: [], outroDur: 1 }, 0);
 
   const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
   const ac = new Ctx();
-  const dest = ac.createMediaStreamDestination();
+  const fps = 30;
+  const mime = pickMime();
 
+  // ── Narration + images. A voice/image failure NEVER breaks the render: any error
+  //    here just yields a silent / image-less clip instead of throwing. Free voices
+  //    are rate-limited, so this path must always degrade gracefully. ──────────────
   prog(8, voiceLine);
-  // Every line Isaac speaks: intro, then a QUESTION + an ANSWER per scene, then outro.
-  const lineTexts: string[] = [spec.intro.narration];
-  spec.scenes.forEach((s) => {
-    lineTexts.push(s.questionNarration || "");
-    lineTexts.push(s.narration);
-  });
-  lineTexts.push(spec.outro.narration);
+  let buffers: (AudioBuffer | null)[] = [];
+  let images: (HTMLImageElement | null)[] = spec.scenes.map(() => null);
+  try {
+    // Every line Isaac speaks: intro, then a QUESTION + an ANSWER per scene, then outro.
+    const lineTexts: string[] = [spec.intro.narration];
+    spec.scenes.forEach((s) => {
+      lineTexts.push(s.questionNarration || "");
+      lineTexts.push(s.narration);
+    });
+    lineTexts.push(spec.outro.narration);
 
-  // Fetch images + all narration. DEDUPE identical lines (every round repeats the
-  // same question, e.g. "Which country is this?") so each unique line costs ONE
-  // TTS request — critical for the rate-limited free voices. Cap concurrency (low,
-  // with retry) so a long video never trips the rate limit and drops a line.
-  const imagesP = Promise.all(spec.scenes.map((s) => loadImage(s.imageUrl)));
-  const norm = (t: string) => (t || "").trim();
-  const uniqueTexts = [...new Set(lineTexts.map(norm).filter(Boolean))];
-  const decoded = new Map<string, AudioBuffer | null>();
-  let fetched = 0;
-  await mapLimit(uniqueTexts, 2, async (t) => {
-    decoded.set(t, await fetchDecodeLine(ac, t));
-    fetched++;
-    prog(Math.min(14, 8 + Math.round((fetched / uniqueTexts.length) * 6)), voiceLine);
-  });
-  // Re-expand to one buffer per line (a single AudioBuffer can back many sources).
-  const buffers = lineTexts.map((t) => {
-    const n = norm(t);
-    return n ? decoded.get(n) ?? null : null;
-  });
-  const images = await imagesP;
+    // DEDUPE identical lines (every round repeats "Which country is this?") so each
+    // unique line costs ONE TTS request — critical for the rate-limited free voices.
+    const imagesP = Promise.all(spec.scenes.map((s) => loadImage(s.imageUrl)));
+    const norm = (t: string) => (t || "").trim();
+    const uniqueTexts = [...new Set(lineTexts.map(norm).filter(Boolean))];
+    const decoded = new Map<string, AudioBuffer | null>();
+    let fetched = 0;
+    await mapLimit(uniqueTexts, 2, async (t) => {
+      decoded.set(t, await fetchDecodeLine(ac, t));
+      fetched++;
+      prog(Math.min(14, 8 + Math.round((fetched / uniqueTexts.length) * 6)), voiceLine);
+    });
+    buffers = lineTexts.map((t) => {
+      const n = norm(t);
+      return n ? decoded.get(n) ?? null : null;
+    });
+    images = await imagesP;
+  } catch {
+    /* narration/images failed wholesale → silent, image-less clip (never a crash) */
+  }
   if (signal?.aborted) {
     try { await ac.close(); } catch {}
     throw new DOMException("aborted", "AbortError");
   }
 
   const hadVoice = buffers.some(Boolean);
-  const introBuf = buffers[0];
-  const questionBufs = spec.scenes.map((_, i) => buffers[1 + i * 2]);
-  const answerBufs = spec.scenes.map((_, i) => buffers[2 + i * 2]);
-  const outroBuf = buffers[buffers.length - 1];
+  const introBuf = buffers[0] ?? null;
+  const questionBufs = spec.scenes.map((_, i) => buffers[1 + i * 2] ?? null);
+  const answerBufs = spec.scenes.map((_, i) => buffers[2 + i * 2] ?? null);
+  const outroBuf = buffers.length ? buffers[buffers.length - 1] ?? null : null;
 
   const dur = (b: AudioBuffer | null, min: number) => Math.max(min, (b ? b.duration : 0) + 0.7);
   const introDur = dur(introBuf, 2.2);
-  // Suspense beat = Isaac's question + a "thinking" pause (calm timer, never a flash);
-  // the reveal lasts as long as Isaac takes to name the answer.
+  // Suspense beat = Isaac's question + a "thinking" pause; the reveal lasts as long
+  // as Isaac takes to name the answer.
   const qDurs = spec.scenes.map((_, i) => Math.max(QUESTION_MIN_SECONDS, questionBufs[i] ? questionBufs[i]!.duration + 1.1 : QUESTION_MIN_SECONDS));
   const revealDurs = spec.scenes.map((_, i) => dur(answerBufs[i], 1.5));
   const sceneDurs = spec.scenes.map((_, i) => qDurs[i] + revealDurs[i]);
   const outroDur = dur(outroBuf, 4.2);
   const total = introDur + sceneDurs.reduce((a, b) => a + b, 0) + outroDur;
+  const durs: Durs = { introDur, sceneDurs, qDurs, outroDur };
 
-  const fps = 30;
-  const vstream = canvas.captureStream(fps);
-  const mixed = new MediaStream([...vstream.getVideoTracks(), ...dest.stream.getAudioTracks()]);
-  const mime = pickMime();
-  const rec = new MediaRecorder(mixed, mime.type ? { mimeType: mime.type, videoBitsPerSecond: 8_000_000, audioBitsPerSecond: 128_000 } : undefined);
-  const chunks: BlobPart[] = [];
-  rec.ondataavailable = (e) => {
-    if (e.data && e.data.size) chunks.push(e.data);
-  };
-  const stopped = new Promise<void>((res) => {
-    rec.onstop = () => res();
-  });
+  // ── Record the prepared spec at a given resolution. The on-screen preview is the
+  //    SAME canvas we capture, but captureStream reads the canvas BACKING STORE, so
+  //    the CSS display size never affects the recorded video. Some mobile encoders
+  //    reject a tall/large PORTRAIT frame (height > ~1080) and emit an EMPTY file —
+  //    we detect that and retry once at a smaller, near-universally-encodable size. ─
+  async function recordAt(W: number, H: number, bitrate: number, live: boolean): Promise<Blob> {
+    const canvas = document.createElement("canvas");
+    canvas.width = W;
+    canvas.height = H;
+    canvas.style.display = "block";
+    canvas.style.maxWidth = "100%";
+    canvas.style.maxHeight = "100%";
+    canvas.style.margin = "0 auto";
+    canvas.style.borderRadius = "14px";
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("Canvas 2D not supported");
+    if (host) {
+      host.innerHTML = "";
+      host.appendChild(canvas);
+    }
+    // first frame so the preview isn't blank
+    drawFrame(ctx, W, H, spec, [], { introDur: 1, sceneDurs: [], qDurs: [], outroDur: 1 }, 0);
+
+    const dest = ac.createMediaStreamDestination();
+    const vstream = canvas.captureStream(fps);
+    const mixed = new MediaStream([...vstream.getVideoTracks(), ...dest.stream.getAudioTracks()]);
+    const rec = new MediaRecorder(mixed, mime.type ? { mimeType: mime.type, videoBitsPerSecond: bitrate, audioBitsPerSecond: 128_000 } : undefined);
+    const chunks: BlobPart[] = [];
+    rec.ondataavailable = (e) => {
+      if (e.data && e.data.size) chunks.push(e.data);
+    };
+    const stopped = new Promise<void>((res) => {
+      rec.onstop = () => res();
+    });
+
+    try { await ac.resume(); } catch { /* ignore */ }
+    const t0 = ac.currentTime + 0.12;
+    const play = (buf: AudioBuffer | null, at: number) => {
+      if (!buf) return;
+      const src = ac.createBufferSource();
+      src.buffer = buf;
+      src.connect(dest);
+      // Play aloud during the FIRST attempt only (a retry shouldn't double the audio).
+      if (live) {
+        try { src.connect(ac.destination); } catch { /* ignore */ }
+      }
+      src.start(t0 + at);
+    };
+    let at = 0;
+    play(introBuf, at + 0.15);
+    at += introDur;
+    spec.scenes.forEach((s, i) => {
+      const qd = qDurs[i];
+      sfxPop(ac, dest, t0 + at + 0.02); // flag appears
+      play(questionBufs[i], at + 0.2); // Isaac ASKS the question
+      sfxTick(ac, dest, t0 + at + qd - 0.5); // countdown ticks near the end of the beat
+      sfxTick(ac, dest, t0 + at + qd - 0.18, true);
+      (s.correct ? sfxCorrect : sfxWrong)(ac, dest, t0 + at + qd + 0.03); // reveal sting
+      play(answerBufs[i], at + qd + 0.12); // Isaac says the ANSWER at the reveal
+      at += sceneDurs[i];
+    });
+    sfxComplete(ac, dest, t0 + at + 0.1);
+    play(outroBuf, at + 0.3);
+
+    rec.start();
+    prog(15, "Recording…");
+    // Drive the video off the AUDIO clock so the picture and Isaac never drift apart
+    // (requestAnimationFrame can throttle; ac.currentTime can't).
+    await new Promise<void>((resolve, reject) => {
+      const frame = () => {
+        if (signal?.aborted) {
+          reject(new DOMException("aborted", "AbortError"));
+          return;
+        }
+        const el = Math.max(0, ac.currentTime - t0);
+        try {
+          drawFrame(ctx, W, H, spec, images, durs, el);
+        } catch (e) {
+          reject(e as Error);
+          return;
+        }
+        prog(Math.min(99, 15 + Math.round((el / total) * 84)), "Recording…");
+        if (el >= total) {
+          resolve();
+          return;
+        }
+        requestAnimationFrame(frame);
+      };
+      requestAnimationFrame(frame);
+    }).catch((e) => {
+      try { rec.stop(); } catch {}
+      throw e;
+    });
+
+    try { rec.stop(); } catch {}
+    await stopped;
+    return new Blob(chunks, { type: mime.type || "video/webm" });
+  }
 
   try {
-    await ac.resume();
-  } catch {
-    /* ignore */
-  }
-  const t0 = ac.currentTime + 0.12;
-  const play = (buf: AudioBuffer | null, at: number) => {
-    if (!buf) return;
-    const src = ac.createBufferSource();
-    src.buffer = buf;
-    src.connect(dest);
+    // Mobile-safe 720p primary; if the encoder yields nothing (a too-tall portrait
+    // frame on some phones), retry at a smaller size that every encoder accepts —
+    // so a vertical video can never leave the user with a failed/empty file.
+    const primary = spec.aspect === "9:16" ? { w: 720, h: 1280 } : { w: 1280, h: 720 };
+    const safe = spec.aspect === "9:16" ? { w: 608, h: 1080 } : { w: 960, h: 540 };
+    let blob: Blob | null = null;
     try {
-      src.connect(ac.destination);
-    } catch {
-      /* ignore */
+      blob = await recordAt(primary.w, primary.h, 6_000_000, true);
+    } catch (e) {
+      if ((e as Error)?.name === "AbortError") throw e;
+      blob = null; // primary attempt errored (encoder) → fall back to a smaller size
     }
-    src.start(t0 + at);
-  };
-  let at = 0;
-  play(introBuf, at + 0.15);
-  at += introDur;
-  spec.scenes.forEach((s, i) => {
-    const qd = qDurs[i];
-    sfxPop(ac, dest, t0 + at + 0.02); // flag appears
-    play(questionBufs[i], at + 0.2); // Isaac ASKS the question
-    sfxTick(ac, dest, t0 + at + qd - 0.5); // countdown ticks near the end of the beat
-    sfxTick(ac, dest, t0 + at + qd - 0.18, true);
-    (s.correct ? sfxCorrect : sfxWrong)(ac, dest, t0 + at + qd + 0.03); // reveal sting
-    play(answerBufs[i], at + qd + 0.12); // Isaac says the ANSWER at the reveal
-    at += sceneDurs[i];
-  });
-  sfxComplete(ac, dest, t0 + at + 0.1);
-  play(outroBuf, at + 0.3);
-
-  rec.start();
-  prog(15, "Recording…");
-  // Drive the video off the AUDIO clock so the picture and Isaac never drift apart
-  // (requestAnimationFrame can throttle; ac.currentTime can't) — this is what keeps
-  // Isaac in sync, and audible, even on long clips.
-  await new Promise<void>((resolve, reject) => {
-    const frame = () => {
-      if (signal?.aborted) {
-        reject(new DOMException("aborted", "AbortError"));
-        return;
-      }
-      const el = Math.max(0, ac.currentTime - t0);
-      try {
-        drawFrame(ctx, W, H, spec, images, { introDur, sceneDurs, qDurs, outroDur }, el);
-      } catch (e) {
-        reject(e as Error);
-        return;
-      }
-      prog(Math.min(99, 15 + Math.round((el / total) * 84)), "Recording…");
-      if (el >= total) {
-        resolve();
-        return;
-      }
-      requestAnimationFrame(frame);
-    };
-    requestAnimationFrame(frame);
-  }).catch((e) => {
-    try { rec.stop(); } catch {}
-    try { ac.close(); } catch {}
-    throw e;
-  });
-
-  try { rec.stop(); } catch {}
-  await stopped;
-  try { await ac.close(); } catch {}
-  prog(100, "Done");
-  const blob = new Blob(chunks, { type: mime.type || "video/webm" });
-  return { blob, ext: mime.ext, mime: mime.type || "video/webm", hadVoice };
+    if (!blob || blob.size < 2048) {
+      blob = await recordAt(safe.w, safe.h, 4_000_000, false);
+    }
+    prog(100, "Done");
+    return { blob, ext: mime.ext, mime: mime.type || "video/webm", hadVoice };
+  } finally {
+    try { await ac.close(); } catch {}
+  }
 }
