@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { Volume2, VolumeX, Mic, MicOff, Play, RotateCcw, Trophy, ArrowLeft, Sparkles, X, Globe, Check, Grid2x2, Keyboard, Film, Instagram, Youtube, History } from "lucide-react";
+import { Volume2, VolumeX, Mic, MicOff, Play, RotateCcw, Trophy, ArrowLeft, Sparkles, X, Globe, Check, Grid2x2, Keyboard, Film, Instagram, Youtube, History, Loader2 } from "lucide-react";
 import { RaysBackground } from "./RaysBackground";
 import { DocumentBackground } from "./DocumentBackground";
 import { ShareModal } from "@/components/share/ShareModal";
@@ -16,7 +16,8 @@ import { getHost } from "@/lib/games/host";
 import { useListen } from "@/lib/games/useListen";
 import { similarCodes } from "@/lib/games/similar";
 import { grantIsaac } from "@/lib/isaac/grant";
-import { getVoicePref, isClunoidVoice } from "@/lib/voice/preference";
+import { getVoicePref } from "@/lib/voice/preference";
+import { HostVoicePicker } from "@/components/games/HostVoicePicker";
 import { GameHistory } from "@/components/games/GameHistory";
 import { saveGameResult, type AnswerMode, type ReplayRound, type GameSnapshot } from "@/lib/games/storage";
 import { QUESTIONS, buildGameReel } from "@/lib/games/reel";
@@ -125,7 +126,9 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
   const [timeLeft, setTimeLeft] = useState(7000);
   const [muted, setMuted] = useState(false);
   const [building, setBuilding] = useState(false);
+  const [readyToStart, setReadyToStart] = useState(false); // build done → waiting for the user to pick a host + tap Start
   const [failed, setFailed] = useState(false);
+  const pendingGameRef = useRef<{ g: { title: string; subtitle?: string; secondsPerRound: number; rounds: Round[] }; am: AnswerMode } | null>(null);
   const [canAutoFocus, setCanAutoFocus] = useState(false);
   // Voice answering is OPT-IN: the mic stays muted until the user taps to talk,
   // then auto-re-arms each round. This keeps the mic off during Isaac's question
@@ -208,10 +211,9 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
   // Decide (server-authoritative) whether Isaac hosts THIS game, then set the
   // host's voice + the subscribe nudge accordingly. Run before the first line.
   const applyGameGrant = useCallback(async () => {
-    // A Clunoid Voice isn't Isaac — it's free + ungated, so don't spend the Isaac
-    // trial and don't show the "Isaac is off" nudge; the chosen voice just hosts.
-    if (isClunoidVoice(getVoicePref())) {
-      host.useFallbackVoice(false);
+    // Only Isaac spends the one-time trial / shows the "Isaac is off" nudge. A free
+    // Clunoid voice, the browser voice, and mute are all free + ungated.
+    if (getVoicePref() !== "isaac") {
       setIsaacOn(true);
       return;
     }
@@ -220,39 +222,49 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
     setIsaacOn(on);
   }, [host]);
 
-  const startGame = useCallback(
-    async (request: string, am: AnswerMode = "choice") => {
-      setBuilding(true);
-      setFailed(false);
-      await applyGameGrant();
-      host.say("Let's play! Guess the country.");
-      const g = await buildGame(request);
-      if (!g.rounds.length) {
-        setBuilding(false);
-        setFailed(true);
-        return;
-      }
-      launch(g, "set", am);
-    },
-    [host, launch, applyGameGrant]
-  );
+  // Build the game in the background and show the host picker — nothing speaks yet.
+  const startGame = useCallback(async (request: string, am: AnswerMode = "choice") => {
+    setBuilding(true);
+    setFailed(false);
+    setReadyToStart(false);
+    pendingGameRef.current = null;
+    const g = await buildGame(request);
+    if (!g.rounds.length) {
+      setBuilding(false);
+      setFailed(true);
+      return;
+    }
+    pendingGameRef.current = { g, am };
+    setReadyToStart(true); // build ready → enable Start
+  }, []);
+
+  // The user picked a host and tapped Start — THIS is the first thing that speaks.
+  const confirmStart = useCallback(async () => {
+    const p = pendingGameRef.current;
+    if (!p) return;
+    setReadyToStart(false);
+    await applyGameGrant();
+    host.say("Let's play! Guess the country.");
+    launch(p.g, "set", p.am);
+  }, [applyGameGrant, host, launch]);
 
   // "Continue" → every country in the world, easiest → hardest (same answer mode).
+  // Continuation of an active game → keep the host the user already chose (no
+  // re-grant; the host self-adjusts via /api/tts if the trial window has lapsed).
   const continueAll = useCallback(async () => {
     setBuilding(true);
-    await applyGameGrant();
     const g = await buildAllCountries();
     if (!g.rounds.length) {
       setBuilding(false);
       return;
     }
     launch(g, "all", answerModeRef.current);
-  }, [launch, applyGameGrant]);
+  }, [launch]);
 
-  // "Play again" → the SAME flags, reshuffled (keep the difficulty ramp).
+  // "Play again" → the SAME flags, reshuffled (keep the difficulty ramp). Keeps the
+  // host the user already chose — re-granting here would race the first say().
   const replaySame = useCallback(() => {
     if (!rounds.length) return;
-    void applyGameGrant(); // a replay is a new game → re-check the Isaac trial
     preloadedRef.current = new Set();
     setRounds(reshuffleWithin(rounds));
     setScore(0);
@@ -261,7 +273,7 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
     setIdx(0);
     setRunId((n) => n + 1);
     setPhase("loading");
-  }, [rounds, applyGameGrant]);
+  }, [rounds]);
 
   useEffect(() => {
     setCanAutoFocus(typeof window !== "undefined" && !!window.matchMedia && window.matchMedia("(pointer: fine)").matches);
@@ -529,6 +541,8 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
       <>
         <MenuScreen
           building={building}
+          readyToStart={readyToStart}
+          onStart={confirmStart}
           failed={failed}
           onPlay={startGame}
           onHome={() => router.push("/games")}
@@ -859,6 +873,8 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
 /* ── Menu / start screen ─────────────────────────────────────────────────── */
 function MenuScreen({
   building,
+  readyToStart,
+  onStart,
   failed,
   onPlay,
   onHome,
@@ -867,6 +883,8 @@ function MenuScreen({
   onHistory,
 }: {
   building: boolean;
+  readyToStart: boolean;
+  onStart: () => void;
   failed: boolean;
   onPlay: (request: string, am: AnswerMode) => void;
   onHome: () => void;
@@ -878,14 +896,31 @@ function MenuScreen({
   const [am, setAm] = useState<AnswerMode>("choice");
 
   if (building) {
+    const doc = am === "choice";
     return (
-      <div className="relative grid h-[100dvh] w-screen place-items-center overflow-hidden px-6 select-none">
-        {am === "choice" ? <DocumentBackground /> : <RaysBackground hue={222} />}
-        <div className="relative z-10 flex flex-col items-center text-center">
-          <div className={`h-14 w-14 animate-spin rounded-full border-4 ${am === "choice" ? "border-[#2c2823]/25 border-t-[#2c2823]" : "border-white/40 border-t-white"}`} />
-          <p className="mt-5 text-xl font-extrabold" style={{ color: am === "choice" ? INK : "#fff", textShadow: am === "choice" ? "none" : TITLE_SHADOW }}>
-            Isaac is building your game…
-          </p>
+      <div className="relative grid h-[100dvh] w-screen place-items-center overflow-hidden px-5 py-6 select-none">
+        {doc ? <DocumentBackground /> : <RaysBackground hue={222} />}
+        <div className="relative z-10 w-full max-w-sm">
+          <div className="max-h-[88dvh] overflow-y-auto rounded-3xl border border-white/10 bg-[#1b1916]/95 p-4 shadow-[0_24px_70px_-20px_rgba(0,0,0,0.7)] backdrop-blur">
+            <p className="text-center text-base font-extrabold text-white">Choose your host</p>
+            <p className="mb-3 mt-0.5 text-center text-xs text-white/55">Who narrates your game? You can change it any time.</p>
+            <HostVoicePicker mode="game" />
+            <button
+              onClick={onStart}
+              disabled={!readyToStart}
+              className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl bg-white py-3 text-sm font-extrabold text-black transition hover:bg-white/90 disabled:cursor-default disabled:opacity-50"
+            >
+              {readyToStart ? (
+                <>
+                  <Play size={16} fill="currentColor" /> Start game
+                </>
+              ) : (
+                <>
+                  <Loader2 size={16} className="animate-spin" /> Building your game…
+                </>
+              )}
+            </button>
+          </div>
         </div>
       </div>
     );

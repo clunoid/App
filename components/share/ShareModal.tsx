@@ -1,10 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type ComponentType } from "react";
-import { Download, Share2, X, Film, Loader2, Smartphone, Monitor, Layers, Instagram, Youtube, Facebook, Sparkles, Copy, Check, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { Download, Share2, X, Film, Loader2, Smartphone, Monitor, Layers, Instagram, Youtube, Facebook, Sparkles, Copy, Check, AlertTriangle, CheckCircle2, Mic, ChevronDown } from "lucide-react";
 import { canRecordVideo, type ReelAspect, type ReelSpec } from "@/lib/share/reel";
 import { renderReel } from "@/lib/share/renderer";
 import { useBilling } from "@/lib/billing/store";
+import { HostVoicePicker } from "@/components/games/HostVoicePicker";
+import { getVideoVoicePref, voiceById } from "@/lib/voice/preference";
 import { TikTokIcon, XIcon, WhatsAppIcon } from "./SocialIcons";
 
 type Status = "idle" | "rendering" | "ready" | "unsupported" | "error";
@@ -69,6 +71,9 @@ export function ShareModal({
   const plan = useBilling((s) => s.plan);
   const isSubscriber = plan === "pro" || plan === "max";
   const [branded, setBranded] = useState(true);
+  // Which voice narrates the video (remembered across renders). "silent" = no voice.
+  const [videoVoice, setVideoVoice] = useState<string>("isaac");
+  const [voiceOpen, setVoiceOpen] = useState(false);
   const [status, setStatus] = useState<Status>("idle");
   const [pct, setPct] = useState(0);
   const [label, setLabel] = useState("");
@@ -87,6 +92,11 @@ export function ShareModal({
 
   useEffect(() => {
     if (open && !canRecordVideo()) setStatus("unsupported");
+  }, [open]);
+
+  // Reflect the remembered video voice when the modal opens.
+  useEffect(() => {
+    if (open) setVideoVoice(getVideoVoicePref());
   }, [open]);
 
   // Reset everything when closing.
@@ -271,7 +281,11 @@ export function ShareModal({
             </span>
             <div className="min-w-0">
               <h2 className="truncate text-base font-extrabold leading-tight sm:text-lg">{heading}</h2>
-              <p className="truncate text-[11px] font-medium text-white/45">Narrated by Isaac · ready in seconds</p>
+              <p className="truncate text-[11px] font-medium text-white/45">
+                {render
+                  ? "Narrated by Isaac · ready in seconds"
+                  : `${videoVoice === "silent" ? "Silent video" : `Narrated by ${voiceById(videoVoice)?.name ?? "Isaac"}`} · ready in seconds`}
+              </p>
             </div>
           </div>
           <button
@@ -310,6 +324,39 @@ export function ShareModal({
               </button>
             ))}
           </div>
+
+          {/* Voice — choose who narrates the video (remembered). Narrated videos
+              only (the stat-battle race carries its own fixed outro). */}
+          {!render && (
+          <div className="overflow-hidden rounded-2xl bg-black/30 ring-1 ring-white/5">
+            <button
+              type="button"
+              disabled={status === "rendering"}
+              onClick={() => setVoiceOpen((o) => !o)}
+              className="flex w-full items-center justify-between gap-2 px-3.5 py-3 text-left transition disabled:opacity-50"
+            >
+              <span className="flex min-w-0 items-center gap-2 text-[13px] font-bold text-white/90">
+                <Mic size={15} className="shrink-0 text-white/50" /> Voice
+                <span className="truncate text-white/45">· {videoVoice === "silent" ? "Silent" : voiceById(videoVoice)?.name ?? "Isaac"}</span>
+              </span>
+              <ChevronDown size={16} className={`shrink-0 text-white/45 transition ${voiceOpen ? "rotate-180" : ""}`} />
+            </button>
+            {voiceOpen && (
+              <div className="border-t border-white/10 p-2.5">
+                <HostVoicePicker
+                  mode="video"
+                  onPick={(id) => {
+                    setVideoVoice(id);
+                    // The chosen voice changed → any already-rendered clip is stale.
+                    cleanupUrls();
+                    setResults([]);
+                    if (status === "ready") setStatus("idle");
+                  }}
+                />
+              </div>
+            )}
+          </div>
+          )}
 
           {/* Pro/Max: choose to remove the watermark (and any clunoid mention). */}
           {isSubscriber && (
@@ -433,8 +480,11 @@ export function ShareModal({
             </div>
           )}
 
-          {ready && results.some((r) => !r.hadVoice) && (
-            <p className="text-center text-[11px] text-amber-300/80">Isaac’s voice wasn’t available for {multi ? "one of these clips" : "this clip"}.</p>
+          {ready && videoVoice !== "silent" && results.some((r) => !r.hadVoice) && (
+            <p className="px-2 text-center text-[11px] text-amber-300/80">
+              The {voiceById(videoVoice)?.name ?? "Isaac"} voice wasn’t available for {multi ? "one of these clips" : "this clip"}
+              {videoVoice !== "isaac" ? " — the free voices are rate-limited. Try Isaac or “Silent.”" : "."}
+            </p>
           )}
 
           {/* AI caption generator — a ready-to-paste title + caption + hashtags. */}

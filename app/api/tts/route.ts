@@ -85,7 +85,11 @@ async function groqOne(key: string, text: string, voice: string): Promise<Buffer
       if (res.ok) return Buffer.from(await res.arrayBuffer());
       if (res.status === 429 || res.status >= 500) {
         const ra = Number(res.headers.get("retry-after"));
-        await sleep(ra > 0 ? Math.min(ra * 1000, 4000) : 450 + attempt * 650);
+        // The studio voice has a hard daily cap; once hit, retry-after is huge
+        // (minutes). Don't hang the render waiting it out — give up fast so the
+        // line degrades to silence immediately instead of stalling.
+        if (ra > 8) return null;
+        await sleep(ra > 0 ? ra * 1000 : 450 + attempt * 650);
         continue;
       }
       return null; // 4xx (bad voice / terms not accepted) — won't fix on retry

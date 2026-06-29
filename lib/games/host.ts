@@ -43,10 +43,13 @@ class Host {
     if (on) this.cache.clear();
   }
 
-  /** Should we fetch a server voice (vs. the browser fallback)? Always yes for a
-   *  Clunoid Voice (cheap, ungated); for Isaac, only while his trial is open. */
+  /** Should we fetch a server voice (vs. the browser fallback / silence)? Always
+   *  yes for a Clunoid Voice (cheap, ungated); for Isaac, only while his trial is
+   *  open. "browser" and "mute" never use the server. */
   private serverVoiceOn() {
-    return isClunoidVoice(getVoicePref()) || this.elevenOk;
+    const p = getVoicePref();
+    if (p === "mute" || p === "browser") return false;
+    return isClunoidVoice(p) || this.elevenOk;
   }
 
   private warmVoices() {
@@ -90,7 +93,7 @@ class Host {
 
   /** Speak a line; the returned promise resolves when it ENDS (or is cancelled). */
   async say(text: string): Promise<void> {
-    if (this.muted) return;
+    if (this.muted || getVoicePref() === "mute") return; // silenced — no voice at all
     const k = text.trim();
     if (!k) return;
     this.cancel(); // stop current + invalidate any in-flight say()

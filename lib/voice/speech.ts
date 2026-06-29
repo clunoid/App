@@ -63,9 +63,12 @@ export class SpeechPlayer {
   }
 
   /** Should we fetch a server voice (vs. paced text)? Always yes for a Clunoid
-   *  Voice (cheap, ungated); for Isaac, only while his trial is open. */
+   *  Voice (cheap, ungated); for Isaac, only while his trial is open. "browser"
+   *  and "mute" never hit the server (search just paces the text). */
   private serverVoiceOn(): boolean {
-    return isClunoidVoice(getVoicePref()) || this.eleven;
+    const p = getVoicePref();
+    if (p === "mute" || p === "browser") return false;
+    return isClunoidVoice(p) || this.eleven;
   }
 
   private abortInflight(): void {

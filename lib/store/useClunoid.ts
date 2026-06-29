@@ -4,7 +4,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { SpeechPlayer } from "@/lib/voice/speech";
 import { grantIsaac } from "@/lib/isaac/grant";
-import { getVoicePref, isClunoidVoice } from "@/lib/voice/preference";
+import { getVoicePref } from "@/lib/voice/preference";
 import { getSupabaseBrowser } from "@/lib/supabase/client";
 import { reportBillingStatus, refreshCredits } from "@/lib/billing/bus";
 import type { Scene, Experience, ExplainerExperience } from "@/lib/brain/scene";
@@ -204,11 +204,11 @@ export const useClunoid = create<ClunoidStore>()(
         }));
         // Free tier: Isaac (premium voice) hosts the FIRST search only; afterwards
         // he's off (paced text) and we nudge them to subscribe. Server-authoritative.
-        // A Clunoid Voice isn't Isaac — it's free + ungated, so skip the trial spend
-        // and the nudge; the chosen voice narrates every search.
+        // Only Isaac spends the one-time trial / shows the nudge. A free Clunoid
+        // voice, the browser voice, and mute are all free + ungated.
         let isaacOn = true;
-        if (isClunoidVoice(getVoicePref())) {
-          getPlayer(set).setEleven(true);
+        if (getVoicePref() !== "isaac") {
+          getPlayer(set).setEleven(true); // serverVoiceOn() handles clunoid/browser/mute
         } else {
           isaacOn = await grantIsaac("search");
           getPlayer(set).setEleven(isaacOn);

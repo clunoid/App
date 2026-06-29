@@ -1,6 +1,6 @@
 "use client";
 
-import { getVoicePref } from "@/lib/voice/preference";
+import { getVideoVoicePref } from "@/lib/voice/preference";
 
 /**
  * Fetch the host voice for a line of narration as raw audio bytes (MP3 or WAV),
@@ -15,12 +15,14 @@ import { getVoicePref } from "@/lib/voice/preference";
 export async function fetchNarrationBytes(text: string): Promise<Uint8Array | null> {
   const t = (text || "").trim();
   if (!t) return null;
+  const voice = getVideoVoicePref();
+  if (voice === "silent") return null; // user chose a silent video — no narration
   try {
     const res = await fetch("/api/tts", {
       method: "POST",
       headers: { "content-type": "application/json" },
       // feature: "video" — recap-video narration is never gated by the free trial.
-      body: JSON.stringify({ text: t, feature: "video", voice: getVoicePref() }),
+      body: JSON.stringify({ text: t, feature: "video", voice }),
     });
     if (!res.ok || res.status === 204) return null;
     const data = (await res.json()) as { audio?: string };

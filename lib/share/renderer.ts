@@ -399,15 +399,24 @@ export async function renderReel(spec: ReelSpec, opts: RenderOpts = {}): Promise
   });
   lineTexts.push(spec.outro.narration);
 
-  // Fetch images + all narration, but CAP TTS concurrency (with retry) so a long
-  // video never trips the rate limit and drops Isaac's voice partway through.
+  // Fetch images + all narration. DEDUPE identical lines (every round repeats the
+  // same question, e.g. "Which country is this?") so each unique line costs ONE
+  // TTS request — critical for the rate-limited free voices. Cap concurrency (low,
+  // with retry) so a long video never trips the rate limit and drops a line.
   const imagesP = Promise.all(spec.scenes.map((s) => loadImage(s.imageUrl)));
+  const norm = (t: string) => (t || "").trim();
+  const uniqueTexts = [...new Set(lineTexts.map(norm).filter(Boolean))];
+  const decoded = new Map<string, AudioBuffer | null>();
   let fetched = 0;
-  const buffers = await mapLimit(lineTexts, 3, async (t) => {
-    const buf = await fetchDecodeLine(ac, t);
+  await mapLimit(uniqueTexts, 2, async (t) => {
+    decoded.set(t, await fetchDecodeLine(ac, t));
     fetched++;
-    prog(Math.min(14, 8 + Math.round((fetched / lineTexts.length) * 6)), "Loading Isaac’s voice…");
-    return buf;
+    prog(Math.min(14, 8 + Math.round((fetched / uniqueTexts.length) * 6)), "Loading Isaac’s voice…");
+  });
+  // Re-expand to one buffer per line (a single AudioBuffer can back many sources).
+  const buffers = lineTexts.map((t) => {
+    const n = norm(t);
+    return n ? decoded.get(n) ?? null : null;
   });
   const images = await imagesP;
   if (signal?.aborted) {
