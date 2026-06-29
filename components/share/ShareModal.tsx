@@ -280,10 +280,12 @@ export function ShareModal({
         <X size={20} />
       </button>
 
-      {/* centered, full-height content column */}
-      <div className="relative z-10 mx-auto flex h-full w-full max-w-md flex-col px-5 pb-[max(env(safe-area-inset-bottom),1.1rem)] pt-[max(env(safe-area-inset-top),1.5rem)]">
+      {/* Full-screen content. Mobile: single scrolling column. Big screens: an
+          end-to-end layout — controls left, preview right, socials + action bar
+          across the bottom. */}
+      <div className="relative z-10 mx-auto flex h-full w-full max-w-md flex-col px-5 pb-[max(env(safe-area-inset-bottom),1.1rem)] pt-[max(env(safe-area-inset-top),1.5rem)] lg:max-w-6xl lg:px-12 lg:pb-7">
         {/* title */}
-        <div className="shrink-0 pr-12 text-center">
+        <div className="shrink-0 pr-12 text-center lg:pr-14 lg:text-left">
           <h2 className="text-3xl font-extrabold leading-none sm:text-4xl" style={{ textShadow: TITLE_SHADOW }}>
             {heading}
           </h2>
@@ -292,51 +294,57 @@ export function ShareModal({
           </p>
         </div>
 
-        {/* scrollable middle */}
-        <div className="mt-4 flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pb-2">
-          {/* size — frosted pills */}
-          <div className="flex shrink-0 items-center justify-center gap-2">
-            {([
-              { v: "9:16", label: "Vertical", Icon: Smartphone },
-              { v: "16:9", label: "Wide", Icon: Monitor },
-              { v: "both", label: "Both", Icon: Layers },
-            ] as const).map(({ v, label: l, Icon }) => (
-              <button
-                key={v}
-                disabled={status === "rendering"}
-                onClick={() => {
-                  if (v === aspect) return;
-                  setAspect(v);
-                  cleanupUrls();
-                  setResults([]);
-                  if (status === "ready") setStatus("idle");
-                }}
-                className={`flex items-center gap-1.5 rounded-full px-4 py-2.5 text-sm font-extrabold backdrop-blur transition disabled:opacity-50 ${
-                  aspect === v ? "bg-white text-black shadow-lg" : "bg-white/15 text-white hover:bg-white/25"
-                }`}
-              >
-                <Icon size={15} /> {l}
-              </button>
-            ))}
-          </div>
+        {/* MAIN — stacks on mobile, two columns (controls | preview) on big screens */}
+        <div className="mt-4 flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pb-1 lg:mt-6 lg:flex-row lg:items-stretch lg:gap-8 lg:overflow-hidden lg:pb-0">
+          {/* LEFT — controls */}
+          <div className="flex shrink-0 flex-col gap-3 lg:w-[380px] lg:overflow-y-auto lg:pb-2 lg:pr-1">
+            {/* size — frosted pills */}
+            <div className="flex shrink-0 flex-wrap items-center justify-center gap-2 lg:justify-start">
+              {([
+                { v: "9:16", label: "Vertical", Icon: Smartphone },
+                { v: "16:9", label: "Wide", Icon: Monitor },
+                { v: "both", label: "Both", Icon: Layers },
+              ] as const).map(({ v, label: l, Icon }) => (
+                <button
+                  key={v}
+                  disabled={status === "rendering"}
+                  onClick={() => {
+                    if (v === aspect) return;
+                    setAspect(v);
+                    cleanupUrls();
+                    setResults([]);
+                    if (status === "ready") setStatus("idle");
+                  }}
+                  className={`flex items-center gap-1.5 rounded-full px-4 py-2.5 text-sm font-extrabold backdrop-blur transition disabled:opacity-50 ${
+                    aspect === v ? "bg-white text-black shadow-lg" : "bg-white/15 text-white hover:bg-white/25"
+                  }`}
+                >
+                  <Icon size={15} /> {l}
+                </button>
+              ))}
+            </div>
 
-          {/* Voice — narrated videos only (the stat-battle race has a fixed outro). */}
-          {!render && (
-            <div className="shrink-0">
-              <button
-                type="button"
-                disabled={status === "rendering"}
-                onClick={() => setVoiceOpen((o) => !o)}
-                className="flex w-full items-center justify-between gap-2 rounded-full bg-white/12 px-4 py-3 text-left backdrop-blur transition hover:bg-white/20 disabled:opacity-50"
-              >
-                <span className="flex min-w-0 items-center gap-2 text-sm font-extrabold text-white">
-                  <Mic size={16} className="shrink-0 text-[#FFD400]" /> Voice
-                  <span className="truncate font-semibold text-white/60">· {voiceLabel}</span>
-                </span>
-                <ChevronDown size={18} className={`shrink-0 text-white/60 transition ${voiceOpen ? "rotate-180" : ""}`} />
-              </button>
-              {voiceOpen && (
-                <div className="mt-1.5">
+            {/* Voice — narrated videos only (the stat-battle race has a fixed outro).
+                Mobile: a compact pill that expands. Big screens: shown directly so
+                the free-voices group can drop down in place. */}
+            {!render && (
+              <div className="shrink-0">
+                <button
+                  type="button"
+                  disabled={status === "rendering"}
+                  onClick={() => setVoiceOpen((o) => !o)}
+                  className="flex w-full items-center justify-between gap-2 rounded-full bg-white/12 px-4 py-3 text-left backdrop-blur transition hover:bg-white/20 disabled:opacity-50 lg:hidden"
+                >
+                  <span className="flex min-w-0 items-center gap-2 text-sm font-extrabold text-white">
+                    <Mic size={16} className="shrink-0 text-[#FFD400]" /> Voice
+                    <span className="truncate font-semibold text-white/60">· {voiceLabel}</span>
+                  </span>
+                  <ChevronDown size={18} className={`shrink-0 text-white/60 transition ${voiceOpen ? "rotate-180" : ""}`} />
+                </button>
+                <div className={`${voiceOpen ? "mt-1.5 block" : "hidden"} lg:mt-0 lg:block`}>
+                  <p className="mb-1.5 hidden items-center gap-1.5 px-1 text-xs font-bold uppercase tracking-wide text-white/45 lg:flex">
+                    <Mic size={13} className="text-[#FFD400]" /> Voice
+                  </p>
                   <HostVoicePicker
                     mode="video"
                     onPick={(id) => {
@@ -348,164 +356,169 @@ export function ShareModal({
                     }}
                   />
                 </div>
-              )}
-            </div>
-          )}
+              </div>
+            )}
 
-          {/* Pro/Max: remove the watermark (and any clunoid mention). */}
-          {isSubscriber && (
-            <button
-              type="button"
-              disabled={status === "rendering"}
-              onClick={() => {
-                setBranded((b) => !b);
-                cleanupUrls();
-                setResults([]);
-                if (status === "ready") setStatus("idle");
-              }}
-              aria-pressed={!branded}
-              className={`flex shrink-0 items-center justify-between gap-3 rounded-full px-4 py-3 text-left backdrop-blur transition disabled:opacity-50 ${
-                !branded ? "bg-violet-500/30" : "bg-white/12 hover:bg-white/20"
-              }`}
-            >
-              <span className="flex min-w-0 items-center gap-2 text-sm font-extrabold text-white">
-                <Sparkles size={16} className="shrink-0 text-violet-300" /> Remove watermark
-                <span className="rounded bg-violet-500/30 px-1.5 py-px text-[9px] font-extrabold uppercase tracking-wide text-violet-100">Pro</span>
-              </span>
-              <span className={`relative h-6 w-11 shrink-0 rounded-full transition ${!branded ? "bg-violet-400" : "bg-white/25"}`}>
-                <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${!branded ? "left-[1.375rem]" : "left-0.5"}`} />
-              </span>
-            </button>
-          )}
-
-          {/* preview / results */}
-          {ready && multi ? (
-            <div className="flex flex-col gap-3">
-              {results.map((r) => (
-                <div key={r.aspect} className="overflow-hidden rounded-3xl bg-black/40 backdrop-blur">
-                  <div className="flex items-center justify-between px-3.5 py-2.5">
-                    <span className="flex items-center gap-1.5 text-xs font-extrabold text-white/85">
-                      {r.aspect === "9:16" ? <Smartphone size={14} /> : <Monitor size={14} />} {ASPECT_LABEL[r.aspect]} <span className="text-white/45">{r.aspect}</span>
-                    </span>
-                    <div className="flex items-center gap-1.5">
-                      <button onClick={() => download(r)} className="flex items-center gap-1 rounded-full bg-white/15 px-3 py-1.5 text-xs font-bold transition hover:bg-white/25">
-                        <Download size={13} /> Save
-                      </button>
-                      <button onClick={() => share(r)} className="flex items-center gap-1 rounded-full bg-white px-3 py-1.5 text-xs font-bold text-black transition hover:bg-white/90">
-                        <Share2 size={13} /> Share
-                      </button>
-                    </div>
-                  </div>
-                  {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-                  <video src={r.url} controls playsInline loop className="max-h-[34dvh] w-full bg-black object-contain" />
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="relative flex min-h-[34dvh] flex-1 items-center justify-center overflow-hidden rounded-3xl bg-black/35 backdrop-blur">
-              {status === "unsupported" ? (
-                <p className="px-6 text-center text-sm text-white/70">
-                  Video creation isn’t supported in this browser. Try Chrome on desktop or Android.
-                </p>
-              ) : status === "error" ? (
-                <p className="px-6 text-center text-sm text-white/70">Something went wrong creating the video. Please try again.</p>
-              ) : ready && results[0] ? (
-                // eslint-disable-next-line jsx-a11y/media-has-caption
-                <video src={results[0].url} controls playsInline autoPlay loop className="max-h-full max-w-full rounded-2xl" />
-              ) : (
-                <div ref={hostRef} className="flex h-full w-full flex-col items-center justify-center gap-3 p-6 text-center">
-                  {status === "idle" && (
-                    <>
-                      <span className="grid h-16 w-16 place-items-center rounded-full bg-white/10 ring-1 ring-white/15">
-                        <Film size={28} className="text-white/70" />
-                      </span>
-                      <p className="max-w-[16rem] text-sm font-semibold text-white/65">
-                        {idleHint || `Your ${aspect === "both" ? "vertical + wide" : aspect} recap — tap below to create it.`}
-                      </p>
-                    </>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* progress */}
-          {status === "rendering" && (
-            <div className="shrink-0 space-y-2.5">
-              <div className="flex items-center justify-between text-xs font-bold text-white/80">
-                <span className="flex min-w-0 items-center gap-1.5">
-                  <Loader2 size={14} className="shrink-0 animate-spin" /> <span className="truncate">{label || "Working…"}</span>
+            {/* Pro/Max: remove the watermark (and any clunoid mention). */}
+            {isSubscriber && (
+              <button
+                type="button"
+                disabled={status === "rendering"}
+                onClick={() => {
+                  setBranded((b) => !b);
+                  cleanupUrls();
+                  setResults([]);
+                  if (status === "ready") setStatus("idle");
+                }}
+                aria-pressed={!branded}
+                className={`flex shrink-0 items-center justify-between gap-3 rounded-full px-4 py-3 text-left backdrop-blur transition disabled:opacity-50 ${
+                  !branded ? "bg-violet-500/30" : "bg-white/12 hover:bg-white/20"
+                }`}
+              >
+                <span className="flex min-w-0 items-center gap-2 text-sm font-extrabold text-white">
+                  <Sparkles size={16} className="shrink-0 text-violet-300" /> Remove watermark
+                  <span className="rounded bg-violet-500/30 px-1.5 py-px text-[9px] font-extrabold uppercase tracking-wide text-violet-100">Pro</span>
                 </span>
-                <span className="shrink-0 tabular-nums">{pct}%</span>
+                <span className={`relative h-6 w-11 shrink-0 rounded-full transition ${!branded ? "bg-violet-400" : "bg-white/25"}`}>
+                  <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${!branded ? "left-[1.375rem]" : "left-0.5"}`} />
+                </span>
+              </button>
+            )}
+          </div>
+
+          {/* RIGHT — preview / results + progress + caption */}
+          <div className="flex min-h-0 flex-1 flex-col gap-3 lg:overflow-y-auto lg:pb-2">
+            {/* preview / results */}
+            {ready && multi ? (
+              <div className="flex flex-col gap-3 lg:flex-1 lg:flex-row lg:flex-wrap lg:items-start lg:justify-center">
+                {results.map((r) => (
+                  <div key={r.aspect} className="overflow-hidden rounded-3xl bg-black/40 backdrop-blur lg:min-w-[240px] lg:flex-1">
+                    <div className="flex items-center justify-between px-3.5 py-2.5">
+                      <span className="flex items-center gap-1.5 text-xs font-extrabold text-white/85">
+                        {r.aspect === "9:16" ? <Smartphone size={14} /> : <Monitor size={14} />} {ASPECT_LABEL[r.aspect]} <span className="text-white/45">{r.aspect}</span>
+                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <button onClick={() => download(r)} className="flex items-center gap-1 rounded-full bg-white/15 px-3 py-1.5 text-xs font-bold transition hover:bg-white/25">
+                          <Download size={13} /> Save
+                        </button>
+                        <button onClick={() => share(r)} className="flex items-center gap-1 rounded-full bg-white px-3 py-1.5 text-xs font-bold text-black transition hover:bg-white/90">
+                          <Share2 size={13} /> Share
+                        </button>
+                      </div>
+                    </div>
+                    {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+                    <video src={r.url} controls playsInline loop className="max-h-[34dvh] w-full bg-black object-contain lg:max-h-[58vh]" />
+                  </div>
+                ))}
               </div>
-              <div className="h-2.5 overflow-hidden rounded-full bg-black/40">
-                <div className="h-full rounded-full bg-[#FFD400] transition-all" style={{ width: `${pct}%` }} />
-              </div>
-              {bgSafe ? (
-                <div className="flex items-start gap-2 rounded-2xl bg-emerald-500/15 px-3 py-2">
-                  <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-emerald-300" />
-                  <p className="text-[12px] font-semibold leading-snug text-emerald-100/90">
-                    Encoding in the background — feel free to switch tabs. Your {aspect === "both" ? "videos" : "video"} will be ready when you come back.
+            ) : (
+              <div className="relative flex min-h-[34dvh] flex-1 items-center justify-center overflow-hidden rounded-3xl bg-black/35 backdrop-blur">
+                {status === "unsupported" ? (
+                  <p className="px-6 text-center text-sm text-white/70">
+                    Video creation isn’t supported in this browser. Try Chrome on desktop or Android.
                   </p>
+                ) : status === "error" ? (
+                  <p className="px-6 text-center text-sm text-white/70">Something went wrong creating the video. Please try again.</p>
+                ) : ready && results[0] ? (
+                  // eslint-disable-next-line jsx-a11y/media-has-caption
+                  <video src={results[0].url} controls playsInline autoPlay loop className="max-h-full max-w-full rounded-2xl" />
+                ) : (
+                  <div ref={hostRef} className="flex h-full w-full flex-col items-center justify-center gap-3 p-6 text-center">
+                    {status === "idle" && (
+                      <>
+                        <span className="grid h-16 w-16 place-items-center rounded-full bg-white/10 ring-1 ring-white/15">
+                          <Film size={28} className="text-white/70" />
+                        </span>
+                        <p className="max-w-[16rem] text-sm font-semibold text-white/65">
+                          {idleHint || `Your ${aspect === "both" ? "vertical + wide" : aspect} recap — tap below to create it.`}
+                        </p>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* progress */}
+            {status === "rendering" && (
+              <div className="shrink-0 space-y-2.5">
+                <div className="flex items-center justify-between text-xs font-bold text-white/80">
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    <Loader2 size={14} className="shrink-0 animate-spin" /> <span className="truncate">{label || "Working…"}</span>
+                  </span>
+                  <span className="shrink-0 tabular-nums">{pct}%</span>
                 </div>
-              ) : (
-                <div className="flex items-start gap-2.5 rounded-2xl bg-amber-400/20 px-3.5 py-3">
-                  <AlertTriangle size={20} className="mt-0.5 shrink-0 animate-pulse text-amber-300" />
-                  <div>
-                    <p className="text-[13px] font-extrabold leading-snug text-amber-100">Keep this tab open</p>
-                    <p className="mt-0.5 text-[12px] font-medium leading-snug text-amber-100/85">
-                      Your video is recording in real time — don’t switch tabs or minimise until it finishes, or it won’t save fully.
+                <div className="h-2.5 overflow-hidden rounded-full bg-black/40">
+                  <div className="h-full rounded-full bg-[#FFD400] transition-all" style={{ width: `${pct}%` }} />
+                </div>
+                {bgSafe ? (
+                  <div className="flex items-start gap-2 rounded-2xl bg-emerald-500/15 px-3 py-2">
+                    <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-emerald-300" />
+                    <p className="text-[12px] font-semibold leading-snug text-emerald-100/90">
+                      Encoding in the background — feel free to switch tabs. Your {aspect === "both" ? "videos" : "video"} will be ready when you come back.
                     </p>
                   </div>
-                </div>
-              )}
-            </div>
-          )}
+                ) : (
+                  <div className="flex items-start gap-2.5 rounded-2xl bg-amber-400/20 px-3.5 py-3">
+                    <AlertTriangle size={20} className="mt-0.5 shrink-0 animate-pulse text-amber-300" />
+                    <div>
+                      <p className="text-[13px] font-extrabold leading-snug text-amber-100">Keep this tab open</p>
+                      <p className="mt-0.5 text-[12px] font-medium leading-snug text-amber-100/85">
+                        Your video is recording in real time — don’t switch tabs or minimise until it finishes, or it won’t save fully.
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
-          {ready && videoVoice !== "silent" && results.some((r) => !r.hadVoice) && (
-            <p className="shrink-0 px-2 text-center text-[11px] text-amber-300/90">
-              The {voiceById(videoVoice)?.name ?? "Isaac"} voice wasn’t available for {multi ? "one of these clips" : "this clip"}
-              {videoVoice !== "isaac" ? " — the free voices are rate-limited. Try Isaac or “Silent.”" : "."}
-            </p>
-          )}
+            {ready && videoVoice !== "silent" && results.some((r) => !r.hadVoice) && (
+              <p className="shrink-0 px-2 text-center text-[11px] text-amber-300/90">
+                The {voiceById(videoVoice)?.name ?? "Isaac"} voice wasn’t available for {multi ? "one of these clips" : "this clip"}
+                {videoVoice !== "isaac" ? " — the free voices are rate-limited. Try Isaac or “Silent.”" : "."}
+              </p>
+            )}
 
-          {/* AI caption generator */}
-          {ready && captionContext && (
-            <div className="shrink-0">
-              {!cap ? (
-                <button
-                  onClick={generateCaption}
-                  disabled={capLoading}
-                  className="flex w-full items-center justify-center gap-2 rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 py-3 text-sm font-extrabold text-white shadow-lg transition hover:opacity-90 disabled:opacity-60"
-                >
-                  {capLoading ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
-                  {capLoading ? "Writing your caption…" : "Generate title, caption & hashtags"}
-                </button>
-              ) : (
-                <div className="rounded-2xl bg-black/35 p-3 backdrop-blur">
-                  <div className="mb-2 flex items-center justify-between">
-                    <p className="text-xs font-bold text-white/60">Ready to post — copy &amp; paste</p>
-                    <button onClick={copyCaption} className="flex items-center gap-1 rounded-full bg-white/15 px-3 py-1 text-xs font-bold text-white transition hover:bg-white/25">
-                      {copied ? <Check size={13} /> : <Copy size={13} />} {copied ? "Copied" : "Copy all"}
+            {/* AI caption generator */}
+            {ready && captionContext && (
+              <div className="shrink-0">
+                {!cap ? (
+                  <button
+                    onClick={generateCaption}
+                    disabled={capLoading}
+                    className="flex w-full items-center justify-center gap-2 rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 py-3 text-sm font-extrabold text-white shadow-lg transition hover:opacity-90 disabled:opacity-60"
+                  >
+                    {capLoading ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
+                    {capLoading ? "Writing your caption…" : "Generate title, caption & hashtags"}
+                  </button>
+                ) : (
+                  <div className="rounded-2xl bg-black/35 p-3 backdrop-blur">
+                    <div className="mb-2 flex items-center justify-between">
+                      <p className="text-xs font-bold text-white/60">Ready to post — copy &amp; paste</p>
+                      <button onClick={copyCaption} className="flex items-center gap-1 rounded-full bg-white/15 px-3 py-1 text-xs font-bold text-white transition hover:bg-white/25">
+                        {copied ? <Check size={13} /> : <Copy size={13} />} {copied ? "Copied" : "Copy all"}
+                      </button>
+                    </div>
+                    <div className="max-h-36 overflow-y-auto rounded-xl bg-black/30 p-3 text-sm leading-relaxed">
+                      <p className="font-extrabold text-white">{cap.title}</p>
+                      <p className="mt-1.5 text-white/85">{cap.caption}</p>
+                      <p className="mt-1.5 font-semibold text-sky-300/90">{cap.hashtags.join(" ")}</p>
+                    </div>
+                    <button onClick={generateCaption} disabled={capLoading} className="mt-1.5 text-[11px] text-white/50 underline transition hover:text-white/80">
+                      {capLoading ? "Regenerating…" : "Regenerate"}
                     </button>
                   </div>
-                  <div className="max-h-36 overflow-y-auto rounded-xl bg-black/30 p-3 text-sm leading-relaxed">
-                    <p className="font-extrabold text-white">{cap.title}</p>
-                    <p className="mt-1.5 text-white/85">{cap.caption}</p>
-                    <p className="mt-1.5 font-semibold text-sky-300/90">{cap.hashtags.join(" ")}</p>
-                  </div>
-                  <button onClick={generateCaption} disabled={capLoading} className="mt-1.5 text-[11px] text-white/50 underline transition hover:text-white/80">
-                    {capLoading ? "Regenerating…" : "Regenerate"}
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
+                )}
+              </div>
+            )}
+          </div>
+        </div>
 
-          {/* Post-to-platform shortcuts */}
+        {/* BOTTOM bar — socials + primary action, end-to-end */}
+        <div className="shrink-0 pt-3 lg:pt-5">
           {ready && (
-            <div className="shrink-0">
-              <p className="mb-2 text-center text-xs font-bold text-white/55">Post to</p>
+            <div className="mb-3 flex flex-col items-center gap-2 lg:mb-4 lg:flex-row lg:justify-center lg:gap-4">
+              <p className="text-xs font-bold text-white/55">Post to</p>
               <div className="flex flex-wrap items-center justify-center gap-2.5">
                 {platforms.map((p) => (
                   <button
@@ -520,38 +533,37 @@ export function ShareModal({
                   </button>
                 ))}
               </div>
-              <p className="mt-2 text-center text-[11px] text-white/45">We’ll save the video — attach it in the app.</p>
+              <p className="text-[11px] text-white/45 lg:ml-2">We’ll save the video — attach it in the app.</p>
             </div>
           )}
-        </div>
 
-        {/* primary action — pinned */}
-        <div className="shrink-0 pt-3">
-          {ready ? (
-            multi ? (
-              <p className="py-1 text-center text-xs font-medium leading-snug text-white/65">
-                Tap <span className="font-bold text-white/85">Save</span> on each size above to download it.
-              </p>
+          <div className="mx-auto lg:max-w-md">
+            {ready ? (
+              multi ? (
+                <p className="py-1 text-center text-xs font-medium leading-snug text-white/65">
+                  Tap <span className="font-bold text-white/85">Save</span> on each size above to download it.
+                </p>
+              ) : (
+                <div className="flex gap-2.5">
+                  <button onClick={() => download(results[0])} className="flex flex-1 items-center justify-center gap-2 rounded-full bg-white/15 py-4 text-sm font-extrabold text-white backdrop-blur transition hover:bg-white/25">
+                    <Download size={18} /> Download
+                  </button>
+                  <button onClick={() => share(results[0])} className="flex flex-1 items-center justify-center gap-2 rounded-full bg-white py-4 text-sm font-extrabold text-black transition hover:bg-white/90">
+                    <Share2 size={18} /> Share
+                  </button>
+                </div>
+              )
             ) : (
-              <div className="flex gap-2.5">
-                <button onClick={() => download(results[0])} className="flex flex-1 items-center justify-center gap-2 rounded-full bg-white/15 py-4 text-sm font-extrabold text-white backdrop-blur transition hover:bg-white/25">
-                  <Download size={18} /> Download
-                </button>
-                <button onClick={() => share(results[0])} className="flex flex-1 items-center justify-center gap-2 rounded-full bg-white py-4 text-sm font-extrabold text-black transition hover:bg-white/90">
-                  <Share2 size={18} /> Share
-                </button>
-              </div>
-            )
-          ) : (
-            <button
-              onClick={generate}
-              disabled={status === "rendering" || status === "unsupported"}
-              className="flex w-full items-center justify-center gap-2 rounded-full bg-white py-4 text-base font-extrabold text-black shadow-[0_12px_34px_-10px_rgba(0,0,0,0.7)] transition hover:bg-white/90 disabled:opacity-50"
-            >
-              {status === "rendering" ? <Loader2 size={18} className="animate-spin" /> : <Film size={18} />}
-              {status === "rendering" ? "Creating…" : aspect === "both" ? "Create both videos" : "Create video"}
-            </button>
-          )}
+              <button
+                onClick={generate}
+                disabled={status === "rendering" || status === "unsupported"}
+                className="flex w-full items-center justify-center gap-2 rounded-full bg-white py-4 text-base font-extrabold text-black shadow-[0_12px_34px_-10px_rgba(0,0,0,0.7)] transition hover:bg-white/90 disabled:opacity-50"
+              >
+                {status === "rendering" ? <Loader2 size={18} className="animate-spin" /> : <Film size={18} />}
+                {status === "rendering" ? "Creating…" : aspect === "both" ? "Create both videos" : "Create video"}
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>
