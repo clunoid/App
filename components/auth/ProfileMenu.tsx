@@ -3,9 +3,10 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
-import { LogOut, MapPin, CalendarDays, Zap, CreditCard, Sparkles, Settings } from "lucide-react";
+import { LogOut, MapPin, CalendarDays, Zap, CreditCard, Sparkles, Settings, Plus } from "lucide-react";
 import { useClunoid } from "@/lib/store/useClunoid";
 import { useBilling } from "@/lib/billing/store";
+import { CREDITS_PER_USD } from "@/lib/billing/costs";
 import { cn, formatName } from "@/lib/utils";
 
 /**
@@ -46,8 +47,11 @@ export function ProfileMenu() {
   const plan = useBilling((s) => s.plan);
   const billingLoaded = useBilling((s) => s.loaded);
   const openPortal = useBilling((s) => s.openPortal);
+  const openCredit = useBilling((s) => s.openCredit);
   const location = useLocation();
   const ref = useRef<HTMLDivElement>(null);
+  // "Low" = less than $5 worth of credits → red badge; green at $5+.
+  const lowBalance = balance < 5 * CREDITS_PER_USD;
 
   useEffect(() => {
     if (!open) return;
@@ -79,15 +83,18 @@ export function ProfileMenu() {
   return (
     <div className="flex items-center gap-2">
       {billingLoaded && (
-        <Link
-          href="/pricing"
-          title="Credits — view plans"
+        <button
+          onClick={() => openCredit()}
+          title="Your credits — tap to add more"
           // Hidden on small screens to de-congest the bar; credits stay visible
-          // inside the profile card below.
-          className="hidden items-center gap-1 rounded-full border border-border bg-surface px-2.5 py-1 text-sm font-medium text-clay-soft transition hover:bg-surface-2 sm:flex"
+          // inside the profile card below. Red under $5 of credits, green at $5+.
+          className={cn(
+            "hidden items-center gap-1 rounded-full border px-2.5 py-1 text-sm font-semibold transition sm:flex",
+            lowBalance ? "border-bad/40 bg-bad/10 text-bad hover:bg-bad/15" : "border-ok/40 bg-ok/10 text-ok hover:bg-ok/15"
+          )}
         >
-          <Zap size={13} className="text-clay" /> {balance}
-        </Link>
+          <Zap size={13} /> {balance.toLocaleString()}
+        </button>
       )}
       <div ref={ref} className="relative">
         <button
@@ -126,12 +133,25 @@ export function ProfileMenu() {
                   </span>
                   <span className="font-medium text-spark-soft">{planLabel}</span>
                 </div>
-                <div className="flex items-center justify-between gap-3 rounded-lg px-2 py-1.5">
+                <button
+                  onClick={() => {
+                    closeProfile();
+                    openCredit();
+                  }}
+                  className="flex items-center justify-between gap-3 rounded-lg px-2 py-1.5 text-left transition hover:bg-surface-2"
+                >
                   <span className="flex items-center gap-1.5 text-ink-faint">
-                    <Zap size={14} /> Credits
+                    <Plus size={14} /> Add credit
                   </span>
-                  <span className="font-medium text-clay-soft">{balance}</span>
-                </div>
+                  <span
+                    className={cn(
+                      "rounded-full px-2 py-0.5 text-xs font-bold",
+                      lowBalance ? "bg-bad/15 text-bad" : "bg-ok/15 text-ok"
+                    )}
+                  >
+                    {balance.toLocaleString()}
+                  </span>
+                </button>
                 {location && (
                   <div className="flex items-center justify-between gap-3 rounded-lg px-2 py-1.5">
                     <span className="flex items-center gap-1.5 text-ink-faint">

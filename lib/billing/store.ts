@@ -15,12 +15,15 @@ type BillingState = {
   autoReload: AutoReload;
   loaded: boolean;
   upgradeOpen: boolean;
+  creditOpen: boolean;
   notice: string | null;
   busyPlan: string | null;
   buyingCredits: boolean;
   refresh: () => Promise<void>;
   openUpgrade: () => void;
   closeUpgrade: () => void;
+  openCredit: () => void;
+  closeCredit: () => void;
   setNotice: (s: string | null) => void;
   startCheckout: (plan: "pro" | "max", interval?: "monthly" | "annual") => Promise<void>;
   openPortal: () => Promise<void>;
@@ -44,6 +47,7 @@ export const useBilling = create<BillingState>((set, get) => ({
   autoReload: { enabled: false, threshold: 100, amountCents: 1000 },
   loaded: false,
   upgradeOpen: false,
+  creditOpen: false,
   notice: null,
   busyPlan: null,
   buyingCredits: false,
@@ -75,6 +79,8 @@ export const useBilling = create<BillingState>((set, get) => ({
 
   openUpgrade: () => set({ upgradeOpen: true }),
   closeUpgrade: () => set({ upgradeOpen: false }),
+  openCredit: () => set({ creditOpen: true, upgradeOpen: false }),
+  closeCredit: () => set({ creditOpen: false }),
   setNotice: (s) => set({ notice: s }),
 
   startCheckout: async (plan, interval = "monthly") => {

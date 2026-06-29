@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Check, Zap, ArrowLeft, Sparkles } from "lucide-react";
 import { useBilling } from "@/lib/billing/store";
+import { BuyCreditsCard, AutoReloadCard } from "./CreditTopUp";
 
 type Interval = "monthly" | "annual";
 
@@ -100,7 +101,7 @@ export function PricingTiers() {
   const isPro = plan === "pro";
 
   return (
-    <div className="mx-auto w-full max-w-5xl px-5 py-8">
+    <div className="mx-auto w-full max-w-6xl px-5 py-8">
       <Link href="/home" className="mb-4 inline-flex items-center gap-1.5 text-sm text-ink-faint transition hover:text-ink">
         <ArrowLeft size={15} /> Back to Clunoid
       </Link>
@@ -155,7 +156,7 @@ export function PricingTiers() {
         </div>
       </div>
 
-      <div className="mt-6 grid gap-5 sm:grid-cols-3">
+      <div className="mt-6 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
         {TIERS.map((t) => {
           const current = plan === t.id;
           const proToMax = isPro && t.id === "max";
@@ -233,6 +234,12 @@ export function PricingTiers() {
             </div>
           );
         })}
+
+        {/* 4th column: buy credits (top) + auto-reload (below) — same card designs. */}
+        <div className="flex flex-col gap-5">
+          <BuyCreditsCard />
+          <AutoReloadCard />
+        </div>
       </div>
 
       {plan !== "free" && (

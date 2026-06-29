@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
-import { X, Zap } from "lucide-react";
+import { X, Zap, Plus } from "lucide-react";
 import { useClunoid } from "@/lib/store/useClunoid";
 import { useBilling } from "@/lib/billing/store";
 import { bindBilling } from "@/lib/billing/bus";
+import { CreditModal } from "./CreditModal";
+import { CREDITS_PER_USD, MIN_TOPUP_CENTS } from "@/lib/billing/costs";
 
 /**
  * Global billing layer (mounted once in the root layout so it works on every
@@ -25,6 +27,12 @@ export function BillingGate() {
   const plan = useBilling((s) => s.plan);
   const busyPlan = useBilling((s) => s.busyPlan);
   const startCheckout = useBilling((s) => s.startCheckout);
+  const buyCredits = useBilling((s) => s.buyCredits);
+  const buyingCredits = useBilling((s) => s.buyingCredits);
+  const [dollars, setDollars] = useState("5");
+  const minDollars = MIN_TOPUP_CENTS / 100;
+  const amt = Math.max(0, Math.round(parseFloat(dollars) || 0));
+  const valid = amt >= minDollars;
 
   // Bind the fetch bus → real actions (once).
   useEffect(() => {
@@ -61,6 +69,8 @@ export function BillingGate() {
 
   return (
     <>
+      <CreditModal />
+
       <AnimatePresence>
         {upgradeOpen && (
           <motion.div
@@ -86,26 +96,58 @@ export function BillingGate() {
                 </button>
               </div>
               <p className="text-sm text-ink-muted">
-                You&apos;ve used your {plan === "free" ? "free" : plan} credits ({balance} left). Upgrade for a much
-                bigger monthly allowance — Stat Battles, search, games and Isaac&apos;s voice.
+                You&apos;ve used your {plan === "free" ? "free" : plan} credits ({balance} left). Buy more now and keep
+                going, or upgrade for a bigger monthly allowance.
               </p>
-              <div className="mt-5 flex flex-col gap-2">
+
+              {/* Buy credits right here — enter an amount and go. */}
+              <div className="mt-4 rounded-xl border border-border bg-surface-2 p-3">
+                <p className="mb-2 flex items-center gap-1.5 text-xs font-bold text-ink-faint">
+                  <Zap size={13} className="text-clay" /> Add credits now · {CREDITS_PER_USD}/$
+                </p>
+                <div className="flex items-center gap-2">
+                  <div className="flex flex-1 items-center gap-1 rounded-lg border border-border bg-surface px-2.5 py-2">
+                    <span className="text-ink-faint">$</span>
+                    <input
+                      type="number"
+                      min={minDollars}
+                      inputMode="decimal"
+                      value={dollars}
+                      onChange={(e) => setDollars(e.target.value)}
+                      aria-label="Amount in dollars"
+                      className="w-full bg-transparent font-semibold text-ink outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none"
+                    />
+                  </div>
+                  <button
+                    onClick={() => amt >= minDollars && void buyCredits(amt * 100)}
+                    disabled={buyingCredits || amt < minDollars}
+                    className="flex shrink-0 items-center gap-1 rounded-lg bg-clay px-3.5 py-2 text-sm font-extrabold text-[#1F1E1C] transition hover:brightness-105 disabled:opacity-50"
+                  >
+                    <Plus size={15} /> {buyingCredits ? "…" : "Buy"}
+                  </button>
+                </div>
+                <p className="mt-1.5 text-[11px] text-ink-faint">
+                  {valid ? `${(amt * CREDITS_PER_USD).toLocaleString()} credits · purchased credits don't expire` : `Minimum $${minDollars}`}
+                </p>
+              </div>
+
+              <div className="mt-3 flex flex-col gap-2">
                 <button
                   onClick={() => startCheckout("pro")}
                   disabled={busyPlan !== null}
-                  className="rounded-xl bg-clay px-4 py-3 font-medium text-[#1F1E1C] transition hover:bg-clay-soft disabled:opacity-60"
+                  className="rounded-xl border border-border bg-base px-4 py-3 text-sm font-medium text-ink transition hover:bg-surface-2 disabled:opacity-60"
                 >
-                  {busyPlan === "pro" ? "Opening checkout…" : "Upgrade to Pro — $12/mo"}
+                  {busyPlan === "pro" ? "Opening checkout…" : "Or upgrade to Pro — $12/mo"}
                 </button>
                 <button
                   onClick={() => startCheckout("max")}
                   disabled={busyPlan !== null}
-                  className="rounded-xl border border-border bg-base px-4 py-3 font-medium text-ink transition hover:bg-surface-2 disabled:opacity-60"
+                  className="rounded-xl border border-border bg-base px-4 py-3 text-sm font-medium text-ink transition hover:bg-surface-2 disabled:opacity-60"
                 >
                   {busyPlan === "max" ? "Opening checkout…" : "Go Max — $30/mo"}
                 </button>
                 <Link href="/pricing" onClick={closeUpgrade} className="mt-1 text-center text-xs text-ink-faint hover:text-ink">
-                  See full pricing
+                  See full pricing &amp; auto-reload
                 </Link>
               </div>
             </motion.div>

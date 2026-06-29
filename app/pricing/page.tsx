@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { PricingTiers } from "@/components/billing/PricingTiers";
-import { CreditTopUp } from "@/components/billing/CreditTopUp";
 
 export const metadata: Metadata = {
   title: "Pricing",
@@ -13,7 +12,6 @@ export default function PricingPage() {
   return (
     <main className="stage-bg min-h-[100dvh]">
       <PricingTiers />
-      <CreditTopUp />
     </main>
   );
 }
