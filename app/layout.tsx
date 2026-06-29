@@ -44,25 +44,25 @@ const JSON_LD = {
   "@graph": [
     {
       "@type": "Organization",
-      "@id": "https://clunoid.com/#organization",
+      "@id": "https://www.clunoid.com/#organization",
       name: "Clunoid",
-      url: "https://clunoid.com",
-      logo: "https://clunoid.com/icon.svg",
+      url: "https://www.clunoid.com",
+      logo: "https://www.clunoid.com/icon.svg",
     },
     {
       "@type": "WebSite",
-      "@id": "https://clunoid.com/#website",
-      url: "https://clunoid.com",
+      "@id": "https://www.clunoid.com/#website",
+      url: "https://www.clunoid.com",
       name: "Clunoid",
       description: SEO_DESCRIPTION,
       inLanguage: "en",
-      publisher: { "@id": "https://clunoid.com/#organization" },
+      publisher: { "@id": "https://www.clunoid.com/#organization" },
     },
     {
       "@type": "SoftwareApplication",
-      "@id": "https://clunoid.com/#app",
+      "@id": "https://www.clunoid.com/#app",
       name: "Clunoid",
-      url: "https://clunoid.com",
+      url: "https://www.clunoid.com",
       applicationCategory: "MultimediaApplication",
       operatingSystem: "Web, iOS, Android",
       description: SEO_DESCRIPTION,
@@ -82,13 +82,13 @@ const JSON_LD = {
         { "@type": "Offer", name: "Pro", price: "12", priceCurrency: "USD" },
         { "@type": "Offer", name: "Max", price: "30", priceCurrency: "USD" },
       ],
-      publisher: { "@id": "https://clunoid.com/#organization" },
+      publisher: { "@id": "https://www.clunoid.com/#organization" },
     },
   ],
 };
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://clunoid.com"),
+  metadataBase: new URL("https://www.clunoid.com"),
   title: { default: "Clunoid — Talk to Isaac, an AI that shows you anything", template: "%s · Clunoid" },
   description: SEO_DESCRIPTION,
   applicationName: "Clunoid",
@@ -100,7 +100,7 @@ export const metadata: Metadata = {
   alternates: { canonical: "/" },
   openGraph: {
     type: "website",
-    url: "https://clunoid.com",
+    url: "https://www.clunoid.com",
     siteName: "Clunoid",
     locale: "en_US",
     title: "Clunoid — Talk to Isaac, an AI that shows you anything",

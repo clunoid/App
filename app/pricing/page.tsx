@@ -13,7 +13,7 @@ export const metadata: Metadata = {
   alternates: { canonical: "/pricing" },
   openGraph: {
     type: "website",
-    url: "https://clunoid.com/pricing",
+    url: "https://www.clunoid.com/pricing",
     siteName: "Clunoid",
     title: "Clunoid Pricing & Credits",
     description:
@@ -64,9 +64,9 @@ const JSON_LD = {
         "AI host you talk to — answers with visuals, bar-chart-race Stat Battles, a flag game and shareable videos.",
       brand: { "@type": "Brand", name: "Clunoid" },
       offers: [
-        { "@type": "Offer", name: "Free", price: "0", priceCurrency: "USD", url: "https://clunoid.com/pricing" },
-        { "@type": "Offer", name: "Pro", price: "12", priceCurrency: "USD", url: "https://clunoid.com/pricing" },
-        { "@type": "Offer", name: "Max", price: "30", priceCurrency: "USD", url: "https://clunoid.com/pricing" },
+        { "@type": "Offer", name: "Free", price: "0", priceCurrency: "USD", url: "https://www.clunoid.com/pricing" },
+        { "@type": "Offer", name: "Pro", price: "12", priceCurrency: "USD", url: "https://www.clunoid.com/pricing" },
+        { "@type": "Offer", name: "Max", price: "30", priceCurrency: "USD", url: "https://www.clunoid.com/pricing" },
       ],
     },
     {

@@ -55,7 +55,7 @@ export type MarketingPage = {
   ctaSub: string;
 };
 
-const BASE = "https://clunoid.com";
+const BASE = "https://www.clunoid.com";
 
 /** Serialize structured data for a <script type="application/ld+json"> block,
  *  escaping "<" so a literal "</script>" can never break out (defense-in-depth;

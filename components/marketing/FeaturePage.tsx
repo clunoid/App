@@ -4,7 +4,7 @@ import { MarketingChrome } from "./MarketingChrome";
 import { StartFree } from "./StartFree";
 import { FEATURE_PAGES, ldJson, type MarketingPage } from "@/lib/marketing/content";
 
-const BASE = "https://clunoid.com";
+const BASE = "https://www.clunoid.com";
 
 /** Structured data so each page is eligible for rich results (FAQ, breadcrumb,
  *  and HowTo for step-by-step guides). */

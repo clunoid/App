@@ -1,7 +1,7 @@
 import type { MetadataRoute } from "next";
 import { ALL_PAGES } from "@/lib/marketing/content";
 
-const BASE = "https://clunoid.com";
+const BASE = "https://www.clunoid.com";
 
 // Public, indexable pages. The app itself (home, games, stats, settings) lives
 // behind sign-in and isn't listed.
