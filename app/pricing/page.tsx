@@ -17,8 +17,13 @@ export const metadata: Metadata = {
     title: "Clunoid Pricing & Credits",
     description:
       "Start free, Pro $12/mo, Max $30/mo. Buy credits any time (200 per $1) or set auto-reload. HD video export is always free.",
+    images: [{ url: "/og?t=Pricing%20%26%20Credits", width: 1200, height: 630, alt: "Clunoid Pricing & Credits" }],
   },
-  twitter: { card: "summary_large_image", title: "Clunoid Pricing & Credits" },
+  twitter: {
+    card: "summary_large_image",
+    title: "Clunoid Pricing & Credits",
+    images: ["/og?t=Pricing%20%26%20Credits"],
+  },
 };
 
 const PRICING_FAQ = [

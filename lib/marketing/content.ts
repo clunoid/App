@@ -30,6 +30,9 @@ export type Comparison = {
   rows: { label: string; clunoid: string; other: string }[];
 };
 
+/** An example idea (used by the examples gallery → rendered + ItemList schema). */
+export type Example = { title: string; prompt: string };
+
 export type MarketingPage = {
   slug: string; // route path WITHOUT leading slash, e.g. "stat-battles"
   nav: string; // short label for nav/footer
@@ -45,6 +48,8 @@ export type MarketingPage = {
   steps?: Step[]; // optional how-to (adds HowTo JSON-LD)
   stepsHeading?: string;
   comparison?: Comparison; // optional comparison table
+  examples?: Example[]; // optional examples gallery (adds ItemList JSON-LD)
+  examplesHeading?: string;
   faq: FaqItem[];
   ctaTitle: string;
   ctaSub: string;
@@ -52,9 +57,12 @@ export type MarketingPage = {
 
 const BASE = "https://clunoid.com";
 
-/** Per-page <Metadata>, derived from the content (canonical, OG, keywords). */
+/** Per-page <Metadata>, derived from the content (canonical, OG, keywords).
+ *  Each page gets a per-page Open Graph / Twitter card from the dynamic /og
+ *  endpoint (its own title baked in) — one shared generator, no per-route files. */
 export function buildMeta(page: MarketingPage): Metadata {
   const url = `${BASE}/${page.slug}`;
+  const ogImage = `/og?t=${encodeURIComponent(page.metaTitle)}`;
   return {
     title: page.metaTitle,
     description: page.metaDescription,
@@ -66,11 +74,13 @@ export function buildMeta(page: MarketingPage): Metadata {
       siteName: "Clunoid",
       title: page.metaTitle,
       description: page.metaDescription,
+      images: [{ url: ogImage, width: 1200, height: 630, alt: page.metaTitle }],
     },
     twitter: {
       card: "summary_large_image",
       title: page.metaTitle,
       description: page.metaDescription,
+      images: [ogImage],
     },
   };
 }
@@ -590,6 +600,203 @@ export const PAGES = {
     ctaTitle: "Bring Clunoid to your classroom",
     ctaSub: "Explain, visualize and play — free to start.",
   },
+
+  // ── Resource: TikTok video maker ─────────────────────────────────────────
+  "tiktok-video-maker": {
+    slug: "tiktok-video-maker",
+    nav: "TikTok Videos",
+    category: "resource",
+    metaTitle: "Free TikTok Video Maker — AI Captions & Voiceover",
+    metaDescription:
+      "Turn data and games into TikTok-ready 9:16 videos. Clunoid writes the hook, captions and hashtags and narrates it for you — free HD export, no watermark, no editing.",
+    keywords: [
+      "TikTok video maker", "free TikTok video maker", "TikTok video maker no watermark", "make a TikTok with AI",
+      "AI TikTok video", "TikTok video generator", "how to make a TikTok video", "9:16 video maker", "vertical video maker",
+      "TikTok captions", "auto captions for TikTok", "TikTok hashtag generator", "AI voiceover for TikTok",
+      "data video for TikTok", "bar chart race for TikTok", "faceless TikTok video maker",
+    ],
+    accent: "spark",
+    eyebrow: "Made for TikTok",
+    h1: "Free TikTok video maker — turn data and games into TikToks.",
+    heroSub:
+      "Build a Stat Battle or play a game in Clunoid, then export it as a vertical 9:16 TikTok with an AI-written hook, captions and hashtags, narrated in your chosen voice. No editing, no watermark.",
+    sections: [
+      {
+        heading: "Built for the For You feed",
+        body: "Everything exports in TikTok's native vertical 9:16 format with captions baked in, so your video reads instantly even on mute. Bar-chart-race \"who's winning\" videos and quiz results are exactly the kind of fast, satisfying content that performs on TikTok.",
+        bullets: [
+          "Native vertical 9:16 format",
+          "Burned-in captions for sound-off viewing",
+          "AI-written hook and hashtags",
+        ],
+      },
+      {
+        heading: "The AI does the busywork",
+        body: "Clunoid writes the title and hook, generates captions and suggests hashtags tuned for TikTok, and narrates the clip in your chosen voice. There's no timeline to edit — make it in Clunoid, export, post.",
+      },
+      {
+        heading: "Free HD export, no watermark",
+        body: "Exporting in HD is always free with no watermark. Render with Isaac's premium voice and the video is saved to your history so you can re-download it any time.",
+      },
+    ],
+    faq: [
+      { q: "How do I make a TikTok with Clunoid?", a: "Create a Stat Battle (bar-chart-race) or finish a game, tap Export, choose the vertical 9:16 format, and post — Clunoid writes the hook, captions and hashtags and narrates it for you." },
+      { q: "What size are the videos?", a: "Vertical 9:16 — TikTok's native full-screen format. You can also export wide 16:9 for other platforms." },
+      { q: "Is there a watermark on the TikTok videos?", a: "No. HD export is always free with no watermark." },
+      { q: "Do the videos have captions for sound-off viewing?", a: "Yes — captions are generated and baked in, so your video is clear even when watched on mute." },
+      { q: "What can I turn into a TikTok?", a: "Any Stat Battle (animated bar-chart-race) or Guess the Country game result you make in Clunoid." },
+    ],
+    ctaTitle: "Make a TikTok",
+    ctaSub: "Build something in Clunoid, then export it for TikTok — free.",
+  },
+
+  // ── Resource: Instagram Reels maker ──────────────────────────────────────
+  "instagram-reels-maker": {
+    slug: "instagram-reels-maker",
+    nav: "Instagram Reels",
+    category: "resource",
+    metaTitle: "Instagram Reels Maker — AI Captions & Voiceover, Free",
+    metaDescription:
+      "Make Instagram Reels from your data and games. Clunoid exports vertical 9:16 Reels with AI titles, captions, hashtags and voiceover — free HD export, no watermark, no editing.",
+    keywords: [
+      "Instagram Reels maker", "Reels video maker", "make Instagram Reels", "AI Reels maker", "free Reels maker",
+      "Reels video generator", "how to make a Reel", "9:16 Reels video", "vertical video for Instagram", "Reels captions",
+      "auto captions for Reels", "Reels hashtag generator", "AI voiceover for Reels", "data video for Instagram",
+      "bar chart race for Reels", "faceless Reels maker",
+    ],
+    accent: "spark",
+    eyebrow: "Made for Reels",
+    h1: "Instagram Reels maker — turn data and games into Reels.",
+    heroSub:
+      "Create a Stat Battle or play a game in Clunoid and export it as a vertical 9:16 Reel with an AI-written title, captions and hashtags, narrated in your chosen voice. No editing, no watermark.",
+    sections: [
+      {
+        heading: "Reels that get discovered",
+        body: "Clean, vertical 9:16 video with baked-in captions is exactly what Reels rewards. Animated bar-chart-race \"data stories\" and quiz moments are scroll-stopping and easy to share, so they're a natural fit for Instagram's discovery feed.",
+        bullets: [
+          "Native vertical 9:16 format",
+          "Burned-in captions for muted autoplay",
+          "AI-written caption and hashtags",
+        ],
+      },
+      {
+        heading: "From idea to Reel in minutes",
+        body: "Describe a ranking or upload your own data, let Clunoid build and narrate the animation, then export. The AI writes the title, captions and hashtags so you can post straight to Reels.",
+      },
+      {
+        heading: "Free HD export, no watermark",
+        body: "HD export is always free and watermark-free. Premium-voice Reels are saved to your history so you never have to re-render them.",
+      },
+    ],
+    faq: [
+      { q: "How do I make an Instagram Reel with Clunoid?", a: "Make a Stat Battle or finish a game, tap Export, choose vertical 9:16, and share to Reels — Clunoid writes the title, captions and hashtags and narrates it." },
+      { q: "What aspect ratio are the Reels?", a: "Vertical 9:16, the native Reels format. Wide 16:9 is also available for other platforms." },
+      { q: "Is there a watermark?", a: "No — HD export is free with no watermark." },
+      { q: "Do the Reels have captions?", a: "Yes, captions are baked in so the Reel is clear during muted autoplay." },
+      { q: "What can I turn into a Reel?", a: "Any Stat Battle (bar-chart-race) or game result you create in Clunoid." },
+    ],
+    ctaTitle: "Make a Reel",
+    ctaSub: "Build something in Clunoid, then export it for Reels — free.",
+  },
+
+  // ── Resource: YouTube Shorts maker ───────────────────────────────────────
+  "youtube-shorts-maker": {
+    slug: "youtube-shorts-maker",
+    nav: "YouTube Shorts",
+    category: "resource",
+    metaTitle: "YouTube Shorts Maker — Free, AI Captions & Voiceover",
+    metaDescription:
+      "Make YouTube Shorts from your data and games. Clunoid exports vertical 9:16 Shorts with AI titles, captions, hashtags and voiceover — free HD export, no watermark, no editing.",
+    keywords: [
+      "YouTube Shorts maker", "make YouTube Shorts", "AI Shorts maker", "free Shorts maker", "Shorts video maker",
+      "Shorts video generator", "how to make a YouTube Short", "9:16 Shorts video", "vertical video for YouTube",
+      "Shorts captions", "auto captions for Shorts", "AI voiceover for Shorts", "data video for YouTube Shorts",
+      "bar chart race for Shorts", "faceless YouTube Shorts", "educational Shorts maker",
+    ],
+    accent: "spark",
+    eyebrow: "Made for Shorts",
+    h1: "YouTube Shorts maker — turn data and games into Shorts.",
+    heroSub:
+      "Build a Stat Battle or play a game in Clunoid and export it as a vertical 9:16 Short with an AI-written title, captions and hashtags, narrated in your chosen voice. No editing, no watermark.",
+    sections: [
+      {
+        heading: "Shorts people watch to the end",
+        body: "Animated bar-chart-race videos build suspense as the leader changes, which helps retention — the metric Shorts cares about most. Captions are baked in and the format is native vertical 9:16, so it's ready for the Shorts shelf.",
+        bullets: [
+          "Native vertical 9:16 format",
+          "Burned-in captions for clarity",
+          "AI-written title and hashtags",
+        ],
+      },
+      {
+        heading: "No editing required",
+        body: "Describe a ranking or upload a file, Clunoid builds and narrates the animation, and you export a finished Short. The AI handles the title, captions and hashtags so you can publish right away.",
+      },
+      {
+        heading: "Free HD export, no watermark",
+        body: "HD export is always free and watermark-free. Premium-voice Shorts are saved to your history so you can re-download them any time.",
+      },
+    ],
+    faq: [
+      { q: "How do I make a YouTube Short with Clunoid?", a: "Create a Stat Battle or finish a game, tap Export, choose vertical 9:16, and upload to YouTube Shorts — Clunoid writes the title, captions and hashtags and narrates it." },
+      { q: "What format are the Shorts?", a: "Vertical 9:16, the native Shorts format. Wide 16:9 export is also available." },
+      { q: "Is there a watermark?", a: "No — HD export is free with no watermark." },
+      { q: "Do the Shorts have captions?", a: "Yes, captions are generated and baked into the video." },
+      { q: "What can I turn into a Short?", a: "Any Stat Battle (bar-chart-race) or Guess the Country game result." },
+    ],
+    ctaTitle: "Make a Short",
+    ctaSub: "Build something in Clunoid, then export it for Shorts — free.",
+  },
+
+  // ── Resource: Bar chart race examples ────────────────────────────────────
+  "bar-chart-race-examples": {
+    slug: "bar-chart-race-examples",
+    nav: "Examples",
+    category: "resource",
+    metaTitle: "Bar Chart Race Examples & Ideas — Clunoid",
+    metaDescription:
+      "Bar chart race ideas you can make in seconds: richest countries, biggest companies, most-subscribed channels and more. Type any one into Clunoid and watch it animate and narrate.",
+    keywords: [
+      "bar chart race examples", "bar chart race ideas", "bar chart race topics", "best bar chart races",
+      "what to make a bar chart race about", "data race ideas", "richest countries bar chart race", "biggest companies bar chart race",
+      "population bar chart race", "GDP bar chart race", "YouTube subscribers bar chart race", "Olympic medals bar chart race",
+      "market cap bar chart race", "bar chart race inspiration", "animated ranking ideas",
+    ],
+    accent: "spark",
+    eyebrow: "Ideas to try",
+    h1: "Bar chart race examples and ideas.",
+    heroSub:
+      "Not sure what to make? Here are popular bar-chart-race ideas. Type any one into Clunoid's Stat Battles and it finds the data, animates the race, and narrates it — then you can export it as a video.",
+    sections: [
+      {
+        heading: "How to use these",
+        body: "Each idea below is a ready-to-use prompt. Open Stat Battles, paste it in (or tweak the years and topic), and Clunoid builds the animated bar-chart-race for you — no spreadsheets or chart software. You can also upload your own PDF, CSV or Excel file to race your own data.",
+      },
+    ],
+    examplesHeading: "Popular bar chart race ideas",
+    examples: [
+      { title: "Richest countries", prompt: "Largest economies by GDP from 1960 to today" },
+      { title: "Most-subscribed YouTubers", prompt: "Most-subscribed YouTube channels over time" },
+      { title: "Most populous countries", prompt: "Most populous countries from 1950 to 2050" },
+      { title: "Biggest companies", prompt: "Biggest companies by market capitalization over time" },
+      { title: "Top football clubs", prompt: "Most valuable football clubs by year" },
+      { title: "Olympic medals", prompt: "Olympic gold medals by country, by year" },
+      { title: "Largest cities", prompt: "Largest cities in the world over time" },
+      { title: "Top cryptocurrencies", prompt: "Top cryptocurrencies by market cap over time" },
+      { title: "Most-downloaded apps", prompt: "Most-downloaded apps by year" },
+      { title: "Life expectancy", prompt: "Life expectancy by country over time" },
+      { title: "Highest-grossing films", prompt: "Highest-grossing movies of all time" },
+      { title: "Grand Slam titles", prompt: "Most Grand Slam tennis titles by player over time" },
+    ],
+    faq: [
+      { q: "How do I use a bar chart race example?", a: "Open Clunoid's Stat Battles and type any idea from this page — for example \"Largest economies by GDP from 1960 to today.\" Clunoid finds the data, builds the animated race and narrates it, then you can export it as a video." },
+      { q: "Can I change the topic or years?", a: "Yes. Every example is just a prompt — tweak the topic, the time range, or how many items race, and Clunoid rebuilds it." },
+      { q: "Can I race my own data?", a: "Yes. Upload a PDF, CSV or Excel file and Clunoid turns your own numbers into a bar-chart-race." },
+      { q: "Is it free?", a: "You can start for free and HD export is free. Credits and paid plans cover heavier usage and premium narration." },
+    ],
+    ctaTitle: "Try one of these",
+    ctaSub: "Pick an idea and watch it race — free to start.",
+  },
 } satisfies Record<string, MarketingPage>;
 
 export type PageKey = keyof typeof PAGES;
@@ -605,11 +812,15 @@ export const FEATURE_ORDER: PageKey[] = [
   "file-analyzer",
 ];
 
-/** Resource / SEO pages — shown in the footer "Learn" column. */
+/** Resource / SEO pages — shown in the footer "Resources" column. */
 export const RESOURCE_ORDER: PageKey[] = [
   "clunoid-vs-chatgpt",
   "how-to-make-a-bar-chart-race",
+  "bar-chart-race-examples",
   "ai-tools-for-teachers",
+  "tiktok-video-maker",
+  "instagram-reels-maker",
+  "youtube-shorts-maker",
 ];
 
 export const FEATURE_PAGES: MarketingPage[] = FEATURE_ORDER.map((k) => PAGES[k]);

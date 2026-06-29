@@ -50,6 +50,17 @@ function jsonLd(page: MarketingPage) {
       })),
     });
   }
+  if (page.examples?.length) {
+    graph.push({
+      "@type": "ItemList",
+      name: page.examplesHeading || "Examples",
+      itemListElement: page.examples.map((e, i) => ({
+        "@type": "ListItem",
+        position: i + 1,
+        name: e.title,
+      })),
+    });
+  }
   return { "@context": "https://schema.org", "@graph": graph };
 }
 
@@ -160,6 +171,26 @@ export function FeaturePage({ page }: { page: MarketingPage }) {
                   ))}
                 </tbody>
               </table>
+            </div>
+          </div>
+        </section>
+      ) : null}
+
+      {/* Examples gallery (optional) */}
+      {page.examples?.length ? (
+        <section className="border-t border-border/60 bg-surface/30">
+          <div className="mx-auto w-full max-w-5xl px-4 py-14 sm:px-6">
+            <h2 className="font-serif text-3xl text-ink">{page.examplesHeading || "Examples"}</h2>
+            <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {page.examples.map((e, i) => (
+                <div key={i} className="rounded-2xl border border-border bg-surface/50 p-5">
+                  <h3 className={`font-serif text-lg ${accentText}`}>{e.title}</h3>
+                  <p className="mt-2 rounded-lg bg-surface-2 px-3 py-2 text-sm text-ink-muted">“{e.prompt}”</p>
+                </div>
+              ))}
+            </div>
+            <div className="mt-8">
+              <StartFree label="Build one now" />
             </div>
           </div>
         </section>

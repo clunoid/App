@@ -136,7 +136,7 @@ export function LandingExtras() {
             </ul>
           </div>
           <div>
-            <h2 className="text-xs font-semibold uppercase tracking-wide text-ink-faint">Learn</h2>
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-ink-faint">Resources</h2>
             <ul className="mt-3 space-y-2">
               {RESOURCE_PAGES.map((p) => (
                 <li key={p.slug}>
