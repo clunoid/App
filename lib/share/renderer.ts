@@ -49,6 +49,7 @@ export type RenderOpts = {
   host?: HTMLElement | null; // element to mount the live-rendering canvas into
   onProgress?: (pct: number, label: string) => void;
   signal?: AbortSignal;
+  voiceName?: string; // display name of the chosen narration voice (for progress labels)
 };
 
 /* ── small canvas helpers ─────────────────────────────────────────────────── */
@@ -358,8 +359,10 @@ function drawFrame(ctx: CanvasRenderingContext2D, W: number, H: number, spec: Re
 
 /* ── main: render the spec into a video Blob ──────────────────────────────── */
 export async function renderReel(spec: ReelSpec, opts: RenderOpts = {}): Promise<RenderResult> {
-  const { host, onProgress, signal } = opts;
+  const { host, onProgress, signal, voiceName } = opts;
   const prog = (p: number, l: string) => onProgress?.(p, l);
+  // Voice-agnostic label — reflects whichever voice the user picked (not always Isaac).
+  const voiceLine = voiceName ? `Loading ${voiceName}’s voice…` : "Loading the voice…";
   const { w: W, h: H } = aspectSize(spec.aspect);
 
   const canvas = document.createElement("canvas");
@@ -390,7 +393,7 @@ export async function renderReel(spec: ReelSpec, opts: RenderOpts = {}): Promise
   const ac = new Ctx();
   const dest = ac.createMediaStreamDestination();
 
-  prog(8, "Loading Isaac’s voice…");
+  prog(8, voiceLine);
   // Every line Isaac speaks: intro, then a QUESTION + an ANSWER per scene, then outro.
   const lineTexts: string[] = [spec.intro.narration];
   spec.scenes.forEach((s) => {
@@ -411,7 +414,7 @@ export async function renderReel(spec: ReelSpec, opts: RenderOpts = {}): Promise
   await mapLimit(uniqueTexts, 2, async (t) => {
     decoded.set(t, await fetchDecodeLine(ac, t));
     fetched++;
-    prog(Math.min(14, 8 + Math.round((fetched / uniqueTexts.length) * 6)), "Loading Isaac’s voice…");
+    prog(Math.min(14, 8 + Math.round((fetched / uniqueTexts.length) * 6)), voiceLine);
   });
   // Re-expand to one buffer per line (a single AudioBuffer can back many sources).
   const buffers = lineTexts.map((t) => {

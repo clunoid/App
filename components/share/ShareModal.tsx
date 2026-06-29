@@ -175,6 +175,9 @@ export function ShareModal({
     const ac = new AbortController();
     abortRef.current = ac;
     const targets: ReelAspect[] = aspect === "both" ? ["9:16", "16:9"] : [aspect];
+    // Display name of the chosen voice, so progress labels say the right thing
+    // (not always "Isaac"). undefined for a silent video.
+    const voiceName = videoVoice === "silent" ? undefined : voiceById(videoVoice)?.name ?? "Isaac";
     const out: RenderItem[] = [];
     try {
       // let the "rendering" view (host div) mount before we draw into it
@@ -190,7 +193,7 @@ export function ShareModal({
         };
         const res = render
           ? await render(a, { host: hostRef.current, signal: ac.signal, onProgress, branded })
-          : await renderReel(makeSpec!(a, { branded }), { host: hostRef.current, signal: ac.signal, onProgress });
+          : await renderReel(makeSpec!(a, { branded }), { host: hostRef.current, signal: ac.signal, onProgress, voiceName });
         if (ac.signal.aborted) {
           out.forEach((r) => URL.revokeObjectURL(r.url)); // don't orphan an already-finished size
           return;
@@ -220,7 +223,7 @@ export function ShareModal({
       console.error("reel render failed", e);
       setStatus("error");
     }
-  }, [aspect, branded, cleanupUrls, makeSpec, render, gameId]);
+  }, [aspect, branded, cleanupUrls, makeSpec, render, gameId, videoVoice]);
 
   const nameFor = useCallback(
     (item: RenderItem) => (resultsRef.current.length > 1 ? `${fileName}-${item.aspect.replace(":", "x")}` : fileName),
@@ -468,33 +471,44 @@ export function ShareModal({
               )}
             </div>
 
-            {/* Preview (definite height → always visible while creating + created) +
-                a vertical social rail beside it once ready. */}
-            <div className="flex shrink-0 items-stretch gap-2.5">
-              <div className="relative flex h-[42dvh] flex-1 items-center justify-center overflow-hidden rounded-3xl bg-black/35 backdrop-blur lg:h-[52vh]">
-                {ready && multi ? (
-                  <div className="flex h-full w-full flex-col gap-2 overflow-y-auto p-2">
-                    {results.map((r) => (
-                      <div key={r.aspect} className="overflow-hidden rounded-2xl bg-black/40">
-                        <div className="flex items-center justify-between px-3 py-2">
-                          <span className="flex items-center gap-1.5 text-xs font-extrabold text-white/85">
-                            {r.aspect === "9:16" ? <Smartphone size={14} /> : <Monitor size={14} />} {ASPECT_LABEL[r.aspect]} <span className="text-white/45">{r.aspect}</span>
-                          </span>
-                          <div className="flex items-center gap-1.5">
-                            <button onClick={() => download(r)} className="flex items-center gap-1 rounded-full bg-white/15 px-3 py-1.5 text-xs font-bold transition hover:bg-white/25">
-                              <Download size={13} /> Save
-                            </button>
-                            <button onClick={() => share(r)} className="flex items-center gap-1 rounded-full bg-white px-3 py-1.5 text-xs font-bold text-black transition hover:bg-white/90">
-                              <Share2 size={13} /> Share
-                            </button>
-                          </div>
-                        </div>
-                        {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-                        <video src={r.url} controls playsInline loop className="max-h-[34dvh] w-full bg-black object-contain" />
+            {/* Preview — DYNAMIC. Both results flow at full size (stacked on phones,
+                side-by-side on wider screens) so every clip is fully visible and the
+                column simply scrolls; no fixed-height box hides the second video. A
+                definite-height stage is kept only for the live render + single result
+                (the renderer needs a sized canvas host). */}
+            {ready && multi ? (
+              <div className="flex shrink-0 flex-col items-center gap-3 sm:flex-row sm:flex-wrap sm:items-start sm:justify-center">
+                {results.map((r) => (
+                  <div key={r.aspect} className="w-full overflow-hidden rounded-2xl bg-black/40 sm:w-auto sm:max-w-[49%]">
+                    <div className="flex items-center justify-between px-3 py-2">
+                      <span className="flex items-center gap-1.5 text-xs font-extrabold text-white/85">
+                        {r.aspect === "9:16" ? <Smartphone size={14} /> : <Monitor size={14} />} {ASPECT_LABEL[r.aspect]} <span className="text-white/45">{r.aspect}</span>
+                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <button onClick={() => download(r)} className="flex items-center gap-1 rounded-full bg-white/15 px-3 py-1.5 text-xs font-bold transition hover:bg-white/25">
+                          <Download size={13} /> Save
+                        </button>
+                        <button onClick={() => share(r)} className="flex items-center gap-1 rounded-full bg-white px-3 py-1.5 text-xs font-bold text-black transition hover:bg-white/90">
+                          <Share2 size={13} /> Share
+                        </button>
                       </div>
-                    ))}
+                    </div>
+                    {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+                    <video
+                      src={r.url}
+                      controls
+                      autoPlay
+                      muted
+                      loop
+                      playsInline
+                      className={`bg-black object-contain ${r.aspect === "9:16" ? "mx-auto max-h-[62dvh] w-auto max-w-full" : "h-auto w-full max-h-[44dvh]"}`}
+                    />
                   </div>
-                ) : status === "unsupported" ? (
+                ))}
+              </div>
+            ) : (
+              <div className="relative flex h-[42dvh] shrink-0 items-center justify-center overflow-hidden rounded-3xl bg-black/35 backdrop-blur lg:h-[52vh]">
+                {status === "unsupported" ? (
                   <p className="px-6 text-center text-sm text-white/70">
                     Video creation isn’t supported in this browser. Try Chrome on desktop or Android.
                   </p>
@@ -502,7 +516,7 @@ export function ShareModal({
                   <p className="px-6 text-center text-sm text-white/70">Something went wrong creating the video. Please try again.</p>
                 ) : ready && results[0] ? (
                   // eslint-disable-next-line jsx-a11y/media-has-caption
-                  <video src={results[0].url} controls playsInline autoPlay loop className="max-h-full max-w-full rounded-2xl" />
+                  <video src={results[0].url} controls autoPlay muted loop playsInline className="max-h-full max-w-full rounded-2xl bg-black object-contain" />
                 ) : (
                   <div ref={hostRef} className="flex h-full w-full flex-col items-center justify-center gap-3 p-6 text-center">
                     {status === "idle" && (
@@ -518,25 +532,25 @@ export function ShareModal({
                   </div>
                 )}
               </div>
+            )}
 
-              {/* vertical social rail — beside the preview, once a clip is ready */}
-              {ready && (
-                <div className="flex shrink-0 flex-col items-center justify-center gap-2">
-                  {platforms.map((p) => (
-                    <button
-                      key={p.key}
-                      onClick={() => postTo(p.href)}
-                      aria-label={`Post to ${p.label}`}
-                      title={`Save the video & open ${p.label}`}
-                      className="grid h-10 w-10 place-items-center rounded-full text-white shadow-md ring-1 ring-white/15 transition hover:scale-110 sm:h-11 sm:w-11"
-                      style={{ backgroundColor: p.color }}
-                    >
-                      <p.Icon size={19} />
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+            {/* social rail — a horizontal row below the preview, once a clip is ready */}
+            {ready && (
+              <div className="flex shrink-0 flex-wrap items-center justify-center gap-2.5">
+                {platforms.map((p) => (
+                  <button
+                    key={p.key}
+                    onClick={() => postTo(p.href)}
+                    aria-label={`Post to ${p.label}`}
+                    title={`Save the video & open ${p.label}`}
+                    className="grid h-11 w-11 place-items-center rounded-full text-white shadow-md ring-1 ring-white/15 transition hover:scale-110"
+                    style={{ backgroundColor: p.color }}
+                  >
+                    <p.Icon size={19} />
+                  </button>
+                ))}
+              </div>
+            )}
 
             {/* progress */}
             {status === "rendering" && (
