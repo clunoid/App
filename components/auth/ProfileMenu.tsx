@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
-import { LogOut, MapPin, CalendarDays, Zap, CreditCard, Sparkles } from "lucide-react";
+import { LogOut, MapPin, CalendarDays, Zap, CreditCard, Sparkles, Settings } from "lucide-react";
 import { useClunoid } from "@/lib/store/useClunoid";
 import { useBilling } from "@/lib/billing/store";
 import { cn, formatName } from "@/lib/utils";
@@ -178,6 +178,13 @@ export function ProfileMenu() {
                     </button>
                   </>
                 )}
+                <Link
+                  href="/settings"
+                  onClick={closeProfile}
+                  className="mt-1 flex items-center gap-2 rounded-lg px-2 py-2 text-ink-faint transition hover:bg-surface-2"
+                >
+                  <Settings size={16} /> Settings
+                </Link>
                 <button
                   onClick={() => signOut()}
                   className="mt-1 flex items-center gap-2 rounded-lg px-2 py-2 text-bad transition hover:bg-surface-2"

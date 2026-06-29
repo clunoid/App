@@ -16,6 +16,7 @@ import { getHost } from "@/lib/games/host";
 import { useListen } from "@/lib/games/useListen";
 import { similarCodes } from "@/lib/games/similar";
 import { grantIsaac } from "@/lib/isaac/grant";
+import { getVoicePref, isClunoidVoice } from "@/lib/voice/preference";
 import { GameHistory } from "@/components/games/GameHistory";
 import { saveGameResult, type AnswerMode, type ReplayRound, type GameSnapshot } from "@/lib/games/storage";
 import { QUESTIONS, buildGameReel } from "@/lib/games/reel";
@@ -207,6 +208,13 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
   // Decide (server-authoritative) whether Isaac hosts THIS game, then set the
   // host's voice + the subscribe nudge accordingly. Run before the first line.
   const applyGameGrant = useCallback(async () => {
+    // A Clunoid Voice isn't Isaac — it's free + ungated, so don't spend the Isaac
+    // trial and don't show the "Isaac is off" nudge; the chosen voice just hosts.
+    if (isClunoidVoice(getVoicePref())) {
+      host.useFallbackVoice(false);
+      setIsaacOn(true);
+      return;
+    }
     const on = await grantIsaac("game");
     host.useFallbackVoice(!on);
     setIsaacOn(on);

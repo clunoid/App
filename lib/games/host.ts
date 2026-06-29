@@ -8,7 +8,9 @@
  * can open the mic only after he's done talking — which kills self-echo.
  */
 
-type TtsPayload = { audio: string } | null;
+import { getVoicePref, isClunoidVoice } from "@/lib/voice/preference";
+
+type TtsPayload = { audio: string; format?: string } | null;
 
 class Host {
   private muted = false;
@@ -41,6 +43,12 @@ class Host {
     if (on) this.cache.clear();
   }
 
+  /** Should we fetch a server voice (vs. the browser fallback)? Always yes for a
+   *  Clunoid Voice (cheap, ungated); for Isaac, only while his trial is open. */
+  private serverVoiceOn() {
+    return isClunoidVoice(getVoicePref()) || this.elevenOk;
+  }
+
   private warmVoices() {
     try {
       const s = window.speechSynthesis;
@@ -67,7 +75,7 @@ class Host {
     return fetch("/api/tts", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ text, feature: "game" }),
+      body: JSON.stringify({ text, feature: "game", voice: getVoicePref() }),
     })
       .then(async (r) => (!r.ok || r.status === 204 ? null : ((await r.json()) as TtsPayload)))
       .catch(() => null);
@@ -76,7 +84,7 @@ class Host {
   /** Warm a line ahead of time (e.g. the round's answer during the question). */
   prefetch(text: string) {
     const k = text.trim();
-    if (this.muted || !k || !this.elevenOk || this.cache.has(k)) return;
+    if (this.muted || !k || !this.serverVoiceOn() || this.cache.has(k)) return;
     this.cache.set(k, this.fetchTts(k));
   }
 
@@ -88,7 +96,7 @@ class Host {
     this.cancel(); // stop current + invalidate any in-flight say()
     const myGen = this.gen;
 
-    if (this.elevenOk) {
+    if (this.serverVoiceOn()) {
       let p = this.cache.get(k);
       if (!p) {
         p = this.fetchTts(k);
@@ -104,7 +112,8 @@ class Host {
       if (myGen !== this.gen || this.muted) return; // cancelled / muted while fetching
       if (payload?.audio) {
         try {
-          const url = URL.createObjectURL(b64ToBlob(payload.audio, "audio/mpeg"));
+          const mime = payload.format === "wav" ? "audio/wav" : "audio/mpeg";
+          const url = URL.createObjectURL(b64ToBlob(payload.audio, mime));
           const audio = new Audio(url);
           this.current = audio;
           this._speaking = true;

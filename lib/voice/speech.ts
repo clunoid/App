@@ -1,7 +1,9 @@
 "use client";
 
+import { getVoicePref, isClunoidVoice } from "@/lib/voice/preference";
+
 type Alignment = { chars: string[] | null; times: number[] | null };
-type TtsPayload = { audio: string } & Alignment;
+type TtsPayload = { audio: string; format?: string } & Alignment;
 
 /**
  * Plays Isaac's speech (ElevenLabs base64 + character timestamps). Exposes:
@@ -60,6 +62,12 @@ export class SpeechPlayer {
     }
   }
 
+  /** Should we fetch a server voice (vs. paced text)? Always yes for a Clunoid
+   *  Voice (cheap, ungated); for Isaac, only while his trial is open. */
+  private serverVoiceOn(): boolean {
+    return isClunoidVoice(getVoicePref()) || this.eleven;
+  }
+
   private abortInflight(): void {
     for (const c of this.inflight) {
       try {
@@ -77,7 +85,7 @@ export class SpeechPlayer {
     return fetch("/api/tts", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ text, feature: "search" }),
+      body: JSON.stringify({ text, feature: "search", voice: getVoicePref() }),
       signal: ctrl.signal,
     })
       .then(async (res) => (!res.ok || res.status === 204 ? null : ((await res.json()) as TtsPayload)))
@@ -87,7 +95,7 @@ export class SpeechPlayer {
 
   /** Begin fetching a line's audio ahead of time (call for the NEXT beat). */
   prefetch(text: string): void {
-    if (this.muted || !this.eleven) return; // silent mode / trial used → no TTS API
+    if (this.muted || !this.serverVoiceOn()) return; // silent mode / trial used → no TTS API
     const key = text.trim();
     if (!key || this.cache.has(key)) return;
     this.cache.set(key, this.fetchTts(key));
@@ -100,7 +108,7 @@ export class SpeechPlayer {
     this.onProgress = onProgress;
 
     let payload: TtsPayload | null = null;
-    if (!this.muted && this.eleven) {
+    if (!this.muted && this.serverVoiceOn()) {
       let pending = this.cache.get(key);
       if (!pending) {
         pending = this.fetchTts(key);
@@ -133,7 +141,7 @@ export class SpeechPlayer {
     this.ptr = 0;
     const total = payload.times?.length ?? text.length;
 
-    const blob = b64ToBlob(payload.audio, "audio/mpeg");
+    const blob = b64ToBlob(payload.audio, payload.format === "wav" ? "audio/wav" : "audio/mpeg");
     const url = URL.createObjectURL(blob);
     const audio = new Audio(url);
     this.audio = audio;
