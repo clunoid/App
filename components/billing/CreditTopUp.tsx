@@ -146,9 +146,9 @@ export function AutoReloadCard() {
       </div>
 
       <div className={cn("mt-4 space-y-3 transition", arEnabled ? "opacity-100" : "pointer-events-none opacity-45")}>
-        <label className="flex items-center justify-between gap-3 text-sm text-ink-muted">
+        <label className="block text-sm text-ink-muted">
           When my balance falls below
-          <span className="flex items-center gap-1.5 rounded-xl border border-border bg-surface-2 px-3 py-2">
+          <span className="mt-1.5 flex items-center gap-1.5 rounded-xl border border-border bg-surface-2 px-3 py-2">
             <input
               type="number"
               min={0}
@@ -156,15 +156,15 @@ export function AutoReloadCard() {
               value={arThreshold}
               onChange={(e) => setArThreshold(e.target.value)}
               aria-label="Threshold in credits"
-              className="w-16 bg-transparent text-right font-semibold text-ink outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none"
+              className="w-full min-w-0 bg-transparent font-semibold text-ink outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none"
             />
-            <span className="text-ink-faint">credits</span>
+            <span className="shrink-0 text-ink-faint">credits</span>
           </span>
         </label>
-        <label className="flex items-center justify-between gap-3 text-sm text-ink-muted">
+        <label className="block text-sm text-ink-muted">
           automatically buy
-          <span className="flex items-center gap-1.5 rounded-xl border border-border bg-surface-2 px-3 py-2">
-            <span className="text-ink-faint">$</span>
+          <span className="mt-1.5 flex items-center gap-1.5 rounded-xl border border-border bg-surface-2 px-3 py-2">
+            <span className="shrink-0 text-ink-faint">$</span>
             <input
               type="number"
               min={MIN_DOLLARS}
@@ -172,9 +172,9 @@ export function AutoReloadCard() {
               value={arDollars}
               onChange={(e) => setArDollars(e.target.value)}
               aria-label="Reload amount in dollars"
-              className="w-16 bg-transparent text-right font-semibold text-ink outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none"
+              className="w-full min-w-0 bg-transparent font-semibold text-ink outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none"
             />
-            <span className="text-ink-faint">of credits</span>
+            <span className="shrink-0 text-ink-faint">of credits</span>
           </span>
         </label>
       </div>
