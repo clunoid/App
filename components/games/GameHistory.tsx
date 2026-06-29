@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { X, History, RotateCcw, Film, Trash2, Loader2, Globe } from "lucide-react";
 import { listGameResults, deleteGameResult, type SavedGame, type GameSnapshot } from "@/lib/games/storage";
+import { listSavedVideoIds, deleteGameVideo } from "@/lib/games/videoStore";
 
 const INK = "#2c2823";
 const SEAL = "#8a2433";
@@ -29,11 +30,12 @@ export function GameHistory({
   open: boolean;
   onClose: () => void;
   onReplay: (snap: GameSnapshot) => void;
-  onVideo: (snap: GameSnapshot) => void;
+  onVideo: (snap: GameSnapshot, id: string) => void;
 }) {
   const [items, setItems] = useState<SavedGame[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
+  const [savedVideos, setSavedVideos] = useState<Set<string>>(new Set()); // game ids with a cached premium video
 
   useEffect(() => {
     if (!open) return;
@@ -45,6 +47,9 @@ export function GameHistory({
         setLoading(false);
       }
     });
+    listSavedVideoIds().then((ids) => {
+      if (alive) setSavedVideos(new Set(ids));
+    });
     return () => {
       alive = false;
     };
@@ -55,7 +60,15 @@ export function GameHistory({
   const del = async (id: string) => {
     setBusy(id);
     const ok = await deleteGameResult(id);
-    if (ok) setItems((s) => s.filter((x) => x.id !== id));
+    if (ok) {
+      setItems((s) => s.filter((x) => x.id !== id));
+      void deleteGameVideo(id); // drop its cached video too
+      setSavedVideos((s) => {
+        const next = new Set(s);
+        next.delete(id);
+        return next;
+      });
+    }
     setBusy(null);
   };
 
@@ -98,12 +111,21 @@ export function GameHistory({
                       <span className="shrink-0">({pct}%)</span>
                       {d.subtitle ? <span className="truncate">· {d.subtitle}</span> : null}
                       <span className="shrink-0">· {relTime(g.created_at)}</span>
+                      {savedVideos.has(g.id) ? (
+                        <span className="shrink-0 font-bold" style={{ color: SEAL }}>· video saved</span>
+                      ) : null}
                     </div>
                   </div>
                 </button>
                 <div className="flex shrink-0 items-center gap-0.5">
                   <button onClick={() => onReplay(d)} aria-label="Play again" title="Play these flags again" className={iconBtn}><RotateCcw size={17} /></button>
-                  <button onClick={() => onVideo(d)} aria-label="Create video" title="Create the recap video" className={iconBtn}><Film size={17} /></button>
+                  {savedVideos.has(g.id) ? (
+                    <button onClick={() => onVideo(d, g.id)} aria-label="View saved video" title="View your saved video — no re-render" className="grid h-9 w-9 place-items-center rounded-lg text-[#8a2433] transition hover:bg-[#8a2433]/15">
+                      <Film size={17} fill="currentColor" />
+                    </button>
+                  ) : (
+                    <button onClick={() => onVideo(d, g.id)} aria-label="Create video" title="Create the recap video" className={iconBtn}><Film size={17} /></button>
+                  )}
                   <button onClick={() => del(g.id)} disabled={busy === g.id} aria-label="Delete" title="Delete permanently" className="grid h-9 w-9 place-items-center rounded-lg text-[#2c2823]/45 transition hover:bg-[#8a2433]/15 hover:text-[#8a2433]">
                     {busy === g.id ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
                   </button>

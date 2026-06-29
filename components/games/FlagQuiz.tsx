@@ -117,7 +117,8 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
   const [replay, setReplay] = useState<ReplayRound[]>([]); // per-round log for the share video
   const [shareOpen, setShareOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
-  const [historyVideo, setHistoryVideo] = useState<GameSnapshot | null>(null); // a saved game's recap, opened from history
+  const [historyVideo, setHistoryVideo] = useState<{ snap: GameSnapshot; id: string } | null>(null); // a saved game's recap, opened from history
+  const [currentGameId, setCurrentGameId] = useState<string | null>(null); // this game's history id (keys its saved premium video)
   const [typed, setTyped] = useState("");
   const [interim, setInterim] = useState("");
   const [choices, setChoices] = useState<string[]>([]);
@@ -202,6 +203,7 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
       setReplay([]);
       setIdx(0);
       setRunId((n) => n + 1);
+      setCurrentGameId(null); // new game → no saved-video id until it's saved
       setBuilding(false);
       setPhase("loading");
     },
@@ -518,7 +520,9 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
     if (phase !== "complete" || !replay.length) return;
     if (savedRunRef.current === runId) return;
     savedRunRef.current = runId;
-    void saveGameResult(snapshot());
+    saveGameResult(snapshot()).then((id) => {
+      if (id) setCurrentGameId(id);
+    });
   }, [phase, runId, replay, snapshot]);
 
   // Re-play the exact flags from a saved game.
@@ -557,18 +561,19 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
             setHistoryOpen(false);
             replayFromSnapshot(snap);
           }}
-          onVideo={(snap) => {
+          onVideo={(snap, id) => {
             setHistoryOpen(false);
-            setHistoryVideo(snap);
+            setHistoryVideo({ snap, id });
           }}
         />
         {historyVideo && (
           <ShareModal
             open
             onClose={() => setHistoryVideo(null)}
-            makeSpec={(a, o) => buildGameReel(historyVideo, a, o.branded)}
+            makeSpec={(a, o) => buildGameReel(historyVideo.snap, a, o.branded)}
             fileName="clunoid-flags"
-            captionContext={{ title: "Guess the Country", subtitle: historyVideo.subtitle, kind: "flag quiz game" }}
+            gameId={historyVideo.id}
+            captionContext={{ title: "Guess the Country", subtitle: historyVideo.snap.subtitle, kind: "flag quiz game" }}
           />
         )}
       </>
@@ -597,6 +602,7 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
           onClose={() => setShareOpen(false)}
           makeSpec={buildReelSpec}
           fileName="clunoid-flags"
+          gameId={currentGameId ?? undefined}
           caption={`I played Guess the Country${subtitle ? ` (${subtitle})` : ""} on clunoid.com 🌍 Can you beat me?`}
           captionContext={{ title: "Guess the Country", subtitle, kind: "flag quiz game" }}
         />

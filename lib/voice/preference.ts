@@ -117,6 +117,13 @@ export function isClunoidVoice(id: string): boolean {
   return CLUNOID_VOICES.some((v) => v.id === id);
 }
 
+/** True for a PREMIUM (paid, expensive-to-render) video voice. Currently just
+ *  Isaac (ElevenLabs); add future paid voice ids here. Premium recap videos are
+ *  cached so users don't re-spend re-rendering them; free voices are not cached. */
+export function isPremiumVideoVoice(id: string): boolean {
+  return id === ISAAC_VOICE.id;
+}
+
 /** Look up the display entry for any voice id (live or "silent"). */
 export function voiceById(id: string): VoiceEntry | undefined {
   if (id === SILENT_VIDEO.id) return SILENT_VIDEO;

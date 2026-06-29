@@ -7,7 +7,8 @@ import { renderReel } from "@/lib/share/renderer";
 import { useBilling } from "@/lib/billing/store";
 import { HostVoicePicker } from "@/components/games/HostVoicePicker";
 import { RaysBackground } from "@/components/games/RaysBackground";
-import { getVideoVoicePref, voiceById } from "@/lib/voice/preference";
+import { getVideoVoicePref, voiceById, isPremiumVideoVoice } from "@/lib/voice/preference";
+import { loadGameVideo, saveGameVideo } from "@/lib/games/videoStore";
 import { TikTokIcon, XIcon, WhatsAppIcon } from "./SocialIcons";
 
 // Shared game look (matches the flag game's title treatment + signature rays).
@@ -55,6 +56,7 @@ export function ShareModal({
   idleHint,
   caption = DEFAULT_CAPTION,
   captionContext,
+  gameId,
 }: {
   open: boolean;
   onClose: () => void;
@@ -66,6 +68,7 @@ export function ShareModal({
   idleHint?: string; // the idle preview hint (defaults to the game wording)
   caption?: string; // prefilled social caption
   captionContext?: { title: string; subtitle?: string; source?: string; kind?: string }; // enables the AI caption generator
+  gameId?: string; // when set, a PREMIUM video is cached under this id + reloaded here (skip re-render)
 }) {
   const platforms = buildPlatforms(caption);
   const [cap, setCap] = useState<{ title: string; caption: string; hashtags: string[] } | null>(null);
@@ -79,6 +82,8 @@ export function ShareModal({
   // Which voice narrates the video (remembered across renders). "silent" = no voice.
   const [videoVoice, setVideoVoice] = useState<string>("isaac");
   const [voiceOpen, setVoiceOpen] = useState(false);
+  // True when the shown result was loaded from the saved-video cache (not re-rendered).
+  const [fromSaved, setFromSaved] = useState(false);
   const [status, setStatus] = useState<Status>("idle");
   const [pct, setPct] = useState(0);
   const [label, setLabel] = useState("");
@@ -95,14 +100,42 @@ export function ShareModal({
     for (const r of resultsRef.current) URL.revokeObjectURL(r.url);
   }, []);
 
+  // On open: if this game already has a saved PREMIUM video, show it immediately
+  // (no re-render, no re-spend). Otherwise reflect the remembered voice + check support.
   useEffect(() => {
-    if (open && !canRecordVideo()) setStatus("unsupported");
-  }, [open]);
-
-  // Reflect the remembered video voice when the modal opens.
-  useEffect(() => {
-    if (open) setVideoVoice(getVideoVoicePref());
-  }, [open]);
+    if (!open) return;
+    let alive = true;
+    setFromSaved(false);
+    (async () => {
+      if (gameId) {
+        const saved = await loadGameVideo(gameId);
+        if (!alive) return;
+        if (saved?.items.length) {
+          const items: RenderItem[] = saved.items.map((it) => ({
+            aspect: it.aspect as ReelAspect,
+            url: URL.createObjectURL(it.blob),
+            blob: it.blob,
+            ext: it.ext,
+            mime: it.mime,
+            hadVoice: true,
+          }));
+          setResults(items);
+          setAspect(items.length > 1 ? "both" : items[0].aspect);
+          setVideoVoice(saved.voice);
+          setBranded(saved.branded);
+          setStatus("ready");
+          setFromSaved(true);
+          return;
+        }
+      }
+      if (!alive) return;
+      setVideoVoice(getVideoVoicePref());
+      if (!canRecordVideo()) setStatus("unsupported");
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [open, gameId]);
 
   // Reset everything when closing.
   const handleClose = useCallback(() => {
@@ -113,6 +146,7 @@ export function ShareModal({
     setPct(0);
     setCap(null);
     setCapLoading(false);
+    setFromSaved(false);
     onClose();
   }, [cleanupUrls, onClose]);
 
@@ -136,6 +170,7 @@ export function ShareModal({
     setResults([]);
     setPct(0);
     setBgSafe(false);
+    setFromSaved(false);
     setStatus("rendering");
     const ac = new AbortController();
     abortRef.current = ac;
@@ -164,6 +199,19 @@ export function ShareModal({
       }
       setResults(out);
       setStatus("ready");
+      // Cache PREMIUM (paid-voice) videos under this game so re-opening it from
+      // history serves the saved file instead of re-rendering (re-spending credits).
+      // Free-voice videos are cheap → not cached.
+      const usedVoice = getVideoVoicePref();
+      if (gameId && isPremiumVideoVoice(usedVoice) && out.length) {
+        void saveGameVideo({
+          gameId,
+          voice: usedVoice,
+          branded,
+          items: out.map((r) => ({ aspect: r.aspect, ext: r.ext, mime: r.mime, blob: r.blob })),
+          createdAt: Date.now(),
+        });
+      }
     } catch (e) {
       // Renderers THROW AbortError on abort (they don't resolve) — revoke any
       // size that already finished so its blob URL isn't orphaned.
@@ -172,7 +220,7 @@ export function ShareModal({
       console.error("reel render failed", e);
       setStatus("error");
     }
-  }, [aspect, branded, cleanupUrls, makeSpec, render]);
+  }, [aspect, branded, cleanupUrls, makeSpec, render, gameId]);
 
   const nameFor = useCallback(
     (item: RenderItem) => (resultsRef.current.length > 1 ? `${fileName}-${item.aspect.replace(":", "x")}` : fileName),
@@ -290,7 +338,9 @@ export function ShareModal({
             {heading}
           </h2>
           <p className="mt-2 text-sm font-semibold text-white/70">
-            {render ? "Narrated by Isaac" : videoVoice === "silent" ? "Silent video" : `Narrated by ${voiceLabel}`} · ready in seconds
+            {fromSaved && ready
+              ? `Saved ${voiceLabel} video — ready to share, no new credits used`
+              : `${render ? "Narrated by Isaac" : videoVoice === "silent" ? "Silent video" : `Narrated by ${voiceLabel}`} · ready in seconds`}
           </p>
         </div>
 
