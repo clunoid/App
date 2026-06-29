@@ -78,7 +78,7 @@ export function PricingTiers() {
   const startCheckout = useBilling((s) => s.startCheckout);
   const openPortal = useBilling((s) => s.openPortal);
   const refresh = useBilling((s) => s.refresh);
-  const [interval, setIntervalState] = useState<Interval>("monthly");
+  const [interval, setIntervalState] = useState<Interval>("annual");
   const [justUpgraded, setJustUpgraded] = useState(false);
 
   useEffect(() => {
@@ -160,9 +160,13 @@ export function PricingTiers() {
         {TIERS.map((t) => {
           const current = plan === t.id;
           const proToMax = isPro && t.id === "max";
-          const showAnnual = interval === "annual" && t.annual;
-          const price = t.id === "free" ? "$0" : showAnnual ? (t.annual as string) : t.monthly;
-          const per = t.id === "free" ? "" : showAnnual ? "/yr" : "/mo";
+          const isFree = t.id === "free";
+          const showAnnual = interval === "annual" && !!t.annual;
+          // Annual shows the per-MONTH price (industry standard) with the monthly
+          // price struck through, so the discount reads at a glance.
+          const monthlyNum = parseInt(t.monthly.replace(/[^0-9]/g, ""), 10) || 0;
+          const annualNum = t.annual ? parseInt(t.annual.replace(/[^0-9]/g, ""), 10) || 0 : 0;
+          const perMonthAnnual = annualNum ? Math.round(annualNum / 12) : monthlyNum;
           const highlight = t.highlight || proToMax;
           return (
             <div
@@ -184,13 +188,32 @@ export function PricingTiers() {
                 <h2 className="font-serif text-2xl text-ink">{t.name}</h2>
                 {current && <span className="rounded-full bg-spark/20 px-2 py-0.5 text-xs font-medium text-spark-soft">Current</span>}
               </div>
-              <div className="mt-2 flex items-baseline gap-1">
-                <span className="text-3xl font-semibold text-ink">{price}</span>
-                <span className="text-ink-faint">{per}</span>
+              <div className="mt-2 flex items-baseline gap-1.5">
+                {isFree ? (
+                  <>
+                    <span className="text-3xl font-semibold text-ink">$0</span>
+                    <span className="text-ink-faint">/mo</span>
+                  </>
+                ) : showAnnual ? (
+                  <>
+                    <span className="text-lg font-medium text-ink-faint line-through">{t.monthly}</span>
+                    <span className="text-3xl font-semibold text-ink">${perMonthAnnual}</span>
+                    <span className="text-ink-faint">/mo</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="text-3xl font-semibold text-ink">{t.monthly}</span>
+                    <span className="text-ink-faint">/mo</span>
+                  </>
+                )}
               </div>
               <p className="mt-1 text-sm font-medium text-clay-soft">{t.credits}</p>
               <p className="mt-1 text-sm text-ink-muted">
-                {showAnnual && t.annualNote ? `${t.annualNote} · billed yearly` : t.blurb}
+                {isFree
+                  ? t.blurb
+                  : showAnnual
+                  ? `${t.annual}/yr billed annually${t.annualNote ? ` · ${t.annualNote}` : ""}`
+                  : t.blurb}
               </p>
 
               <ul className="mt-4 flex flex-1 flex-col gap-2 text-sm text-ink-muted">
