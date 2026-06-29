@@ -32,3 +32,17 @@ export const grantForPlan = (plan: PlanId): number => PLAN_GRANTS[plan];
 
 /** Discount id for the Pro→Max upgrade incentive (set per environment; optional). */
 export const upgradeDiscountId = (): string | undefined => process.env.POLAR_DISCOUNT_UPGRADE || undefined;
+
+// ── Credit top-ups ─────────────────────────────────────────────────────────────
+/** The pay-what-you-want one-time "Credits" product, for user-present top-up checkouts. */
+export const creditsProductId = (): string | undefined => process.env.POLAR_PRODUCT_CREDITS || undefined;
+/** A fixed/free one-time product used for OFF-SESSION auto-reload charges (ordersCreate
+ *  requires a fixed/free product; we override the amount). Falls back to the PWYW one. */
+export const creditsAutoProductId = (): string | undefined =>
+  process.env.POLAR_PRODUCT_CREDITS_AUTO || process.env.POLAR_PRODUCT_CREDITS || undefined;
+
+/** True if a Polar product id is one of our credit (top-up / auto-reload) products. */
+export function isCreditsProduct(productId: string | null | undefined): boolean {
+  if (!productId) return false;
+  return productId === process.env.POLAR_PRODUCT_CREDITS || productId === process.env.POLAR_PRODUCT_CREDITS_AUTO;
+}

@@ -9,6 +9,17 @@
 export const PLAN_GRANTS = { free: 150, pro: 2000, max: 6000 } as const;
 export type PlanId = keyof typeof PLAN_GRANTS;
 
+/** One-time credit top-ups (pay-what-you-want). 200 credits per US$ (the Max rate).
+ *  ONE knob — tune the rate here; nothing else hardcodes it. */
+export const CREDITS_PER_USD = 200;
+/** Minimum top-up purchase, in cents (mirror this as the Polar product's PWYW min). */
+export const MIN_TOPUP_CENTS = 500; // $5
+/** Credits granted for a paid NET amount (cents, after discount, before tax). */
+export function creditsForCents(netCents: number): number {
+  if (!netCents || netCents < 0) return 0;
+  return Math.round((netCents / 100) * CREDITS_PER_USD);
+}
+
 /** Fixed credit cost per chargeable action (TTS is variable — see ttsCost). */
 export const ACTION_COSTS = {
   search: 10, // /api/brain        — Groq + Tavily + Haiku/Sonnet      (~$0.02–0.08)

@@ -2,7 +2,8 @@ import { NextRequest } from "next/server";
 import { validateEvent, WebhookVerificationError } from "@polar-sh/sdk/webhooks";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { planForProduct, grantForPlan } from "@/lib/billing/polar";
+import { planForProduct, grantForPlan, isCreditsProduct } from "@/lib/billing/polar";
+import { creditsForCents } from "@/lib/billing/costs";
 
 export const runtime = "nodejs";
 
@@ -10,6 +11,7 @@ export const runtime = "nodejs";
 type EventData = {
   id?: string;
   status?: string;
+  netAmount?: number | null; // paid amount in cents (after discount, before tax) — for credit top-ups
   productId?: string | null;
   customerId?: string | null;
   subscriptionId?: string | null;
@@ -65,9 +67,13 @@ export async function POST(req: NextRequest) {
     switch (event.type) {
       // ── credits are granted ONLY for a confirmed PAID order (idempotent per order id) ──
       case "order.paid": {
+        if (!userId) {
+          console.warn("[webhook] order.paid: unresolved user", d.id);
+          break;
+        }
         const plan = planForProduct(d.productId);
-        if (!userId) console.warn("[webhook] order.paid: unresolved user", d.id);
-        if (userId && plan) {
+        if (plan) {
+          // subscription / plan order → grant the plan's monthly allowance
           await admin.rpc("grant_for_order", {
             p_order_id: d.id ?? null,
             p_user: userId,
@@ -77,6 +83,17 @@ export async function POST(req: NextRequest) {
             p_polar_subscription: d.subscriptionId ?? null,
             p_period_end: periodEndIso(d),
           });
+        } else if (isCreditsProduct(d.productId)) {
+          // one-time credit top-up (manual or auto-reload) → add purchased credits
+          const credits = creditsForCents(typeof d.netAmount === "number" ? d.netAmount : 0);
+          if (credits > 0 && d.id) {
+            await admin.rpc("grant_topup", {
+              p_order_id: d.id,
+              p_user: userId,
+              p_credits: credits,
+              p_polar_customer: d.customerId ?? null,
+            });
+          }
         }
         break;
       }
