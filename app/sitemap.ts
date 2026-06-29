@@ -1,6 +1,11 @@
 import type { MetadataRoute } from "next";
 
-// The public landing page. (The app itself lives behind sign-in and isn't indexed.)
+// Public, indexable pages. The app itself (home, games, stats, settings) lives
+// behind sign-in and isn't listed.
 export default function sitemap(): MetadataRoute.Sitemap {
-  return [{ url: "https://clunoid.com", lastModified: new Date(), changeFrequency: "weekly", priority: 1 }];
+  const now = new Date();
+  return [
+    { url: "https://clunoid.com", lastModified: now, changeFrequency: "weekly", priority: 1 },
+    { url: "https://clunoid.com/pricing", lastModified: now, changeFrequency: "monthly", priority: 0.8 },
+  ];
 }
