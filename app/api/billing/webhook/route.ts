@@ -3,7 +3,7 @@ import { validateEvent, WebhookVerificationError } from "@polar-sh/sdk/webhooks"
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { planForProduct, grantForPlan, isCreditsProduct } from "@/lib/billing/polar";
-import { creditsForCents } from "@/lib/billing/costs";
+import { creditsForCents, MAX_TOPUP_CENTS } from "@/lib/billing/costs";
 
 export const runtime = "nodejs";
 
@@ -22,11 +22,13 @@ type EventData = {
   metadata?: Record<string, unknown> | null;
 };
 
-/** Resolve our user id: external id (set via externalCustomerId) → checkout
- *  metadata → look it up by the Polar customer id (stored on a prior event). */
+/** Resolve our user id from a SIGNATURE-VERIFIED order. externalCustomerId (which
+ *  we set to the authenticated user.id at every checkout) is the authoritative
+ *  identity; we deliberately do NOT trust event metadata as a user id (hardening
+ *  against any future buyer-settable metadata). Fallback: the Polar customer id we
+ *  stored on a prior event. */
 async function resolveUser(admin: SupabaseClient, d: EventData): Promise<string | null> {
-  const direct = d.customer?.externalId || (typeof d.metadata?.user_id === "string" ? (d.metadata!.user_id as string) : null);
-  if (direct) return direct;
+  if (d.customer?.externalId) return d.customer.externalId;
   if (d.customerId) {
     const { data } = await admin.from("subscriptions").select("user_id").eq("polar_customer_id", d.customerId).maybeSingle();
     return (data?.user_id as string) ?? null;
@@ -84,8 +86,11 @@ export async function POST(req: NextRequest) {
             p_period_end: periodEndIso(d),
           });
         } else if (isCreditsProduct(d.productId)) {
-          // one-time credit top-up (manual or auto-reload) → add purchased credits
-          const credits = creditsForCents(typeof d.netAmount === "number" ? d.netAmount : 0);
+          // one-time credit top-up (manual or auto-reload) → add purchased credits.
+          // Bound netAmount to [0, MAX_TOPUP_CENTS] so a misconfigured product price
+          // can never mint unbounded credits (checkout already caps at $10k).
+          const net = typeof d.netAmount === "number" ? d.netAmount : 0;
+          const credits = creditsForCents(Math.min(Math.max(0, net), MAX_TOPUP_CENTS));
           if (credits > 0 && d.id) {
             await admin.rpc("grant_topup", {
               p_order_id: d.id,

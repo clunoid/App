@@ -5,6 +5,7 @@ import { SpeedInsights } from "@vercel/speed-insights/next";
 import { SessionProvider } from "@/components/auth/SessionProvider";
 import { AuthPrompt } from "@/components/auth/AuthPrompt";
 import { BillingGate } from "@/components/billing/BillingGate";
+import { ldJson } from "@/lib/marketing/content";
 import "./globals.css";
 
 const sans = Inter({
@@ -134,7 +135,7 @@ export default function RootLayout({
     <html lang="en" className={`${sans.variable} ${serif.variable}`}>
       <head>
         {/* Structured data (Organization + WebSite + SoftwareApplication) for rich results. */}
-        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(JSON_LD) }} />
+        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: ldJson(JSON_LD) }} />
       </head>
       <body>
         <SessionProvider>{children}</SessionProvider>

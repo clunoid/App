@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { PricingTiers } from "@/components/billing/PricingTiers";
+import { ldJson } from "@/lib/marketing/content";
 
 export const metadata: Metadata = {
   title: "Pricing & Credits — Free, Pro $12, Max $30",
@@ -82,7 +83,7 @@ const JSON_LD = {
 export default function PricingPage() {
   return (
     <main className="stage-bg min-h-[100dvh]">
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(JSON_LD) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: ldJson(JSON_LD) }} />
       {/* SEO heading — visually hidden so the existing tier-card design is unchanged. */}
       <h1 className="sr-only">Clunoid pricing and credits — Free, Pro and Max plans</h1>
 

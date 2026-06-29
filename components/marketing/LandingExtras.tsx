@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
-import { FEATURE_PAGES, RESOURCE_PAGES } from "@/lib/marketing/content";
+import { FEATURE_PAGES, RESOURCE_PAGES, ldJson } from "@/lib/marketing/content";
 import { StartFree } from "./StartFree";
 
 /**
@@ -47,7 +47,7 @@ const FAQ_JSON_LD = {
 export function LandingExtras() {
   return (
     <>
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(FAQ_JSON_LD) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: ldJson(FAQ_JSON_LD) }} />
 
       {/* What you can do */}
       <section className="mx-auto w-full max-w-6xl px-4 py-20 sm:px-6">

@@ -57,6 +57,13 @@ export type MarketingPage = {
 
 const BASE = "https://clunoid.com";
 
+/** Serialize structured data for a <script type="application/ld+json"> block,
+ *  escaping "<" so a literal "</script>" can never break out (defense-in-depth;
+ *  our content is static today, but this keeps the injection safe regardless). */
+export function ldJson(obj: unknown): string {
+  return JSON.stringify(obj).replace(/</g, "\\u003c");
+}
+
 /** Per-page <Metadata>, derived from the content (canonical, OG, keywords).
  *  Each page gets a per-page Open Graph / Twitter card from the dynamic /og
  *  endpoint (its own title baked in) — one shared generator, no per-route files. */

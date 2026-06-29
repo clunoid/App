@@ -14,6 +14,9 @@ export type PlanId = keyof typeof PLAN_GRANTS;
 export const CREDITS_PER_USD = 200;
 /** Minimum top-up purchase, in cents (mirror this as the Polar product's PWYW min). */
 export const MIN_TOPUP_CENTS = 500; // $5
+/** Maximum top-up, in cents. Enforced at checkout AND used to bound the webhook
+ *  credit grant, so a misconfigured Polar product price can't mint unbounded credits. */
+export const MAX_TOPUP_CENTS = 1_000_000; // $10,000
 /** Credits granted for a paid NET amount (cents, after discount, before tax). */
 export function creditsForCents(netCents: number): number {
   if (!netCents || netCents < 0) return 0;

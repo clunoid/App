@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Check } from "lucide-react";
 import { MarketingChrome } from "./MarketingChrome";
 import { StartFree } from "./StartFree";
-import { FEATURE_PAGES, type MarketingPage } from "@/lib/marketing/content";
+import { FEATURE_PAGES, ldJson, type MarketingPage } from "@/lib/marketing/content";
 
 const BASE = "https://clunoid.com";
 
@@ -72,7 +72,7 @@ export function FeaturePage({ page }: { page: MarketingPage }) {
   return (
     <MarketingChrome>
       {/* JSON-LD for this page */}
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd(page)) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: ldJson(jsonLd(page)) }} />
 
       {/* Hero */}
       <section className="stage-bg relative overflow-hidden">
