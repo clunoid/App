@@ -3,6 +3,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { SpeechPlayer } from "@/lib/voice/speech";
+import { grantIsaac } from "@/lib/isaac/grant";
 import { getSupabaseBrowser } from "@/lib/supabase/client";
 import { reportBillingStatus, refreshCredits } from "@/lib/billing/bus";
 import type { Scene, Experience, ExplainerExperience } from "@/lib/brain/scene";
@@ -83,6 +84,10 @@ type ClunoidStore = {
   // Silent mode — Isaac shows text but doesn't speak (saves TTS credits).
   muted: boolean;
   setMuted: (v: boolean) => void;
+
+  // Free tier: false once the user's one-time Isaac search trial is used up (then
+  // search runs as paced text + a subscribe nudge). Subscribers stay true.
+  isaacSearchOn: boolean;
 
   setUser: (u: UserState) => void;
   setAuthChecked: (v: boolean) => void;
@@ -196,6 +201,11 @@ export const useClunoid = create<ClunoidStore>()(
           amplitude: 0,
           history: userTurn ? [...s.history, { role: "user" as const, content: userTurn }].slice(-14) : s.history,
         }));
+        // Free tier: Isaac (premium voice) hosts the FIRST search only; afterwards
+        // he's off (paced text) and we nudge them to subscribe. Server-authoritative.
+        const isaacOn = await grantIsaac("search");
+        getPlayer(set).setEleven(isaacOn);
+        set({ isaacSearchOn: isaacOn });
         try {
           const scene = await postBrain({
             ...req,
@@ -234,6 +244,7 @@ export const useClunoid = create<ClunoidStore>()(
         profileOpen: false,
 
         muted: false,
+        isaacSearchOn: true,
         setMuted: (v) => {
           set({ muted: v });
           getPlayer(set).setMuted(v);

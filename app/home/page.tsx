@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { Mic, MicOff, Send, Loader2, Search, History } from "lucide-react";
+import { Mic, MicOff, Send, Loader2, Search, History, Sparkles } from "lucide-react";
 import { useClunoid } from "@/lib/store/useClunoid";
 import { useSpeechInput } from "@/lib/voice/useSpeechInput";
 import { useMicLevel } from "@/lib/voice/useMicLevel";
@@ -37,6 +37,7 @@ export default function Home() {
   const isAuthed = useClunoid((s) => s.user.isAuthed);
   const isaac = useClunoid((s) => s.isaac);
   const experience = useClunoid((s) => s.experience);
+  const isaacSearchOn = useClunoid((s) => s.isaacSearchOn);
   const { send, setMicLevel } = useClunoid.getState();
 
   const [interim, setInterim] = useState("");
@@ -228,6 +229,17 @@ export default function Home() {
           ) : null}
           <ProfileMenu />
         </div>
+
+        {/* Free tier: Isaac's voice trial used up — nudge to subscribe */}
+        {!isaacSearchOn && (
+          <Link
+            href="/pricing"
+            className="mx-auto mb-1 flex shrink-0 items-center gap-1.5 rounded-full border border-clay/40 bg-clay/10 px-3 py-1 text-xs font-medium text-clay-soft transition hover:bg-clay/15"
+          >
+            <Sparkles size={13} className="text-clay" />
+            Isaac&apos;s voice is off — subscribe to keep him hosting
+          </Link>
+        )}
 
         {/* Content — full width, scrolls if tall, over the orb */}
         <div className="flex min-h-0 flex-1 items-start justify-center overflow-y-auto px-3 py-6 sm:px-6">

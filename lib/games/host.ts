@@ -34,6 +34,13 @@ class Host {
     if (v) this.cancel();
   }
 
+  /** Free-tier trial: when the user's Isaac game trial is used up, force the
+   *  browser-voice fallback (no ElevenLabs) instead of his premium voice. */
+  useFallbackVoice(on: boolean) {
+    this.elevenOk = !on;
+    if (on) this.cache.clear();
+  }
+
   private warmVoices() {
     try {
       const s = window.speechSynthesis;
@@ -60,7 +67,7 @@ class Host {
     return fetch("/api/tts", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ text }),
+      body: JSON.stringify({ text, feature: "game" }),
     })
       .then(async (r) => (!r.ok || r.status === 204 ? null : ((await r.json()) as TtsPayload)))
       .catch(() => null);

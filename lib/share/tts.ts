@@ -15,7 +15,8 @@ export async function fetchNarrationBytes(text: string): Promise<Uint8Array | nu
     const res = await fetch("/api/tts", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ text: t }),
+      // feature: "video" — recap-video narration is never gated by the free trial.
+      body: JSON.stringify({ text: t, feature: "video" }),
     });
     if (!res.ok || res.status === 204) return null;
     const data = (await res.json()) as { audio?: string };

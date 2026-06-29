@@ -23,6 +23,10 @@ export class SpeechPlayer {
   // Silent mode: when true we never call the TTS API (saves credits) and pace
   // lines purely by reading time, so explainers/cards still reveal normally.
   private muted = false;
+  // Free-tier trial: when the user's Isaac search trial is used up, `eleven` goes
+  // false — same effect as muted (no ElevenLabs, paced text), but driven by the
+  // server gate rather than the user's own silence toggle.
+  private eleven = true;
   // Resolves the in-flight play() promise the instant we stop (barge-in / mute),
   // so the awaiting caller advances at once instead of waiting on the guard timer.
   private finishCurrent: (() => void) | null = null;
@@ -46,6 +50,16 @@ export class SpeechPlayer {
     }
   }
 
+  /** Free-tier trial: when false, Isaac's premium voice is off (server gate);
+   *  lines pace as text, exactly like silent mode but not user-initiated. */
+  setEleven(v: boolean): void {
+    this.eleven = v;
+    if (!v) {
+      this.abortInflight();
+      this.cache.clear();
+    }
+  }
+
   private abortInflight(): void {
     for (const c of this.inflight) {
       try {
@@ -63,7 +77,7 @@ export class SpeechPlayer {
     return fetch("/api/tts", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ text }),
+      body: JSON.stringify({ text, feature: "search" }),
       signal: ctrl.signal,
     })
       .then(async (res) => (!res.ok || res.status === 204 ? null : ((await res.json()) as TtsPayload)))
@@ -73,7 +87,7 @@ export class SpeechPlayer {
 
   /** Begin fetching a line's audio ahead of time (call for the NEXT beat). */
   prefetch(text: string): void {
-    if (this.muted) return; // silent mode never touches the TTS API
+    if (this.muted || !this.eleven) return; // silent mode / trial used → no TTS API
     const key = text.trim();
     if (!key || this.cache.has(key)) return;
     this.cache.set(key, this.fetchTts(key));
@@ -86,7 +100,7 @@ export class SpeechPlayer {
     this.onProgress = onProgress;
 
     let payload: TtsPayload | null = null;
-    if (!this.muted) {
+    if (!this.muted && this.eleven) {
       let pending = this.cache.get(key);
       if (!pending) {
         pending = this.fetchTts(key);

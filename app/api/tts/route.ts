@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { chargeCredits, chargeError } from "@/lib/billing/meter";
 import { ttsCost, INPUT_CAPS } from "@/lib/billing/costs";
+import { getSupabaseServer } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -15,13 +16,22 @@ export async function POST(req: NextRequest) {
   const voiceId = process.env.ELEVENLABS_VOICE_ID || "bIHbv24MWmeRgasZH58o";
 
   let text = "";
+  let feature = "";
   try {
-    ({ text } = await req.json());
+    ({ text, feature = "" } = await req.json());
   } catch {
     return new Response(null, { status: 400 });
   }
   if (!key || !text?.trim()) return new Response(null, { status: 204 });
   if (text.length > INPUT_CAPS.ttsChars) text = text.slice(0, INPUT_CAPS.ttsChars);
+
+  // Free-tier Isaac trial gate (cost control): subscribers and the video recap
+  // narration always pass; a free user gets Isaac only inside an open trial window
+  // for this feature. When denied we return 204 (no charge) so the client falls
+  // back to the browser voice / paced text — same as "no key".
+  const supabase = await getSupabaseServer();
+  const { data: voiceOk } = await supabase.rpc("isaac_voice_ok", { p_feature: feature });
+  if (voiceOk === false) return new Response(null, { status: 204 });
 
   // Meter: signed-in + pay per ~100 chars (one credit RPC; auth enforced in-DB via
   // auth.uid()). 401/402 here just means "no audio" to the client — voice is optional.

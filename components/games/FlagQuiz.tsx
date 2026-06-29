@@ -15,6 +15,7 @@ import { getAudio } from "@/lib/games/audio";
 import { getHost } from "@/lib/games/host";
 import { useListen } from "@/lib/games/useListen";
 import { similarCodes } from "@/lib/games/similar";
+import { grantIsaac } from "@/lib/isaac/grant";
 import { GameHistory } from "@/components/games/GameHistory";
 import { saveGameResult, type AnswerMode, type ReplayRound, type GameSnapshot } from "@/lib/games/storage";
 import { QUESTIONS, buildGameReel } from "@/lib/games/reel";
@@ -129,6 +130,9 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
   // then auto-re-arms each round. This keeps the mic off during Isaac's question
   // (no echo-cancellation ducking, no recognition churn). Typing always works.
   const [voiceOn, setVoiceOn] = useState(false);
+  // Free tier: Isaac (premium voice) hosts the FIRST game; after that it's the
+  // browser fallback voice + a subscribe nudge. Subscribers always get Isaac.
+  const [isaacOn, setIsaacOn] = useState(true);
 
   const round: Round | undefined = rounds[idx];
   const total = rounds.length;
@@ -200,10 +204,19 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
     []
   );
 
+  // Decide (server-authoritative) whether Isaac hosts THIS game, then set the
+  // host's voice + the subscribe nudge accordingly. Run before the first line.
+  const applyGameGrant = useCallback(async () => {
+    const on = await grantIsaac("game");
+    host.useFallbackVoice(!on);
+    setIsaacOn(on);
+  }, [host]);
+
   const startGame = useCallback(
     async (request: string, am: AnswerMode = "choice") => {
       setBuilding(true);
       setFailed(false);
+      await applyGameGrant();
       host.say("Let's play! Guess the country.");
       const g = await buildGame(request);
       if (!g.rounds.length) {
@@ -213,23 +226,25 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
       }
       launch(g, "set", am);
     },
-    [host, launch]
+    [host, launch, applyGameGrant]
   );
 
   // "Continue" → every country in the world, easiest → hardest (same answer mode).
   const continueAll = useCallback(async () => {
     setBuilding(true);
+    await applyGameGrant();
     const g = await buildAllCountries();
     if (!g.rounds.length) {
       setBuilding(false);
       return;
     }
     launch(g, "all", answerModeRef.current);
-  }, [launch]);
+  }, [launch, applyGameGrant]);
 
   // "Play again" → the SAME flags, reshuffled (keep the difficulty ramp).
   const replaySame = useCallback(() => {
     if (!rounds.length) return;
+    void applyGameGrant(); // a replay is a new game → re-check the Isaac trial
     preloadedRef.current = new Set();
     setRounds(reshuffleWithin(rounds));
     setScore(0);
@@ -238,7 +253,7 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
     setIdx(0);
     setRunId((n) => n + 1);
     setPhase("loading");
-  }, [rounds]);
+  }, [rounds, applyGameGrant]);
 
   useEffect(() => {
     setCanAutoFocus(typeof window !== "undefined" && !!window.matchMedia && window.matchMedia("(pointer: fine)").matches);
@@ -608,6 +623,18 @@ export function FlagQuiz({ initialRequest }: { initialRequest?: string }) {
             {muted ? <VolumeX size={20} /> : <Volume2 size={20} />}
           </button>
         </div>
+
+        {/* Free tier: Isaac's voice trial used up → browser voice + subscribe nudge */}
+        {!isaacOn && (
+          <button
+            onClick={() => router.push("/pricing")}
+            className={`relative z-30 mx-auto mt-1 flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-bold backdrop-blur transition sm:text-xs ${
+              choiceMode ? "bg-[#8a2433]/12 text-[#8a2433] hover:bg-[#8a2433]/20" : "bg-black/30 text-white hover:bg-black/45"
+            }`}
+          >
+            <Sparkles size={13} /> Isaac&apos;s voice is off — subscribe to keep him
+          </button>
+        )}
 
         {/* Difficulty rail — tucked just under the header on phones (clears the top
             controls AND the flag), a larger left rail on desktop. Position lives in a
