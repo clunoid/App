@@ -35,9 +35,10 @@ export async function GET() {
     purchased,
     monthlyGrant: bal?.monthly_grant ?? 0,
     autoReload: {
+      configured: !!ar, // false until the user has saved their auto-reload prefs
       enabled: !!ar?.enabled,
       threshold: ar?.threshold ?? 100,
-      amountCents: ar?.amount_cents ?? 1000,
+      amountCents: ar?.amount_cents ?? 10000,
     },
   });
 }

@@ -13,9 +13,10 @@ export async function GET() {
   if (!user) return NextResponse.json({ error: "auth" }, { status: 401 });
   const { data } = await supabase.from("auto_reload").select("enabled, threshold, amount_cents").eq("user_id", user.id).maybeSingle();
   return NextResponse.json({
+    configured: !!data,
     enabled: !!data?.enabled,
     threshold: data?.threshold ?? 100,
-    amountCents: data?.amount_cents ?? 1000,
+    amountCents: data?.amount_cents ?? 10000,
   });
 }
 

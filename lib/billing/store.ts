@@ -2,7 +2,7 @@
 
 import { create } from "zustand";
 
-export type AutoReload = { enabled: boolean; threshold: number; amountCents: number };
+export type AutoReload = { enabled: boolean; threshold: number; amountCents: number; configured?: boolean };
 
 type BillingState = {
   authed: boolean;
@@ -44,7 +44,7 @@ export const useBilling = create<BillingState>((set, get) => ({
   purchased: 0,
   monthlyGrant: 0,
   periodEnd: null,
-  autoReload: { enabled: false, threshold: 100, amountCents: 1000 },
+  autoReload: { enabled: false, threshold: 100, amountCents: 10000, configured: false },
   loaded: false,
   upgradeOpen: false,
   creditOpen: false,
@@ -65,7 +65,7 @@ export const useBilling = create<BillingState>((set, get) => ({
         purchased: d.purchased ?? 0,
         monthlyGrant: d.monthlyGrant ?? 0,
         periodEnd: d.periodEnd ?? null,
-        autoReload: d.autoReload ?? { enabled: false, threshold: 100, amountCents: 1000 },
+        autoReload: d.autoReload ?? { enabled: false, threshold: 100, amountCents: 10000, configured: false },
         loaded: true,
       });
       // After every balance refresh, top up automatically if the user opted in and
@@ -151,7 +151,7 @@ export const useBilling = create<BillingState>((set, get) => ({
       });
       const d = await res.json().catch(() => null);
       if (res.ok && d?.ok) {
-        set({ autoReload: { enabled: !!d.enabled, threshold: d.threshold, amountCents: d.amountCents } });
+        set({ autoReload: { enabled: !!d.enabled, threshold: d.threshold, amountCents: d.amountCents, configured: true } });
         return true;
       }
       set({ notice: "Couldn't save auto-reload — please try again." });

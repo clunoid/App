@@ -6,7 +6,7 @@ import { useBilling } from "@/lib/billing/store";
 import { CREDITS_PER_USD, MIN_TOPUP_CENTS } from "@/lib/billing/costs";
 import { cn } from "@/lib/utils";
 
-const PRESETS = [5, 20, 50, 100]; // dollars
+const PRESETS = [5, 20, 100, 500, 1000]; // dollars
 const MIN_DOLLARS = MIN_TOPUP_CENTS / 100;
 
 /** Buy extra credits — one-time, custom amount ($5+), 200 credits per $1. */
@@ -98,17 +98,22 @@ export function AutoReloadCard() {
   const autoReload = useBilling((s) => s.autoReload);
   const saveAutoReload = useBilling((s) => s.saveAutoReload);
 
-  const [arEnabled, setArEnabled] = useState(autoReload.enabled);
-  const [arThreshold, setArThreshold] = useState(String(autoReload.threshold));
-  const [arDollars, setArDollars] = useState(String(Math.round(autoReload.amountCents / 100)));
+  // Until the user has saved their prefs, suggest a sensible setup ON by default
+  // (toggle on + 100 / $100 prefilled) so they can just hit Save to activate — or
+  // turn it off. Once saved, reflect exactly what they chose.
+  const cfg = autoReload.configured;
+  const [arEnabled, setArEnabled] = useState(cfg ? autoReload.enabled : true);
+  const [arThreshold, setArThreshold] = useState(String(cfg ? autoReload.threshold : 100));
+  const [arDollars, setArDollars] = useState(String(cfg ? Math.round(autoReload.amountCents / 100) : 100));
   const [arSaving, setArSaving] = useState(false);
   const [arSaved, setArSaved] = useState(false);
 
   useEffect(() => {
-    setArEnabled(autoReload.enabled);
-    setArThreshold(String(autoReload.threshold));
-    setArDollars(String(Math.round(autoReload.amountCents / 100)));
-  }, [autoReload.enabled, autoReload.threshold, autoReload.amountCents]);
+    const c = autoReload.configured;
+    setArEnabled(c ? autoReload.enabled : true);
+    setArThreshold(String(c ? autoReload.threshold : 100));
+    setArDollars(String(c ? Math.round(autoReload.amountCents / 100) : 100));
+  }, [autoReload.configured, autoReload.enabled, autoReload.threshold, autoReload.amountCents]);
 
   const onSaveAr = async () => {
     setArSaving(true);
@@ -125,21 +130,28 @@ export function AutoReloadCard() {
   };
 
   return (
-    <div className="rounded-2xl border border-border bg-surface p-5">
+    <div
+      className={cn(
+        "rounded-2xl border bg-surface p-5 transition",
+        arEnabled ? "border-ok ring-2 ring-ok/25 shadow-[0_10px_30px_-14px_rgba(16,185,129,0.45)]" : "border-border"
+      )}
+    >
       <div className="flex items-center gap-2">
-        <span className="grid h-9 w-9 place-items-center rounded-xl bg-spark/15 text-spark-soft">
+        <span className={cn("grid h-9 w-9 place-items-center rounded-xl transition", arEnabled ? "bg-ok/15 text-ok" : "bg-spark/15 text-spark-soft")}>
           <RefreshCw size={17} />
         </span>
         <div>
           <h3 className="font-serif text-lg text-ink">Auto-reload</h3>
-          <p className="text-xs text-ink-muted">Never run out mid-flow.</p>
+          <p className="text-xs text-ink-muted">
+            {!arEnabled ? "Never run out mid-flow." : cfg && autoReload.enabled ? "On — tops up when you run low." : "Save to switch it on."}
+          </p>
         </div>
         <button
           type="button"
           role="switch"
           aria-checked={arEnabled}
           onClick={() => setArEnabled((v) => !v)}
-          className={cn("relative ml-auto h-6 w-11 shrink-0 rounded-full transition", arEnabled ? "bg-clay" : "bg-border")}
+          className={cn("relative ml-auto h-6 w-11 shrink-0 rounded-full transition", arEnabled ? "bg-ok" : "bg-border")}
         >
           <span className={cn("absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all", arEnabled ? "left-[1.375rem]" : "left-0.5")} />
         </button>
