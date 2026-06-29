@@ -121,6 +121,9 @@ export function HostVoicePicker({ mode, onPick }: { mode: "game" | "video"; onPi
     <div className="w-full space-y-1">
       {Row(ISAAC_VOICE, { tag: isaacTag, locked: isaacLocked })}
 
+      {/* Video: "Silent" sits right under Isaac, above the free voices. */}
+      {!live ? Row(SILENT_VIDEO) : null}
+
       {/* Free voices — a clean collapsible group (no boxed card) */}
       <div>
         <button
@@ -153,7 +156,7 @@ export function HostVoicePicker({ mode, onPick }: { mode: "game" | "video"; onPi
       </div>
 
       {live ? Row(BROWSER_VOICE, { tag: "Always works" }) : null}
-      {live ? Row(MUTE_VOICE) : Row(SILENT_VIDEO)}
+      {live ? Row(MUTE_VOICE) : null}
 
       {note && <p className="px-2 pt-1 text-center text-[11px] text-white/55">{note}</p>}
     </div>

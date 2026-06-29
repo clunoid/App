@@ -294,10 +294,11 @@ export function ShareModal({
           </p>
         </div>
 
-        {/* MAIN — stacks on mobile, two columns (controls | preview) on big screens */}
-        <div className="mt-4 flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pb-1 lg:mt-6 lg:flex-row lg:items-stretch lg:gap-8 lg:overflow-hidden lg:pb-0">
-          {/* LEFT — controls */}
-          <div className="flex shrink-0 flex-col gap-3 lg:w-[380px] lg:overflow-y-auto lg:pb-2 lg:pr-1">
+        {/* MAIN — stacks on mobile; on big screens: controls left, preview right
+            (watermark + action on top, a vertical social rail beside it). */}
+        <div className="mt-4 flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pb-1 lg:mt-6 lg:flex-row lg:items-stretch lg:gap-8 lg:overflow-hidden lg:pb-0">
+          {/* LEFT — size + voice */}
+          <div className="flex shrink-0 flex-col gap-3 lg:w-[360px] lg:overflow-y-auto lg:pb-2 lg:pr-1">
             {/* size — frosted pills */}
             <div className="flex shrink-0 flex-wrap items-center justify-center gap-2 lg:justify-start">
               {([
@@ -358,8 +359,11 @@ export function ShareModal({
                 </div>
               </div>
             )}
+          </div>
 
-            {/* Pro/Max: remove the watermark (and any clunoid mention). */}
+          {/* RIGHT — watermark · action · preview + social rail · progress/caption */}
+          <div className="flex min-h-0 flex-1 flex-col gap-2.5 lg:overflow-y-auto lg:pb-2">
+            {/* Remove watermark — above the preview (Pro/Max) */}
             {isSubscriber && (
               <button
                 type="button"
@@ -371,7 +375,7 @@ export function ShareModal({
                   if (status === "ready") setStatus("idle");
                 }}
                 aria-pressed={!branded}
-                className={`flex shrink-0 items-center justify-between gap-3 rounded-full px-4 py-3 text-left backdrop-blur transition disabled:opacity-50 ${
+                className={`flex shrink-0 items-center justify-between gap-3 rounded-full px-4 py-2.5 text-left backdrop-blur transition disabled:opacity-50 ${
                   !branded ? "bg-violet-500/30" : "bg-white/12 hover:bg-white/20"
                 }`}
               >
@@ -384,36 +388,63 @@ export function ShareModal({
                 </span>
               </button>
             )}
-          </div>
 
-          {/* RIGHT — preview / results + progress + caption */}
-          <div className="flex min-h-0 flex-1 flex-col gap-3 lg:overflow-y-auto lg:pb-2">
-            {/* preview / results */}
-            {ready && multi ? (
-              <div className="flex flex-col gap-3 lg:flex-1 lg:flex-row lg:flex-wrap lg:items-start lg:justify-center">
-                {results.map((r) => (
-                  <div key={r.aspect} className="overflow-hidden rounded-3xl bg-black/40 backdrop-blur lg:min-w-[240px] lg:flex-1">
-                    <div className="flex items-center justify-between px-3.5 py-2.5">
-                      <span className="flex items-center gap-1.5 text-xs font-extrabold text-white/85">
-                        {r.aspect === "9:16" ? <Smartphone size={14} /> : <Monitor size={14} />} {ASPECT_LABEL[r.aspect]} <span className="text-white/45">{r.aspect}</span>
-                      </span>
-                      <div className="flex items-center gap-1.5">
-                        <button onClick={() => download(r)} className="flex items-center gap-1 rounded-full bg-white/15 px-3 py-1.5 text-xs font-bold transition hover:bg-white/25">
-                          <Download size={13} /> Save
-                        </button>
-                        <button onClick={() => share(r)} className="flex items-center gap-1 rounded-full bg-white px-3 py-1.5 text-xs font-bold text-black transition hover:bg-white/90">
-                          <Share2 size={13} /> Share
-                        </button>
-                      </div>
-                    </div>
-                    {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-                    <video src={r.url} controls playsInline loop className="max-h-[34dvh] w-full bg-black object-contain lg:max-h-[58vh]" />
+            {/* Action — on top of the preview: Create → Creating → Download/Share */}
+            <div className="shrink-0">
+              {ready ? (
+                multi ? (
+                  <p className="py-0.5 text-center text-xs font-semibold leading-snug text-white/70">
+                    Both sizes are ready — tap <span className="font-bold text-white/90">Save</span> on each below.
+                  </p>
+                ) : (
+                  <div className="flex gap-2.5">
+                    <button onClick={() => download(results[0])} className="flex flex-1 items-center justify-center gap-2 rounded-full bg-white py-3.5 text-sm font-extrabold text-black shadow-lg transition hover:bg-white/90">
+                      <Download size={18} /> Download
+                    </button>
+                    <button onClick={() => share(results[0])} className="flex flex-1 items-center justify-center gap-2 rounded-full bg-white/15 py-3.5 text-sm font-extrabold text-white backdrop-blur transition hover:bg-white/25">
+                      <Share2 size={18} /> Share
+                    </button>
                   </div>
-                ))}
-              </div>
-            ) : (
-              <div className="relative flex min-h-[34dvh] flex-1 items-center justify-center overflow-hidden rounded-3xl bg-black/35 backdrop-blur">
-                {status === "unsupported" ? (
+                )
+              ) : (
+                <button
+                  onClick={generate}
+                  disabled={status === "rendering" || status === "unsupported"}
+                  className="flex w-full items-center justify-center gap-2 rounded-full bg-white py-3.5 text-base font-extrabold text-black shadow-[0_12px_34px_-10px_rgba(0,0,0,0.7)] transition hover:bg-white/90 disabled:opacity-50"
+                >
+                  {status === "rendering" ? <Loader2 size={18} className="animate-spin" /> : <Film size={18} />}
+                  {status === "rendering" ? `Creating… ${pct}%` : aspect === "both" ? "Create both videos" : "Create video"}
+                </button>
+              )}
+            </div>
+
+            {/* Preview (definite height → always visible while creating + created) +
+                a vertical social rail beside it once ready. */}
+            <div className="flex shrink-0 items-stretch gap-2.5">
+              <div className="relative flex h-[42dvh] flex-1 items-center justify-center overflow-hidden rounded-3xl bg-black/35 backdrop-blur lg:h-[52vh]">
+                {ready && multi ? (
+                  <div className="flex h-full w-full flex-col gap-2 overflow-y-auto p-2">
+                    {results.map((r) => (
+                      <div key={r.aspect} className="overflow-hidden rounded-2xl bg-black/40">
+                        <div className="flex items-center justify-between px-3 py-2">
+                          <span className="flex items-center gap-1.5 text-xs font-extrabold text-white/85">
+                            {r.aspect === "9:16" ? <Smartphone size={14} /> : <Monitor size={14} />} {ASPECT_LABEL[r.aspect]} <span className="text-white/45">{r.aspect}</span>
+                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <button onClick={() => download(r)} className="flex items-center gap-1 rounded-full bg-white/15 px-3 py-1.5 text-xs font-bold transition hover:bg-white/25">
+                              <Download size={13} /> Save
+                            </button>
+                            <button onClick={() => share(r)} className="flex items-center gap-1 rounded-full bg-white px-3 py-1.5 text-xs font-bold text-black transition hover:bg-white/90">
+                              <Share2 size={13} /> Share
+                            </button>
+                          </div>
+                        </div>
+                        {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+                        <video src={r.url} controls playsInline loop className="max-h-[34dvh] w-full bg-black object-contain" />
+                      </div>
+                    ))}
+                  </div>
+                ) : status === "unsupported" ? (
                   <p className="px-6 text-center text-sm text-white/70">
                     Video creation isn’t supported in this browser. Try Chrome on desktop or Android.
                   </p>
@@ -430,18 +461,36 @@ export function ShareModal({
                           <Film size={28} className="text-white/70" />
                         </span>
                         <p className="max-w-[16rem] text-sm font-semibold text-white/65">
-                          {idleHint || `Your ${aspect === "both" ? "vertical + wide" : aspect} recap — tap below to create it.`}
+                          {idleHint || `Your ${aspect === "both" ? "vertical + wide" : aspect} recap — tap Create above.`}
                         </p>
                       </>
                     )}
                   </div>
                 )}
               </div>
-            )}
+
+              {/* vertical social rail — beside the preview, once a clip is ready */}
+              {ready && (
+                <div className="flex shrink-0 flex-col items-center justify-center gap-2">
+                  {platforms.map((p) => (
+                    <button
+                      key={p.key}
+                      onClick={() => postTo(p.href)}
+                      aria-label={`Post to ${p.label}`}
+                      title={`Save the video & open ${p.label}`}
+                      className="grid h-10 w-10 place-items-center rounded-full text-white shadow-md ring-1 ring-white/15 transition hover:scale-110 sm:h-11 sm:w-11"
+                      style={{ backgroundColor: p.color }}
+                    >
+                      <p.Icon size={19} />
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
 
             {/* progress */}
             {status === "rendering" && (
-              <div className="shrink-0 space-y-2.5">
+              <div className="shrink-0 space-y-2">
                 <div className="flex items-center justify-between text-xs font-bold text-white/80">
                   <span className="flex min-w-0 items-center gap-1.5">
                     <Loader2 size={14} className="shrink-0 animate-spin" /> <span className="truncate">{label || "Working…"}</span>
@@ -510,58 +559,6 @@ export function ShareModal({
                   </div>
                 )}
               </div>
-            )}
-          </div>
-        </div>
-
-        {/* BOTTOM bar — socials + primary action, end-to-end */}
-        <div className="shrink-0 pt-3 lg:pt-5">
-          {ready && (
-            <div className="mb-3 flex flex-col items-center gap-2 lg:mb-4 lg:flex-row lg:justify-center lg:gap-4">
-              <p className="text-xs font-bold text-white/55">Post to</p>
-              <div className="flex flex-wrap items-center justify-center gap-2.5">
-                {platforms.map((p) => (
-                  <button
-                    key={p.key}
-                    onClick={() => postTo(p.href)}
-                    aria-label={`Post to ${p.label}`}
-                    title={`Save the video & open ${p.label}`}
-                    className="grid h-11 w-11 place-items-center rounded-full text-white shadow-md ring-1 ring-white/15 transition hover:scale-110"
-                    style={{ backgroundColor: p.color }}
-                  >
-                    <p.Icon size={20} />
-                  </button>
-                ))}
-              </div>
-              <p className="text-[11px] text-white/45 lg:ml-2">We’ll save the video — attach it in the app.</p>
-            </div>
-          )}
-
-          <div className="mx-auto lg:max-w-md">
-            {ready ? (
-              multi ? (
-                <p className="py-1 text-center text-xs font-medium leading-snug text-white/65">
-                  Tap <span className="font-bold text-white/85">Save</span> on each size above to download it.
-                </p>
-              ) : (
-                <div className="flex gap-2.5">
-                  <button onClick={() => download(results[0])} className="flex flex-1 items-center justify-center gap-2 rounded-full bg-white/15 py-4 text-sm font-extrabold text-white backdrop-blur transition hover:bg-white/25">
-                    <Download size={18} /> Download
-                  </button>
-                  <button onClick={() => share(results[0])} className="flex flex-1 items-center justify-center gap-2 rounded-full bg-white py-4 text-sm font-extrabold text-black transition hover:bg-white/90">
-                    <Share2 size={18} /> Share
-                  </button>
-                </div>
-              )
-            ) : (
-              <button
-                onClick={generate}
-                disabled={status === "rendering" || status === "unsupported"}
-                className="flex w-full items-center justify-center gap-2 rounded-full bg-white py-4 text-base font-extrabold text-black shadow-[0_12px_34px_-10px_rgba(0,0,0,0.7)] transition hover:bg-white/90 disabled:opacity-50"
-              >
-                {status === "rendering" ? <Loader2 size={18} className="animate-spin" /> : <Film size={18} />}
-                {status === "rendering" ? "Creating…" : aspect === "both" ? "Create both videos" : "Create video"}
-              </button>
             )}
           </div>
         </div>
