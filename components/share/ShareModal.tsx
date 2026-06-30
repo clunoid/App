@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, type ComponentType } from "react";
 import { Download, Share2, X, Film, Loader2, Smartphone, Monitor, Layers, Instagram, Youtube, Facebook, Sparkles, Copy, Check, AlertTriangle, CheckCircle2, Mic, ChevronDown, Gauge } from "lucide-react";
-import { canRecordVideo, type ReelAspect, type ReelSpec } from "@/lib/share/reel";
+import { canRecordVideo, LEN_MIN, LEN_MAX, sliderColor, type ReelAspect, type ReelSpec } from "@/lib/share/reel";
 import { renderReel } from "@/lib/share/renderer";
 import { useBilling } from "@/lib/billing/store";
 import { HostVoicePicker } from "@/components/games/HostVoicePicker";
@@ -14,9 +14,6 @@ import { TikTokIcon, XIcon, WhatsAppIcon } from "./SocialIcons";
 // Shared game look (matches the flag game's title treatment + signature rays).
 const TITLE_SHADOW = "0 3px 0 rgba(0,0,0,0.22), 0 7px 16px rgba(0,0,0,0.38)";
 const YELLOW = "#FFD400";
-const DUR_MIN = 15;
-const DUR_MAX = 600; // 10 min cap — total control, within sane export limits
-const fmtDur = (s: number) => `${Math.floor(Math.max(0, s) / 60)}:${String(Math.round(Math.max(0, s) % 60)).padStart(2, "0")}`;
 
 type Status = "idle" | "rendering" | "ready" | "unsupported" | "error";
 // What the user picks: a single size, or both at once.
@@ -73,7 +70,7 @@ export function ShareModal({
   caption?: string; // prefilled social caption
   captionContext?: { title: string; subtitle?: string; source?: string; kind?: string }; // enables the AI caption generator
   gameId?: string; // when set, a PREMIUM video is cached under this id + reloaded here (skip re-render)
-  videoDuration?: { default: number }; // STAT BATTLE: enables a per-size video LENGTH control (seconds)
+  videoDuration?: { vertical: number; wide: number }; // STAT BATTLE: enables the per-size video LENGTH controls (default seconds for each)
 }) {
   const platforms = buildPlatforms(caption);
   const [cap, setCap] = useState<{ title: string; caption: string; hashtags: string[] } | null>(null);
@@ -97,8 +94,8 @@ export function ShareModal({
   const [bgSafe, setBgSafe] = useState(false);
   const [results, setResults] = useState<RenderItem[]>([]);
   // Per-size video LENGTH in seconds (Stat Battle only; vertical & wide can differ).
-  const [durVert, setDurVert] = useState(videoDuration?.default ?? 120);
-  const [durWide, setDurWide] = useState(videoDuration?.default ?? 120);
+  const [durVert, setDurVert] = useState(videoDuration?.vertical ?? 120);
+  const [durWide, setDurWide] = useState(videoDuration?.wide ?? 300);
   const hostRef = useRef<HTMLDivElement | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const resultsRef = useRef<RenderItem[]>([]);
@@ -115,8 +112,8 @@ export function ShareModal({
     let alive = true;
     setFromSaved(false);
     if (videoDuration) {
-      setDurVert(videoDuration.default);
-      setDurWide(videoDuration.default);
+      setDurVert(videoDuration.vertical);
+      setDurWide(videoDuration.wide);
     }
     (async () => {
       if (gameId) {
@@ -147,10 +144,10 @@ export function ShareModal({
     return () => {
       alive = false;
     };
-    // videoDuration is intentionally tracked by its .default value (the object identity
+    // videoDuration is intentionally tracked by its default values (the object identity
     // changes each render); including the object would reset the inputs every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, gameId, videoDuration?.default]);
+  }, [open, gameId, videoDuration?.vertical, videoDuration?.wide]);
 
   // Reset everything when closing.
   const handleClose = useCallback(() => {
@@ -402,28 +399,44 @@ export function ShareModal({
                 {(aspect === "both" ? (["9:16", "16:9"] as ReelAspect[]) : [aspect as ReelAspect]).map((a) => {
                   const val = a === "9:16" ? durVert : durWide;
                   const setVal = a === "9:16" ? setDurVert : setDurWide;
+                  const apply = (sec: number) => {
+                    setVal(Math.min(LEN_MAX, Math.max(LEN_MIN, Math.round(sec))));
+                    cleanupUrls();
+                    setResults([]);
+                    if (status === "ready") setStatus("idle");
+                  };
                   return (
-                    <div key={a} className="flex items-center gap-2.5 rounded-full bg-white/10 px-3.5 py-2">
-                      <span className="flex w-[4.7rem] shrink-0 items-center gap-1 text-xs font-extrabold text-white/80">
+                    <div key={a} className="flex items-center gap-2 rounded-full bg-white/10 px-3 py-2">
+                      <span className="flex w-[4.4rem] shrink-0 items-center gap-1 text-xs font-extrabold text-white/80">
                         {a === "9:16" ? <Smartphone size={13} /> : <Monitor size={13} />} {a === "9:16" ? "Vertical" : "Wide"}
                       </span>
                       <input
                         type="range"
-                        min={DUR_MIN}
-                        max={DUR_MAX}
+                        min={LEN_MIN}
+                        max={LEN_MAX}
                         step={5}
                         value={val}
                         disabled={status === "rendering"}
-                        onChange={(e) => {
-                          setVal(parseInt(e.target.value, 10));
-                          cleanupUrls();
-                          setResults([]);
-                          if (status === "ready") setStatus("idle");
-                        }}
+                        onChange={(e) => apply(parseInt(e.target.value, 10))}
                         aria-label={`${a === "9:16" ? "Vertical" : "Wide"} video length`}
-                        className="h-1.5 flex-1 cursor-pointer accent-[#FFD400] disabled:opacity-50"
+                        style={{ accentColor: sliderColor((val - LEN_MIN) / (LEN_MAX - LEN_MIN)) }}
+                        className="h-1.5 flex-1 cursor-pointer disabled:opacity-50"
                       />
-                      <span className="w-10 shrink-0 text-right text-xs font-bold tabular-nums text-white/70">{fmtDur(val)}</span>
+                      <input
+                        type="number"
+                        min={LEN_MIN / 60}
+                        max={LEN_MAX / 60}
+                        step={0.5}
+                        value={Number((val / 60).toFixed(2))}
+                        disabled={status === "rendering"}
+                        onChange={(e) => {
+                          const m = parseFloat(e.target.value);
+                          if (!Number.isNaN(m)) apply(m * 60);
+                        }}
+                        aria-label={`${a === "9:16" ? "Vertical" : "Wide"} length in minutes`}
+                        className="w-12 shrink-0 rounded-lg bg-white/10 px-1.5 py-1 text-center text-xs font-bold text-white outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none disabled:opacity-50"
+                      />
+                      <span className="shrink-0 text-[10px] font-semibold text-white/45">min</span>
                     </div>
                   );
                 })}

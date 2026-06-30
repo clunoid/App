@@ -5,6 +5,7 @@ import { ChevronLeft, ChevronRight, Gauge, Monitor, RotateCcw, Smartphone, X } f
 import { drawRaceStyle, newRaceState, RACE_STYLES } from "@/lib/stats/render";
 import type { RaceStyle } from "@/lib/stats/render";
 import type { RaceData } from "@/lib/stats/types";
+import { LEN_MIN, LEN_MAX, sliderColor } from "@/lib/share/reel";
 
 const fmtDur = (s: number) => `${Math.floor(Math.max(0, s) / 60)}:${String(Math.round(Math.max(0, s) % 60)).padStart(2, "0")}`;
 
@@ -171,21 +172,32 @@ export function StatViewer({
 
       {/* bottom controls — speed slider, then design nav (wrap so nothing overflows) */}
       <div className="flex flex-col items-center gap-2.5 px-3 py-3 pb-[max(env(safe-area-inset-bottom),0.75rem)]">
-        <div className="flex w-full max-w-md items-center gap-2.5 rounded-full bg-white/10 px-4 py-2">
-          <Gauge size={16} className="shrink-0" />
-          <span className="shrink-0 text-xs font-extrabold">Speed</span>
-          <input
-            type="range"
-            min={0.4}
-            max={2}
-            step={0.05}
-            value={speed}
-            onChange={(e) => onSpeed(parseFloat(e.target.value))}
-            aria-label="Playback speed"
-            className="h-1.5 flex-1 cursor-pointer accent-white"
-          />
-          <span className="w-10 shrink-0 text-right text-xs font-bold tabular-nums text-white/70">{fmtDur(race.durationSec / speed)}</span>
-        </div>
+        {(() => {
+          const play = Math.min(LEN_MAX, Math.max(LEN_MIN, Math.round(race.durationSec / speed)));
+          return (
+            <div className="flex w-full max-w-md items-center gap-2.5 rounded-full bg-white/10 px-4 py-2">
+              <Gauge size={16} className="shrink-0" />
+              <span className="shrink-0 text-xs font-extrabold">Speed</span>
+              <span className="hidden shrink-0 text-[10px] font-bold text-white/40 sm:inline">Faster</span>
+              <input
+                type="range"
+                min={LEN_MIN}
+                max={LEN_MAX}
+                step={5}
+                value={play}
+                onChange={(e) => {
+                  const v = parseInt(e.target.value, 10);
+                  if (v > 0) onSpeed(race.durationSec / v);
+                }}
+                aria-label="Playback length"
+                style={{ accentColor: sliderColor((play - LEN_MIN) / (LEN_MAX - LEN_MIN)) }}
+                className="h-1.5 flex-1 cursor-pointer"
+              />
+              <span className="hidden shrink-0 text-[10px] font-bold text-white/40 sm:inline">Slower</span>
+              <span className="w-12 shrink-0 text-right text-xs font-bold tabular-nums text-white/70">{fmtDur(play)}</span>
+            </div>
+          );
+        })()}
         <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-3">
           <button onClick={onPrev} className="flex items-center gap-1 rounded-full bg-white/10 px-3 py-2 text-sm font-bold transition hover:bg-white/20">
             <ChevronLeft size={16} /> Prev

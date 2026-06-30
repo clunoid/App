@@ -14,7 +14,7 @@ import type { RaceStyle } from "@/lib/stats/render";
 import { resolveRaceMedia } from "@/lib/stats/media";
 import { saveStatBattle } from "@/lib/stats/storage";
 import type { RaceData } from "@/lib/stats/types";
-import type { ReelAspect } from "@/lib/share/reel";
+import { LEN_MIN, LEN_MAX, sliderColor, type ReelAspect } from "@/lib/share/reel";
 
 const INK = "#2c2823";
 const SEAL = "#8a2433";
@@ -582,24 +582,35 @@ export function StatBattle({ initialRequest }: { initialRequest?: string }) {
           </button>
         </div>
 
-        {/* Speed — total control over how fast the years roll by (default: half pace). */}
-        <div className="flex w-full max-w-3xl items-center gap-3 rounded-full bg-black/10 px-4 py-2.5 backdrop-blur">
-          <Gauge size={17} className="shrink-0 text-[#2c2823]" />
-          <span className="shrink-0 text-xs font-extrabold text-[#2c2823]">Speed</span>
-          <span className="hidden shrink-0 text-[10px] font-bold text-[#2c2823]/45 sm:inline">Slower</span>
-          <input
-            type="range"
-            min={0.4}
-            max={2}
-            step={0.05}
-            value={speed}
-            onChange={(e) => setSpeed(parseFloat(e.target.value))}
-            aria-label="Playback speed"
-            className="h-1.5 flex-1 cursor-pointer accent-[#7c3aed]"
-          />
-          <span className="hidden shrink-0 text-[10px] font-bold text-[#2c2823]/45 sm:inline">Faster</span>
-          <span className="w-10 shrink-0 text-right text-xs font-bold tabular-nums text-[#2c2823]/65">{race ? fmtDur(race.durationSec / speed) : ""}</span>
-        </div>
+        {/* Speed — total control: from very slow (up to an hour to play) to fast.
+            The slider is a LENGTH (battle-independent), stored as a speed multiplier. */}
+        {race &&
+          (() => {
+            const play = Math.min(LEN_MAX, Math.max(LEN_MIN, Math.round(race.durationSec / speed)));
+            return (
+              <div className="flex w-full max-w-3xl items-center gap-3 rounded-full bg-black/10 px-4 py-2.5 backdrop-blur">
+                <Gauge size={17} className="shrink-0 text-[#2c2823]" />
+                <span className="shrink-0 text-xs font-extrabold text-[#2c2823]">Speed</span>
+                <span className="hidden shrink-0 text-[10px] font-bold text-[#2c2823]/45 sm:inline">Faster</span>
+                <input
+                  type="range"
+                  min={LEN_MIN}
+                  max={LEN_MAX}
+                  step={5}
+                  value={play}
+                  onChange={(e) => {
+                    const v = parseInt(e.target.value, 10);
+                    if (v > 0) setSpeed(race.durationSec / v);
+                  }}
+                  aria-label="Playback length"
+                  style={{ accentColor: sliderColor((play - LEN_MIN) / (LEN_MAX - LEN_MIN)) }}
+                  className="h-1.5 flex-1 cursor-pointer"
+                />
+                <span className="hidden shrink-0 text-[10px] font-bold text-[#2c2823]/45 sm:inline">Slower</span>
+                <span className="w-12 shrink-0 text-right text-xs font-bold tabular-nums text-[#2c2823]/65">{fmtDur(play)}</span>
+              </div>
+            );
+          })()}
 
         <div className="flex flex-wrap items-center gap-3">
           <button
@@ -689,7 +700,7 @@ export function StatBattle({ initialRequest }: { initialRequest?: string }) {
           idleHint="Export this stat battle as a video — for your projects & socials."
           caption={`${race.title} — a stat battle from clunoid.com 📊`}
           captionContext={{ title: race.title, subtitle: race.subtitle, source: race.source, kind: "stat battle bar-chart race" }}
-          videoDuration={{ default: Math.round(race.durationSec / speed) }}
+          videoDuration={{ vertical: 120, wide: 300 }}
           render={(aspect: ReelAspect, opts) =>
             renderRaceVideo({ ...race, durationSec: opts.durationSec ?? race.durationSec }, aspect, { ...opts, style })
           }

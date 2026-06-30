@@ -46,6 +46,18 @@ export function aspectSize(aspect: ReelAspect): { w: number; h: number } {
   return aspect === "9:16" ? { w: 1080, h: 1920 } : { w: 1920, h: 1080 };
 }
 
+// Length bounds for the live-speed + video-length sliders: 30s … 1 hour.
+export const LEN_MIN = 30;
+export const LEN_MAX = 3600;
+
+/** Discrete colour steps for the length/speed sliders — the accent JUMPS between
+ *  colours as the user drags (no gradient), for a lively, interactive feel. */
+export const SLIDER_COLORS = ["#5B9DF9", "#22C55E", "#EAB308", "#F97316", "#EF4444", "#EC4899", "#A855F7"];
+export function sliderColor(frac: number): string {
+  const i = Math.floor(Math.max(0, Math.min(0.999, frac)) * SLIDER_COLORS.length);
+  return SLIDER_COLORS[Math.min(SLIDER_COLORS.length - 1, i)];
+}
+
 /** True when this browser can render a video at all (else we offer an image). */
 export function canRecordVideo(): boolean {
   if (typeof window === "undefined") return false;
