@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, Download, Check, Plus, Trash2, BarChart3, Info, Sparkles, Loader2 } from "lucide-react";
 import type { RaceData } from "@/lib/stats/types";
 import { aiEditRace } from "@/lib/stats/generate";
+import { StatGate, useStatGate } from "@/components/stats/StatGate";
 import {
   type EditState,
   editStateFromRace,
@@ -35,6 +36,8 @@ export function StatReview({ race, onApprove, onBack }: { race: RaceData; onAppr
   const [aiBusy, setAiBusy] = useState(false);
   const [aiErr, setAiErr] = useState(false);
   const aiRef = useRef<HTMLTextAreaElement | null>(null);
+  // Pre-flight gate: an AI edit runs Opus too, so verify auth + credits (no AI/charge) first.
+  const { gate, runGate } = useStatGate();
 
   // The AI instruction box grows with its content (an "extending" box).
   useEffect(() => {
@@ -49,6 +52,9 @@ export function StatReview({ race, onApprove, onBack }: { race: RaceData; onAppr
   const applyAi = async () => {
     const ins = ai.trim();
     if (!ins || aiBusy) return;
+    // GATE FIRST — verify auth + credits before the (Opus) edit request is sent.
+    const okToRun = await runGate(ins, "edit");
+    if (!okToRun) return;
     setAiBusy(true);
     setAiErr(false);
     try {
@@ -89,6 +95,7 @@ export function StatReview({ race, onApprove, onBack }: { race: RaceData; onAppr
 
   return (
     <div className="relative h-[100dvh] w-screen overflow-y-auto select-none" style={{ background: "#c9c6be" }}>
+      <StatGate state={gate} />
       {/* sticky action bar */}
       <div className="sticky top-0 z-30 flex items-center justify-between gap-2 border-b border-black/10 px-4 py-2.5 backdrop-blur-md" style={{ background: "rgba(243,241,234,0.86)" }}>
         <button onClick={onBack} className="flex h-10 items-center gap-1.5 rounded-full px-3 font-extrabold text-[#2c2823] transition hover:opacity-70">

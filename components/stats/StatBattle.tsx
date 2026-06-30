@@ -6,6 +6,7 @@ import { ArrowLeft, Sparkles, Play, RotateCcw, Film, Loader2, BarChart3, History
 import { DocumentBackground } from "@/components/games/DocumentBackground";
 import { ShareModal } from "@/components/share/ShareModal";
 import { StatReview } from "@/components/stats/StatReview";
+import { StatGate, useStatGate } from "@/components/stats/StatGate";
 import { StatHistory } from "@/components/stats/StatHistory";
 import { StatViewer, requestLandscape } from "@/components/stats/StatViewer";
 import { buildRace, buildRaceFromFile, gdpFallbackRace, PRESETS } from "@/lib/stats/generate";
@@ -129,6 +130,9 @@ export function StatBattle({ initialRequest }: { initialRequest?: string }) {
   const taRef = useRef<HTMLTextAreaElement | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const savedIdRef = useRef<string | null>(null); // Supabase id of the current battle (insert→update)
+  // Pre-flight gate: verify auth + enough credits (server-side, no AI/charge) BEFORE any
+  // expensive Opus request — on success a green tick plays, then generation auto-starts.
+  const { gate, runGate } = useStatGate();
 
   // Playback SPEED (multiplier; 0.5 = HALF the natural pace = the default, a calmer
   // higher-quality watch). Higher = faster, the years roll by quicker. A ref lets the
@@ -164,6 +168,10 @@ export function StatBattle({ initialRequest }: { initialRequest?: string }) {
     const r = (req || "").trim();
     const isDefault = !r || r === PRESETS[0].request;
     setErrMsg("");
+    // GATE FIRST — nothing reaches the model until auth + credits are verified. On 401/402
+    // the gate raises the auth / credits popup and we stop here (no request is sent).
+    const okToRun = await runGate(r || PRESETS[0].request, "generate");
+    if (!okToRun) return;
     setBuildKind("gen");
     savedIdRef.current = null; // a brand-new battle → save as a new history entry
     setPhase("building");
@@ -185,7 +193,7 @@ export function StatBattle({ initialRequest }: { initialRequest?: string }) {
         setPhase("menu");
       }
     }
-  }, []);
+  }, [runGate]);
 
   // "Surprise me" — drop a random ready-made idea into the box, and SOMETIMES
   // pre-fill a guided field or two so users discover them.
@@ -210,6 +218,9 @@ export function StatBattle({ initialRequest }: { initialRequest?: string }) {
       return;
     }
     setErrMsg("");
+    // GATE FIRST — a file build always runs Opus, so verify auth + credits before reading it.
+    const okToRun = await runGate(file.name, "file");
+    if (!okToRun) return;
     setBuildKind("file");
     savedIdRef.current = null;
     setPhase("building");
@@ -233,7 +244,7 @@ export function StatBattle({ initialRequest }: { initialRequest?: string }) {
       setErrMsg("Couldn't read that file — use a PDF, CSV, TXT or MD with a clear ranking and numbers.");
       setPhase("menu");
     }
-  }, []);
+  }, [runGate]);
 
   // User approved the (possibly edited) data sheet → prepare media + play.
   const approve = useCallback(async (edited: RaceData) => {
@@ -375,6 +386,7 @@ export function StatBattle({ initialRequest }: { initialRequest?: string }) {
     return (
       <div className={`relative flex h-[100dvh] w-screen flex-col items-center overflow-y-auto overflow-x-hidden px-4 pb-10 pt-20 select-none sm:px-6 sm:pb-12 ${building ? "justify-center" : ""}`}>
         <DocumentBackground />
+        <StatGate state={gate} />
         <button
           onClick={() => router.push("/home")}
           aria-label="Back"

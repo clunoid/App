@@ -11,6 +11,43 @@ import { reportBillingStatus, refreshCredits } from "@/lib/billing/bus";
 const STAT_BATTLE_CREDIT_REASON =
   "Stat Battles use serious AI power — Clunoid researches real data across the years, builds an accurate series, and renders your animated chart. That needs more credits than you have right now. Add credits or subscribe to keep creating.";
 
+/**
+ * PRE-FLIGHT GATE — verify (server-side, read-only: no AI, no charge) that the user is
+ * authenticated AND can afford the build BEFORE any expensive Opus request is fired. This
+ * guarantees we never even attempt an Opus call for a user without enough credits.
+ *
+ * Returns:
+ *  • { proceed: true,  verified: true  } — authed + enough credits → safe to run (show the tick).
+ *  • { proceed: false }                 — 401/402: the SAME auth / "not enough credits" popup
+ *                                          the post-request path uses is raised here; do NOT run.
+ *  • { proceed: true,  verified: false } — transient/unknown error → run anyway; the real route
+ *                                          still atomically gates, so no Opus runs without credits.
+ *
+ * `kind` selects the price the matching route will charge: "generate" (stats_plan, or
+ * stats_plan+stats_opus for a custom build), "file" (stats_file), "edit" (stats_edit).
+ */
+export async function preflightStats(
+  request: string,
+  kind: "generate" | "file" | "edit" = "generate"
+): Promise<{ proceed: boolean; verified: boolean; status: number }> {
+  let res: Response;
+  try {
+    res = await fetch("/api/stats/preflight", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ request, kind }),
+    });
+  } catch {
+    return { proceed: true, verified: false, status: 0 }; // offline/transient → the gated route decides
+  }
+  if (res.status === 401 || res.status === 402 || res.status === 429) {
+    reportBillingStatus(res.status, STAT_BATTLE_CREDIT_REASON); // opens auth / credits popup (same as live path)
+    return { proceed: false, verified: false, status: res.status };
+  }
+  if (!res.ok) return { proceed: true, verified: false, status: res.status }; // unknown server error → let the route gate
+  return { proceed: true, verified: true, status: 200 };
+}
+
 /** Quick-start stat battles — natural requests the brain researches. First = GDP. */
 export const PRESETS: { label: string; request: string }[] = [
   { label: "GDP Battle", request: "World's Largest Economies by GDP — epic battle, 1960 to today" },

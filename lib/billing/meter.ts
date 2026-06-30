@@ -19,10 +19,27 @@ import { RATE_LIMITS } from "./costs";
 
 export type Charge = { ok: true; balance: number } | { ok: false; status: 402 | 429; balance: number };
 
+/** The instant the monthly grant refills — `period_start + 1 calendar month` (UTC,
+ *  clamped to the month's last day, exactly like Postgres `interval '1 month'`). This
+ *  mirrors the authoritative `now() >= period_start + interval '1 month'` inside
+ *  consume_credits, so the read-only pre-check below agrees with the atomic charge that
+ *  follows — never optimistically passing (which would show a "verified" tick then 402)
+ *  nor falsely blocking a user the real charge would actually serve. */
+function refillBoundaryMs(periodMs: number): number {
+  const d = new Date(periodMs);
+  const day = d.getUTCDate();
+  d.setUTCDate(1); // step to the 1st first so advancing the month can't overflow
+  d.setUTCMonth(d.getUTCMonth() + 1);
+  const lastDay = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate();
+  d.setUTCDate(Math.min(day, lastDay));
+  return d.getTime();
+}
+
 /** Read the current user's spendable credits (monthly balance + purchased),
  *  accounting for a due monthly refill. Read-only — for a PRE-CHECK before an
  *  expensive action so we never run heavy compute a user can't pay for. Returns
- *  null when unauthenticated. Lenient on the refill boundary (never false-blocks). */
+ *  null when unauthenticated. The refill boundary matches consume_credits EXACTLY
+ *  (1 calendar month) so this never disagrees with the binding atomic charge. */
 export async function creditsAvailable(): Promise<number | null> {
   const supabase = await getSupabaseServer();
   let user: User | null = null;
@@ -41,8 +58,9 @@ export async function creditsAvailable(): Promise<number | null> {
     .maybeSingle();
   if (!data) return 0;
   const periodMs = new Date(data.period_start as string).getTime();
-  // ~1 month, slightly lenient so a user about to refill is never blocked.
-  const refillDue = Number.isFinite(periodMs) && Date.now() - periodMs >= 27 * 24 * 3600 * 1000;
+  // Refill is "due" on the exact same calendar-month boundary consume_credits uses, so
+  // this pre-check and the atomic charge never disagree (no false "verified" then 402).
+  const refillDue = Number.isFinite(periodMs) && Date.now() >= refillBoundaryMs(periodMs);
   const monthly = refillDue ? (data.monthly_grant as number) : (data.balance as number);
   return (monthly || 0) + ((data.purchased as number) || 0);
 }
