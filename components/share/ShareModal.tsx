@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type ComponentType } from "react";
-import { Download, Share2, X, Film, Loader2, Smartphone, Monitor, Layers, Instagram, Youtube, Facebook, Sparkles, Copy, Check, AlertTriangle, CheckCircle2, Mic, ChevronDown } from "lucide-react";
+import { Download, Share2, X, Film, Loader2, Smartphone, Monitor, Layers, Instagram, Youtube, Facebook, Sparkles, Copy, Check, AlertTriangle, CheckCircle2, Mic, ChevronDown, Gauge } from "lucide-react";
 import { canRecordVideo, type ReelAspect, type ReelSpec } from "@/lib/share/reel";
 import { renderReel } from "@/lib/share/renderer";
 import { useBilling } from "@/lib/billing/store";
@@ -14,6 +14,9 @@ import { TikTokIcon, XIcon, WhatsAppIcon } from "./SocialIcons";
 // Shared game look (matches the flag game's title treatment + signature rays).
 const TITLE_SHADOW = "0 3px 0 rgba(0,0,0,0.22), 0 7px 16px rgba(0,0,0,0.38)";
 const YELLOW = "#FFD400";
+const DUR_MIN = 15;
+const DUR_MAX = 600; // 10 min cap — total control, within sane export limits
+const fmtDur = (s: number) => `${Math.floor(Math.max(0, s) / 60)}:${String(Math.round(Math.max(0, s) % 60)).padStart(2, "0")}`;
 
 type Status = "idle" | "rendering" | "ready" | "unsupported" | "error";
 // What the user picks: a single size, or both at once.
@@ -57,18 +60,20 @@ export function ShareModal({
   caption = DEFAULT_CAPTION,
   captionContext,
   gameId,
+  videoDuration,
 }: {
   open: boolean;
   onClose: () => void;
   makeSpec?: (aspect: ReelAspect, opts: { branded: boolean }) => ReelSpec;
   // Optional custom renderer (e.g. the Stat Battle race). Defaults to renderReel(makeSpec).
-  render?: (aspect: ReelAspect, opts: { host: HTMLElement | null; signal: AbortSignal; onProgress: (p: number, l: string) => void; branded: boolean }) => Promise<{ blob: Blob; ext: string; mime: string; hadVoice: boolean }>;
+  render?: (aspect: ReelAspect, opts: { host: HTMLElement | null; signal: AbortSignal; onProgress: (p: number, l: string) => void; branded: boolean; durationSec?: number }) => Promise<{ blob: Blob; ext: string; mime: string; hadVoice: boolean }>;
   fileName?: string;
   heading?: string; // modal title (e.g. "Share your stat battle")
   idleHint?: string; // the idle preview hint (defaults to the game wording)
   caption?: string; // prefilled social caption
   captionContext?: { title: string; subtitle?: string; source?: string; kind?: string }; // enables the AI caption generator
   gameId?: string; // when set, a PREMIUM video is cached under this id + reloaded here (skip re-render)
+  videoDuration?: { default: number }; // STAT BATTLE: enables a per-size video LENGTH control (seconds)
 }) {
   const platforms = buildPlatforms(caption);
   const [cap, setCap] = useState<{ title: string; caption: string; hashtags: string[] } | null>(null);
@@ -91,6 +96,9 @@ export function ShareModal({
   // tab-safe). Stays false for the real-time recorder, which needs the tab open.
   const [bgSafe, setBgSafe] = useState(false);
   const [results, setResults] = useState<RenderItem[]>([]);
+  // Per-size video LENGTH in seconds (Stat Battle only; vertical & wide can differ).
+  const [durVert, setDurVert] = useState(videoDuration?.default ?? 120);
+  const [durWide, setDurWide] = useState(videoDuration?.default ?? 120);
   const hostRef = useRef<HTMLDivElement | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const resultsRef = useRef<RenderItem[]>([]);
@@ -106,6 +114,10 @@ export function ShareModal({
     if (!open) return;
     let alive = true;
     setFromSaved(false);
+    if (videoDuration) {
+      setDurVert(videoDuration.default);
+      setDurWide(videoDuration.default);
+    }
     (async () => {
       if (gameId) {
         const saved = await loadGameVideo(gameId);
@@ -135,7 +147,10 @@ export function ShareModal({
     return () => {
       alive = false;
     };
-  }, [open, gameId]);
+    // videoDuration is intentionally tracked by its .default value (the object identity
+    // changes each render); including the object would reset the inputs every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, gameId, videoDuration?.default]);
 
   // Reset everything when closing.
   const handleClose = useCallback(() => {
@@ -192,7 +207,7 @@ export function ShareModal({
           if (l.toLowerCase().includes("background")) setBgSafe(true);
         };
         const res = render
-          ? await render(a, { host: hostRef.current, signal: ac.signal, onProgress, branded })
+          ? await render(a, { host: hostRef.current, signal: ac.signal, onProgress, branded, durationSec: videoDuration ? (a === "9:16" ? durVert : durWide) : undefined })
           : await renderReel(makeSpec!(a, { branded }), { host: hostRef.current, signal: ac.signal, onProgress, voiceName });
         if (ac.signal.aborted) {
           out.forEach((r) => URL.revokeObjectURL(r.url)); // don't orphan an already-finished size
@@ -223,7 +238,7 @@ export function ShareModal({
       console.error("reel render failed", e);
       setStatus("error");
     }
-  }, [aspect, branded, cleanupUrls, makeSpec, render, gameId, videoVoice]);
+  }, [aspect, branded, cleanupUrls, makeSpec, render, gameId, videoVoice, durVert, durWide, videoDuration]);
 
   const nameFor = useCallback(
     (item: RenderItem) => (resultsRef.current.length > 1 ? `${fileName}-${item.aspect.replace(":", "x")}` : fileName),
@@ -377,6 +392,43 @@ export function ShareModal({
                 </button>
               ))}
             </div>
+
+            {/* Video length — Stat Battle: total control, per size (vertical & wide can differ). */}
+            {videoDuration && (
+              <div className="shrink-0 space-y-1.5">
+                <p className="flex items-center gap-1.5 px-1 text-xs font-bold uppercase tracking-wide text-white/45">
+                  <Gauge size={13} className="text-[#FFD400]" /> Video length
+                </p>
+                {(aspect === "both" ? (["9:16", "16:9"] as ReelAspect[]) : [aspect as ReelAspect]).map((a) => {
+                  const val = a === "9:16" ? durVert : durWide;
+                  const setVal = a === "9:16" ? setDurVert : setDurWide;
+                  return (
+                    <div key={a} className="flex items-center gap-2.5 rounded-full bg-white/10 px-3.5 py-2">
+                      <span className="flex w-[4.7rem] shrink-0 items-center gap-1 text-xs font-extrabold text-white/80">
+                        {a === "9:16" ? <Smartphone size={13} /> : <Monitor size={13} />} {a === "9:16" ? "Vertical" : "Wide"}
+                      </span>
+                      <input
+                        type="range"
+                        min={DUR_MIN}
+                        max={DUR_MAX}
+                        step={5}
+                        value={val}
+                        disabled={status === "rendering"}
+                        onChange={(e) => {
+                          setVal(parseInt(e.target.value, 10));
+                          cleanupUrls();
+                          setResults([]);
+                          if (status === "ready") setStatus("idle");
+                        }}
+                        aria-label={`${a === "9:16" ? "Vertical" : "Wide"} video length`}
+                        className="h-1.5 flex-1 cursor-pointer accent-[#FFD400] disabled:opacity-50"
+                      />
+                      <span className="w-10 shrink-0 text-right text-xs font-bold tabular-nums text-white/70">{fmtDur(val)}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
 
             {/* Voice — narrated videos only (the stat-battle race has a fixed outro).
                 Mobile: a compact pill that expands. Big screens: shown directly so

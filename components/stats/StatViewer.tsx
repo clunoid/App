@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, Monitor, RotateCcw, Smartphone, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Gauge, Monitor, RotateCcw, Smartphone, X } from "lucide-react";
 import { drawRaceStyle, newRaceState, RACE_STYLES } from "@/lib/stats/render";
 import type { RaceStyle } from "@/lib/stats/render";
 import type { RaceData } from "@/lib/stats/types";
+
+const fmtDur = (s: number) => `${Math.floor(Math.max(0, s) / 60)}:${String(Math.round(Math.max(0, s) % 60)).padStart(2, "0")}`;
 
 type Mode = "landscape" | "portrait";
 type OrientationExt = ScreenOrientation & { lock?: (o: string) => Promise<void>; unlock?: () => void };
@@ -50,6 +52,8 @@ export async function exitImmersive(): Promise<void> {
 export function StatViewer({
   race,
   style,
+  speed,
+  onSpeed,
   onPrev,
   onNext,
   onClose,
@@ -57,6 +61,8 @@ export function StatViewer({
 }: {
   race: RaceData;
   style: RaceStyle;
+  speed: number;
+  onSpeed: (v: number) => void;
   onPrev: () => void;
   onNext: () => void;
   onClose: () => void;
@@ -65,6 +71,10 @@ export function StatViewer({
   const [mode, setMode] = useState<Mode>(initialMode);
   const [replay, setReplay] = useState(0);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const speedRef = useRef(speed);
+  useEffect(() => {
+    speedRef.current = speed;
+  }, [speed]);
   const label = RACE_STYLES.find((s) => s.id === style)?.label ?? style;
 
   // Animation loop — restarts on design change or replay (NOT on orientation
@@ -75,14 +85,24 @@ export function StatViewer({
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     const state = newRaceState();
-    const total = race.durationSec + 2.2;
-    const t0 = performance.now();
+    // Pace over (durationSec / speed) wall-seconds; reads speedRef so dragging the
+    // speed slider re-paces live without restarting the race.
+    let prog = 0;
+    let last = performance.now();
+    let holdAt = 0;
     let raf = 0;
     drawRaceStyle(ctx, canvas.width, canvas.height, race, state, 0, style);
     const loop = () => {
-      const el = (performance.now() - t0) / 1000;
-      drawRaceStyle(ctx, canvas.width, canvas.height, race, state, Math.min(el, race.durationSec), style);
-      if (el < total) raf = requestAnimationFrame(loop);
+      const now = performance.now();
+      const dt = (now - last) / 1000;
+      last = now;
+      if (prog < 1) {
+        const playSec = race.durationSec / Math.max(0.05, speedRef.current);
+        prog = Math.min(1, prog + (playSec > 0 ? dt / playSec : 1));
+        if (prog >= 1) holdAt = now;
+      }
+      drawRaceStyle(ctx, canvas.width, canvas.height, race, state, prog * race.durationSec, style);
+      if (prog < 1 || now - holdAt < 2200) raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
@@ -149,18 +169,35 @@ export function StatViewer({
         </button>
       </div>
 
-      {/* bottom controls — wrap so they never overflow on tiny screens */}
-      <div className="flex flex-wrap items-center justify-center gap-2 px-3 py-3 pb-[max(env(safe-area-inset-bottom),0.75rem)] sm:gap-3">
-        <button onClick={onPrev} className="flex items-center gap-1 rounded-full bg-white/10 px-3 py-2 text-sm font-bold transition hover:bg-white/20">
-          <ChevronLeft size={16} /> Prev
-        </button>
-        <span className="min-w-[4rem] shrink-0 text-center text-sm font-extrabold">{label}</span>
-        <button onClick={onNext} className="flex items-center gap-1 rounded-full bg-white/10 px-3 py-2 text-sm font-bold transition hover:bg-white/20">
-          Next <ChevronRight size={16} />
-        </button>
-        <button onClick={() => setReplay((n) => n + 1)} className="flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-2 text-sm font-bold transition hover:bg-white/20">
-          <RotateCcw size={16} /> Replay
-        </button>
+      {/* bottom controls — speed slider, then design nav (wrap so nothing overflows) */}
+      <div className="flex flex-col items-center gap-2.5 px-3 py-3 pb-[max(env(safe-area-inset-bottom),0.75rem)]">
+        <div className="flex w-full max-w-md items-center gap-2.5 rounded-full bg-white/10 px-4 py-2">
+          <Gauge size={16} className="shrink-0" />
+          <span className="shrink-0 text-xs font-extrabold">Speed</span>
+          <input
+            type="range"
+            min={0.4}
+            max={2}
+            step={0.05}
+            value={speed}
+            onChange={(e) => onSpeed(parseFloat(e.target.value))}
+            aria-label="Playback speed"
+            className="h-1.5 flex-1 cursor-pointer accent-white"
+          />
+          <span className="w-10 shrink-0 text-right text-xs font-bold tabular-nums text-white/70">{fmtDur(race.durationSec / speed)}</span>
+        </div>
+        <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-3">
+          <button onClick={onPrev} className="flex items-center gap-1 rounded-full bg-white/10 px-3 py-2 text-sm font-bold transition hover:bg-white/20">
+            <ChevronLeft size={16} /> Prev
+          </button>
+          <span className="min-w-[4rem] shrink-0 text-center text-sm font-extrabold">{label}</span>
+          <button onClick={onNext} className="flex items-center gap-1 rounded-full bg-white/10 px-3 py-2 text-sm font-bold transition hover:bg-white/20">
+            Next <ChevronRight size={16} />
+          </button>
+          <button onClick={() => setReplay((n) => n + 1)} className="flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-2 text-sm font-bold transition hover:bg-white/20">
+            <RotateCcw size={16} /> Replay
+          </button>
+        </div>
       </div>
     </div>
   );

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Sparkles, Play, RotateCcw, Film, Loader2, BarChart3, History, Shuffle, Upload, ChevronLeft, ChevronRight, Maximize2, Smartphone, Monitor } from "lucide-react";
+import { ArrowLeft, Sparkles, Play, RotateCcw, Film, Loader2, BarChart3, History, Shuffle, Upload, ChevronLeft, ChevronRight, Maximize2, Smartphone, Monitor, Gauge } from "lucide-react";
 import { DocumentBackground } from "@/components/games/DocumentBackground";
 import { ShareModal } from "@/components/share/ShareModal";
 import { StatReview } from "@/components/stats/StatReview";
@@ -18,6 +18,9 @@ import type { ReelAspect } from "@/lib/share/reel";
 
 const INK = "#2c2823";
 const SEAL = "#8a2433";
+
+/** Seconds → m:ss — for the speed / video-length readouts. */
+const fmtDur = (s: number) => `${Math.floor(Math.max(0, s) / 60)}:${String(Math.round(Math.max(0, s) % 60)).padStart(2, "0")}`;
 
 // menu → building (research) → review (edit & approve the data) → playing
 type Phase = "menu" | "building" | "review" | "playing";
@@ -126,6 +129,17 @@ export function StatBattle({ initialRequest }: { initialRequest?: string }) {
   const taRef = useRef<HTMLTextAreaElement | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const savedIdRef = useRef<string | null>(null); // Supabase id of the current battle (insert→update)
+
+  // Playback SPEED (multiplier; 0.5 = HALF the natural pace = the default, a calmer
+  // higher-quality watch). Higher = faster, the years roll by quicker. A ref lets the
+  // live loop re-pace smoothly when the slider is dragged (no restart). The exported
+  // VIDEO uses its own per-size length set in the share modal — speed only affects
+  // the live views (card + fullscreen) and applies to history too.
+  const [speed, setSpeed] = useState(0.5);
+  const speedRef = useRef(speed);
+  useEffect(() => {
+    speedRef.current = speed;
+  }, [speed]);
 
   // Weave the main request + any optional details into one natural-language prompt.
   const compose = useCallback(() => {
@@ -271,7 +285,7 @@ export function StatBattle({ initialRequest }: { initialRequest?: string }) {
       if (!raw) return;
       const s = JSON.parse(raw) as {
         phase?: Phase; request?: string; range?: string; bars?: string; units?: string;
-        competitors?: string; style?: RaceStyle; savedId?: string | null; race?: RaceData | null;
+        competitors?: string; style?: RaceStyle; speed?: number; savedId?: string | null; race?: RaceData | null;
       };
       setRequest(s.request || "");
       setRange(s.range || "");
@@ -279,6 +293,7 @@ export function StatBattle({ initialRequest }: { initialRequest?: string }) {
       setUnits(s.units || "");
       setCompetitors(s.competitors || "");
       if (s.style) setStyle(s.style);
+      if (typeof s.speed === "number" && s.speed > 0) setSpeed(s.speed);
       if (s.savedId) savedIdRef.current = s.savedId;
       if (s.race && (s.phase === "review" || s.phase === "playing")) {
         setRace(s.race);
@@ -301,12 +316,12 @@ export function StatBattle({ initialRequest }: { initialRequest?: string }) {
       const keepRace = phase === "review" || phase === "playing";
       sessionStorage.setItem(
         STORE_KEY,
-        JSON.stringify({ phase, request, range, bars, units, competitors, style, savedId: savedIdRef.current, race: keepRace ? race : null })
+        JSON.stringify({ phase, request, range, bars, units, competitors, style, speed, savedId: savedIdRef.current, race: keepRace ? race : null })
       );
     } catch {
       /* storage unavailable — non-fatal */
     }
-  }, [phase, request, range, bars, units, competitors, style, race]);
+  }, [phase, request, range, bars, units, competitors, style, speed, race]);
 
   // Flip through the design gallery with ease (wraps both ways).
   const cycleStyle = useCallback((dir: 1 | -1) => {
@@ -326,14 +341,24 @@ export function StatBattle({ initialRequest }: { initialRequest?: string }) {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     const state = newRaceState();
-    const total = race.durationSec + 2.2;
-    const t0 = performance.now();
+    // Pace the race over (durationSec / speed) wall-seconds via a progress accumulator,
+    // so dragging the speed slider re-paces LIVE (reads speedRef) without restarting.
+    let prog = 0;
+    let last = performance.now();
+    let holdAt = 0;
     let raf = 0;
-    drawRaceStyle(ctx, canvas.width, canvas.height, race, state, 0, style); // paint frame 0 immediately (never blank)
+    drawRaceStyle(ctx, canvas.width, canvas.height, race, state, 0, style); // frame 0 (never blank)
     const loop = () => {
-      const el = (performance.now() - t0) / 1000;
-      drawRaceStyle(ctx, canvas.width, canvas.height, race, state, Math.min(el, race.durationSec), style);
-      if (el < total) raf = requestAnimationFrame(loop);
+      const now = performance.now();
+      const dt = (now - last) / 1000;
+      last = now;
+      if (prog < 1) {
+        const playSec = race.durationSec / Math.max(0.05, speedRef.current);
+        prog = Math.min(1, prog + (playSec > 0 ? dt / playSec : 1));
+        if (prog >= 1) holdAt = now;
+      }
+      drawRaceStyle(ctx, canvas.width, canvas.height, race, state, prog * race.durationSec, style);
+      if (prog < 1 || now - holdAt < 2200) raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
@@ -557,6 +582,25 @@ export function StatBattle({ initialRequest }: { initialRequest?: string }) {
           </button>
         </div>
 
+        {/* Speed — total control over how fast the years roll by (default: half pace). */}
+        <div className="flex w-full max-w-3xl items-center gap-3 rounded-full bg-black/10 px-4 py-2.5 backdrop-blur">
+          <Gauge size={17} className="shrink-0 text-[#2c2823]" />
+          <span className="shrink-0 text-xs font-extrabold text-[#2c2823]">Speed</span>
+          <span className="hidden shrink-0 text-[10px] font-bold text-[#2c2823]/45 sm:inline">Slower</span>
+          <input
+            type="range"
+            min={0.4}
+            max={2}
+            step={0.05}
+            value={speed}
+            onChange={(e) => setSpeed(parseFloat(e.target.value))}
+            aria-label="Playback speed"
+            className="h-1.5 flex-1 cursor-pointer accent-[#7c3aed]"
+          />
+          <span className="hidden shrink-0 text-[10px] font-bold text-[#2c2823]/45 sm:inline">Faster</span>
+          <span className="w-10 shrink-0 text-right text-xs font-bold tabular-nums text-[#2c2823]/65">{race ? fmtDur(race.durationSec / speed) : ""}</span>
+        </div>
+
         <div className="flex flex-wrap items-center gap-3">
           <button
             onClick={() => setReplayKey((n) => n + 1)}
@@ -627,6 +671,8 @@ export function StatBattle({ initialRequest }: { initialRequest?: string }) {
         <StatViewer
           race={race}
           style={style}
+          speed={speed}
+          onSpeed={setSpeed}
           initialMode={viewerMode}
           onPrev={() => cycleStyle(-1)}
           onNext={() => cycleStyle(1)}
@@ -643,7 +689,10 @@ export function StatBattle({ initialRequest }: { initialRequest?: string }) {
           idleHint="Export this stat battle as a video — for your projects & socials."
           caption={`${race.title} — a stat battle from clunoid.com 📊`}
           captionContext={{ title: race.title, subtitle: race.subtitle, source: race.source, kind: "stat battle bar-chart race" }}
-          render={(aspect: ReelAspect, opts) => renderRaceVideo(race, aspect, { ...opts, style })}
+          videoDuration={{ default: Math.round(race.durationSec / speed) }}
+          render={(aspect: ReelAspect, opts) =>
+            renderRaceVideo({ ...race, durationSec: opts.durationSec ?? race.durationSec }, aspect, { ...opts, style })
+          }
         />
       )}
     </div>
