@@ -536,7 +536,10 @@ export async function POST(req: NextRequest) {
     // Merge the plan's headline + story onto the data.
     race.title = plan.title || race.title;
     race.subtitle = plan.subtitle || race.subtitle;
-    race.events = plan.events as RaceEventRaw[];
+    // The story beats carry YEAR times; a sub-year window uses index times, so the
+    // beats can't align — drop them (the live leader callout fills the panel instead,
+    // always accurate) rather than freeze one stray beat on screen the whole race.
+    race.events = subYear ? [] : (plan.events as RaceEventRaw[]);
 
     const norm = normalize(race);
     // If the race runs to the current year, nudge the LAST keyframe's time to TODAY
