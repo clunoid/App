@@ -30,7 +30,9 @@ export type RaceEvent = RaceEventRaw & {
 };
 
 // Raw shape returned by the brain / API (values as an array — JSON friendly).
-export type RaceKeyframeRaw = { time: number; values: { name: string; value: number }[] };
+// `label` is the human time shown on screen for sub-yearly windows (e.g. "May 2026",
+// "May 8") — when present it overrides the year counter; omit it for multi-year spans.
+export type RaceKeyframeRaw = { time: number; values: { name: string; value: number }[]; label?: string };
 export type RaceRaw = {
   title: string;
   subtitle?: string;
@@ -47,7 +49,8 @@ export type RaceRaw = {
 };
 
 // Normalized client model — keyframe values as a name→value map, sorted by time.
-export type RaceFrame = { time: number; values: Record<string, number> };
+// `label`: the on-screen time for sub-yearly windows; absent → render shows the year.
+export type RaceFrame = { time: number; values: Record<string, number>; label?: string };
 export type RaceData = {
   title: string;
   subtitle: string;

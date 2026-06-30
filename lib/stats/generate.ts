@@ -32,7 +32,7 @@ export function toRaceData(raw: RaceRaw): RaceData {
     image: e.image || (e.kind && e.kind !== "country" ? undefined : flagUrlForName(e.name)) || undefined,
   }));
   const frames = (raw.keyframes || [])
-    .map((k) => ({ time: k.time, values: Object.fromEntries(k.values.map((v) => [v.name, v.value])) }))
+    .map((k) => ({ time: k.time, values: Object.fromEntries(k.values.map((v) => [v.name, v.value])), label: k.label }))
     .sort((a, b) => a.time - b.time);
   const events = (raw.events || []).slice().sort((a, b) => a.time - b.time);
   const topN = Math.min(raw.topN && raw.topN >= 3 ? raw.topN : 12, entities.length);

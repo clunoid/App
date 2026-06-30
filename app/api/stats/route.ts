@@ -76,8 +76,20 @@ const planSchema = z.object({
   unitSuffix: z.string().optional().describe("[model] suffix e.g. ' pts', '%', 'M', ' troops' (empty if none)."),
   displayScale: z.enum(["raw", "K", "M", "B", "T"]).optional().describe("[model] magnitude. Money → 'M' unless the user says otherwise."),
   decimals: z.number().int().min(0).max(3).optional().describe("Decimals per value (money: 1; counts/ratings: 0)."),
-  fromYear: z.number().int().optional().describe("EXACT start the user asked for (e.g. 1560, or 1 for '1 AD'). Only default (≈1960) when the user gave none."),
-  toYear: z.number().int().optional().describe("EXACT end the user asked for (e.g. 2026). Default the current year when none given."),
+  timeUnit: z
+    .enum(["year", "month", "week", "day"])
+    .optional()
+    .describe(
+      "GRANULARITY, inferred from the prompt's exact time window. A multi-year span or no period given → 'year' (default). A SINGLE specific year (e.g. '2024') → 'month'. A SINGLE month (e.g. 'May 2026', 'this month') → 'week' (or 'day'). A SINGLE week → 'day'. NEVER widen a single specified window into multiple years."
+    ),
+  period: z
+    .string()
+    .optional()
+    .describe(
+      "When the user asked for ONE sub-year window, its human label — e.g. 'May 2026', 'the week of 1 June 2026', 'Q1 2026'. Leave EMPTY for multi-year / open-ended spans (those use fromYear/toYear)."
+    ),
+  fromYear: z.number().int().optional().describe("EXACT start the user asked for (e.g. 1560, or 1 for '1 AD'). For a SINGLE sub-year window set this = that window's year (May 2026 → 2026), NOT earlier. Only default (≈1960) for an open-ended multi-year request with no start."),
+  toYear: z.number().int().optional().describe("EXACT end the user asked for (e.g. 2026). For a single sub-year window set this = that window's year. Default the current year when none given."),
   topN: z.number().int().min(3).max(25).describe("How many bars are VISIBLE at once. Use the user's number if they gave one (e.g. 'top 15'→15, '5 players'→5); otherwise pick a natural count for the topic (≈10–15). This is the visible window, NOT the total roster."),
   entityKind: z.enum(["country", "company", "person", "mixed", "other"]).describe("What the competitors ARE — drives their bar media: country→flag, company→logo, person→photo. 'mixed' if it varies."),
   namedEntities: z.array(z.string()).optional().describe("If the user EXPLICITLY listed competitors (e.g. 'Elon Musk vs Jeff Bezos vs ...'), list them EXACTLY here; else omit."),
@@ -111,8 +123,16 @@ ROUTING:
 ${indicatorMenu()}
 - mode="model" for EVERYTHING ELSE — historical spans (pre-1960, e.g. "GDP 1560–2026", "armies 1 AD–2026"), people/companies/clubs (net worth, market cap, transfer values), sports, or any custom list. These get web-researched.
 
+TIME SCOPE — MATCH THE PROMPT'S WINDOW EXACTLY (this is the #1 source of errors — getting it wrong ruins the result):
+- Read the exact TIME WINDOW the user asked for and set timeUnit + period to fit it. Do NOT widen a narrow window into many years.
+  • SINGLE MONTH ("Most Streamed Songs — May 2026", "best-selling phones this month") → timeUnit "week" (or "day"), period "May 2026", fromYear=toYear=2026. The race covers ONLY that month; its values are the standings AS OF that month. NEVER begin years earlier.
+  • SINGLE YEAR ("box office 2024", "in 2010") → timeUnit "month", period "2024", fromYear=toYear that year — race the months of that one year.
+  • SINGLE WEEK / DAY → timeUnit "day", period the exact week/day.
+  • MULTI-YEAR span ("GDP 1980–2026", "richest people over time") OR no period at all → timeUnit "year", set fromYear/toYear, leave period empty.
+- "Cumulative", "all-time", "total", "ever" describe the METRIC (a running total), NOT the time window — they do NOT mean "start at the beginning of history". "Most streamed songs (cumulative) — May 2026" still means the standings IN May 2026, so period="May 2026".
+
 HONOR THE USER EXACTLY — never override an explicit request:
-- fromYear/toYear = EXACTLY the years asked (1560, 1 for "1 AD", 2026, …). Only default (fromYear≈1960, toYear=${NOW}) when the user gives none.
+- fromYear/toYear = EXACTLY the years asked (1560, 1 for "1 AD", 2026, …). Only default (fromYear≈1960, toYear=${NOW}) for an OPEN-ENDED multi-year request with no period.
 - topN = the user's requested visible-bar count if given (e.g. "top 15"→15, "5 players"→5); else a natural number for the topic.
 - If the user NAMES specific competitors (e.g. "Elon Musk vs Jeff Bezos vs Bernard Arnault"), put them verbatim in namedEntities and set topN to that count.
 - entityKind: country (flags), company (logos), person (photos), or mixed.
@@ -125,7 +145,13 @@ EVENT STORY: the REAL, well-established events across the WHOLE span that explai
 
 /* ── 2. MODEL DATA: web-researched series for anything the catalogue can't cover ── */
 const keyframeItem = z.object({
-  time: z.number().describe("The year/time, ascending across keyframes."),
+  time: z.number().describe("Ascending position across keyframes. Multi-year span → the year (e.g. 1990). Sub-year window → simple ascending indices (0,1,2,…)."),
+  label: z
+    .string()
+    .optional()
+    .describe(
+      "The human time shown on screen. SET THIS ON EVERY KEYFRAME for a sub-year window (e.g. 'May 1 2026', 'May 8 2026', or just 'May 2026'). OMIT it for multi-year spans (the year is shown automatically from `time`)."
+    ),
   values: z.array(z.object({ name: z.string().describe("MUST match an entities[].name exactly."), value: z.number() })).min(2).max(44),
 });
 const keyframesDesc =
@@ -148,14 +174,17 @@ const seriesSchema = z.object({
   values: z.array(keyframeItem).max(60).optional().describe("Alias for `keyframes` — only fill this if you did NOT use `keyframes`."),
 });
 
-function seriesSystem(opts: { from: number; to: number; topN: number; nowLabel: string; named?: string[]; context: string; anchor: string; current: string; scaleHint: string; worldwide: boolean; rosterNotes: string; allTime: boolean }): string {
-  return `You assemble ACCURATE ranking-over-time data for an animated bar-chart race. Accuracy is paramount — use the research notes + authoritative anchors below; otherwise use the most credible scholarly figures (e.g. Maddison Project for historical GDP, IMF/World Bank for recent economics, Forbes for net worth, Transfermarkt for football values, recognised historical scholarship for army sizes). NEVER invent fake precision.
+function seriesSystem(opts: { from: number; to: number; topN: number; nowLabel: string; named?: string[]; context: string; anchor: string; current: string; scaleHint: string; worldwide: boolean; rosterNotes: string; allTime: boolean; period?: string; unit?: string }): string {
+  const windowReq = opts.period
+    ? `- TIME WINDOW — produce the race for EXACTLY ${opts.period} (a ${opts.unit || "month"}-level window), NOTHING WIDER and NOTHING EARLIER. Step through that window at ${opts.unit || "week"} granularity: output 8–16 keyframes, EACH with a "label" = the on-screen time (e.g. for a month: "May 1 2026", "May 8 2026", … or simply "${opts.period}"). Use ascending integer "time" indices (0,1,2,…). The FIRST keyframe = the START of the window, the LAST = the END of ${opts.period} carrying the ACCURATE standings for that exact point. Do NOT span multiple years or reach back before the window. Within the window, values for a CUMULATIVE/running-total metric grow steadily toward the period-end total; for a snapshot metric they are that period's figures throughout.`
+    : `- Span EXACTLY ${opts.from} to ${opts.to}: the FIRST keyframe's time = ${opts.from}, the LAST = ${opts.to}. For years beyond the latest real data, give the best current projection/estimate; for ancient/historical years, the best scholarly estimate. (Leave each keyframe's "label" EMPTY — the year is shown from "time".)`;
+  return `You assemble ACCURATE ranking-over-time data for an animated bar-chart race. Accuracy is paramount — use the research notes + authoritative anchors below; otherwise use the most credible scholarly figures (e.g. Maddison Project for historical GDP, IMF/World Bank for recent economics, Forbes for net worth, Transfermarkt for football values, official platform charts — Spotify/YouTube/Billboard — for streaming/chart stats, recognised historical scholarship for army sizes). NEVER invent fake precision.
 
 REQUIREMENTS:
-- Span EXACTLY ${opts.from} to ${opts.to}: the FIRST keyframe's time = ${opts.from}, the LAST = ${opts.to}. For years beyond the latest real data, give the best current projection/estimate; for ancient/historical years, the best scholarly estimate.
+${windowReq}
 - ${opts.scaleHint}
 - METRIC DEFINITION: use the single most standard, widely-cited definition of the metric and apply it CONSISTENTLY across every year (e.g. army size = ACTIVE military personnel, not reserves or total available manpower; GDP = nominal). State nothing — just be consistent.
-- PRESENT-DAY ACCURACY (THE MOST IMPORTANT REQUIREMENT — users fact-check this against Google): the FINAL keyframe represents TODAY (${opts.nowLabel}). Its ranking AND values MUST equal the live figure for RIGHT NOW taken from the "CURRENT STANDINGS" block below (and the "CURRENT (${opts.nowLabel})" research line). Your own training knowledge is STALE for fast-moving stats — if the research shows a current number that differs from what you remember, TRUST THE RESEARCH, not your memory (e.g. a footballer's career-goal tally keeps climbing: if you "remember" ~900 but the research says 975 today, use 975). Use the value labelled today/current/latest, NOT a recent peak, all-time high, season total, or a months-old value. Use the MOST PRECISE figure the research gives (avoid suspiciously round numbers when a precise one exists). When sources cite DIFFERENT totals for the same entity (e.g. club-only vs all-competitions goals, or one source vs another), use the LARGER, most-commonly-cited HEADLINE figure — the number someone sees when they Google that entity — and apply that SAME definition consistently to EVERY competitor (so e.g. if Ronaldo is counted as ~975 all-competition goals, Messi must be his comparable ~870–915 all-competition figure, not a club-only count). Pin a real present-day number for EVERY top entity, not just the leader. Sanity-check against common knowledge (today's biggest economies are USA>China>Germany/Japan/India/UK; largest active militaries China/India/USA/NK/Russia).
+- PRESENT-DAY ACCURACY (THE MOST IMPORTANT REQUIREMENT — users fact-check this against Google): the FINAL keyframe represents ${opts.period ? `the END of ${opts.period}` : `TODAY (${opts.nowLabel})`}. Its ranking AND values MUST equal the ${opts.period ? `accurate standings for ${opts.period}` : "live figure for RIGHT NOW"} taken from the "CURRENT STANDINGS" block below (and the "CURRENT (${opts.nowLabel})" research line). Your own training knowledge is STALE for fast-moving stats — if the research shows a current number that differs from what you remember, TRUST THE RESEARCH, not your memory (e.g. a footballer's career-goal tally keeps climbing: if you "remember" ~900 but the research says 975 today, use 975). Use the value labelled today/current/latest, NOT a recent peak, all-time high, season total, or a months-old value. Use the MOST PRECISE figure the research gives (avoid suspiciously round numbers when a precise one exists). When sources cite DIFFERENT totals for the same entity (e.g. club-only vs all-competitions goals, or one source vs another), use the LARGER, most-commonly-cited HEADLINE figure — the number someone sees when they Google that entity — and apply that SAME definition consistently to EVERY competitor (so e.g. if Ronaldo is counted as ~975 all-competition goals, Messi must be his comparable ~870–915 all-competition figure, not a club-only count). Pin a real present-day number for EVERY top entity, not just the leader. Sanity-check against common knowledge (today's biggest economies are USA>China>Germany/Japan/India/UK; largest active militaries China/India/USA/NK/Russia).
 - ${
     opts.named && opts.named.length >= 2
       ? `Use EXACTLY these competitors (no more, no fewer): ${opts.named.join(", ")}. Include every one in every keyframe of the range.`
@@ -177,7 +206,7 @@ ${
 ${opts.rosterNotes ? `  ROSTER TO DRAW FROM (real international names for this topic — include those that genuinely rank, add others you know): ${opts.rosterNotes}\n` : ""}`
       : ""
   }- HISTORICAL VALIDITY: an entity must NOT appear in any keyframe before it existed (e.g. no Ottoman Empire before ~1300, no USA before 1776, no Germany before 1871, a footballer only during their career) and not after it dissolved/retired. Use period-appropriate entities.
-- Use 14–24 keyframes (max 28) spaced across the full span so the race moves believably; more for longer spans.
+- ${opts.period ? `Use 8–16 keyframes stepping through ${opts.period} at ${opts.unit || "week"} granularity (each with its "label").` : "Use 14–24 keyframes (max 28) spaced across the full span so the race moves believably; more for longer spans."}
 - Every values[].name must EXACTLY match an entities[].name. Give each a DISTINCT high-contrast hex color. Use widely-recognised names.
 - For EACH entity set its "country" field = the ISO-3166 alpha-2 (lowercase) of its origin (company HQ, person's nationality) — e.g. Apple→"us", Mbappé→"fr", Toyota→"jp". This shows a small flag of where it's from.
 - Be exact with the most recent / present-day standing.
@@ -290,6 +319,7 @@ function normalize(raw: RaceRaw): RaceRaw {
   const keyframes = (raw.keyframes || [])
     .map((k) => ({
       time: Number(k.time),
+      label: typeof k.label === "string" && k.label.trim() ? k.label.trim().slice(0, 40) : undefined,
       values: (k.values || [])
         .filter((v) => v && names.has(v.name) && Number.isFinite(Number(v.value)))
         .map((v) => ({ name: v.name, value: Math.max(0, Number(v.value)) })),
@@ -396,8 +426,15 @@ export async function POST(req: NextRequest) {
     // The model usually returns the years, but can omit them (esp. on long prompts) —
     // fall back to the years parsed deterministically from the request text.
     const dy = detectYears(request, NOW);
-    const fromY = plan.fromYear ?? dy.from;
-    const toY = plan.toYear ?? dy.to;
+    // SUB-YEAR WINDOW: a prompt scoped to one month/week/day (e.g. "May 2026") races
+    // INSIDE a single year. We pin from=to to that year so the plan can never widen it
+    // backward into a multi-year span (the old "May 2026 → 2013–2026" bug).
+    const timeUnit = plan.timeUnit || "year";
+    const subYear = timeUnit !== "year" && !!(plan.period && plan.period.trim());
+    const period = subYear ? plan.period!.trim().slice(0, 60) : undefined;
+    const periodYear = plan.toYear ?? plan.fromYear ?? dy.to;
+    const fromY = subYear ? periodYear : (plan.fromYear ?? dy.from);
+    const toY = subYear ? periodYear : (plan.toYear ?? dy.to);
     const from = Math.min(fromY, toY);
     const to = Math.max(fromY, toY);
     const topN = plan.topN || 12;
@@ -407,7 +444,9 @@ export async function POST(req: NextRequest) {
 
     // World Bank is used ONLY when the whole span is modern (≥1960), the user didn't
     // ask for a year beyond real data, and no specific competitors were named.
+    // A sub-year window is always a custom topic → never the (annual) WorldBank path.
     const wbEligible =
+      !subYear &&
       plan.mode === "worldbank" &&
       INDICATOR_KEYS.includes(key) &&
       from >= 1960 &&
@@ -455,8 +494,8 @@ export async function POST(req: NextRequest) {
       // up-to-the-minute figures so the final keyframe matches reality (not training).
       const reachesToday = to >= NOW;
       const [anchor, current] = await Promise.all([
-        anchorKey ? wbAnchor(anchorKey, from, to, chosenScale) : Promise.resolve(""),
-        reachesToday ? currentStandings(plan.title, plan.valueLabel || "", NOW_LABEL, named) : Promise.resolve(""),
+        anchorKey && !subYear ? wbAnchor(anchorKey, from, to, chosenScale) : Promise.resolve(""),
+        reachesToday ? currentStandings(plan.title, plan.valueLabel || "", subYear ? period! : NOW_LABEL, named) : Promise.resolve(""),
       ]);
 
       // The SERIES (the actual historical data + present-day values) is the hardest
@@ -466,8 +505,10 @@ export async function POST(req: NextRequest) {
         await generateObject({
           model: MODELS.max(),
           schema: seriesSchema,
-          system: seriesSystem({ from, to, topN, nowLabel: NOW_LABEL, named, context, anchor, current, scaleHint, worldwide: wantsWorldwide(request), rosterNotes: plan.rosterNotes || "", allTime: wantsAllTime(request) }),
-          prompt: `${request}\nProduce the ranking-over-time series for EXACTLY ${from} to ${to}. The final keyframe is TODAY (${NOW_LABEL}) with current real values.`,
+          system: seriesSystem({ from, to, topN, nowLabel: NOW_LABEL, named, context, anchor, current, scaleHint, worldwide: wantsWorldwide(request), rosterNotes: plan.rosterNotes || "", allTime: wantsAllTime(request), period, unit: subYear ? timeUnit : undefined }),
+          prompt: subYear
+            ? `${request}\nProduce the ranking series for EXACTLY ${period} — step at ${timeUnit} granularity and put a "label" (the on-screen time) on EVERY keyframe. The final keyframe carries the accurate standings for ${period}. Do NOT span any other year.`
+            : `${request}\nProduce the ranking-over-time series for EXACTLY ${from} to ${to}. The final keyframe is TODAY (${NOW_LABEL}) with current real values.`,
           // NOTE: MODELS.max() (Opus) rejects the `temperature` param — omit it here.
           maxRetries: 3,
           maxTokens: 24000, // many entities × keyframes of JSON — never truncate the series
@@ -483,7 +524,7 @@ export async function POST(req: NextRequest) {
         valueLabel: plan.valueLabel || "",
         unitPrefix,
         unitSuffix,
-        timeLabel: "Year",
+        timeLabel: subYear ? "Date" : "Year",
         decimals: dec,
         topN: named.length >= 2 ? named.length : topN,
         source: hasSearch() ? "Researched data" : "",
@@ -500,8 +541,10 @@ export async function POST(req: NextRequest) {
     const norm = normalize(race);
     // If the race runs to the current year, nudge the LAST keyframe's time to TODAY
     // (fractional), so the counter ends at the current month (e.g. "Jun 2026") not January.
+    // Skip for a labelled sub-year window — its on-screen time comes from the label, and
+    // its `time` values are plain indices (nudging them would distort the spacing).
     const lastKf = norm.keyframes[norm.keyframes.length - 1];
-    if (lastKf && Math.round(lastKf.time) === NOW && NOW_FRAC > lastKf.time) lastKf.time = NOW_FRAC;
+    if (lastKf && !lastKf.label && Math.round(lastKf.time) === NOW && NOW_FRAC > lastKf.time) lastKf.time = NOW_FRAC;
     if (norm.entities.length >= 2 && norm.keyframes.length >= 2) return NextResponse.json(norm);
   } catch (e) {
     console.error("[stats] build failed:", e);

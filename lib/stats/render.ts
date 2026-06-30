@@ -163,6 +163,23 @@ function fmtTime(curT: number, span: number): string {
   return `${MONTHS[month]} ${year}`;
 }
 
+/**
+ * On-screen time for the current playhead. A sub-yearly window (e.g. "May 2026")
+ * carries an explicit `label` on each keyframe — show the label of the keyframe at
+ * or just before `curT`. Otherwise fall back to the year/month counter (fmtTime),
+ * so multi-year races are unchanged.
+ */
+function timeText(race: RaceData, curT: number): string {
+  const f = race.frames;
+  if (f.length && f.some((k) => k.label)) {
+    let i = 0;
+    for (let j = 0; j < f.length; j++) if (f[j].time <= curT + 1e-9) i = j;
+    return f[i].label || `${Math.max(0, Math.round(curT))}`;
+  }
+  const span = f.length ? f[f.length - 1].time - f[0].time : 0;
+  return fmtTime(curT, span);
+}
+
 /* ── per-frame smoothing state (shared by live preview + export) ──────────── */
 export type RaceState = { disp: Map<string, number>; max: number; init: boolean; lastEl: number; leader: string; evIdx: number; evChange: number; vis: number; peak: number; bub: Map<string, { x: number; y: number; r?: number }>; branded?: boolean };
 export function newRaceState(): RaceState {
@@ -396,7 +413,7 @@ function drawStoryPanel(
 
   // Big time counter — glides month-by-month ("Sep 2020"), or year for long/ancient spans.
   const span = race.frames.length ? race.frames[race.frames.length - 1].time - race.frames[0].time : 0;
-  const timeStr = fmtTime(curT, span);
+  const timeStr = timeText(race, curT);
   ctx.textAlign = vertical ? "left" : "center";
   ctx.textBaseline = "alphabetic";
   const yearPx = vertical ? h * 0.4 : min * 0.32;
@@ -2013,7 +2030,7 @@ function drawArenaScoreboard(
     ctx.shadowColor = "rgba(120,150,210,0.55)";
     ctx.shadowBlur = w * 0.04;
     ctx.fillStyle = "#f4f6fa";
-    ctx.fillText(fmtTime(curT, span), cx, y + padIn + timePx);
+    ctx.fillText(timeText(race, curT), cx, y + padIn + timePx);
     ctx.restore();
     let cy = y + padIn + timePx + h * 0.04;
     ctx.strokeStyle = "rgba(245,196,81,0.28)";
@@ -2092,7 +2109,7 @@ function drawArenaScoreboard(
       ctx.shadowColor = "rgba(120,150,210,0.5)";
       ctx.shadowBlur = h * 0.04;
       ctx.fillStyle = "#f4f6fa";
-      ctx.fillText(fmtTime(curT, span), x + padIn, y + h * 0.21);
+      ctx.fillText(timeText(race, curT), x + padIn, y + h * 0.21);
       ctx.restore();
       const titleTop = y + h * 0.36;
       const fitT = fitWrapLines(ctx, ev.title, fullW, titleTop, y + h * 0.56, h * 0.115, 800, 1.08, h * 0.07);
@@ -2128,7 +2145,7 @@ function drawArenaScoreboard(
       ctx.shadowColor = "rgba(120,150,210,0.55)";
       ctx.shadowBlur = h * 0.05;
       ctx.fillStyle = "#f4f6fa";
-      ctx.fillText(fmtTime(curT, span), x + padIn, y + h * 0.44);
+      ctx.fillText(timeText(race, curT), x + padIn, y + h * 0.44);
       ctx.restore();
       ctx.strokeStyle = "rgba(245,196,81,0.22)";
       ctx.lineWidth = Math.max(1, min * 0.008);
@@ -2171,7 +2188,7 @@ function drawArenaScoreboard(
       ctx.shadowColor = "rgba(120,150,210,0.5)";
       ctx.shadowBlur = h * 0.05;
       ctx.fillStyle = "#f4f6fa";
-      ctx.fillText(fmtTime(curT, span), x + w / 2, y + h / 2 + tPx * 0.35);
+      ctx.fillText(timeText(race, curT), x + w / 2, y + h / 2 + tPx * 0.35);
       ctx.restore();
     }
   }
