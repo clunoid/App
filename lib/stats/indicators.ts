@@ -64,3 +64,12 @@ export function detectYears(request: string, now: number): { from: number; to: n
   if (yrs.length === 1) return { from: Math.min(yrs[0], now), to: now };
   return { from: 1960, to: now };
 }
+
+/** Did the user explicitly TYPE a year beyond World Bank's coverage (≈ now − 2, since WB
+ *  annual data lags ~2 years)? Such a request wants a projection → the Opus model path,
+ *  NOT the cheap catalogue path. Shared so the route and the credit pre-flight agree. */
+export function wantsBeyondWB(request: string, now: number): boolean {
+  const wbLatest = now - 2;
+  const yrs = (request.match(/\b(1[5-9]\d{2}|20\d{2})\b/g) || []).map(Number);
+  return yrs.some((y) => y > wbLatest);
+}

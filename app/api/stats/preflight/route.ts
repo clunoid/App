@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/requireUser";
 import { creditsAvailable } from "@/lib/billing/meter";
-import { ACTION_COSTS, INPUT_CAPS } from "@/lib/billing/costs";
-import { guessIndicatorKey } from "@/lib/stats/indicators";
+import { ACTION_COSTS, INPUT_CAPS, STATS_OPUS_FLOOR } from "@/lib/billing/costs";
+import { guessIndicatorKey, wantsBeyondWB } from "@/lib/stats/indicators";
 
 export const runtime = "nodejs";
+
+const NOW = new Date().getFullYear();
 
 type Kind = "generate" | "file" | "edit";
 
@@ -20,10 +22,16 @@ type Kind = "generate" | "file" | "edit";
 function requiredFor(kind: Kind, request: string): { required: number; willUseOpus: boolean } {
   if (kind === "file") return { required: ACTION_COSTS.stats_file, willUseOpus: true };
   if (kind === "edit") return { required: ACTION_COSTS.stats_edit, willUseOpus: true };
+  // Cheap (cheap catalogue / World Bank) price ONLY for a clean modern catalogue match.
+  // A future/projection year (wantsBeyondWB) routes to the Opus model path even when a
+  // keyword matched, so price those at the generous floor — otherwise a 40–249-credit user
+  // would see a false "you're all set" then a 402 when the route's atomic Opus gate fires.
+  // (A residual mismatch remains for guessed prompts the AI planner routes to the model
+  // path, e.g. ≥2 named competitors — the route still atomically gates those.)
   const guess = guessIndicatorKey(request);
-  return guess
+  return guess && !wantsBeyondWB(request, NOW)
     ? { required: ACTION_COSTS.stats_plan, willUseOpus: false }
-    : { required: ACTION_COSTS.stats_plan + ACTION_COSTS.stats_opus, willUseOpus: true };
+    : { required: STATS_OPUS_FLOOR, willUseOpus: true };
 }
 
 /**

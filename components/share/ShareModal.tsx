@@ -8,6 +8,7 @@ import { useBilling } from "@/lib/billing/store";
 import { HostVoicePicker } from "@/components/games/HostVoicePicker";
 import { RaysBackground } from "@/components/games/RaysBackground";
 import { getVideoVoicePref, voiceById, isPremiumVideoVoice } from "@/lib/voice/preference";
+import { getRemoveWatermark, setRemoveWatermark } from "@/lib/share/watermark";
 import { loadGameVideo, saveGameVideo } from "@/lib/games/videoStore";
 import { TikTokIcon, XIcon, WhatsAppIcon } from "./SocialIcons";
 
@@ -119,7 +120,9 @@ export function ShareModal({
       if (gameId) {
         const saved = await loadGameVideo(gameId);
         if (!alive) return;
-        if (saved?.items.length) {
+        // Re-gate on downgrade: never replay a cached UNBRANDED clip to a non-subscriber —
+        // skip the cache so they re-render (which will be branded) instead.
+        if (saved?.items.length && (isSubscriber || saved.branded)) {
           const items: RenderItem[] = saved.items.map((it) => ({
             aspect: it.aspect as ReelAspect,
             url: URL.createObjectURL(it.blob),
@@ -131,7 +134,7 @@ export function ShareModal({
           setResults(items);
           setAspect(items.length > 1 ? "both" : items[0].aspect);
           setVideoVoice(saved.voice);
-          setBranded(saved.branded);
+          setBranded(isSubscriber ? saved.branded : true); // re-gate: non-subscribers always branded
           setStatus("ready");
           setFromSaved(true);
           return;
@@ -148,6 +151,15 @@ export function ShareModal({
     // changes each render); including the object would reset the inputs every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, gameId, videoDuration?.vertical, videoDuration?.wide]);
+
+  // Apply the PERSISTED "remove watermark" intent whenever the modal opens (and once the
+  // plan resolves) so it survives refresh and sticks across videos — for BOTH game and
+  // stat exports. Gated to current pro/max subscribers (a downgrade re-shows the
+  // watermark). Skipped while a cached clip is showing — that clip keeps its own state.
+  useEffect(() => {
+    if (!open || fromSaved) return;
+    setBranded(isSubscriber && getRemoveWatermark() ? false : true);
+  }, [open, isSubscriber, fromSaved]);
 
   // Reset everything when closing.
   const handleClose = useCallback(() => {
@@ -487,9 +499,12 @@ export function ShareModal({
                 type="button"
                 disabled={status === "rendering"}
                 onClick={() => {
-                  setBranded((b) => !b);
+                  const next = !branded;
+                  setBranded(next);
+                  setRemoveWatermark(!next); // persist intent ("remove" = unbranded) across refresh + videos
                   cleanupUrls();
                   setResults([]);
+                  setFromSaved(false); // a fresh choice → no longer showing the cached clip
                   if (status === "ready") setStatus("idle");
                 }}
                 aria-pressed={!branded}

@@ -37,6 +37,15 @@ export const ACTION_COSTS = {
 } as const;
 export type Chargeable = keyof typeof ACTION_COSTS;
 
+/**
+ * GENEROUS floor for a custom (Opus) Stat Battle. The list price is
+ * stats_plan + stats_opus = 500, but to be generous a user holding at least HALF (250)
+ * may still create one — it then drains ALL their remaining credits, capped at the list
+ * price (so 250–499 → charged exactly what they have; ≥500 → 500). Below this they're
+ * blocked (buy credits / subscribe). Enforced ATOMICALLY by consume_credits_capped, so a
+ * user under the floor can never spend the expensive Opus call. */
+export const STATS_OPUS_FLOOR = (ACTION_COSTS.stats_plan + ACTION_COSTS.stats_opus) / 2; // 250
+
 /** Isaac's voice is billed by length: 1 credit per 100 characters (min 1). */
 export function ttsCost(chars: number): number {
   return Math.max(1, Math.ceil((chars || 0) / 100));
@@ -49,6 +58,7 @@ export function ttsCost(chars: number): number {
  */
 export const RATE_LIMITS: Record<string, [number, number]> = {
   stats_plan: [8, 60],
+  stats_opus: [8, 60], // the generous capped Opus sub-charge — same burst cap as the plan fee
   stats_edit: [10, 60],
   stats_file: [6, 60],
   search: [40, 60],

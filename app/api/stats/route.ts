@@ -4,13 +4,13 @@ import { z } from "zod";
 import { MODELS, hasAnthropic } from "@/lib/models";
 import { PALETTE, type EntityKind, type RaceEventRaw, type RaceRaw } from "@/lib/stats/types";
 import { GDP_FALLBACK } from "@/lib/stats/fallback";
-import { INDICATORS, INDICATOR_KEYS, indicatorMenu, guessIndicatorKey, detectYears, SCALE_DIV, SCALE_SUFFIX, type DisplayScale, type IndicatorKey } from "@/lib/stats/indicators";
+import { INDICATORS, INDICATOR_KEYS, indicatorMenu, guessIndicatorKey, detectYears, wantsBeyondWB, SCALE_DIV, SCALE_SUFFIX, type DisplayScale, type IndicatorKey } from "@/lib/stats/indicators";
 import { buildWorldBankRace } from "@/lib/stats/sources/worldbank";
 import { flagUrlForName } from "@/lib/stats/flags";
 import { hasSearch, webSearch } from "@/lib/data/search";
 import { requireUser } from "@/lib/auth/requireUser";
-import { chargeCredits, chargeError, refund, creditsAvailable } from "@/lib/billing/meter";
-import { ACTION_COSTS, INPUT_CAPS } from "@/lib/billing/costs";
+import { chargeCredits, chargeCapped, chargeError, refund, creditsAvailable } from "@/lib/billing/meter";
+import { ACTION_COSTS, INPUT_CAPS, STATS_OPUS_FLOOR } from "@/lib/billing/costs";
 
 export const runtime = "nodejs";
 export const maxDuration = 300; // research + plan (Sonnet) + the Opus data series can run long — give it room
@@ -37,12 +37,6 @@ function detectScale(request: string): { scale?: DisplayScale; decimals?: number
   // M/B/T). Decimals stay natural per metric (whole dollars/counts, but % keep their
   // precision). Users can still ask for "millions"/"billions" etc. above to abbreviate.
   return { scale: "raw" };
-}
-
-/** Did the user explicitly TYPE a year beyond World Bank's coverage (wants projection)? */
-function wantsBeyondWB(request: string): boolean {
-  const yrs = (request.match(/\b(1[5-9]\d{2}|20\d{2})\b/g) || []).map(Number);
-  return yrs.some((y) => y > WB_LATEST);
 }
 
 /**
@@ -397,7 +391,7 @@ export async function POST(req: NextRequest) {
   // prompt to top up). Catalogue topics (cheap, ~stats_plan) skip this.
   if (!guess) {
     const avail = await creditsAvailable();
-    if (avail !== null && avail < ACTION_COSTS.stats_plan + ACTION_COSTS.stats_opus) {
+    if (avail !== null && avail < STATS_OPUS_FLOOR) {
       return NextResponse.json({ error: "credits", feature: "stats", balance: avail }, { status: 402 });
     }
   }
@@ -407,7 +401,7 @@ export async function POST(req: NextRequest) {
   // additionally pays for Opus below.
   const base = await chargeCredits("stats_plan", ACTION_COSTS.stats_plan, { request: request.slice(0, 80) });
   if (!base.ok) return chargeError(base);
-  let opusCharged = false;
+  let opusCharged = 0; // the ACTUAL credits taken for the Opus step (0 = not charged)
   let opusInvoked = false; // true once the Opus call actually RAN (so we never refund real compute)
 
   try {
@@ -450,7 +444,7 @@ export async function POST(req: NextRequest) {
       plan.mode === "worldbank" &&
       INDICATOR_KEYS.includes(key) &&
       from >= 1960 &&
-      !wantsBeyondWB(request) &&
+      !wantsBeyondWB(request, NOW) &&
       named.length < 2;
 
     let race: RaceRaw | null = null;
@@ -465,13 +459,17 @@ export async function POST(req: NextRequest) {
 
     // Web-researched model path — honors the EXACT span, named entities, projections.
     if (!race) {
-      // Custom data needs Opus — charge the extra now (refund the base if they can't afford it).
-      const opus = await chargeCredits("stats_opus", ACTION_COSTS.stats_opus, {});
+      // Custom data needs Opus. GENEROUS charge: a user with at least HALF the list price
+      // (STATS_OPUS_FLOOR total; the 40 plan is already charged, so the Opus step floor is
+      // STATS_OPUS_FLOOR − stats_plan) may proceed — it then drains the rest of their
+      // credits, capped at stats_opus. Below the floor → 402 (refund the base). Atomic &
+      // non-negative, so heavy Opus can never run for a user under the floor.
+      const opus = await chargeCapped("stats_opus", ACTION_COSTS.stats_opus, STATS_OPUS_FLOOR - ACTION_COSTS.stats_plan, {});
       if (!opus.ok) {
         await refund(user.id, ACTION_COSTS.stats_plan, "stats_plan");
         return chargeError(opus);
       }
-      opusCharged = true;
+      opusCharged = opus.charged; // the ACTUAL amount taken (≤ stats_opus; the remainder when draining to 0)
       const money = plan.unitPrefix === "$";
       // Scale is DETERMINISTIC (the brain's choice is unreliable) and always FULL — no
       // "0.6B" abbreviation. Company market-cap → raw full dollars (the classic look);
@@ -557,7 +555,7 @@ export async function POST(req: NextRequest) {
   // Opus actually ran (real compute; prevents free-Opus abuse via prompts crafted
   // to fail normalization). Only refund Opus when it was charged but never ran.
   await refund(user.id, ACTION_COSTS.stats_plan, "stats_plan");
-  if (opusCharged && !opusInvoked) await refund(user.id, ACTION_COSTS.stats_opus, "stats_opus");
+  if (opusCharged > 0 && !opusInvoked) await refund(user.id, opusCharged, "stats_opus");
   if (guess) {
     const v = await buildVerified(guess, request).catch(() => null);
     if (v) return NextResponse.json(normalize(v));

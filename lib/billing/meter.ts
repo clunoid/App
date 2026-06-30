@@ -79,6 +79,30 @@ export async function chargeCredits(action: string, amount: number, meta: Record
   return { ok: true, balance: d.balance };
 }
 
+export type CappedCharge =
+  | { ok: true; balance: number; charged: number }
+  | { ok: false; status: 402 | 429; balance: number; charged: 0 };
+
+/**
+ * GENEROUS atomic charge: deduct up to `cap`, but ONLY if the user holds at least `min`
+ * (else 402, charges nothing). When they hold between `min` and `cap` it drains them to
+ * exactly 0; at/above `cap` it takes `cap`. Returns the EXACT `charged` so a later failure
+ * can refund precisely that amount. Non-negative + race-free — the cap is computed inside
+ * the DB's single guarded UPDATE (consume_credits_capped), never from a stale read.
+ */
+export async function chargeCapped(action: string, cap: number, min: number, meta: Record<string, unknown> = {}): Promise<CappedCharge> {
+  const supabase = await getSupabaseServer();
+  const limit = RATE_LIMITS[action];
+  if (limit) {
+    const { data: allowed } = await supabase.rpc("rate_check", { p_action: action, p_max: limit[0], p_window_secs: limit[1] });
+    if (allowed === false) return { ok: false, status: 429, balance: -1, charged: 0 };
+  }
+  const { data, error } = await supabase.rpc("consume_credits_capped", { p_cap: cap, p_min: min, p_action: action, p_meta: meta });
+  const d = (data ?? null) as { ok: boolean; balance: number; charged: number } | null;
+  if (error || !d || !d.ok) return { ok: false, status: 402, balance: d?.balance ?? 0, charged: 0 };
+  return { ok: true, balance: d.balance, charged: d.charged };
+}
+
 /** The standard JSON Response for a failed charge (429 rate / 402 out of credits). */
 export function chargeError(c: Extract<Charge, { ok: false }>): NextResponse {
   return NextResponse.json(c.status === 429 ? { error: "rate" } : { error: "credits", balance: c.balance }, { status: c.status });
