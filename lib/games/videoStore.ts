@@ -17,18 +17,22 @@ export type SavedVideo = { gameId: string; voice: string; branded: boolean; item
 const DB_NAME = "clunoid-videos";
 const STORE = "videos";
 const CAP = 10; // keep the 10 most recent premium videos
+// v2: earlier versions cached short (8-flag-capped) recap clips. Bumping the DB
+// version drops that store once, so every game — live AND replayed from history —
+// re-renders at its FULL length under the new logic instead of serving a stale clip.
+const DB_VERSION = 2;
 
 function openDb(): Promise<IDBDatabase | null> {
   return new Promise((resolve) => {
     try {
       if (typeof indexedDB === "undefined") return resolve(null);
-      const req = indexedDB.open(DB_NAME, 1);
+      const req = indexedDB.open(DB_NAME, DB_VERSION);
       req.onupgradeneeded = () => {
         const db = req.result;
-        if (!db.objectStoreNames.contains(STORE)) {
-          const store = db.createObjectStore(STORE, { keyPath: "gameId" });
-          store.createIndex("createdAt", "createdAt");
-        }
+        // Drop any pre-existing (short-clip) store, then recreate it fresh.
+        if (db.objectStoreNames.contains(STORE)) db.deleteObjectStore(STORE);
+        const store = db.createObjectStore(STORE, { keyPath: "gameId" });
+        store.createIndex("createdAt", "createdAt");
       };
       req.onsuccess = () => resolve(req.result);
       req.onerror = () => resolve(null);

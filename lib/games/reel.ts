@@ -24,10 +24,15 @@ export function buildGameReel(s: GameSnapshot, aspect: ReelAspect, branded = tru
   const theme = choiceMode
     ? { mode: "document" as const, bg: "#c8c5bd", accent: "#8a2433", ink: "#2c2823" }
     : { mode: "rays" as const, bg: `hsl(${s.hue}, 80%, 56%)`, accent: "#FFD400", ink: "#fff", hue: s.hue };
-  // Keep the clip short + shareable: at most ~8 flags, sampled evenly.
-  const MAX = 8;
+  // Record the FULL game — one scene per round the user actually played — so a long
+  // game (e.g. "all countries in the world", ~195 flags) becomes a full-length recap,
+  // not a short 8-flag clip. This is aspect-independent, so vertical / wide / both all
+  // get the complete video. A very high safety ceiling only guards pathological input
+  // (no real flag game approaches it; ~800 scenes ≈ the 1-hour video cap at ~4.5s each),
+  // and only THEN samples evenly — the default path keeps every round.
+  const MAX_SCENES = 800;
   const replay = s.replay;
-  const picks = replay.length <= MAX ? replay : Array.from({ length: MAX }, (_, i) => replay[Math.floor((i * replay.length) / MAX)]);
+  const picks = replay.length <= MAX_SCENES ? replay : Array.from({ length: MAX_SCENES }, (_, i) => replay[Math.floor((i * replay.length) / MAX_SCENES)]);
   const category = s.subtitle ? s.subtitle.replace(/\s*flags?$/i, "") : "";
   return {
     aspect,
