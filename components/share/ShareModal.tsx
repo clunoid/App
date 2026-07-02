@@ -217,7 +217,9 @@ export function ShareModal({
         const onProgress = (p: number, l: string) => {
           setPct(Math.round(base + (p / 100) * span));
           setLabel(targets.length > 1 ? `${l} · ${ASPECT_LABEL[a]} (${i + 1}/${targets.length})` : l);
-          if (l.toLowerCase().includes("background")) setBgSafe(true);
+          // Track the CURRENT phase (a WebCodecs run can fail over to the real-time
+          // recorder mid-generate — the "safe to switch tabs" banner must drop too).
+          setBgSafe(l.toLowerCase().includes("background"));
         };
         const res = render
           ? await render(a, { host: hostRef.current, signal: ac.signal, onProgress, branded, durationSec: videoDuration ? (a === "9:16" ? durVert : durWide) : undefined, voiceName })

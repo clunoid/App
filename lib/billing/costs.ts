@@ -38,6 +38,9 @@ export const ACTION_COSTS = {
   // Charged once per generation; the per-line narration is billed separately via ttsCost
   // (feature "video") during the client-side render, so long videos naturally cost more.
   video_plan: 50, // /api/games/plan — Opus round-list planner (~$0.25)
+  // Motion Graphics: Opus designs a full multi-scene motion-graphics spec (the most
+  // expensive plan we run — long structured output). Narration TTS billed per line on top.
+  graphics_plan: 500, // /api/graphics/plan — Opus scene-graph designer (~$2)
 } as const;
 export type Chargeable = keyof typeof ACTION_COSTS;
 
@@ -68,6 +71,7 @@ export const RATE_LIMITS: Record<string, [number, number]> = {
   search: [40, 60],
   game: [20, 60],
   video_plan: [6, 60], // Opus planner — a modest burst cap (heavy compute)
+  graphics_plan: [3, 60], // Opus motion-graphics designer — the heaviest single call we run
   caption: [20, 60],
   // Voice fires per line; a generous cap that normal beat-by-beat playback never
   // hits, but which bounds a burst of tiny concurrent calls (vendor overhead).

@@ -66,12 +66,15 @@ export function createCanvasRecorder(W: number, H: number, fps = 30, host?: HTML
     dest,
     start: () => rec.start(),
     stop: async () => {
+      // If the recorder never started (a pre-start failure), onstop never fires —
+      // awaiting `stopped` would hang forever. Only await when it was active.
+      const wasActive = rec.state !== "inactive";
       try {
         rec.stop();
       } catch {
         /* ignore */
       }
-      await stopped;
+      if (wasActive) await stopped;
       try {
         await ac.close();
       } catch {

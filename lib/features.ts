@@ -1,4 +1,4 @@
-import { BarChart3, Gamepad2, type LucideIcon } from "lucide-react";
+import { BarChart3, Clapperboard, Gamepad2, type LucideIcon } from "lucide-react";
 
 /**
  * Single source of truth for Clunoid's "features" — the things that live
@@ -9,7 +9,7 @@ import { BarChart3, Gamepad2, type LucideIcon } from "lucide-react";
  * automatically gets a card AND the "open it, or just search?" prompt.
  */
 
-export type FeatureId = "games" | "stats";
+export type FeatureId = "games" | "stats" | "graphics";
 export type Accent = "clay" | "spark";
 
 export type FeatureDef = {
@@ -71,6 +71,16 @@ export function isStatRequest(t: string): boolean {
 const WRAP = String.raw`(?:please\s+)?(?:(?:can|could)\s+you\s+)?(?:i\s+(?:want|wanna|need)\s+(?:to\s+)?)?(?:(?:open|launch|start|play|enter|begin|go\s+to|goto|show(?:\s+me)?|take\s+me\s+to)\s+)?(?:the\s+)?`;
 const GAME_NAME = new RegExp(`^${WRAP}(?:flag\\s+)?(?:games?|arcade)\\s*[?!.]*$`);
 const STAT_NAME = new RegExp(`^${WRAP}(?:stat\\s*battles?|stats?)\\s*[?!.]*$`);
+const GFX_NAME = new RegExp(`^${WRAP}(?:motion\\s*)?graphics(?:\\s+(?:studio|videos?))?\\s*[?!.]*$`);
+
+/** A motion-graphics / explainer-video request, e.g. "make an explainer video about AI". */
+export function isGraphicsRequest(t: string): boolean {
+  const s = t.toLowerCase();
+  if (/\bmotion\s*graphics?\b/.test(s)) return true;
+  if (/\b(explainer|animated|promo|marketing|launch|pitch)\s+video\b/.test(s)) return true;
+  if (/\b(make|create|generate|produce)\b.*\bvideo\b.*\b(about|explaining|for|on)\b/.test(s)) return true;
+  return false;
+}
 
 // ── The registry ─────────────────────────────────────────────────────────────
 
@@ -104,6 +114,20 @@ export const FEATURES: FeatureDef[] = [
         ? `/stats?q=${encodeURIComponent(q)}`
         : "/stats",
     relates: (q) => STAT_NAME.test(q.toLowerCase().trim()) || isStatRequest(q),
+  },
+  {
+    id: "graphics",
+    label: "Motion Graphics",
+    note: "Prompt → a pro animated explainer video.",
+    accent: "spark",
+    Icon: Clapperboard,
+    hub: "/graphics",
+    // A real video idea prefills the studio; a bare "graphics" just opens it.
+    open: (q) =>
+      q && !GFX_NAME.test(q.toLowerCase().trim()) && isGraphicsRequest(q)
+        ? `/graphics?q=${encodeURIComponent(q)}`
+        : "/graphics",
+    relates: (q) => GFX_NAME.test(q.toLowerCase().trim()) || isGraphicsRequest(q),
   },
 ];
 
