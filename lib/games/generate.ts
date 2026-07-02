@@ -67,6 +67,29 @@ export type PlanResult =
   | { ok: true; game: Game; premium: boolean }
   | { ok: false; reason: "auth" | "credits" | "video_limit" | "failed" };
 
+/** READ-ONLY pre-flight (no charge, no Opus): verify the user is authed, can afford the
+ *  plan, and has premium quota BEFORE firing the expensive generate — mirrors the stat
+ *  battle. Fails OPEN on transient errors (the real gated call still verifies). */
+export async function preflightVideoGame(request: string, voice: string): Promise<{ ok: boolean; reason?: "auth" | "credits" | "video_limit" }> {
+  let res: Response;
+  try {
+    res = await fetch("/api/games/plan", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ request, voice, preflight: true }),
+    });
+  } catch {
+    return { ok: true }; // offline/transient → let the gated call decide
+  }
+  if (res.ok) return { ok: true };
+  if (res.status === 401) return { ok: false, reason: "auth" };
+  if (res.status === 402) {
+    const j = (await res.json().catch(() => ({}))) as { error?: string };
+    return { ok: false, reason: j.error === "video_limit" ? "video_limit" : "credits" };
+  }
+  return { ok: true }; // unknown → let the gated call decide
+}
+
 export async function planVideoGame(request: string, voice: string): Promise<PlanResult> {
   let res: Response;
   try {

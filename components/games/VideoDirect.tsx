@@ -6,7 +6,7 @@ import { ArrowLeft, Clapperboard, Loader2, Sparkles } from "lucide-react";
 import { ProfileMenu } from "@/components/auth/ProfileMenu";
 import { HostVoicePicker } from "@/components/games/HostVoicePicker";
 import { ShareModal } from "@/components/share/ShareModal";
-import { planVideoGame } from "@/lib/games/generate";
+import { planVideoGame, preflightVideoGame } from "@/lib/games/generate";
 import { buildGameReel } from "@/lib/games/reel";
 import { renderFlagReelVideo } from "@/lib/share/renderer-web";
 import { saveGameResult, type GameSnapshot } from "@/lib/games/storage";
@@ -58,16 +58,30 @@ export function VideoDirect({ initialRequest }: { initialRequest?: string }) {
     const req = request.trim();
     if (!req || planning) return;
     if (premium && quota && !quota.subscriber && quota.remaining === 0) {
-      openUpgrade("You've used your 2 free premium-voice videos this month. Subscribe for unlimited videos.");
+      openUpgrade("You've used your free premium-voice videos this month. Subscribe for unlimited videos.");
       return;
     }
     setErr("");
     setPlanning(true);
+    // VERIFY before Opus — auth + credits + premium quota (no charge, no Opus).
+    const pre = await preflightVideoGame(req, voice);
+    if (!pre.ok) {
+      setPlanning(false);
+      if (pre.reason === "video_limit") {
+        openUpgrade("You've used your free premium-voice video this month. Subscribe for unlimited videos.");
+        refreshQuota();
+      } else if (pre.reason === "credits") {
+        openUpgrade("You don't have enough credits to generate this video. Add credits or subscribe to keep creating.");
+      } else if (pre.reason === "auth") {
+        setErr("Please sign in to generate a video.");
+      }
+      return;
+    }
     const res = await planVideoGame(req, voice);
     setPlanning(false);
     if (!res.ok) {
       if (res.reason === "video_limit") {
-        openUpgrade("You've used your 2 free premium-voice videos this month. Subscribe for unlimited videos.");
+        openUpgrade("You've used your free premium-voice videos this month. Subscribe for unlimited videos.");
         refreshQuota();
       } else if (res.reason === "credits") {
         openUpgrade("You don't have enough credits to generate this video. Add credits or subscribe to keep creating.");
