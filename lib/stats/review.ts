@@ -28,6 +28,10 @@ export type EditState = {
   source: string;
   topN: number;
   times: number[];
+  // The human on-screen time for each column, parallel to `times`. Present for a
+  // sub-year window (e.g. "May 1 2026") so the grid/document show it instead of the
+  // raw index; undefined per-column for a normal multi-year race (the year is shown).
+  timeLabels: (string | undefined)[];
   rows: EditRow[];
   // text fields are editable; the media (subjectMedia photos/logos, party/vs flags)
   // is carried READ-ONLY so it still illustrates the story in the review AND in the
@@ -36,6 +40,7 @@ export type EditState = {
     time: number;
     title: string;
     description: string;
+    label?: string; // sub-year beat's human time (shown in the sheet/doc)
     subjects?: string[];
     subjectMedia?: string[];
     partyCodes?: string[];
@@ -46,6 +51,7 @@ export type EditState = {
 /** RaceData → editable matrix (rows × time columns). */
 export function editStateFromRace(race: RaceData): EditState {
   const times = race.frames.map((f) => f.time);
+  const timeLabels = race.frames.map((f) => f.label);
   const rows: EditRow[] = race.entities.map((e) => ({
     name: e.name,
     country: e.country || "",
@@ -64,11 +70,13 @@ export function editStateFromRace(race: RaceData): EditState {
     source: race.source,
     topN: race.topN,
     times: times.slice(),
+    timeLabels,
     rows,
     events: race.events.map((ev) => ({
       time: ev.time,
       title: ev.title,
       description: ev.description,
+      label: ev.label,
       subjects: ev.subjects,
       subjectMedia: ev.subjectMedia,
       partyCodes: ev.partyCodes,
@@ -83,8 +91,12 @@ const PACE = (span: number, frames: number) => Math.min(240, Math.max(80, Math.m
 export function raceFromEditState(es: EditState): RaceData {
   // keep only columns (times) that have at least one real value
   const keepCol = es.times.map((_, ci) => es.rows.some((r) => typeof r.vals[ci] === "number" && (r.vals[ci] as number) > 0));
-  const cols = es.times.map((t, ci) => ({ t, ci })).filter((c) => keepCol[c.ci]).sort((a, b) => a.t - b.t);
+  const cols = es.times
+    .map((t, ci) => ({ t, ci, label: es.timeLabels?.[ci] }))
+    .filter((c) => keepCol[c.ci])
+    .sort((a, b) => a.t - b.t);
   const times = cols.map((c) => c.t);
+  const hasLabels = cols.some((c) => c.label);
 
   const seen = new Set<string>();
   const rows = es.rows
@@ -107,7 +119,9 @@ export function raceFromEditState(es: EditState): RaceData {
       const v = r.vals[c.ci];
       if (typeof v === "number" && v > 0) values[r.name] = v;
     }
-    return { time: c.t, values };
+    // Preserve the sub-year on-screen label so the counter keeps showing "May 2026"
+    // after the review round-trip (undefined for a normal multi-year race → the year).
+    return { time: c.t, label: c.label, values };
   });
 
   const span = times.length ? times[times.length - 1] - times[0] : 0;
@@ -117,7 +131,7 @@ export function raceFromEditState(es: EditState): RaceData {
     valueLabel: es.valueLabel,
     unitPrefix: es.unitPrefix,
     unitSuffix: es.unitSuffix,
-    timeLabel: "Year",
+    timeLabel: hasLabels ? "Date" : "Year",
     decimals: es.decimals,
     source: es.source,
     entities,
@@ -130,6 +144,7 @@ export function raceFromEditState(es: EditState): RaceData {
             time: ev.time,
             title: ev.title.trim(),
             description: ev.description.trim(),
+            label: ev.label,
             subjects: ev.subjects,
             subjectMedia: ev.subjectMedia,
             partyCodes: ev.partyCodes,
@@ -171,6 +186,7 @@ export function trimEditStateToYear(es: EditState, year: number): EditState {
   return {
     ...es,
     times: es.times.filter((_, i) => keep[i]),
+    timeLabels: es.timeLabels?.filter((_, i) => keep[i]),
     rows: es.rows.map((r) => ({ ...r, vals: r.vals.filter((_, i) => keep[i]) })),
     events: es.events.filter((ev) => Math.round(ev.time) >= Math.round(year)),
   };
@@ -194,8 +210,11 @@ const esc = (s: string) =>
 /** A branded, self-contained HTML document of the whole dataset — viewable, printable, downloadable. */
 export function buildDataDocumentHTML(race: RaceData): string {
   const es = editStateFromRace(race);
-  const range = es.times.length ? `${fmtYear(es.times[0])} – ${fmtYear(es.times[es.times.length - 1])}` : "";
-  const head = es.times.map((t) => `<th>${esc(fmtYear(t))}</th>`).join("");
+  // Prefer the sub-year on-screen label ("May 8 2026") over the raw index; fall back
+  // to the year/month formatter for normal multi-year races.
+  const timeText = (i: number) => es.timeLabels?.[i] || fmtYear(es.times[i]);
+  const range = es.times.length ? `${timeText(0)} – ${timeText(es.times.length - 1)}` : "";
+  const head = es.times.map((_, i) => `<th>${esc(timeText(i))}</th>`).join("");
   const body = es.rows
     .map((r, i) => {
       const flag = r.country ? `<img src="https://flagcdn.com/w320/${esc(r.country)}.png" alt="" class="flag"/>` : "";
@@ -204,7 +223,7 @@ export function buildDataDocumentHTML(race: RaceData): string {
     })
     .join("");
   const events = es.events
-    .map((ev) => `<li><b>${esc(fmtYear(ev.time))} — ${esc(ev.title)}</b><br/><span>${esc(ev.description)}</span></li>`)
+    .map((ev) => `<li><b>${esc(ev.label || fmtYear(ev.time))} — ${esc(ev.title)}</b><br/><span>${esc(ev.description)}</span></li>`)
     .join("");
   const logo = `<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#8a2433" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><rect x="7" y="12" width="3" height="6"/><rect x="12" y="8" width="3" height="10"/><rect x="17" y="4" width="3" height="14"/></svg>`;
 

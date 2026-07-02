@@ -96,17 +96,17 @@ const planSchema = z.object({
   events: z
     .array(
       z.object({
-        time: z.number().describe("Year this beat begins (within the range, ascending)."),
+        time: z.number().describe("Year this beat begins (within the range, ascending). For a SINGLE sub-year window (a month/week/day) just place the beats in chronological ORDER — the exact number doesn't matter, they're spaced across the window automatically."),
         title: z.string().describe("Bold era/event headline."),
         description: z.string().describe("1–2 factual sentences about what happened and its effect on the ranking."),
         partyCodes: z.array(z.string()).optional().describe("ISO-3166 alpha-2 codes (lowercase) of the countries involved → shown as flags. Use for country topics / wars."),
         vsCodes: z.array(z.string()).optional().describe("ONLY for conflicts: the opposing side's ISO-3166 alpha-2 codes."),
-        subjects: z.array(z.string()).optional().describe("For NON-country topics: 1–3 entity/person/company names whose photo/logo best illustrates this beat (e.g. ['Kylian Mbappé'] or ['Tesla, Inc.']). Names should match entities where possible."),
+        subjects: z.array(z.string()).optional().describe("The 1–3 entity/person/company/song/album names whose photo, cover art or logo best illustrates this beat (e.g. ['Kylian Mbappé'], ['Tesla, Inc.'], ['Sabrina Carpenter','Short n' Sweet']). Match entities[].name where possible so their media is reused. Fill this for any NON-country topic."),
       })
     )
     .min(3)
     .max(50)
-    .describe("The real story across the FULL span — major, factual events that explain the movement, ascending by time. Roughly one beat per major turning point (more for longer spans)."),
+    .describe("The real story that explains the movement, ascending by time — and it must NEVER be empty. MULTI-YEAR span: the major factual turning points across the whole span (wars, crashes, oil shocks, reforms, booms, a company IPO, a record transfer) — roughly one per turning point. SINGLE SUB-YEAR window (e.g. 'May 2026'): 4–8 beats about the real, specific things that happened DURING that exact window and drove the ranking — new releases/drops, viral moments, chart débuts, record-breaking days, launches, results, notable news of THAT month/week — each with `subjects` for its media."),
 });
 
 function planSystem(): string {
@@ -134,7 +134,9 @@ HONOR THE USER EXACTLY — never override an explicit request:
 
 WORLDWIDE COVERAGE: when the request is global ("…in the world", "world's…", "worldwide", "global", "international"), it must NOT default to one country (people most easily recall US names). THINK HARD and fill rosterNotes with the genuine WORLD leaders of EACH era across the whole span (multiple countries/regions) so the race has real global coverage — every entity that legitimately ranked, wherever they're from. Leave rosterNotes empty for country-scoped/local requests (e.g. "richest Americans", "Premier League scorers").
 
-EVENT STORY: the REAL, well-established events across the WHOLE span that explain the movement (wars, crashes, oil shocks, reforms, booms, a person's company IPO, a record transfer). Each beat: punchy title, 1–2 truthful sentences, and media — for COUNTRY topics use partyCodes (flags; vsCodes only for a conflict's other side); for PEOPLE/COMPANY topics use subjects (the names whose photo/logo illustrates the beat). Be exact with dates/facts.`;
+EVENT STORY: the REAL, well-established events that explain the movement — and the story must NEVER be empty. Each beat: punchy title, 1–2 truthful sentences, and media — for COUNTRY topics use partyCodes (flags; vsCodes only for a conflict's other side); for PEOPLE/COMPANY/MUSIC topics use subjects (the names whose photo, cover art or logo illustrates the beat). Be exact with dates/facts.
+- MULTI-YEAR span: the major turning points across the WHOLE span (wars, crashes, oil shocks, reforms, booms, an IPO, a record transfer).
+- SINGLE SUB-YEAR window (timeUnit month/week/day with a period, e.g. "May 2026"): do NOT write century-spanning history. Write 4–8 beats about what genuinely happened INSIDE that exact window and moved the ranking — new releases/drops, viral moments, chart débuts, record-breaking days, tournament results, launches, notable news of THAT month/week — in chronological order, each with subjects = the songs/albums/artists/teams/products/people whose cover art, photo or logo best illustrates it (match entity names so their media is reused).`;
 }
 
 /* ── 2. MODEL DATA: web-researched series for anything the catalogue can't cover ── */
@@ -170,7 +172,7 @@ const seriesSchema = z.object({
 
 function seriesSystem(opts: { from: number; to: number; topN: number; nowLabel: string; named?: string[]; context: string; anchor: string; current: string; scaleHint: string; worldwide: boolean; rosterNotes: string; allTime: boolean; period?: string; unit?: string }): string {
   const windowReq = opts.period
-    ? `- TIME WINDOW — produce the race for EXACTLY ${opts.period} (a ${opts.unit || "month"}-level window), NOTHING WIDER and NOTHING EARLIER. Step through that window at ${opts.unit || "week"} granularity: output 8–16 keyframes, EACH with a "label" = the on-screen time (e.g. for a month: "May 1 2026", "May 8 2026", … or simply "${opts.period}"). Use ascending integer "time" indices (0,1,2,…). The FIRST keyframe = the START of the window, the LAST = the END of ${opts.period} carrying the ACCURATE standings for that exact point. Do NOT span multiple years or reach back before the window. Within the window, values for a CUMULATIVE/running-total metric grow steadily toward the period-end total; for a snapshot metric they are that period's figures throughout.`
+    ? `- TIME WINDOW — produce the race for EXACTLY ${opts.period} (a ${opts.unit || "month"}-level window), NOTHING WIDER and NOTHING EARLIER. Step through that window at ${opts.unit || "week"} granularity: output 8–16 keyframes, EACH with a "label" = the on-screen time (e.g. for a month: "May 1 2026", "May 8 2026", … or simply "${opts.period}"). Use ascending integer "time" indices (0,1,2,…). The FIRST keyframe = the START of the window, the LAST = the END of ${opts.period} carrying the ACCURATE standings for that exact point. Do NOT span multiple years or reach back before the window. The ranking MUST genuinely MOVE across the window — positions swap, new entries climb in, others slip down; a frozen chart is a FAILURE. For a CUMULATIVE/running-total metric (streams, views, sales this month) the values grow step by step toward the period-end total (so totals rise and the order re-shuffles as some climb faster); for a per-period metric, use each sub-period's REAL figures so the order shifts. Only if the metric is genuinely static all window may values stay flat.`
     : `- Span EXACTLY ${opts.from} to ${opts.to}: the FIRST keyframe's time = ${opts.from}, the LAST = ${opts.to}. For years beyond the latest real data, give the best current projection/estimate; for ancient/historical years, the best scholarly estimate. (Leave each keyframe's "label" EMPTY — the year is shown from "time".)`;
   return `You assemble ACCURATE ranking-over-time data for an animated bar-chart race. Accuracy is paramount — use the research notes + authoritative anchors below; otherwise use the most credible scholarly figures (e.g. Maddison Project for historical GDP, IMF/World Bank for recent economics, Forbes for net worth, Transfermarkt for football values, official platform charts — Spotify/YouTube/Billboard — for streaming/chart stats, recognised historical scholarship for army sizes). NEVER invent fake precision.
 
@@ -286,12 +288,38 @@ function cleanEvents(events: RaceEventRaw[] | undefined): RaceEventRaw[] {
       time: Number(e.time),
       title: String(e.title).trim(),
       description: String(e.description || "").trim(),
+      label: typeof e.label === "string" && e.label.trim() ? e.label.trim().slice(0, 40) : undefined,
       partyCodes: (e.partyCodes || []).map((c) => String(c).toLowerCase().trim()).filter((c) => ISO2.test(c)).slice(0, 8),
       vsCodes: (e.vsCodes || []).map((c) => String(c).toLowerCase().trim()).filter((c) => ISO2.test(c)).slice(0, 8),
       subjects: (e.subjects || []).map((s) => String(s).trim()).filter(Boolean).slice(0, 4),
     }))
     .sort((a, b) => a.time - b.time)
     .slice(0, 50);
+}
+
+/**
+ * SUB-YEAR STORY: the plan writes the beats with YEAR times, but a sub-year window's
+ * keyframes use ascending INDEX times — so the beats would never match the playhead
+ * (they'd freeze on beat 0). Re-time each beat, IN the plan's chronological order,
+ * evenly across the keyframe index span so the story PROGRESSES through the race
+ * (beat 0 at the start, the rest spaced through the window). Each beat also gets a
+ * `label` (its point in the window, from the nearest keyframe) for the review sheet /
+ * data document. The rendered story panel itself still shows the keyframe label.
+ */
+function retimeWindowEvents(events: RaceEventRaw[], keyframes: { time: number; label?: string }[]): RaceEventRaw[] {
+  const first = keyframes[0].time;
+  const last = keyframes[keyframes.length - 1].time;
+  const span = last - first;
+  const m = events.length;
+  const labelAt = (t: number): string | undefined => {
+    let lab: string | undefined;
+    for (const k of keyframes) if (k.time <= t + 1e-9) lab = k.label;
+    return lab ?? keyframes[keyframes.length - 1].label;
+  };
+  return events.map((e, i) => {
+    const t = m <= 1 || span <= 0 ? first : first + (i / m) * span;
+    return { ...e, time: t, label: e.label || labelAt(t) };
+  });
 }
 
 function normalize(raw: RaceRaw): RaceRaw {
@@ -534,10 +562,7 @@ export async function POST(req: NextRequest) {
     // Merge the plan's headline + story onto the data.
     race.title = plan.title || race.title;
     race.subtitle = plan.subtitle || race.subtitle;
-    // The story beats carry YEAR times; a sub-year window uses index times, so the
-    // beats can't align — drop them (the live leader callout fills the panel instead,
-    // always accurate) rather than freeze one stray beat on screen the whole race.
-    race.events = subYear ? [] : (plan.events as RaceEventRaw[]);
+    race.events = (plan.events as RaceEventRaw[]) || [];
 
     const norm = normalize(race);
     // If the race runs to the current year, nudge the LAST keyframe's time to TODAY
@@ -546,6 +571,12 @@ export async function POST(req: NextRequest) {
     // its `time` values are plain indices (nudging them would distort the spacing).
     const lastKf = norm.keyframes[norm.keyframes.length - 1];
     if (lastKf && !lastKf.label && Math.round(lastKf.time) === NOW && NOW_FRAC > lastKf.time) lastKf.time = NOW_FRAC;
+    // Sub-year window: re-time the story beats onto the keyframe index span so they
+    // progress through the race (they carry year times from the plan) and fill the
+    // info panel with the window's real events instead of leaving it empty.
+    if (subYear && norm.events && norm.events.length && norm.keyframes.length >= 2) {
+      norm.events = retimeWindowEvents(norm.events, norm.keyframes);
+    }
     if (norm.entities.length >= 2 && norm.keyframes.length >= 2) return NextResponse.json(norm);
   } catch (e) {
     console.error("[stats] build failed:", e);

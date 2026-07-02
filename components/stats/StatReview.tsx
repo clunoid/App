@@ -223,7 +223,7 @@ export function StatReview({ race, onApprove, onBack }: { race: RaceData; onAppr
                   <th className="sticky left-0 z-10 bg-[#f3f1ea] px-2 py-2 text-left text-[10px] font-extrabold uppercase tracking-wide text-[#2c2823]/55">Competitor</th>
                   {es.times.map((t, ci) => (
                     <th key={ci} className={`px-2 py-2 text-right text-[10px] font-extrabold uppercase tracking-wide ${ci === lastCi ? "text-[#8a2433]" : "text-[#2c2823]/55"}`}>
-                      {yearLabel(t)}{ci === lastCi ? " · now" : ""}
+                      {es.timeLabels?.[ci] || yearLabel(t)}{ci === lastCi ? " · now" : ""}
                     </th>
                   ))}
                   <th className="px-1" />
@@ -275,7 +275,12 @@ export function StatReview({ race, onApprove, onBack }: { race: RaceData; onAppr
             <div className="flex flex-col gap-2">
               {es.events.map((ev, ei) => (
                 <div key={ei} className="flex items-start gap-2 rounded-xl bg-black/[0.04] px-3 py-2">
-                  <input value={String(ev.time)} onChange={(e) => setEvent(ei, { time: Number(e.target.value.replace(/[^0-9.]/g, "")) || ev.time })} className={`${input} w-16 shrink-0 text-center font-extrabold`} />
+                  {ev.label ? (
+                    // sub-year beat: its time is an auto-managed index; show the window label instead of a raw number
+                    <span className={`${input} flex w-16 shrink-0 items-center justify-center text-center text-[11px] font-extrabold`} title="When in the window this beat plays">{ev.label}</span>
+                  ) : (
+                    <input value={String(ev.time)} onChange={(e) => setEvent(ei, { time: Number(e.target.value.replace(/[^0-9.]/g, "")) || ev.time })} className={`${input} w-16 shrink-0 text-center font-extrabold`} />
+                  )}
                   <div className="flex w-full flex-col gap-1">
                     <input value={ev.title} onChange={(e) => setEvent(ei, { title: e.target.value })} placeholder="Headline" className={`${input} w-full font-extrabold`} />
                     <textarea value={ev.description} onChange={(e) => setEvent(ei, { description: e.target.value })} placeholder="What happened (1–2 sentences)" rows={2} className={`${input} w-full resize-none text-[13px] font-medium`} />

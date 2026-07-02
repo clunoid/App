@@ -21,6 +21,7 @@ export type RaceEventRaw = {
   time: number; // when this beat begins (same scale as keyframe.time)
   title: string; // bold headline, e.g. "The Economic Shock of World War 1"
   description: string; // a short paragraph about what happened
+  label?: string; // human on-screen time for a SUB-YEAR beat (e.g. "May 8 2026"); the renderer shows the keyframe label, this is only for the review sheet + data document. Omit for multi-year (the year is shown from `time`).
   partyCodes?: string[]; // ISO-3166 alpha-2 codes → flags shown as media (a side)
   vsCodes?: string[]; // optional opposing side → drawn after a "vs"
   subjects?: string[]; // entity/person/company names whose media best illustrates the beat
