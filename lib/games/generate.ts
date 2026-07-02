@@ -60,3 +60,45 @@ export function buildGame(request: string): Promise<Game> {
 export function buildAllCountries(): Promise<Game> {
   return post({ all: true });
 }
+
+/* ── Video Direct: plan a full game from a prompt with OPUS, for a directly-generated
+ *    recap video (no play). Gated server-side (credits + the 2/month premium cap). ── */
+export type PlanResult =
+  | { ok: true; game: Game; premium: boolean }
+  | { ok: false; reason: "auth" | "credits" | "video_limit" | "failed" };
+
+export async function planVideoGame(request: string, voice: string): Promise<PlanResult> {
+  let res: Response;
+  try {
+    res = await fetch("/api/games/plan", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ request, voice }),
+    });
+  } catch {
+    return { ok: false, reason: "failed" };
+  }
+  if (res.status === 401) return { ok: false, reason: "auth" };
+  if (res.status === 402) {
+    const j = (await res.json().catch(() => ({}))) as { error?: string };
+    return { ok: false, reason: j.error === "video_limit" ? "video_limit" : "credits" };
+  }
+  if (res.status === 429) {
+    reportBillingStatus(429);
+    return { ok: false, reason: "failed" };
+  }
+  if (!res.ok) return { ok: false, reason: "failed" };
+  const data = (await res.json()) as Partial<Game> & { error?: boolean; premium?: boolean };
+  if (data.error || !Array.isArray(data.rounds) || !data.rounds.length) return { ok: false, reason: "failed" };
+  refreshCredits();
+  return {
+    ok: true,
+    premium: !!data.premium,
+    game: {
+      title: data.title || "Flags",
+      subtitle: typeof data.subtitle === "string" && data.subtitle.trim() ? data.subtitle.trim() : undefined,
+      secondsPerRound: data.secondsPerRound && data.secondsPerRound > 0 ? data.secondsPerRound : 7,
+      rounds: data.rounds as Round[],
+    },
+  };
+}

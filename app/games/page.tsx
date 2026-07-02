@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { Flag, ArrowLeft, ArrowRight, Building2, PawPrint, Star, Sparkles } from "lucide-react";
+import { Flag, ArrowLeft, Building2, PawPrint, Star, Sparkles, Clapperboard } from "lucide-react";
 import { useClunoid } from "@/lib/store/useClunoid";
 import { IsaacOrb } from "@/components/stage/IsaacOrb";
 import { ProfileMenu } from "@/components/auth/ProfileMenu";
@@ -61,10 +61,7 @@ export default function GamesHub() {
 
         {/* The first game — Guess the Country */}
         <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }} className="mt-7">
-          <Link
-            href="/games/flags"
-            className="group flex flex-col overflow-hidden rounded-3xl border border-border bg-surface shadow-soft transition hover:border-clay hover:bg-surface-2"
-          >
+          <div className="flex flex-col overflow-hidden rounded-3xl border border-border bg-surface shadow-soft">
             <div className="flex items-center gap-2.5 overflow-hidden border-b border-border bg-surface-2 px-5 py-4">
               {PREVIEW_FLAGS.map((c) => (
                 // eslint-disable-next-line @next/next/no-img-element
@@ -83,14 +80,26 @@ export default function GamesHub() {
               <div className="min-w-0 flex-1">
                 <h2 className="font-serif text-2xl text-ink">Guess the Country</h2>
                 <p className="mt-0.5 text-sm text-ink-muted">
-                  Name the flag before the timer runs out — speak or type, any region or difficulty.
+                  Name the flag before the timer runs out — or generate a shareable video from any prompt.
                 </p>
               </div>
-              <span className="hidden shrink-0 items-center gap-1.5 rounded-full bg-clay px-5 py-2.5 text-sm font-semibold text-[#1F1E1C] transition group-hover:bg-clay-soft sm:inline-flex">
-                Play <ArrowRight size={16} />
-              </span>
             </div>
-          </Link>
+            {/* Two ways in: PLAY the game, or GENERATE a video from a prompt. */}
+            <div className="flex flex-col gap-2.5 border-t border-border px-5 py-4 sm:flex-row">
+              <Link
+                href="/games/flags"
+                className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-full bg-clay px-5 py-3 text-sm font-semibold text-[#1F1E1C] transition hover:bg-clay-soft"
+              >
+                <Flag size={16} /> Play game
+              </Link>
+              <Link
+                href="/games/video"
+                className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-full border border-clay/40 bg-clay/10 px-5 py-3 text-sm font-semibold text-clay transition hover:bg-clay/20"
+              >
+                <Clapperboard size={16} /> Generate video
+              </Link>
+            </div>
+          </div>
         </motion.div>
 
         {/* The engine is generic — more packs coming */}

@@ -59,12 +59,16 @@ export function ShareModal({
   captionContext,
   gameId,
   videoDuration,
+  renderVoiceFromPref,
 }: {
   open: boolean;
   onClose: () => void;
   makeSpec?: (aspect: ReelAspect, opts: { branded: boolean }) => ReelSpec;
   // Optional custom renderer (e.g. the Stat Battle race). Defaults to renderReel(makeSpec).
-  render?: (aspect: ReelAspect, opts: { host: HTMLElement | null; signal: AbortSignal; onProgress: (p: number, l: string) => void; branded: boolean; durationSec?: number }) => Promise<{ blob: Blob; ext: string; mime: string; hadVoice: boolean }>;
+  render?: (aspect: ReelAspect, opts: { host: HTMLElement | null; signal: AbortSignal; onProgress: (p: number, l: string) => void; branded: boolean; durationSec?: number; voiceName?: string }) => Promise<{ blob: Blob; ext: string; mime: string; hadVoice: boolean }>;
+  // When the custom `render` narrates with the user's CHOSEN video voice (Video Direct),
+  // set this so labels reflect that voice; the stat battle omits it (fixed Isaac outro).
+  renderVoiceFromPref?: boolean;
   fileName?: string;
   heading?: string; // modal title (e.g. "Share your stat battle")
   idleHint?: string; // the idle preview hint (defaults to the game wording)
@@ -216,7 +220,7 @@ export function ShareModal({
           if (l.toLowerCase().includes("background")) setBgSafe(true);
         };
         const res = render
-          ? await render(a, { host: hostRef.current, signal: ac.signal, onProgress, branded, durationSec: videoDuration ? (a === "9:16" ? durVert : durWide) : undefined })
+          ? await render(a, { host: hostRef.current, signal: ac.signal, onProgress, branded, durationSec: videoDuration ? (a === "9:16" ? durVert : durWide) : undefined, voiceName })
           : await renderReel(makeSpec!(a, { branded }), { host: hostRef.current, signal: ac.signal, onProgress, voiceName });
         if (ac.signal.aborted) {
           out.forEach((r) => URL.revokeObjectURL(r.url)); // don't orphan an already-finished size
@@ -367,7 +371,7 @@ export function ShareModal({
           <p className="mt-2 text-sm font-semibold text-white/70">
             {fromSaved && ready
               ? `Saved ${voiceLabel} video — ready to share, no new credits used`
-              : `${render ? "Narrated by Isaac" : videoVoice === "silent" ? "Silent video" : `Narrated by ${voiceLabel}`} · ready in seconds`}
+              : `${render && !renderVoiceFromPref ? "Narrated by Isaac" : videoVoice === "silent" ? "Silent video" : `Narrated by ${voiceLabel}`} · ready in seconds`}
           </p>
         </div>
 

@@ -19,7 +19,10 @@ export const QUESTIONS = [
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
-export function buildGameReel(s: GameSnapshot, aspect: ReelAspect, branded = true): ReelSpec {
+// `direct` = a Video-Direct clip (no game was played): reveals are neutral ("This is
+// France."), there's no score, and the outro invites the viewer to play. `false` (the
+// default) keeps the exact recap of a played game — the play flow is unchanged.
+export function buildGameReel(s: GameSnapshot, aspect: ReelAspect, branded = true, direct = false): ReelSpec {
   const choiceMode = s.answerMode === "choice";
   const theme = choiceMode
     ? { mode: "document" as const, bg: "#c8c5bd", accent: "#8a2433", ink: "#2c2823" }
@@ -56,16 +59,25 @@ export function buildGameReel(s: GameSnapshot, aspect: ReelAspect, branded = tru
       userText: !r.correct && r.said ? r.said : undefined,
       correct: r.correct,
       badge: cap(r.difficulty),
-      narration: r.correct ? `Yes! ${r.name}.` : `It's ${r.name}.`,
+      narration: direct ? `This is ${r.name}.` : r.correct ? `Yes! ${r.name}.` : `It's ${r.name}.`,
     })),
-    outro: {
-      headline: "Your turn!",
-      scoreText: `I scored ${s.score}/${s.total}`,
-      sub: branded ? "Play this game on clunoid.com" : undefined,
-      // No site name in Isaac's voice when unbranded — the subscriber owns the clip.
-      narration: branded
-        ? `I scored ${s.score} out of ${s.total}. Think you can beat me? Play this game on clunoid dot com.`
-        : `I scored ${s.score} out of ${s.total}. Think you can beat me?`,
-    },
+    outro: direct
+      ? {
+          headline: "Your turn!",
+          scoreText: `${s.total} flag${s.total === 1 ? "" : "s"}`,
+          sub: branded ? "Play this game on clunoid.com" : undefined,
+          narration: branded
+            ? `That was ${s.total} flags. How many did you know? Play Guess the Country on clunoid dot com.`
+            : `That was ${s.total} flags. How many did you know?`,
+        }
+      : {
+          headline: "Your turn!",
+          scoreText: `I scored ${s.score}/${s.total}`,
+          sub: branded ? "Play this game on clunoid.com" : undefined,
+          // No site name in Isaac's voice when unbranded — the subscriber owns the clip.
+          narration: branded
+            ? `I scored ${s.score} out of ${s.total}. Think you can beat me? Play this game on clunoid dot com.`
+            : `I scored ${s.score} out of ${s.total}. Think you can beat me?`,
+        },
   };
 }

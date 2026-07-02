@@ -34,6 +34,10 @@ export const ACTION_COSTS = {
   stats_opus: 460, // added ONLY when the heavy Opus data series runs (~$2) → custom battle = 500.
   stats_edit: 500, // /api/stats/edit      — full-dataset rewrite on Opus
   stats_file: 600, // /api/stats/from-file — read a document + assemble on Opus (larger input)
+  // Video Direct (Guess the Country): Opus plans the full round list from the prompt.
+  // Charged once per generation; the per-line narration is billed separately via ttsCost
+  // (feature "video") during the client-side render, so long videos naturally cost more.
+  video_plan: 50, // /api/games/plan — Opus round-list planner (~$0.25)
 } as const;
 export type Chargeable = keyof typeof ACTION_COSTS;
 
@@ -63,6 +67,7 @@ export const RATE_LIMITS: Record<string, [number, number]> = {
   stats_file: [6, 60],
   search: [40, 60],
   game: [20, 60],
+  video_plan: [6, 60], // Opus planner — a modest burst cap (heavy compute)
   caption: [20, 60],
   // Voice fires per line; a generous cap that normal beat-by-beat playback never
   // hits, but which bounds a burst of tiny concurrent calls (vendor overhead).

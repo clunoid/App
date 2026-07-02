@@ -13,7 +13,7 @@ export type RenderResult = { blob: Blob; ext: string; mime: string; hadVoice: bo
 const QUESTION_MIN_SECONDS = 2.9;
 
 /** Run async tasks with a concurrency cap (gentle on the TTS API → no rate-limit drops). */
-async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T, i: number) => Promise<R>): Promise<R[]> {
+export async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T, i: number) => Promise<R>): Promise<R[]> {
   const out: R[] = new Array(items.length);
   let next = 0;
   const worker = async () => {
@@ -27,7 +27,7 @@ async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T, i: number
 }
 
 /** Fetch + decode one narration line, retrying transient failures so Isaac never drops out. */
-async function fetchDecodeLine(ac: AudioContext, text: string): Promise<AudioBuffer | null> {
+export async function fetchDecodeLine(ac: BaseAudioContext, text: string): Promise<AudioBuffer | null> {
   if (!text || !text.trim()) return null;
   for (let attempt = 0; attempt < 3; attempt++) {
     const bytes = await fetchNarrationBytes(text);
@@ -128,7 +128,7 @@ function drawTitle(ctx: CanvasRenderingContext2D, title: string, cx: number, y: 
   ctx.textAlign = "center";
 }
 
-function loadImage(url: string): Promise<HTMLImageElement | null> {
+export function loadImage(url: string): Promise<HTMLImageElement | null> {
   return new Promise((resolve) => {
     const img = new Image();
     img.crossOrigin = "anonymous";
@@ -338,8 +338,8 @@ function drawOutro(ctx: CanvasRenderingContext2D, W: number, H: number, spec: Re
   ctx.globalAlpha = 1;
 }
 
-type Durs = { introDur: number; sceneDurs: number[]; qDurs: number[]; outroDur: number };
-function drawFrame(ctx: CanvasRenderingContext2D, W: number, H: number, spec: ReelSpec, images: (HTMLImageElement | null)[], durs: Durs, el: number) {
+export type Durs = { introDur: number; sceneDurs: number[]; qDurs: number[]; outroDur: number };
+export function drawFrame(ctx: CanvasRenderingContext2D, W: number, H: number, spec: ReelSpec, images: (HTMLImageElement | null)[], durs: Durs, el: number) {
   drawBg(ctx, W, H, spec.theme, el);
   drawBrand(ctx, W, H, spec);
   if (el < durs.introDur) {
@@ -355,6 +355,35 @@ function drawFrame(ctx: CanvasRenderingContext2D, W: number, H: number, spec: Re
     t -= durs.sceneDurs[i];
   }
   drawOutro(ctx, W, H, spec, t / Math.max(0.001, durs.outroDur));
+}
+
+export type ReelTiming = {
+  durs: Durs;
+  total: number;
+  introBuf: AudioBuffer | null;
+  questionBufs: (AudioBuffer | null)[];
+  answerBufs: (AudioBuffer | null)[];
+  outroBuf: AudioBuffer | null;
+  hadVoice: boolean;
+};
+/** Split the decoded narration buffers into intro/question/answer/outro and derive the
+ *  per-scene + total durations. Single source of timing for BOTH the MediaRecorder path
+ *  (renderReel) and the WebCodecs path (renderer-web), so they can never drift. */
+export function computeReelTiming(spec: ReelSpec, buffers: (AudioBuffer | null)[]): ReelTiming {
+  const hadVoice = buffers.some(Boolean);
+  const introBuf = buffers[0] ?? null;
+  const questionBufs = spec.scenes.map((_, i) => buffers[1 + i * 2] ?? null);
+  const answerBufs = spec.scenes.map((_, i) => buffers[2 + i * 2] ?? null);
+  const outroBuf = buffers.length ? buffers[buffers.length - 1] ?? null : null;
+  const dur = (b: AudioBuffer | null, min: number) => Math.max(min, (b ? b.duration : 0) + 0.7);
+  const introDur = dur(introBuf, 2.2);
+  // Suspense beat = question + a "thinking" pause; the reveal lasts as long as the answer.
+  const qDurs = spec.scenes.map((_, i) => Math.max(QUESTION_MIN_SECONDS, questionBufs[i] ? questionBufs[i]!.duration + 1.1 : QUESTION_MIN_SECONDS));
+  const revealDurs = spec.scenes.map((_, i) => dur(answerBufs[i], 1.5));
+  const sceneDurs = spec.scenes.map((_, i) => qDurs[i] + revealDurs[i]);
+  const outroDur = dur(outroBuf, 4.2);
+  const total = introDur + sceneDurs.reduce((a, b) => a + b, 0) + outroDur;
+  return { durs: { introDur, sceneDurs, qDurs, outroDur }, total, introBuf, questionBufs, answerBufs, outroBuf, hadVoice };
 }
 
 /* ── main: render the spec into a video Blob ──────────────────────────────── */
@@ -416,22 +445,8 @@ export async function renderReel(spec: ReelSpec, opts: RenderOpts = {}): Promise
     throw new DOMException("aborted", "AbortError");
   }
 
-  const hadVoice = buffers.some(Boolean);
-  const introBuf = buffers[0] ?? null;
-  const questionBufs = spec.scenes.map((_, i) => buffers[1 + i * 2] ?? null);
-  const answerBufs = spec.scenes.map((_, i) => buffers[2 + i * 2] ?? null);
-  const outroBuf = buffers.length ? buffers[buffers.length - 1] ?? null : null;
-
-  const dur = (b: AudioBuffer | null, min: number) => Math.max(min, (b ? b.duration : 0) + 0.7);
-  const introDur = dur(introBuf, 2.2);
-  // Suspense beat = Isaac's question + a "thinking" pause; the reveal lasts as long
-  // as Isaac takes to name the answer.
-  const qDurs = spec.scenes.map((_, i) => Math.max(QUESTION_MIN_SECONDS, questionBufs[i] ? questionBufs[i]!.duration + 1.1 : QUESTION_MIN_SECONDS));
-  const revealDurs = spec.scenes.map((_, i) => dur(answerBufs[i], 1.5));
-  const sceneDurs = spec.scenes.map((_, i) => qDurs[i] + revealDurs[i]);
-  const outroDur = dur(outroBuf, 4.2);
-  const total = introDur + sceneDurs.reduce((a, b) => a + b, 0) + outroDur;
-  const durs: Durs = { introDur, sceneDurs, qDurs, outroDur };
+  const { durs, total, introBuf, questionBufs, answerBufs, outroBuf, hadVoice } = computeReelTiming(spec, buffers);
+  const { introDur, sceneDurs, qDurs } = durs;
 
   // ── Record the prepared spec at a given resolution. The on-screen preview is the
   //    SAME canvas we capture, but captureStream reads the canvas BACKING STORE, so

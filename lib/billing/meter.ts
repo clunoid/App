@@ -32,7 +32,7 @@ const ADMIN_USER_IDS = (process.env.ADMIN_USER_IDS || "5191f3cf-f0e5-4187-9c08-8
   .map((s) => s.trim().toLowerCase())
   .filter(Boolean);
 const ADMIN_CREDITS = 1_000_000_000; // effectively unlimited
-const isAdmin = (user: User | null) => !!user?.id && ADMIN_USER_IDS.includes(user.id.toLowerCase());
+export const isAdmin = (user: User | null) => !!user?.id && ADMIN_USER_IDS.includes(user.id.toLowerCase());
 
 /** The instant the monthly grant refills — `period_start + 1 calendar month` (UTC,
  *  clamped to the month's last day, exactly like Postgres `interval '1 month'`). This

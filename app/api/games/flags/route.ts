@@ -2,17 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { generateObject } from "ai";
 import { z } from "zod";
 import { MODELS, hasAnthropic, hasGroq } from "@/lib/models";
-import { WORLD_ORDER, WORLD_ALIASES } from "@/lib/games/world";
 import { requireUser } from "@/lib/auth/requireUser";
 import { chargeCredits, chargeError, refund } from "@/lib/billing/meter";
 import { ACTION_COSTS } from "@/lib/billing/costs";
+import { DEFAULT_SPREAD, loadFlagNames, orderByTier, buildAllCountries, worldSpread, roundsFromCodes } from "@/lib/games/flagcodes";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
-
-// Size of a default/general/worldwide game — a varied spread sampled fresh from
-// ALL world countries each play (replaces the old hardcoded ~12).
-const DEFAULT_SPREAD = 12;
 
 /**
  * Isaac's brain builds the flag game. The LLM CLASSIFIES every natural request:
@@ -27,9 +23,6 @@ const DEFAULT_SPREAD = 12;
  *    { all: true } "Continue" path).
  * Country names come from flagcdn (so every code has a real, loadable flag).
  */
-
-type Difficulty = "easy" | "medium" | "hard";
-type RoundOut = { code: string; name: string; aliases: string[]; difficulty: Difficulty; flag: string };
 
 const genSchema = z.object({
   title: z.string().describe("A short, fun title, e.g. 'World Flags', 'African Flags', 'Island Nations'."),
@@ -64,86 +57,6 @@ const genSchema = z.object({
       "For 'category': EVERY real country/territory that matches (the COMPLETE list, do not cap), or EXACTLY the number of rounds the user asked for. For 'general' or 'all': just a few sample rounds — the server expands these from the full world list. Return ONLY the code + difficulty for each (the server supplies official names)."
     ),
 });
-
-// Authoritative code → name from flagcdn (every code here has a real flag).
-let cache: Map<string, string> | null = null;
-let cacheAt = 0;
-const DAY = 24 * 60 * 60 * 1000;
-
-const uniq = (arr: (string | undefined)[]) =>
-  Array.from(new Set(arr.filter((x): x is string => !!x && x.trim().length > 1)));
-// PNG (not SVG): flagcdn SVGs are inconsistent — some omit width/height and only
-// carry a viewBox, which renders as a tiny "dot" in an <img>. The PNG always has
-// real pixel dimensions, so every flag displays at full size. w1280 is crisp.
-const flagUrl = (code: string) => `https://flagcdn.com/w1280/${code}.png`;
-
-function shuffle<T>(a: T[]): T[] {
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
-  }
-  return a;
-}
-
-/**
- * Keep the difficulty RAMP (all easy, then medium, then hard) but SHUFFLE the
- * countries WITHIN each tier — so every play has a different sequence and you
- * can't memorize "round 1 is the USA"; you have to actually know the flag.
- */
-function orderByTier(rounds: RoundOut[]): RoundOut[] {
-  const t: Record<Difficulty, RoundOut[]> = { easy: [], medium: [], hard: [] };
-  for (const r of rounds) t[r.difficulty].push(r);
-  return [...shuffle(t.easy), ...shuffle(t.medium), ...shuffle(t.hard)];
-}
-
-async function loadFlagNames(): Promise<Map<string, string>> {
-  if (cache && Date.now() - cacheAt < DAY) return cache;
-  try {
-    const res = await fetch("https://flagcdn.com/en/codes.json", { headers: { accept: "application/json" } });
-    if (!res.ok) throw new Error("flagcdn codes failed");
-    const data = (await res.json()) as Record<string, string>;
-    const m = new Map<string, string>();
-    for (const [code, name] of Object.entries(data)) {
-      if (/^[a-z]{2}$/.test(code) && name) m.set(code, name);
-    }
-    if (m.size) {
-      cache = m;
-      cacheAt = Date.now();
-    }
-    return cache || m;
-  } catch {
-    return cache || new Map();
-  }
-}
-
-/** Every sovereign country, easiest → hardest. */
-function buildAllCountries(names: Map<string, string>): RoundOut[] {
-  const present = WORLD_ORDER.filter((c) => names.size === 0 || names.has(c));
-  const n = present.length;
-  return present.map((code, i) => {
-    const name = names.get(code) || code.toUpperCase();
-    return {
-      code,
-      name,
-      aliases: uniq([name, ...(WORLD_ALIASES[code] || [])]),
-      difficulty: (i < n * 0.23 ? "easy" : i < n * 0.58 ? "medium" : "hard") as Difficulty,
-      flag: flagUrl(code),
-    };
-  });
-}
-
-/**
- * A varied difficulty-spread of `n` flags drawn RANDOMLY from ALL world
- * countries (different every play) — used for general/worldwide requests so the
- * default game is never the same hardcoded ~12. Keeps the easy → medium → hard
- * ramp via orderByTier.
- */
-function worldSpread(names: Map<string, string>, n: number): RoundOut[] {
-  const all = buildAllCountries(names);
-  const per = Math.ceil(n / 3);
-  const pick = (d: Difficulty) => shuffle(all.filter((r) => r.difficulty === d)).slice(0, per);
-  return orderByTier([...pick("easy"), ...pick("medium"), ...pick("hard")].slice(0, n));
-}
 
 const SYSTEM = `You are setting up a "guess the country by its flag" game. Read the user's request and decide the MODE:
 
@@ -217,23 +130,7 @@ export async function POST(req: NextRequest) {
   }
 
   // "category" → use the model's COMPLETE list, validated against flagcdn.
-  const rounds: RoundOut[] = [];
-  const seen = new Set<string>();
-  for (const r of object?.rounds || []) {
-    const code = (r.code || "").toLowerCase().trim();
-    if (!/^[a-z]{2}$/.test(code) || seen.has(code)) continue;
-    // Drop codes that don't have a real flag (so every round's flag loads).
-    if (names.size > 0 && !names.has(code)) continue;
-    seen.add(code);
-    const name = names.get(code) || code.toUpperCase();
-    rounds.push({
-      code,
-      name,
-      aliases: uniq([name, ...(WORLD_ALIASES[code] || [])]),
-      difficulty: r.difficulty,
-      flag: flagUrl(code),
-    });
-  }
+  const rounds = roundsFromCodes(object?.rounds || [], names);
 
   // If the LLM hiccupped (rate limit / transient / empty), still hand back a
   // playable game: a fresh worldwide spread from the dataset — and refund the
