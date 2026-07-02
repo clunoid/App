@@ -7,8 +7,8 @@ import { useClunoid } from "@/lib/store/useClunoid";
 
 function Loader() {
   return (
-    <div className="grid h-[100dvh] w-screen place-items-center bg-[#0c0b13]">
-      <div className="h-12 w-12 animate-spin rounded-full border-4 border-white/30 border-t-white" />
+    <div className="grid h-[100dvh] w-screen place-items-center" style={{ background: "#c8c5bd" }}>
+      <div className="h-12 w-12 animate-spin rounded-full border-4 border-[#2c2823]/25 border-t-[#2c2823]" />
     </div>
   );
 }

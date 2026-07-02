@@ -30,6 +30,21 @@ export async function preflightGraphics(request: string): Promise<{ ok: boolean;
   return { ok: true };
 }
 
+/** A fresh, randomized batch of AI video ideas for the "Suggest an idea" button.
+ *  Free (Groq) and best-effort — returns [] on any failure so the caller can fall
+ *  back to its own seed list. */
+export async function suggestGraphicsIdeas(): Promise<string[]> {
+  try {
+    const res = await fetch("/api/graphics/suggest", { method: "POST", headers: { "content-type": "application/json" } });
+    if (!res.ok) return [];
+    const d = (await res.json()) as { ideas?: string[] };
+    if (!Array.isArray(d.ideas)) return [];
+    return d.ideas.filter((s): s is string => typeof s === "string" && s.trim().length > 0).map((s) => s.trim());
+  } catch {
+    return [];
+  }
+}
+
 export type GraphicsPlanResult = { ok: true; spec: MotionSpec } | { ok: false; reason: GraphicsGateReason };
 
 export async function planGraphics(request: string): Promise<GraphicsPlanResult> {
