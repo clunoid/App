@@ -20,19 +20,19 @@ import { RATE_LIMITS } from "./costs";
 export type Charge = { ok: true; balance: number } | { ok: false; status: 402 | 429; balance: number };
 
 /**
- * ADMIN accounts (the owner / testers) bypass credit gating entirely so every
- * feature is reachable without spending tokens. Emails come from ADMIN_EMAILS
- * (comma-separated), defaulting to the owner. Checked SERVER-SIDE only, keyed on the
- * verified session email — never client-supplied — so it can't be spoofed. The check
- * lives only in the two gates that ALREADY load the user (creditsAvailable + gate), so
- * it adds zero latency to the hot per-charge path.
+ * ADMIN accounts (the owner / testers) bypass credit gating entirely so every feature
+ * is reachable without spending tokens. Identified by their IMMUTABLE Supabase user id
+ * (ADMIN_USER_IDS, comma-separated, defaulting to the owner). Keyed on the id from the
+ * server-VERIFIED session (supabase.auth.getUser) — never client-supplied — so it can't
+ * be spoofed; and because a user id is unique and never reissued, it can't be squatted
+ * even if the account were ever deleted (unlike an email, which could be re-registered).
  */
-const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || "clunoid@gmail.com")
+const ADMIN_USER_IDS = (process.env.ADMIN_USER_IDS || "5191f3cf-f0e5-4187-9c08-8921eb57a64c")
   .split(",")
   .map((s) => s.trim().toLowerCase())
   .filter(Boolean);
 const ADMIN_CREDITS = 1_000_000_000; // effectively unlimited
-const isAdmin = (user: User | null) => !!user?.email && ADMIN_EMAILS.includes(user.email.toLowerCase());
+const isAdmin = (user: User | null) => !!user?.id && ADMIN_USER_IDS.includes(user.id.toLowerCase());
 
 /** The instant the monthly grant refills — `period_start + 1 calendar month` (UTC,
  *  clamped to the month's last day, exactly like Postgres `interval '1 month'`). This
