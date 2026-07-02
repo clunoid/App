@@ -39,6 +39,46 @@ function detectScale(request: string): { scale?: DisplayScale; decimals?: number
   return { scale: "raw" };
 }
 
+const MONTH_ABBR = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+/**
+ * DETERMINISTIC sub-year window detection — the #1 fix for "it ignored my window".
+ * The model is NOT reliable at honoring an explicit window (at temperature it
+ * sometimes widens "May 2026" into an all-time race). So when the request clearly
+ * names ONE month / quarter / single year, we FORCE that window here and the model
+ * can never widen it. Returns null for multi-year / open-ended / "all-time" / "over
+ * the years" requests, which keep racing by year exactly as before.
+ */
+function detectWindow(request: string): { period: string; unit: "day" | "week" | "month"; year: number } | null {
+  const s = request.toLowerCase();
+  // Explicitly multi-period phrasings → NOT a single window.
+  if (/\b(all[-\s]?time|over time|over the years|through the years|throughout history|each year|year[-\s]by[-\s]year|history|ever|decade)\b/.test(s)) return null;
+  const years = (s.match(/\b(1[5-9]\d{2}|20\d{2})\b/g) || []).map(Number);
+  const distinct = [...new Set(years)];
+  if (distinct.length >= 2) return null; // a multi-year range, not one window
+  const yr = distinct[0] ?? NOW;
+  const hasRange = /\b(to|through|thru|until|till|–|—)\b/.test(s) || /\b(from|since|after|before)\s+\d{4}\b/.test(s) || /\b(today|now|present|current|onwards?)\b/.test(s);
+  // Quarter, e.g. "Q1 2026".
+  const q = s.match(/\bq([1-4])\b/);
+  if (q) return { period: `Q${q[1]} ${yr}`, unit: "month", year: yr };
+  // Month + year adjacency, e.g. "May 2026", "in may 2026", "May, 2026".
+  const my = s.match(/\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sept?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?\s*,?\s*(\d{4})\b/);
+  if (my) {
+    const mi = MONTH_ABBR.indexOf(my[1].slice(0, 3));
+    if (mi >= 0) return { period: `${MONTH_NAMES[mi]} ${my[2]}`, unit: "week", year: Number(my[2]) };
+  }
+  // "this month" / "last month".
+  if (/\bthis month\b/.test(s)) return { period: NOW_LABEL, unit: "week", year: NOW };
+  if (/\blast month\b/.test(s)) {
+    const mi = (NOW_MONTH + 11) % 12;
+    const y = NOW_MONTH === 0 ? NOW - 1 : NOW;
+    return { period: `${MONTH_NAMES[mi]} ${y}`, unit: "week", year: y };
+  }
+  // A single explicit year on its own (no range words) → race the MONTHS of that year
+  // (e.g. "biggest box office movies in 2024"). "1960 to today" is excluded by hasRange.
+  if (distinct.length === 1 && !hasRange) return { period: `${yr}`, unit: "month", year: yr };
+  return null;
+}
+
 /**
  * Does the prompt ask for a GLOBAL/worldwide ranking? If so the roster must span
  * the whole world (not default to one country, usually the US). Matches genuine
@@ -123,7 +163,7 @@ TIME SCOPE — MATCH THE PROMPT'S WINDOW EXACTLY (this is the #1 source of error
   • SINGLE YEAR ("box office 2024", "in 2010") → timeUnit "month", period "2024", fromYear=toYear that year — race the months of that one year.
   • SINGLE WEEK / DAY → timeUnit "day", period the exact week/day.
   • MULTI-YEAR span ("GDP 1980–2026", "richest people over time") OR no period at all → timeUnit "year", set fromYear/toYear, leave period empty.
-- "Cumulative", "all-time", "total", "ever" describe the METRIC (a running total), NOT the time window — they do NOT mean "start at the beginning of history". "Most streamed songs (cumulative) — May 2026" still means the standings IN May 2026, so period="May 2026".
+- A specific window ("in May 2026", "May 2026", "this month", "in 2024", "Q1 2026") ALWAYS wins: set period to it and race INSIDE it. For a windowed prompt the metric is that window's OWN activity (e.g. "most streamed … in May 2026" = streams DURING May 2026, a monthly chart that moves day-to-day), NEVER an all-time/lifetime cumulative total — and title/subtitle must name the window (e.g. "Most-Streamed Songs — May 2026"). NEVER label a windowed race "all-time" or "cumulative"; that would freeze the race. "All-time"/"ever"/"in history" with NO specific window is the only time you race the full multi-year span.
 
 HONOR THE USER EXACTLY — never override an explicit request:
 - fromYear/toYear = EXACTLY the years asked (1560, 1 for "1 AD", 2026, …). Only default (fromYear≈1960, toYear=${NOW}) for an OPEN-ENDED multi-year request with no period.
@@ -172,7 +212,10 @@ const seriesSchema = z.object({
 
 function seriesSystem(opts: { from: number; to: number; topN: number; nowLabel: string; named?: string[]; context: string; anchor: string; current: string; scaleHint: string; worldwide: boolean; rosterNotes: string; allTime: boolean; period?: string; unit?: string }): string {
   const windowReq = opts.period
-    ? `- TIME WINDOW — produce the race for EXACTLY ${opts.period} (a ${opts.unit || "month"}-level window), NOTHING WIDER and NOTHING EARLIER. Step through that window at ${opts.unit || "week"} granularity: output 8–16 keyframes, EACH with a "label" = the on-screen time (e.g. for a month: "May 1 2026", "May 8 2026", … or simply "${opts.period}"). Use ascending integer "time" indices (0,1,2,…). The FIRST keyframe = the START of the window, the LAST = the END of ${opts.period} carrying the ACCURATE standings for that exact point. Do NOT span multiple years or reach back before the window. The ranking MUST genuinely MOVE across the window — positions swap, new entries climb in, others slip down; a frozen chart is a FAILURE. For a CUMULATIVE/running-total metric (streams, views, sales this month) the values grow step by step toward the period-end total (so totals rise and the order re-shuffles as some climb faster); for a per-period metric, use each sub-period's REAL figures so the order shifts. Only if the metric is genuinely static all window may values stay flat.`
+    ? `- TIME WINDOW — the race covers EXACTLY ${opts.period} (a ${opts.unit || "month"}-level window), NOTHING WIDER and NOTHING EARLIER. Step through it at ${opts.unit || "week"} granularity: output 8–16 keyframes, EACH with a "label" = the on-screen time (e.g. for a month: "May 1 2026", "May 8 2026", …). Use ascending integer "time" indices (0,1,2,…). Do NOT span any other year or reach back before the window.
+- THE METRIC IS THE ACTIVITY *WITHIN* ${opts.period} — the amount GAINED DURING ${opts.period} (e.g. "most streamed in ${opts.period}" = streams counted DURING ${opts.period}, NOT an artist's all-time/lifetime Spotify total; "best-selling in ${opts.period}" = units sold DURING it). This is CRITICAL: do NOT output huge lifetime cumulative totals — those barely change over a few weeks and produce a DEAD, static chart.
+- MOVEMENT IS MANDATORY — a chart where the same items stay in roughly the same order is a FAILURE (that is exactly the dead result to avoid). Model the window REALISTICALLY so the ranking churns: (a) items that launch or go viral DURING the window ENTER partway through (their FIRST keyframe is mid-window, starting low) and CLIMB FAST past established leaders; (b) early front-runners lose momentum and slip down; (c) every release / viral moment / event you put in the STORY must show up as a real climb or fall in the VALUES. The TOP of the chart (the #1 and top-3) MUST change at least twice across the window — do not let one item lead from start to finish. Vary each item's per-step gain so positions genuinely swap between consecutive keyframes.
+- The FIRST keyframe = the opening of ${opts.period} (small early values); the LAST keyframe = the ACCURATE end-of-${opts.period} totals for the window, taken from the CURRENT STANDINGS below.`
     : `- Span EXACTLY ${opts.from} to ${opts.to}: the FIRST keyframe's time = ${opts.from}, the LAST = ${opts.to}. For years beyond the latest real data, give the best current projection/estimate; for ancient/historical years, the best scholarly estimate. (Leave each keyframe's "label" EMPTY — the year is shown from "time".)`;
   return `You assemble ACCURATE ranking-over-time data for an animated bar-chart race. Accuracy is paramount — use the research notes + authoritative anchors below; otherwise use the most credible scholarly figures (e.g. Maddison Project for historical GDP, IMF/World Bank for recent economics, Forbes for net worth, Transfermarkt for football values, official platform charts — Spotify/YouTube/Billboard — for streaming/chart stats, recognised historical scholarship for army sizes). NEVER invent fake precision.
 
@@ -338,14 +381,31 @@ function normalize(raw: RaceRaw): RaceRaw {
       };
     });
   const names = new Set(entities.map((e) => e.name));
+  // Rescue near-miss name mismatches between values[].name and entities[].name (a
+  // stray space / case / apostrophe difference used to make normalize DROP every
+  // value → 0 keyframes → the "couldn't build that one" failure). Remap by a
+  // normalized key back to the canonical entity name.
+  const nkey = (s: string) => String(s || "").toLowerCase().replace(/\s+/g, " ").replace(/['’".]/g, "").trim();
+  const canon = new Map<string, string>();
+  for (const e of entities) if (!canon.has(nkey(e.name))) canon.set(nkey(e.name), e.name);
   const keyframes = (raw.keyframes || [])
-    .map((k) => ({
-      time: Number(k.time),
-      label: typeof k.label === "string" && k.label.trim() ? k.label.trim().slice(0, 40) : undefined,
-      values: (k.values || [])
-        .filter((v) => v && names.has(v.name) && Number.isFinite(Number(v.value)))
-        .map((v) => ({ name: v.name, value: Math.max(0, Number(v.value)) })),
-    }))
+    .map((k) => {
+      const seenV = new Set<string>();
+      const values = (k.values || [])
+        .map((v) => {
+          if (!v || !Number.isFinite(Number(v.value))) return null;
+          const nm = names.has(v.name) ? v.name : canon.get(nkey(v.name));
+          if (!nm || seenV.has(nm)) return null;
+          seenV.add(nm);
+          return { name: nm, value: Math.max(0, Number(v.value)) };
+        })
+        .filter((v): v is { name: string; value: number } => v !== null);
+      return {
+        time: Number(k.time),
+        label: typeof k.label === "string" && k.label.trim() ? k.label.trim().slice(0, 40) : undefined,
+        values,
+      };
+    })
     .filter((k) => Number.isFinite(k.time) && k.values.length)
     .sort((a, b) => a.time - b.time);
   return {
@@ -427,7 +487,7 @@ export async function POST(req: NextRequest) {
   // Meter the BASE build (Sonnet routing/plan + Tavily research). Catalogue topics
   // that resolve to verified World Bank data are charged only this; a custom battle
   // additionally pays for Opus below.
-  const base = await chargeCredits("stats_plan", ACTION_COSTS.stats_plan, { request: request.slice(0, 80) });
+  const base = await chargeCredits("stats_plan", ACTION_COSTS.stats_plan, { request: request.slice(0, 80) }, user);
   if (!base.ok) return chargeError(base);
   let opusCharged = 0; // the ACTUAL credits taken for the Opus step (0 = not charged)
   let opusInvoked = false; // true once the Opus call actually RAN (so we never refund real compute)
@@ -439,7 +499,10 @@ export async function POST(req: NextRequest) {
       model: MODELS.genius(),
       schema: planSchema,
       system: planSystem(),
-      prompt: context ? `${request}\n\nResearch notes (for routing + the story):\n${context}` : request,
+      // Give the model TODAY'S date (in the user message, so the cached system prompt
+      // stays byte-stable) so relative windows ("this month", "last month") and the
+      // present-day story resolve to the real current date — not the model's stale sense of "now".
+      prompt: `Today's date: ${NOW_LABEL}.\n\n${request}${context ? `\n\nResearch notes (for routing + the story):\n${context}` : ""}`,
       temperature: 0.2,
       maxRetries: 3,
       maxTokens: 12000, // the long-span event story can be many beats
@@ -448,13 +511,17 @@ export async function POST(req: NextRequest) {
     // The model usually returns the years, but can omit them (esp. on long prompts) —
     // fall back to the years parsed deterministically from the request text.
     const dy = detectYears(request, NOW);
-    // SUB-YEAR WINDOW: a prompt scoped to one month/week/day (e.g. "May 2026") races
-    // INSIDE a single year. We pin from=to to that year so the plan can never widen it
-    // backward into a multi-year span (the old "May 2026 → 2013–2026" bug).
-    const timeUnit = plan.timeUnit || "year";
-    const subYear = timeUnit !== "year" && !!(plan.period && plan.period.trim());
-    const period = subYear ? plan.period!.trim().slice(0, 60) : undefined;
-    const periodYear = plan.toYear ?? plan.fromYear ?? dy.to;
+    // SUB-YEAR WINDOW: a prompt scoped to one month/quarter/year (e.g. "May 2026")
+    // races INSIDE that window. We detect it DETERMINISTICALLY from the request text
+    // (detectWindow) and only fall back to the model's own timeUnit/period when the
+    // text is less explicit — so an explicit window can NEVER be widened into an
+    // all-time race (the failure users saw), and from=to is pinned to that year.
+    const det = detectWindow(request);
+    const modelSub = !!plan.timeUnit && plan.timeUnit !== "year" && !!(plan.period && plan.period.trim());
+    const subYear = !!det || modelSub;
+    const timeUnit = det ? det.unit : plan.timeUnit && plan.timeUnit !== "year" ? plan.timeUnit : "week";
+    const period = det ? det.period : subYear ? plan.period!.trim().slice(0, 60) : undefined;
+    const periodYear = det ? det.year : plan.toYear ?? plan.fromYear ?? dy.to;
     const fromY = subYear ? periodYear : (plan.fromYear ?? dy.from);
     const toY = subYear ? periodYear : (plan.toYear ?? dy.to);
     const from = Math.min(fromY, toY);
@@ -492,7 +559,7 @@ export async function POST(req: NextRequest) {
       // STATS_OPUS_FLOOR − stats_plan) may proceed — it then drains the rest of their
       // credits, capped at stats_opus. Below the floor → 402 (refund the base). Atomic &
       // non-negative, so heavy Opus can never run for a user under the floor.
-      const opus = await chargeCapped("stats_opus", ACTION_COSTS.stats_opus, STATS_OPUS_FLOOR - ACTION_COSTS.stats_plan, {});
+      const opus = await chargeCapped("stats_opus", ACTION_COSTS.stats_opus, STATS_OPUS_FLOOR - ACTION_COSTS.stats_plan, {}, user);
       if (!opus.ok) {
         await refund(user.id, ACTION_COSTS.stats_plan, "stats_plan");
         return chargeError(opus);
@@ -563,6 +630,30 @@ export async function POST(req: NextRequest) {
     race.title = plan.title || race.title;
     race.subtitle = plan.subtitle || race.subtitle;
     race.events = (plan.events as RaceEventRaw[]) || [];
+    // A windowed race must never read "all-time / cumulative" (it misdescribes the race
+    // and implies a frozen chart). Strip those qualifiers and make sure the window shows
+    // in the subtitle — belt-and-braces on top of the model guidance above.
+    if (subYear && period) {
+      const strip = (s?: string) => (s || "").replace(/\b(all[-\s]?time|cumulative|lifetime)\b/gi, "").replace(/\s{2,}/g, " ").replace(/^[\s·\-–—]+|[\s·\-–—]+$/g, "").trim();
+      race.title = strip(race.title) || race.title;
+      race.valueLabel = strip(race.valueLabel) || race.valueLabel;
+      // If we DETERMINISTICALLY forced the window but the model titled it with a
+      // DIFFERENT date (e.g. it guessed "June 2025" for "this month"), correct the
+      // title to the real window so the headline never contradicts the race.
+      if (det && !race.title.toLowerCase().includes(period.toLowerCase()) && /\b(?:19|20)\d{2}\b/.test(race.title)) {
+        const base = race.title
+          .replace(/\s*[—–-]\s*[^—–-]*\b(?:19|20)\d{2}\b[^—–-]*$/, "")
+          .replace(/\s+(?:of|in|for|during)\s+[^,]*\b(?:19|20)\d{2}\b\s*$/i, "")
+          .replace(/\s*\(\s*[^)]*\b(?:19|20)\d{2}\b[^)]*\)\s*$/, "")
+          .trim()
+          .replace(/[—–\-·,]\s*$/, "")
+          .trim();
+        if (base) race.title = `${base} — ${period}`;
+      }
+      const sub = strip(race.subtitle);
+      const showsPeriod = sub && sub.toLowerCase().includes(period.toLowerCase());
+      race.subtitle = showsPeriod ? sub : race.valueLabel ? `${race.valueLabel} · ${period}` : period;
+    }
 
     const norm = normalize(race);
     // If the race runs to the current year, nudge the LAST keyframe's time to TODAY

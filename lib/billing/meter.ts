@@ -19,6 +19,21 @@ import { RATE_LIMITS } from "./costs";
 
 export type Charge = { ok: true; balance: number } | { ok: false; status: 402 | 429; balance: number };
 
+/**
+ * ADMIN accounts (the owner / testers) bypass credit gating entirely so every
+ * feature is reachable without spending tokens. Emails come from ADMIN_EMAILS
+ * (comma-separated), defaulting to the owner. Checked SERVER-SIDE only, keyed on the
+ * verified session email — never client-supplied — so it can't be spoofed. The check
+ * lives only in the two gates that ALREADY load the user (creditsAvailable + gate), so
+ * it adds zero latency to the hot per-charge path.
+ */
+const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || "clunoid@gmail.com")
+  .split(",")
+  .map((s) => s.trim().toLowerCase())
+  .filter(Boolean);
+const ADMIN_CREDITS = 1_000_000_000; // effectively unlimited
+const isAdmin = (user: User | null) => !!user?.email && ADMIN_EMAILS.includes(user.email.toLowerCase());
+
 /** The instant the monthly grant refills — `period_start + 1 calendar month` (UTC,
  *  clamped to the month's last day, exactly like Postgres `interval '1 month'`). This
  *  mirrors the authoritative `now() >= period_start + interval '1 month'` inside
@@ -51,6 +66,7 @@ export async function creditsAvailable(): Promise<number | null> {
     user = null;
   }
   if (!user) return null;
+  if (isAdmin(user)) return ADMIN_CREDITS; // owner/tester → unlimited, never blocked by a pre-check
   const { data } = await supabase
     .from("credit_balances")
     .select("balance, purchased, monthly_grant, period_start")
@@ -65,8 +81,11 @@ export async function creditsAvailable(): Promise<number | null> {
   return (monthly || 0) + ((data.purchased as number) || 0);
 }
 
-/** Rate-limit + atomically pre-charge the CURRENT user (call after auth). */
-export async function chargeCredits(action: string, amount: number, meta: Record<string, unknown> = {}): Promise<Charge> {
+/** Rate-limit + atomically pre-charge the CURRENT user (call after auth). Pass the
+ *  already-authenticated `user` so an ADMIN (owner/tester) is charged nothing — this
+ *  keeps the admin bypass free of an extra auth round-trip on the hot path. */
+export async function chargeCredits(action: string, amount: number, meta: Record<string, unknown> = {}, user: User | null = null): Promise<Charge> {
+  if (isAdmin(user)) return { ok: true, balance: ADMIN_CREDITS };
   const supabase = await getSupabaseServer();
   const limit = RATE_LIMITS[action];
   if (limit) {
@@ -90,7 +109,8 @@ export type CappedCharge =
  * can refund precisely that amount. Non-negative + race-free — the cap is computed inside
  * the DB's single guarded UPDATE (consume_credits_capped), never from a stale read.
  */
-export async function chargeCapped(action: string, cap: number, min: number, meta: Record<string, unknown> = {}): Promise<CappedCharge> {
+export async function chargeCapped(action: string, cap: number, min: number, meta: Record<string, unknown> = {}, user: User | null = null): Promise<CappedCharge> {
+  if (isAdmin(user)) return { ok: true, balance: ADMIN_CREDITS, charged: 0 };
   const supabase = await getSupabaseServer();
   const limit = RATE_LIMITS[action];
   if (limit) {
@@ -122,6 +142,7 @@ export async function gate(action: string, amount: number, meta: Record<string, 
     user = null;
   }
   if (!user) return { ok: false, res: NextResponse.json({ error: "auth" }, { status: 401 }) };
+  if (isAdmin(user)) return { ok: true, userId: user.id, balance: ADMIN_CREDITS }; // owner/tester → no charge, no rate limit
 
   const limit = RATE_LIMITS[action];
   if (limit) {
