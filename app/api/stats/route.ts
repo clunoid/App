@@ -170,7 +170,7 @@ HONOR THE USER EXACTLY — never override an explicit request:
 - topN = the user's requested visible-bar count if given (e.g. "top 15"→15, "5 players"→5); else a natural number for the topic.
 - If the user NAMES specific competitors (e.g. "Elon Musk vs Jeff Bezos vs Bernard Arnault"), put them verbatim in namedEntities and set topN to that count.
 - entityKind: country (flags), company (logos), person (photos), or mixed.
-- Units — show FULL figures, NEVER abbreviated/rounded (no "0.6B"): national GDP → displayScale "M" (full millions, e.g. 28750956); company market-cap → "raw" (full dollars, e.g. 757423097909); personal net worth → "M" (full millions, e.g. 72751); ratings/counts → "raw". decimals 0 always (full integers). Only use B/T if the user EXPLICITLY asks to abbreviate.
+- Units — DEFAULT TO FULL, EXACT figures: the COMPLETE number with every digit, NEVER abbreviated, scaled, or rounded (no "0.6B", no "1,234M"). Counts/streams/views/subscribers → the whole number (e.g. 1750000000); money → full dollars (e.g. 757423097909). unitSuffix = the REAL unit only (%, pts, yrs, goals…) — NEVER a magnitude letter (no "M"/"B"). decimals 0 (full integers). ONLY express values in thousands/millions/billions if the user EXPLICITLY asks (e.g. "in billions").
 
 WORLDWIDE COVERAGE: when the request is global ("…in the world", "world's…", "worldwide", "global", "international"), it must NOT default to one country (people most easily recall US names). THINK HARD and fill rosterNotes with the genuine WORLD leaders of EACH era across the whole span (multiple countries/regions) so the race has real global coverage — every entity that legitimately ranked, wherever they're from. Leave rosterNotes empty for country-scoped/local requests (e.g. "richest Americans", "Premier League scorers").
 
@@ -566,20 +566,23 @@ export async function POST(req: NextRequest) {
       }
       opusCharged = opus.charged; // the ACTUAL amount taken (≤ stats_opus; the remainder when draining to 0)
       const money = plan.unitPrefix === "$";
-      // Scale is DETERMINISTIC (the brain's choice is unreliable) and always FULL — no
-      // "0.6B" abbreviation. Company market-cap → raw full dollars (the classic look);
-      // GDP / net worth → full millions; counts → the brain's scale. User can override.
-      const chosenScale: DisplayScale = scale
-        ? scale
-        : money
-        ? plan.entityKind === "company"
-          ? "raw"
-          : "M"
-        : (plan.displayScale as DisplayScale) || "raw";
+      // EXACT BY DEFAULT: the display scale is deterministic from the request text (raw
+      // unless the user literally said millions/billions/etc.), so unspecified figures
+      // render FULL and un-abbreviated (no "0.6B", no "1,234M").
+      const userMag = /\b(trillion|billion|million|thousand)s?\b/i.test(request);
+      const chosenScale: DisplayScale = scale || "raw";
       const unitPrefix = plan.unitPrefix || "";
-      const unitSuffix = money ? SCALE_SUFFIX[chosenScale] : plan.unitSuffix || "";
+      // Money → the magnitude letter for the chosen scale. Non-money → keep the model's
+      // REAL unit (%, pts, yrs, goals…) but DROP a stray magnitude ("M"/"million") the
+      // user never asked for, so plain counts show full exact integers, not "1,234M".
+      const rawSuffix = (plan.unitSuffix || "").trim();
+      const isMagSuffix = /^(m|k|b|t|mn|bn|mm|million|billion|thousand|trillion)s?\.?$/i.test(rawSuffix);
+      const unitSuffix = money ? SCALE_SUFFIX[chosenScale] : !userMag && isMagSuffix ? "" : rawSuffix;
       const dec = decimals ?? plan.decimals ?? 0; // full integers by default (no "0.6B" rounding)
-      const scaleHint = scaleHintFor(money, chosenScale, plan.valueLabel || "", unitSuffix);
+      const wantExact = !money && chosenScale === "raw" && !userMag;
+      const scaleHint = wantExact
+        ? `Output every value as the FULL, EXACT ${plan.valueLabel || "figure"} — the complete whole number with ALL of its digits (e.g. 1750000000, NEVER 1750, 1.75B, or "1750 million"). Do NOT scale down, round to millions/billions, or attach a magnitude suffix.`
+        : scaleHintFor(money, chosenScale, plan.valueLabel || "", unitSuffix);
 
       const anchorKey = INDICATOR_KEYS.includes(key) ? key : guess; // anchor GDP/etc. to WB reality
       // Run the WB anchor + a TARGETED present-day search together (one extra search,

@@ -85,8 +85,19 @@ export async function creditsAvailable(): Promise<number | null> {
  *  already-authenticated `user` so an ADMIN (owner/tester) is charged nothing — this
  *  keeps the admin bypass free of an extra auth round-trip on the hot path. */
 export async function chargeCredits(action: string, amount: number, meta: Record<string, unknown> = {}, user: User | null = null): Promise<Charge> {
-  if (isAdmin(user)) return { ok: true, balance: ADMIN_CREDITS };
   const supabase = await getSupabaseServer();
+  // Resolve the user for the admin check when the caller didn't pass one (brain, games,
+  // tts). One cheap auth read on paths that already make heavy AI calls — negligible.
+  if (!user) {
+    try {
+      ({
+        data: { user },
+      } = await supabase.auth.getUser());
+    } catch {
+      user = null;
+    }
+  }
+  if (isAdmin(user)) return { ok: true, balance: ADMIN_CREDITS };
   const limit = RATE_LIMITS[action];
   if (limit) {
     const { data: allowed } = await supabase.rpc("rate_check", { p_action: action, p_max: limit[0], p_window_secs: limit[1] });
@@ -110,8 +121,17 @@ export type CappedCharge =
  * the DB's single guarded UPDATE (consume_credits_capped), never from a stale read.
  */
 export async function chargeCapped(action: string, cap: number, min: number, meta: Record<string, unknown> = {}, user: User | null = null): Promise<CappedCharge> {
-  if (isAdmin(user)) return { ok: true, balance: ADMIN_CREDITS, charged: 0 };
   const supabase = await getSupabaseServer();
+  if (!user) {
+    try {
+      ({
+        data: { user },
+      } = await supabase.auth.getUser());
+    } catch {
+      user = null;
+    }
+  }
+  if (isAdmin(user)) return { ok: true, balance: ADMIN_CREDITS, charged: 0 };
   const limit = RATE_LIMITS[action];
   if (limit) {
     const { data: allowed } = await supabase.rpc("rate_check", { p_action: action, p_max: limit[0], p_window_secs: limit[1] });

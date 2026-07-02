@@ -154,6 +154,31 @@ export function fmtValueCompact(v: number, race: RaceData): string {
   return fmtValue(v, race);
 }
 
+/**
+ * A compact, readable DISPLAY label for a bar/token. Long names ("APT. - ROSÉ &
+ * Bruno Mars", "Taiwan Semiconductor Manufacturing Company") crowd the value + media
+ * and push everything to the edge, so keep the recognisable core: the part before a
+ * spaced " - artist" / " — " / " | " / ": " separator, drop a trailing "(2024)"-style
+ * note, then keep the first word or two (a couple more only while they stay short).
+ * Display only — the underlying entity name (the data key) is never changed, so
+ * history / editing / lookups keep the full name.
+ */
+function shortLabel(name: string): string {
+  if (!name) return name;
+  let s = name.split(/\s+[-–—]\s+/)[0].trim(); // core before a spaced " - artist" tail
+  s = s.replace(/\s*[([{][^)\]}]*[)\]}]\s*$/, "").trim(); // drop trailing (…)/[…]
+  if (!s) s = name.trim();
+  if (s.length <= 20) return s; // already compact
+  const words = s.split(/\s+/);
+  let out = words[0];
+  for (let i = 1; i < words.length; i++) {
+    const t = out + " " + words[i];
+    if (t.length > 20) break;
+    out = t;
+  }
+  return out;
+}
+
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 /** A granular time counter: "Sep 2020" for normal spans (months glide by), "YYYY" for very long/ancient spans. */
 function fmtTime(curT: number, span: number): string {
@@ -416,11 +441,15 @@ function drawStoryPanel(
   const timeStr = timeText(race, curT);
   ctx.textAlign = vertical ? "left" : "center";
   ctx.textBaseline = "alphabetic";
-  const yearPx = vertical ? h * 0.4 : min * 0.32;
+  // Smaller, space-saving date — clearly visible but no longer dominating the panel.
+  const yearPx = vertical ? h * 0.3 : min * 0.2;
   // Size to a CONSTANT-width sample (not the changing string) so the font never
-  // resizes frame-to-frame — the counter stays rock-steady, no "bounce".
-  const sample = span > 160 ? "8888" : "Sep 8888";
-  const fitPx = fitText(ctx, sample, yearPx, 800, vertical ? w * 0.36 : w * 0.94);
+  // resizes frame-to-frame — the counter stays rock-steady, no "bounce". Sub-year
+  // windows carry a full date label ("September 30 2026") which is much wider than
+  // "Sep 8888", so size to that width — otherwise the date overflowed to the edge.
+  const hasLbl = race.frames.some((k) => k.label);
+  const sample = hasLbl ? "Wwwwwwww 88 8888" : span > 160 ? "8888" : "Sep 8888";
+  const fitPx = fitText(ctx, sample, yearPx, 800, vertical ? w * 0.4 : w * 0.94);
   setFont(ctx, fitPx, 800);
   ctx.fillStyle = "rgba(74,69,62,0.9)";
   const yearY = vertical ? y + h * 0.46 : y + fitPx * 0.95;
@@ -668,7 +697,7 @@ export function drawRaceFrame(ctx: CanvasRenderingContext2D, W: number, H: numbe
     // name: inside the bar (right-aligned, before the media) if it fits, else outside
     const innerAvail = w - flagW - innerPad * 2.4;
     setFont(ctx, barH * 0.5, 800);
-    const nameW = ctx.measureText(r.e.name).width;
+    const nameW = ctx.measureText(shortLabel(r.e.name)).width;
     const flagCx = X0 + w - innerPad - flagW / 2;
     ctx.textBaseline = "middle";
     if (flagImg) drawMedia(ctx, flagImg, flagCx, yMid, flagH, fit);
@@ -682,7 +711,7 @@ export function drawRaceFrame(ctx: CanvasRenderingContext2D, W: number, H: numbe
       ctx.textAlign = "right";
       ctx.fillStyle = "#fff";
       setFont(ctx, barH * 0.5, 800);
-      ctx.fillText(r.e.name, X0 + w - flagW - innerPad * 1.6, yMid);
+      ctx.fillText(shortLabel(r.e.name), X0 + w - flagW - innerPad * 1.6, yMid);
       ctx.restore();
       afterX = X0 + w + innerPad * 1.2;
     } else {
@@ -691,9 +720,9 @@ export function drawRaceFrame(ctx: CanvasRenderingContext2D, W: number, H: numbe
       ctx.fillStyle = INK;
       setFont(ctx, barH * 0.48, 800);
       const nx = X0 + w + innerPad * 1.2;
-      ctx.fillText(r.e.name, nx, yMid);
+      ctx.fillText(shortLabel(r.e.name), nx, yMid);
       setFont(ctx, barH * 0.5, 800);
-      afterX = nx + ctx.measureText(r.e.name).width + innerPad * 0.9;
+      afterX = nx + ctx.measureText(shortLabel(r.e.name)).width + innerPad * 0.9;
     }
 
     // country-of-origin flag — a small ROUND flag beside a company's logo / a person's photo
@@ -878,8 +907,8 @@ function drawRaceBubbles(ctx: CanvasRenderingContext2D, W: number, H: number, ra
       // name + value in the reserved LABEL zone below the circle
       const nameY = cellTop + circleH + labelH * 0.42;
       ctx.fillStyle = INK;
-      setFont(ctx, fitText(ctx, r.e.name, namePx, 800, cellW * 0.95), 800);
-      ctx.fillText(r.e.name, p.x, nameY);
+      setFont(ctx, fitText(ctx, shortLabel(r.e.name), namePx, 800, cellW * 0.95), 800);
+      ctx.fillText(shortLabel(r.e.name), p.x, nameY);
       const vStr = fmtValueCompact(r.v, race); // compact so labels don't crowd under bubbles
       ctx.fillStyle = SEAL;
       setFont(ctx, fitText(ctx, vStr, valPx, 800, cellW * 0.95), 800);
@@ -1109,9 +1138,9 @@ function drawRaceBump(ctx: CanvasRenderingContext2D, W: number, H: number, race:
     const lw = Math.max(20, plotRight - lx);
     ctx.textAlign = "left";
     ctx.textBaseline = "alphabetic";
-    setFont(ctx, fitText(ctx, nm, Math.min(rowH * 0.34, min * 0.026), 800, lw), 800);
+    setFont(ctx, fitText(ctx, shortLabel(nm), Math.min(rowH * 0.34, min * 0.026), 800, lw), 800);
     ctx.fillStyle = INK;
-    ctx.fillText(nm, lx, head.y - rowH * 0.02);
+    ctx.fillText(shortLabel(nm), lx, head.y - rowH * 0.02);
     const vStr = fmtValueCompact(r.v, race);
     setFont(ctx, fitText(ctx, vStr, Math.min(rowH * 0.3, min * 0.024), 800, lw), 800);
     ctx.fillStyle = SEAL;
@@ -1340,8 +1369,8 @@ function drawRacePodium(ctx: CanvasRenderingContext2D, W: number, H: number, rac
       ctx.fillText(fmtValueCompact(rr.v, race), p.x, p.y - rad - rad * 0.22);
       // name on the pedestal face
       ctx.fillStyle = INK;
-      setFont(ctx, fitText(ctx, rr.e.name, Math.min(pedW * 0.15, podiumH * 0.07), 800, pedW * 0.9), 800);
-      ctx.fillText(rr.e.name, slotX[r0], pedTop(r0) + (baseY - pedTop(r0)) * 0.32);
+      setFont(ctx, fitText(ctx, shortLabel(rr.e.name), Math.min(pedW * 0.15, podiumH * 0.07), 800, pedW * 0.9), 800);
+      ctx.fillText(shortLabel(rr.e.name), slotX[r0], pedTop(r0) + (baseY - pedTop(r0)) * 0.32);
     } else {
       // chaser: small rank badge + name + value
       const bx = p.x - rad * 0.78;
@@ -1358,8 +1387,8 @@ function drawRacePodium(ctx: CanvasRenderingContext2D, W: number, H: number, rac
       ctx.textBaseline = "alphabetic";
       const cw = regW / chCols;
       ctx.fillStyle = INK;
-      setFont(ctx, fitText(ctx, rr.e.name, Math.min(chR * 0.52, min * 0.02), 800, cw * 0.92), 800);
-      ctx.fillText(rr.e.name, p.x, p.y + rad + chR * 0.5);
+      setFont(ctx, fitText(ctx, shortLabel(rr.e.name), Math.min(chR * 0.52, min * 0.02), 800, cw * 0.92), 800);
+      ctx.fillText(shortLabel(rr.e.name), p.x, p.y + rad + chR * 0.5);
       ctx.fillStyle = SEAL;
       setFont(ctx, fitText(ctx, fmtValueCompact(rr.v, race), Math.min(chR * 0.48, min * 0.018), 800, cw * 0.92), 800);
       ctx.fillText(fmtValueCompact(rr.v, race), p.x, p.y + rad + chR * 1.05);
@@ -1570,8 +1599,8 @@ function drawRaceLanes(ctx: CanvasRenderingContext2D, W: number, H: number, race
     const nx = bx + badgeR + regW * 0.012;
     ctx.textAlign = "left";
     ctx.fillStyle = INK;
-    setFont(ctx, fitText(ctx, nm, Math.min(rowH * 0.36, min * 0.028), 800, trackLeft - nx - regW * 0.012), 800);
-    ctx.fillText(nm, nx, y);
+    setFont(ctx, fitText(ctx, shortLabel(nm), Math.min(rowH * 0.36, min * 0.028), 800, trackLeft - nx - regW * 0.012), 800);
+    ctx.fillText(shortLabel(nm), nx, y);
     ctx.textBaseline = "alphabetic";
   }
   ctx.textAlign = "left";
@@ -1737,8 +1766,8 @@ function drawRaceColumns(ctx: CanvasRenderingContext2D, W: number, H: number, ra
 
     // name below the baseline
     ctx.fillStyle = INK;
-    setFont(ctx, fitText(ctx, nm, Math.min(nameZoneH * 0.42, slotW * 0.2), 800, slotW * 0.96), 800);
-    ctx.fillText(nm, cx, baselineY + nameZoneH * 0.5);
+    setFont(ctx, fitText(ctx, shortLabel(nm), Math.min(nameZoneH * 0.42, slotW * 0.2), 800, slotW * 0.96), 800);
+    ctx.fillText(shortLabel(nm), cx, baselineY + nameZoneH * 0.5);
   }
   ctx.textAlign = "left";
   ctx.textBaseline = "alphabetic";
@@ -1911,9 +1940,9 @@ function drawRaceOrbit(ctx: CanvasRenderingContext2D, W: number, H: number, race
     setFont(ctx, fitText(ctx, fmtValueCompact(r.v, race), vpx, 800, lw), 800);
     ctx.fillStyle = SEAL;
     ctx.fillText(fmtValueCompact(r.v, race), lx, ly);
-    setFont(ctx, fitText(ctx, r.e.name, vpx * 0.82, 800, lw), 800);
+    setFont(ctx, fitText(ctx, shortLabel(r.e.name), vpx * 0.82, 800, lw), 800);
     ctx.fillStyle = INK;
-    ctx.fillText(r.e.name, lx, ly + vpx * 1.04);
+    ctx.fillText(shortLabel(r.e.name), lx, ly + vpx * 1.04);
   }
   ctx.textAlign = "left";
   ctx.textBaseline = "alphabetic";
@@ -2080,9 +2109,9 @@ function drawArenaScoreboard(
       drawEntityAvatar(ctx, leader.e, cx, avCy, avRad);
       ctx.restore();
       const nameY = avCy + avRad + min * 0.085;
-      setFont(ctx, fitText(ctx, leader.e.name, min * 0.07, 800, w - padIn * 1.2), 800);
+      setFont(ctx, fitText(ctx, shortLabel(leader.e.name), min * 0.07, 800, w - padIn * 1.2), 800);
       ctx.fillStyle = "#ffffff";
-      ctx.fillText(leader.e.name, cx, nameY);
+      ctx.fillText(shortLabel(leader.e.name), cx, nameY);
       const vStr = fmtValue(leader.v, race);
       const vpx = fitText(ctx, vStr, min * 0.1, 800, w - padIn * 1.2);
       setFont(ctx, vpx, 800);
@@ -2166,9 +2195,9 @@ function drawArenaScoreboard(
       drawEntityAvatar(ctx, leader.e, rcx, avCy, avRad);
       ctx.restore();
       ctx.textAlign = "center";
-      setFont(ctx, fitText(ctx, leader.e.name, h * 0.13, 800, zw), 800);
+      setFont(ctx, fitText(ctx, shortLabel(leader.e.name), h * 0.13, 800, zw), 800);
       ctx.fillStyle = "#ffffff";
-      ctx.fillText(leader.e.name, rcx, y + h * 0.79);
+      ctx.fillText(shortLabel(leader.e.name), rcx, y + h * 0.79);
       const vStr = fmtValue(leader.v, race);
       const vpx = fitText(ctx, vStr, h * 0.18, 800, zw);
       setFont(ctx, vpx, 800);
@@ -2359,7 +2388,7 @@ function drawRaceArena(ctx: CanvasRenderingContext2D, W: number, H: number, race
 
     // name (white inside, else light outside) + value (glowing)
     setFont(ctx, barH * 0.5, 800);
-    const nameW = ctx.measureText(r.e.name).width;
+    const nameW = ctx.measureText(shortLabel(r.e.name)).width;
     const innerAvail = w - flagW - ip * 2.4;
     let afterX: number;
     if (nameW <= innerAvail) {
@@ -2368,7 +2397,7 @@ function drawRaceArena(ctx: CanvasRenderingContext2D, W: number, H: number, race
       ctx.shadowBlur = barH * 0.14;
       ctx.textAlign = "right";
       ctx.fillStyle = "#ffffff";
-      ctx.fillText(r.e.name, X0 + w - flagW - ip * 1.6, yMid);
+      ctx.fillText(shortLabel(r.e.name), X0 + w - flagW - ip * 1.6, yMid);
       ctx.restore();
       afterX = X0 + w + ip * 1.3;
     } else {
@@ -2376,9 +2405,9 @@ function drawRaceArena(ctx: CanvasRenderingContext2D, W: number, H: number, race
       ctx.fillStyle = "#e8ecf2";
       setFont(ctx, barH * 0.48, 800);
       const nx = X0 + w + ip * 1.3;
-      ctx.fillText(r.e.name, nx, yMid);
+      ctx.fillText(shortLabel(r.e.name), nx, yMid);
       setFont(ctx, barH * 0.5, 800);
-      afterX = nx + ctx.measureText(r.e.name).width + ip * 0.9;
+      afterX = nx + ctx.measureText(shortLabel(r.e.name)).width + ip * 0.9;
     }
 
     // country-of-origin flag chip (round) for non-country entities
