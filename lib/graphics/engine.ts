@@ -18,9 +18,11 @@ const TRANS = 0.7; // cross-transition length (straddles the boundary)
 export function computeMotionTiming(spec: MotionSpec, narrations: (AudioBuffer | null)[], branded: boolean): MotionTiming {
   const sceneDurs = spec.scenes.map((s, i) => {
     const audio = narrations[i]?.duration ?? 0;
-    // a scene lasts as long as its narration + settle room; unvoiced scenes pace by content
-    const base = audio > 0 ? audio + 1.0 : 3.2 + Math.min(3, (s.elements?.length || 0)) * 0.9;
-    return Math.max(3.4, base);
+    // a scene lasts as long as its narration + a TIGHT settle (0.25 lead + 0.35
+    // tail): a 1.0s budget measured out to ~1.4s of dead air at every join —
+    // the single biggest reason stitched narration sounded choppy
+    const base = audio > 0 ? audio + 0.6 : 3.2 + Math.min(3, (s.elements?.length || 0)) * 0.9;
+    return Math.max(3.2, base);
   });
   const sceneStarts: number[] = [];
   let acc = 0;
@@ -1389,6 +1391,9 @@ function drawScene(ctx: CanvasRenderingContext2D, W: number, H: number, spec: Mo
   const min = Math.min(W, H);
   const flavor = scene.bg || BG_CYCLE[idx % BG_CYCLE.length];
   drawBg(ctx, W, H, pal, flavor, sc + idx * 3.7, idx + 1, energy);
+  // chapter-opener scenes host the chapter card in the lower-left — reserve that
+  // strip for the WHOLE scene (a constant rect; elements must never jump mid-scene)
+  const reserve = spec.chapters?.some((c) => c.at === idx && c.title) ? min * 0.11 : 0;
 
   // gentle camera: slow zoom-in + micro drift (professional "always moving")
   ctx.save();
@@ -1411,11 +1416,11 @@ function drawScene(ctx: CanvasRenderingContext2D, W: number, H: number, spec: Mo
       const startY = els.length ? H * 0.2 : (H - blockH) / 2 + headPx;
       drawHeadline(ctx, scene, pal, pad, startY, W - pad * 2, sc, "center", headPx * 1.15);
       if (els.length) {
-        const r: Rect = { x: pad, y: startY + blockH * 0.6, w: W - pad * 2, h: H - (startY + blockH * 0.6) - pad * 1.6 };
+        const r: Rect = { x: pad, y: startY + blockH * 0.6, w: W - pad * 2, h: H - (startY + blockH * 0.6) - pad * 1.6 - reserve };
         els.slice(0, 1).forEach((el) => drawElement(ctx, el, pal, r, sc, 0.5, dur, vertical, media));
       }
     } else if (els.length) {
-      const r: Rect = { x: pad, y: pad * 1.5, w: W - pad * 2, h: H - pad * 3.4 };
+      const r: Rect = { x: pad, y: pad * 1.5, w: W - pad * 2, h: H - pad * 3.4 - reserve };
       els.slice(0, 1).forEach((el) => drawElement(ctx, el, pal, r, sc, 0.3, dur, vertical, media));
     }
   } else if (layout === "split" && !vertical) {
@@ -1431,18 +1436,18 @@ function drawScene(ctx: CanvasRenderingContext2D, W: number, H: number, spec: Mo
     cy = drawHeadline(ctx, scene, pal, pad, cy, txtW - pad, sc, "left", headPx);
     let ty = cy + min * 0.03;
     for (const el of textEls) {
-      const h = H - ty - pad * 2;
+      const h = H - ty - pad * 2 - reserve;
       if (h < min * 0.08) break; // no room left below a tall headline — never draw into a negative rect
       const r: Rect = { x: pad, y: ty, w: txtW - pad, h };
       drawElement(ctx, el, pal, r, sc, 0.55, dur, false, media);
       ty += el.type === "bullets" ? Math.min((el.items?.length || 1) * min * 0.1, r.h) : min * 0.16;
     }
-    const vr: Rect = { x: txtW + pad * 0.5, y: pad * 1.4, w: W - txtW - pad * 1.8, h: H - pad * 3 };
+    const vr: Rect = { x: txtW + pad * 0.5, y: pad * 1.4, w: W - txtW - pad * 1.8, h: H - pad * 3 - reserve };
     visEls.slice(0, 1).forEach((el) => drawElement(ctx, el, pal, vr, sc, 0.45, dur, false, media));
   } else if (layout === "grid") {
     const cy = drawHeadline(ctx, scene, pal, pad, H * (vertical ? 0.13 : 0.17), W - pad * 2, sc, "center", headPx * 0.9);
     const gy = cy + min * 0.02;
-    const r: Rect = { x: pad, y: gy, w: W - pad * 2, h: H - gy - pad * 1.8 };
+    const r: Rect = { x: pad, y: gy, w: W - pad * 2, h: H - gy - pad * 1.8 - reserve };
     const n = Math.min(els.length, 3);
     if (n === 1) drawElement(ctx, els[0], pal, r, sc, 0.5, dur, vertical, media);
     else {
@@ -1463,7 +1468,7 @@ function drawScene(ctx: CanvasRenderingContext2D, W: number, H: number, spec: Mo
     if (hasHeadline) {
       // max 2 lines and a higher anchor so the lower-third headline can never
       // collide with the burned-in captions at the bottom edge
-      const y = H * 0.72;
+      const y = H * (reserve ? 0.66 : 0.72);
       ctx.save();
       const grad = ctx.createLinearGradient(0, H * 0.5, 0, H);
       grad.addColorStop(0, "rgba(0,0,0,0)");
@@ -1476,7 +1481,7 @@ function drawScene(ctx: CanvasRenderingContext2D, W: number, H: number, spec: Mo
   } else {
     // "stack" (default vertical): headline top, one visual below
     const cy = drawHeadline(ctx, scene, pal, pad, H * (vertical ? 0.14 : 0.18), W - pad * 2, sc, "center", headPx);
-    const r: Rect = { x: pad, y: cy + min * 0.025, w: W - pad * 2, h: H - cy - min * 0.025 - pad * (vertical ? 2.6 : 1.7) };
+    const r: Rect = { x: pad, y: cy + min * 0.025, w: W - pad * 2, h: H - cy - min * 0.025 - pad * (vertical ? 2.6 : 1.7) - reserve };
     els.slice(0, 2).forEach((el, i) => {
       const half = els.length > 1;
       const cell: Rect = half ? { x: r.x, y: r.y + (r.h / 2) * i, w: r.w, h: r.h / 2 - pad * 0.2 } : r;
@@ -1613,41 +1618,75 @@ function mentionWindows(scene: MotionScene, words: CaptionWord[], dur: number, s
     .sort((a, b) => a.start - b.start);
   const out: MentionWindow[] = [];
   for (let i = 0; i < raw.length; i++) {
-    const start = Math.max(0.9, Math.min(raw[i].start, dur - 1.6));
-    const nextAt = i < raw.length - 1 ? Math.max(0.9, Math.min(raw[i + 1].start, dur - 1.6)) : Infinity;
-    const end = Math.min(start + 4.2, nextAt - 0.25, dur - 0.45);
-    if (end - start < 1.2) continue; // too squeezed to register — skip, don't flash
+    const start = Math.max(0.55, Math.min(raw[i].start, dur - 1.5));
+    const nextAt = i < raw.length - 1 ? Math.max(0.55, Math.min(raw[i + 1].start, dur - 1.5)) : Infinity;
+    const end = Math.min(start + 4.2, nextAt - 0.25, dur - 0.4);
+    if (end - start < 1.0) continue; // too squeezed to register — skip, don't flash
     out.push({ start, end, term: raw[i].m.term, url: raw[i].m.imageUrl!, tilt: ((sceneIdx + i) % 2 ? 1 : -1) * 0.035 });
   }
   return out;
 }
 
-/** A polaroid-style documentary insert: white print frame, cover-fit photo with a
- *  slow push-in, the term on the frame's chin. Center stage (with a soft scrim)
- *  when the scene is graphics-led; a corner card when footage/UI already leads. */
+/** A documentary CUT. Graphics-led scenes cut to the photo FULL-BLEED (Ken Burns,
+ *  cinematic grade, the term on a lower-third) — a real edit, so it can never
+ *  collide with the scene's own elements. Footage/UI-led scenes instead get a
+ *  small polaroid in a corner, leaving their stage alone. */
 function drawMentionCard(ctx: CanvasRenderingContext2D, W: number, H: number, pal: Pal, win: MentionWindow, sc: number, img: HTMLImageElement | null, corner: boolean) {
   if (!img || !img.width) return;
   if (sc < win.start || sc > win.end) return;
-  const p = seg(sc, win.start, 0.5);
-  const outP = seg(sc, win.end - 0.35, 0.35);
+  const p = seg(sc, win.start, 0.35);
+  const outP = seg(sc, win.end - 0.3, 0.3);
   const alpha = outCubic(p) * (1 - outP);
   if (alpha <= 0) return;
   const min = Math.min(W, H);
-  const size = corner ? min * 0.3 : min * 0.5;
-  const cx = corner ? W - size / 2 - min * 0.06 : W / 2;
-  const cy = corner ? (H > W ? H * 0.52 : H - size / 2 - min * 0.16) : H > W ? H * 0.45 : H * 0.44;
 
+  if (!corner) {
+    // ── full-bleed archival cut ──
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    // cover-fit with a slow push-in across the whole hold
+    const prog = clamp01((sc - win.start) / Math.max(0.5, win.end - win.start));
+    const k = 1.05 + 0.06 * prog;
+    const s = Math.max((W / img.width) * k, (H / img.height) * k);
+    const dx = W / 2 - (img.width * s) / 2 + Math.sin(win.tilt * 40) * W * 0.01 * prog;
+    const dy = H / 2 - (img.height * s) / 2;
+    ctx.drawImage(img, dx, dy, img.width * s, img.height * s);
+    // cinematic grade: soft dark edges + a lower-third bed for the label
+    const vg = ctx.createRadialGradient(W / 2, H * 0.42, min * 0.3, W / 2, H * 0.5, Math.hypot(W, H) * 0.62);
+    vg.addColorStop(0, "rgba(0,0,0,0)");
+    vg.addColorStop(1, "rgba(0,0,0,0.42)");
+    ctx.fillStyle = vg;
+    ctx.fillRect(0, 0, W, H);
+    const grad = ctx.createLinearGradient(0, H * 0.62, 0, H);
+    grad.addColorStop(0, "rgba(0,0,0,0)");
+    grad.addColorStop(1, "rgba(4,6,12,0.78)");
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, H * 0.62, W, H * 0.38);
+    // lower-third: accent tick + term (rises in with the cut)
+    const lp = outExpo(seg(sc, win.start + 0.12, 0.45));
+    ctx.globalAlpha = alpha * lp;
+    const px = min * 0.052;
+    const lx = min * 0.075;
+    const ly = H - min * 0.075 - px * 2.2 + (1 - lp) * px * 0.6; // clear of the caption band
+    ctx.fillStyle = pal.accent;
+    ctx.fillRect(lx, ly - px * 0.82, px * 0.16, px * 1.05);
+    setFont(ctx, fitPx(ctx, win.term, px, 900, W - lx * 2 - px), 900);
+    ctx.fillStyle = "#ffffff";
+    ctx.shadowColor = "rgba(0,0,0,0.55)";
+    ctx.shadowBlur = px * 0.35;
+    ctx.fillText(win.term, lx + px * 0.45, ly);
+    ctx.shadowColor = "transparent";
+    ctx.restore();
+    return;
+  }
+
+  // ── corner polaroid (footage/UI scenes keep their stage) ──
+  const size = min * 0.3;
+  const cx = W - size / 2 - min * 0.06;
+  const cy = H > W ? H * 0.52 : H - size / 2 - min * 0.16;
   ctx.save();
   ctx.globalAlpha = alpha;
-  if (!corner) {
-    // scrim: the scene dims and the cutaway takes the room's attention
-    const scrim = ctx.createRadialGradient(cx, cy, size * 0.4, cx, cy, Math.hypot(W, H) * 0.6);
-    scrim.addColorStop(0, "rgba(4,5,10,0.62)");
-    scrim.addColorStop(1, "rgba(4,5,10,0.5)");
-    ctx.fillStyle = scrim;
-    ctx.fillRect(0, 0, W, H);
-  }
-  const e = outBack(p);
+  const e = outBack(seg(sc, win.start, 0.5));
   const settle = 1 - outP * 0.04;
   ctx.translate(cx, cy);
   ctx.rotate(win.tilt * (1 - p * 0.35)); // eases toward level as it lands

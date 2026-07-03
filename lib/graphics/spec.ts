@@ -90,9 +90,9 @@ export const sceneSchema = z.object({
         imageUrl: z.string().optional().describe("Filled by the server — never set this yourself."),
       })
     )
-    .max(3)
+    .max(4)
     .optional()
-    .describe("Documentary cutaways: EVERY named person/place/org/artifact/event in the narration gets one — the viewer must SEE what they hear, timed to the word. Skip only what the scene's main visual already shows."),
+    .describe("Documentary cutaways: EVERY named person/place/org/artifact/event in the narration gets one — if a viewer could Google it, SHOW it, timed to the word. Skip only what the scene's main visual already shows."),
 });
 export type MotionScene = z.infer<typeof sceneSchema>;
 export type MotionMention = NonNullable<MotionScene["mentions"]>[number];

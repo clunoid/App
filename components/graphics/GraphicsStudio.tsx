@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Clapperboard, History, Loader2, Sparkles, Trash2, Wand2, Crown, Shuffle } from "lucide-react";
+import dynamic from "next/dynamic";
+import { ArrowLeft, Clapperboard, Film, History, Loader2, Smartphone, Monitor, Sparkles, Trash2, Wand2, Crown, Shuffle } from "lucide-react";
 import { DocumentBackground } from "@/components/games/DocumentBackground";
 import { HostVoicePicker } from "@/components/games/HostVoicePicker";
 import { ShareModal } from "@/components/share/ShareModal";
@@ -30,6 +31,16 @@ const LENGTHS: { sec: number; label: string; hint: string }[] = [
 
 const INK = "#2c2823"; // primary text — matches the document theme (Stat Battle)
 const ACCENT = "#6d28d9"; // deep violet — the motion-graphics accent on warm paper
+
+// Remotion-powered live preview (client-only; heavy — load on demand)
+const MotionPreview = dynamic(() => import("./MotionPreview").then((m) => m.MotionPreview), {
+  ssr: false,
+  loading: () => (
+    <div className="grid aspect-video w-full place-items-center rounded-xl bg-black/80">
+      <Loader2 size={26} className="animate-spin text-white/60" />
+    </div>
+  ),
+});
 
 // Seed ideas — used ONLY as an offline fallback if the AI suggestion call fails.
 // The live experience pulls fresh, randomized ideas from the model on every click.
@@ -68,6 +79,8 @@ export function GraphicsStudio({ initialRequest }: { initialRequest?: string }) 
   const [snap, setSnap] = useState<GraphicsSnapshot | null>(null);
   const [videoId, setVideoId] = useState<string | undefined>(undefined);
   const [shareOpen, setShareOpen] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewAspect, setPreviewAspect] = useState<ReelAspect>("9:16");
   const [histOpen, setHistOpen] = useState(false);
   const [hist, setHist] = useState<SavedGraphics[] | null>(null);
   const taRef = useRef<HTMLTextAreaElement | null>(null);
@@ -193,7 +206,7 @@ export function GraphicsStudio({ initialRequest }: { initialRequest?: string }) 
     const id = await saveGraphicsVideo(s); // history, like games + stat battles
     setSnap(s);
     setVideoId(id ?? undefined);
-    setShareOpen(true);
+    setPreviewOpen(true); // WATCH the design first — the render is a click away
   }, [request, planning, durationSec, openUpgrade]);
 
   const openSaved = useCallback((g: SavedGraphics) => {
@@ -203,7 +216,7 @@ export function GraphicsStudio({ initialRequest }: { initialRequest?: string }) 
     setSnap(g.data);
     setVideoId(g.id);
     setHistOpen(false);
-    setShareOpen(true);
+    setPreviewOpen(true);
   }, []);
 
   const spec: MotionSpec | null = snap?.spec ?? null;
@@ -417,6 +430,60 @@ export function GraphicsStudio({ initialRequest }: { initialRequest?: string }) 
                 ))}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* live preview — watch the whole design (Remotion Player + the real engine)
+          before spending anything on narration + the render */}
+      {previewOpen && spec && (
+        <div className="fixed inset-0 z-40 flex flex-col overflow-y-auto" style={{ background: "rgba(15,13,20,0.97)", backdropFilter: "blur(6px)" }}>
+          <div className="mx-auto flex w-full max-w-3xl items-center justify-between px-4 py-4 sm:px-6">
+            <div className="min-w-0">
+              <h2 className="truncate text-xl font-extrabold text-white">{spec.title}</h2>
+              <p className="text-[12px] text-white/50">Preview — pacing is estimated; the real render follows the narration, and footage plays live.</p>
+            </div>
+            <button type="button" onClick={() => setPreviewOpen(false)} className="ml-3 shrink-0 rounded-full bg-white/10 px-4 py-1.5 text-sm font-extrabold text-white/85 transition hover:bg-white/20">
+              Close
+            </button>
+          </div>
+          <div className="mx-auto w-full max-w-3xl flex-1 px-4 pb-10 sm:px-6">
+            <div className="mb-3 flex items-center gap-2">
+              {(
+                [
+                  { a: "9:16" as ReelAspect, label: "Vertical", Icon: Smartphone },
+                  { a: "16:9" as ReelAspect, label: "Wide", Icon: Monitor },
+                ]
+              ).map(({ a, label, Icon }) => (
+                <button
+                  key={a}
+                  type="button"
+                  onClick={() => setPreviewAspect(a)}
+                  aria-pressed={previewAspect === a}
+                  className="flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[13px] font-extrabold transition"
+                  style={previewAspect === a ? { background: "#a78bfa", color: "#17111f" } : { background: "rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.8)" }}
+                >
+                  <Icon size={15} /> {label}
+                </button>
+              ))}
+            </div>
+            <div className={previewAspect === "9:16" ? "mx-auto max-w-[340px]" : "w-full"}>
+              <MotionPreview key={previewAspect + (videoId || "")} spec={spec} aspect={previewAspect} />
+            </div>
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setPreviewOpen(false);
+                  setShareOpen(true);
+                }}
+                className="flex items-center gap-2 rounded-full px-6 py-3 text-[15px] font-extrabold text-white shadow-xl transition hover:scale-[1.02]"
+                style={{ background: "linear-gradient(120deg, #7c3aed 0%, #9333ea 50%, #db2777 100%)" }}
+              >
+                <Film size={18} /> Create video file
+              </button>
+              <p className="text-[12px] text-white/45">Narration is billed per line when the file is created.</p>
+            </div>
           </div>
         </div>
       )}

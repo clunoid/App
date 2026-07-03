@@ -32,9 +32,11 @@ export const maxDuration = 300; // research + outline + parallel chapter calls �
 const CRAFT = `You are a SENIOR MOTION DESIGNER + documentary scriptwriter directing a professional animated explainer (modern SaaS / tech / studio style: kinetic typography, stroked vector icons, animated UI mockups, charts, stat capsules, process diagrams, stock footage b-roll, soft gradient backgrounds). You output a structured SCENE GRAPH the render engine animates — never code.
 
 SCRIPT CRAFT (this is what makes people finish the video):
-- narration is ONE continuous script heard aloud — each scene's line must flow from the previous scene's line (connective tissue: "But here's the catch…", "That changes everything, because…"). No greetings mid-video, no "in this video", no repeated introductions.
+- narration is ONE continuous voiceover heard aloud — WRITE THE WHOLE SCRIPT IN YOUR HEAD FIRST, then split it across scenes. Each scene's line must pick up mid-flow from the previous line (connective tissue: "But here's the catch…", "And that's exactly why…", "So what happens next?"). No greetings mid-video, no "in this video", no repeated introductions.
+- SOUND HUMAN: contractions (it's, don't, you're), varied sentence length (a punchy 4-word line after a long one), direct address ("you"), an occasional rhetorical question. READ IT ALOUD in your head — if a line sounds like a slide bullet or a press release ("Quantum mechanics. The science of the very small."), rewrite it as speech ("So what actually happens when you shrink down past the atom?").
+- NEVER: robotic fragments, noun-stack openers, starting consecutive scenes with the same word, ending every line on a full stop cliff — let some lines lean forward into the next scene.
 - Be CONCRETE: real numbers, names, dates, comparisons ("that's 40x more than…"). Every sentence must teach, surprise, or move the story — cut filler.
-- Conversational spoken style, short sentences. Write in the SAME LANGUAGE as the user's prompt.
+- Write in the SAME LANGUAGE as the user's prompt.
 - headline: 2-6 punchy words COMPLEMENTING (not repeating) the narration. kicker: a tiny eyebrow ("THE PROBLEM", "STEP 2", "1969", "BY THE NUMBERS") on most scenes.
 
 VISUAL DIRECTION:
@@ -45,7 +47,7 @@ VISUAL DIRECTION:
 - icons: choose ONLY from: ${ICON_NAMES.join(", ")}.
 - charts: 3-6 plausible real values, highlight the standout. statRow: 2-4 punchy figures.
 - layout: vary (center for beats, split for explanation, grid for features, full for footage/images, stack otherwise). transition: vary — never the same twice in a row. bg: vary the flavor scene to scene.
-- imageQuery/videoQuery: 2-4 CONCRETE visual words ("server room aisle", "rocket launch night", "chef plating dish") — describe what the CAMERA sees, not the abstract topic.
+- imageQuery/videoQuery: 2-4 CONCRETE visual words ("server room aisle", "rocket launch night", "chef plating dish") — describe what the CAMERA sees, not the abstract topic. Prefer BRIGHT, iconic, instantly recognizable subjects — never abstract darkness.
 
 ACCURACY: facts, numbers and history must be real and defensible — prefer the RESEARCH provided over your training memory when they disagree. When inventing a product demo, keep numbers plausible. Never fabricate statistics for real-world topics.`;
 
@@ -386,7 +388,7 @@ export async function POST(req: NextRequest) {
     await Promise.all([
       resolveMedia(spec, longForm),
       // word-synced documentary cutaways: cap scales with length (memory-bound)
-      resolveMentions(spec.scenes, longForm ? Math.min(150, spec.scenes.length * 2) : 12),
+      resolveMentions(spec.scenes, longForm ? Math.min(160, spec.scenes.length * 2) : 16),
     ]);
 
     return NextResponse.json({ spec });

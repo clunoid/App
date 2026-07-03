@@ -14,11 +14,15 @@ export type SceneNarration = { buf: AudioBuffer | null; words: CaptionWord[] };
 
 /** How far into a scene the narration starts (settle room after the transition-in).
  *  ONE constant shared by the mix (audio placement) and the caption word times, so
- *  the karaoke highlight can never drift from the voice. */
-export const NARRATION_LEAD = 0.35;
+ *  the karaoke highlight can never drift from the voice. Kept tight — a measured
+ *  1.4s of dead air per scene join is what makes narration feel choppy; 0.25 in +
+ *  0.6 tail reads like a documentary J-cut instead. */
+export const NARRATION_LEAD = 0.25;
 
-/** Fetch one narration line, keeping char timestamps when the voice provides them. */
-async function ttsLine(ac: AudioContext, text: string, signal?: AbortSignal): Promise<{ buf: AudioBuffer | null; chars?: string[]; times?: number[] }> {
+/** Fetch one narration line, keeping char timestamps when the voice provides them.
+ *  `flow` carries the surrounding script lines so the voice keeps prosody
+ *  continuity across per-scene calls (no cold restarts at every join). */
+async function ttsLine(ac: AudioContext, text: string, signal?: AbortSignal, flow?: { prev?: string; next?: string }): Promise<{ buf: AudioBuffer | null; chars?: string[]; times?: number[] }> {
   if (!text.trim()) return { buf: null };
   const voice = getVideoVoicePref();
   if (voice === "silent") return { buf: null };
@@ -28,7 +32,7 @@ async function ttsLine(ac: AudioContext, text: string, signal?: AbortSignal): Pr
       const res = await fetch("/api/tts", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ text, feature: "video", voice }),
+        body: JSON.stringify({ text, feature: "video", voice, ...(flow ? { flow } : {}) }),
         signal,
       });
       if (res.status === 204) return { buf: null };
@@ -101,7 +105,9 @@ export async function fetchNarrations(ac: AudioContext, spec: MotionSpec, onProg
       if (signal?.aborted) throw new DOMException("aborted", "AbortError");
       const i = next++;
       const text = spec.scenes[i].narration;
-      const r = await ttsLine(ac, text, signal);
+      // surrounding lines → ElevenLabs prosody continuity across scene joins
+      const flow = { prev: spec.scenes[i - 1]?.narration, next: spec.scenes[i + 1]?.narration };
+      const r = await ttsLine(ac, text, signal, flow);
       out[i] = { buf: r.buf, words: wordsFrom(text, r.buf, r.chars, r.times) };
       done++;
       onProgress?.(done, spec.scenes.length);

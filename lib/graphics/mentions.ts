@@ -45,8 +45,8 @@ export function anchorWordIndex(narration: string, anchor: string, ordinal: numb
   return Math.min(words.length - 1, Math.round(((ordinal + 1) / (total + 1)) * words.length));
 }
 
-/** Wikipedia best-match lead thumbnail (CORS-safe), sized for a hero cutaway. */
-async function wikiThumb(query: string, px = 800): Promise<string | null> {
+/** Wikipedia best-match lead thumbnail (CORS-safe), sized for a FULL-BLEED cut. */
+async function wikiThumb(query: string, px = 1100): Promise<string | null> {
   try {
     const res = await fetch(
       `https://en.wikipedia.org/w/api.php?action=query&format=json&prop=pageimages&piprop=thumbnail&pithumbsize=${px}&generator=search&gsrlimit=1&gsrsearch=${encodeURIComponent(query)}`,
@@ -69,16 +69,16 @@ async function resolveOne(m: MotionMention): Promise<string | null> {
     const wiki = (await wikiThumb(m.term)) || (m.query !== m.term ? await wikiThumb(m.query) : null);
     if (wiki) return wiki;
     if (hasPexels()) {
-      const p = await pexelsPhotos(m.query, 1);
-      if (p[0]) return p[0];
+      const p = (await pexelsPhotos(m.query, 1))[0] || (await pexelsPhotos(m.term, 1))[0];
+      if (p) return p;
     }
   } else {
     // concrete things/events: real photography first, encyclopedia second
     if (hasPexels()) {
-      const p = await pexelsPhotos(m.query, 1);
-      if (p[0]) return p[0];
+      const p = (await pexelsPhotos(m.query, 1))[0] || (m.term !== m.query ? (await pexelsPhotos(m.term, 1))[0] : undefined);
+      if (p) return p;
     }
-    const wiki = await wikiThumb(m.term);
+    const wiki = (await wikiThumb(m.term)) || (m.query !== m.term ? await wikiThumb(m.query) : null);
     if (wiki) return wiki;
   }
   // last resort — may not be CORS-safe; the client probe simply skips it then

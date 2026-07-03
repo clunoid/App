@@ -130,13 +130,20 @@ export async function POST(req: NextRequest) {
   let text = "";
   let feature = "";
   let voice = "";
+  // flow: the surrounding script lines (motion-graphics narration sends these so
+  // ElevenLabs keeps PROSODY CONTINUITY across per-scene calls — without them each
+  // line restarts cold and the stitched narration sounds choppy).
+  let flow: { prev?: string; next?: string } | undefined;
   try {
-    ({ text, feature = "", voice = "" } = await req.json());
+    ({ text, feature = "", voice = "", flow } = await req.json());
   } catch {
     return new Response(null, { status: 400 });
   }
   if (!text?.trim()) return new Response(null, { status: 204 });
   if (text.length > INPUT_CAPS.ttsChars) text = text.slice(0, INPUT_CAPS.ttsChars);
+  const prevText = typeof flow?.prev === "string" ? flow.prev.slice(-300) : undefined;
+  const nextText = typeof flow?.next === "string" ? flow.next.slice(0, 300) : undefined;
+  const narrationMode = !!(prevText || nextText); // long-form documentary narration
 
   const clunoidVoice = CLUNOID_VOICE_MAP[voice.toLowerCase()];
   const supabase = await getSupabaseServer();
@@ -179,13 +186,26 @@ export async function POST(req: NextRequest) {
       body: JSON.stringify({
         text,
         model_id: "eleven_turbo_v2_5",
-        voice_settings: {
-          stability: 0.35, // more dynamic / expressive
-          similarity_boost: 0.8,
-          style: 0.5, // livelier
-          use_speaker_boost: true,
-          speed: 1.08, // a touch quicker — not slow
-        },
+        // Long-form narration (motion graphics) reads calmer and steadier than the
+        // punchy game-recap delivery: higher stability, less style wobble, natural
+        // pace — plus the surrounding lines so prosody flows across scene joins.
+        ...(prevText ? { previous_text: prevText } : {}),
+        ...(nextText ? { next_text: nextText } : {}),
+        voice_settings: narrationMode
+          ? {
+              stability: 0.5, // steady documentary read
+              similarity_boost: 0.8,
+              style: 0.3, // subtle expressiveness — no wobble
+              use_speaker_boost: true,
+              speed: 1.0, // natural pace
+            }
+          : {
+              stability: 0.35, // more dynamic / expressive
+              similarity_boost: 0.8,
+              style: 0.5, // livelier
+              use_speaker_boost: true,
+              speed: 1.08, // a touch quicker — not slow
+            },
       }),
     });
     if (res.ok) {
