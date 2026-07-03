@@ -7,7 +7,8 @@ import { ArrowLeft, Clapperboard, Film, History, Loader2, Smartphone, Monitor, S
 import { DocumentBackground } from "@/components/games/DocumentBackground";
 import { HostVoicePicker } from "@/components/games/HostVoicePicker";
 import { ShareModal } from "@/components/share/ShareModal";
-import { preflightGraphics, planGraphics, suggestGraphicsIdeas } from "@/lib/graphics/generate";
+import { GraphicsGate, useGraphicsGate } from "@/components/graphics/GraphicsGate";
+import { planGraphics, suggestGraphicsIdeas } from "@/lib/graphics/generate";
 import { renderMotionVideo } from "@/lib/graphics/render";
 import { saveGraphicsVideo, listGraphicsVideos, deleteGraphicsVideo, type SavedGraphics, type GraphicsSnapshot } from "@/lib/graphics/storage";
 import { deleteGameVideo } from "@/lib/games/videoStore";
@@ -99,6 +100,9 @@ export function GraphicsStudio({ initialRequest }: { initialRequest?: string }) 
   const openUpgrade = useBilling((s) => s.openUpgrade);
   const isSubscriber = plan === "pro" || plan === "max";
   const locked = loaded && !isSubscriber && (purchased || 0) <= 0;
+  // bypass-proof visible verification (auth + plan/credit access + affordability),
+  // with a busy re-entry guard so a double-click can't fire two paid plans
+  const { gate, runGate } = useGraphicsGate();
 
   // The prompt box grows with its content.
   useEffect(() => {
@@ -165,16 +169,17 @@ export function GraphicsStudio({ initialRequest }: { initialRequest?: string }) 
     const req = request.trim();
     if (!req || planning) return;
     setErr("");
-    setPlanning(true);
-    // VERIFY before Opus — auth + plan access + credits (no charge).
-    const pre = await preflightGraphics(req, durationSec);
-    if (!pre.ok) {
-      setPlanning(false);
-      if (pre.reason === "plan") openUpgrade(UPGRADE_MSG);
-      else if (pre.reason === "credits") openUpgrade("You don't have enough credits for this video length. Add credits or subscribe to keep creating.");
-      else if (pre.reason === "auth") setErr("Please sign in to generate a video.");
-      return;
+    // VISIBLE VERIFY before anything is activated — server-side auth + plan access +
+    // affordability, NO charge and NO Opus (the plan route still atomically charges,
+    // so this can never be a bypass). The gate's busy ref blocks double-fires.
+    const g = await runGate(req, durationSec);
+    if (!g.ok) {
+      if (g.reason === "plan") openUpgrade(UPGRADE_MSG);
+      else if (g.reason === "credits") openUpgrade("You don't have enough credits for this video length. Add credits or subscribe to keep creating.");
+      else if (g.reason === "auth") setErr("Please sign in to generate a video.");
+      return; // no reason → busy re-entry, silently ignore the double-fire
     }
+    setPlanning(true);
     // long-form runs research → script → chapters; narrate the wait honestly
     const stages = durationSec > 150
       ? ["Researching your topic…", "Writing the script…", "Designing chapters…", "Designing scenes…", "Casting visuals…"]
@@ -207,7 +212,7 @@ export function GraphicsStudio({ initialRequest }: { initialRequest?: string }) 
     setSnap(s);
     setVideoId(id ?? undefined);
     setPreviewOpen(true); // WATCH the design first — the render is a click away
-  }, [request, planning, durationSec, openUpgrade]);
+  }, [request, planning, durationSec, openUpgrade, runGate]);
 
   const openSaved = useCallback((g: SavedGraphics) => {
     // Re-render with the voice the video was ORIGINALLY made with (not whatever the
@@ -250,7 +255,8 @@ export function GraphicsStudio({ initialRequest }: { initialRequest?: string }) 
         <History size={16} /> <span className="text-[13px] font-extrabold">Videos</span>
       </button>
 
-      <div className="relative z-10 flex w-full max-w-lg flex-col items-center">
+      <div className="relative z-10 flex w-full max-w-lg flex-col items-center lg:max-w-5xl">
+        {/* hero — centered across the full width */}
         <Clapperboard size={40} style={{ color: ACCENT }} />
         <h1 className="mt-2 text-4xl font-extrabold leading-none tracking-tight sm:text-5xl" style={{ color: INK }}>
           Motion <span style={{ color: ACCENT }}>Graphics</span>
@@ -263,7 +269,7 @@ export function GraphicsStudio({ initialRequest }: { initialRequest?: string }) 
         </p>
 
         {locked && (
-          <div className="mt-4 flex w-full flex-col items-center gap-2 rounded-2xl px-4 py-3" style={{ background: "rgba(109,40,217,0.10)", border: "1px solid rgba(109,40,217,0.28)" }}>
+          <div className="mt-4 flex w-full max-w-lg flex-col items-center gap-2 rounded-2xl px-4 py-3" style={{ background: "rgba(109,40,217,0.10)", border: "1px solid rgba(109,40,217,0.28)" }}>
             <p className="text-[13px] font-bold" style={{ color: "#4c1d95" }}>This studio runs on our most powerful AI. Subscribe to Pro or Max — or add credits — to unlock it.</p>
             <button type="button" onClick={() => openUpgrade(UPGRADE_MSG)} className="rounded-full px-4 py-1.5 text-[12px] font-extrabold text-white transition hover:brightness-110" style={{ background: ACCENT }}>
               Unlock
@@ -276,107 +282,116 @@ export function GraphicsStudio({ initialRequest }: { initialRequest?: string }) 
             e.preventDefault();
             void generate();
           }}
-          className="mt-5 w-full"
+          className="mt-5 w-full lg:mt-8"
         >
-          {/* main, extending prompt box */}
-          <div className="flex w-full items-start gap-2 rounded-2xl px-4 py-3 backdrop-blur" style={{ background: "rgba(0,0,0,0.1)" }}>
-            <Clapperboard size={18} className="mt-1 shrink-0 text-[#2c2823]/60" />
-            <textarea
-              ref={taRef}
-              value={request}
-              onChange={(e) => setRequest(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                  e.preventDefault();
-                  void generate();
-                }
-              }}
-              rows={2}
-              maxLength={4000}
-              placeholder="Describe your video — e.g. Explain how AI works · Create a product launch video · History of Ancient Rome. Long videos can take a full brief: facts to include, chapters you want, tone."
-              className="w-full resize-none bg-transparent text-[15px] font-bold leading-snug text-[#2c2823] outline-none placeholder:font-medium placeholder:text-[#2c2823]/50"
-            />
-          </div>
+          {/* On desktop: two columns filling the width — "what & how long" on the
+              left, the narration console on the right. On mobile: one stacked column
+              (prompt → suggest → length → voice → generate), so the flow reads top-down. */}
+          <div className="flex flex-col gap-5 text-left lg:grid lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start lg:gap-10">
+            {/* LEFT — the idea + length */}
+            <div className="flex flex-col">
+              {/* main, extending prompt box */}
+              <div className="flex w-full items-start gap-2 rounded-2xl px-4 py-3 backdrop-blur" style={{ background: "rgba(0,0,0,0.1)" }}>
+                <Clapperboard size={18} className="mt-1 shrink-0 text-[#2c2823]/60" />
+                <textarea
+                  ref={taRef}
+                  value={request}
+                  onChange={(e) => setRequest(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                      e.preventDefault();
+                      void generate();
+                    }
+                  }}
+                  rows={2}
+                  maxLength={4000}
+                  placeholder="Describe your video — e.g. Explain how AI works · Create a product launch video · History of Ancient Rome. Long videos can take a full brief: facts to include, chapters you want, tone."
+                  className="w-full resize-none bg-transparent text-[15px] font-bold leading-snug text-[#2c2823] outline-none placeholder:font-medium placeholder:text-[#2c2823]/50"
+                />
+              </div>
 
-          {/* AI idea helper — click for a fresh idea, keep clicking until one clicks */}
-          <div className="mt-2.5 flex flex-wrap items-center justify-center gap-2">
-            <button
-              type="button"
-              onClick={() => void suggest()}
-              disabled={suggesting}
-              className="flex items-center gap-1.5 rounded-full px-3.5 py-2 text-[13px] font-extrabold text-[#2c2823] transition hover:opacity-80 disabled:opacity-50"
-              style={{ background: "rgba(0,0,0,0.08)" }}
-            >
-              {suggesting ? <Loader2 size={15} className="animate-spin" /> : <Shuffle size={15} />} Suggest an idea
-            </button>
-            {request.trim() && (
-              <button
-                type="button"
-                onClick={() => {
-                  setRequest("");
-                  taRef.current?.focus();
-                }}
-                className="rounded-full px-3.5 py-2 text-[13px] font-extrabold text-[#2c2823]/70 transition hover:opacity-80"
-                style={{ background: "rgba(0,0,0,0.05)" }}
-              >
-                Clear
-              </button>
-            )}
-          </div>
-          <p className="mt-1.5 text-[11px] leading-relaxed text-[#2c2823]/50">
-            Fresh AI ideas every click — across science, tech, history, business &amp; more.
-          </p>
-
-          {/* video length — Auto is a ~1-min short; longer lengths run the full
-              research → script → chapters production pipeline */}
-          <div className="mt-4 w-full text-left">
-            <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-[#2c2823]/50">Video length</p>
-            <div className="flex flex-wrap gap-1.5">
-              {LENGTHS.map((l) => {
-                const sel = durationSec === l.sec;
-                return (
+              {/* AI idea helper — click for a fresh idea, keep clicking until one clicks */}
+              <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => void suggest()}
+                  disabled={suggesting}
+                  className="flex items-center gap-1.5 rounded-full px-3.5 py-2 text-[13px] font-extrabold text-[#2c2823] transition hover:opacity-80 disabled:opacity-50"
+                  style={{ background: "rgba(0,0,0,0.08)" }}
+                >
+                  {suggesting ? <Loader2 size={15} className="animate-spin" /> : <Shuffle size={15} />} Suggest an idea
+                </button>
+                {request.trim() && (
                   <button
-                    key={l.sec}
                     type="button"
-                    onClick={() => setDurationSec(l.sec)}
-                    aria-pressed={sel}
-                    className="rounded-full px-3 py-1.5 text-[12px] font-extrabold transition hover:opacity-85"
-                    style={sel ? { background: ACCENT, color: "#fff" } : { background: "rgba(0,0,0,0.08)", color: INK }}
+                    onClick={() => {
+                      setRequest("");
+                      taRef.current?.focus();
+                    }}
+                    className="rounded-full px-3.5 py-2 text-[13px] font-extrabold text-[#2c2823]/70 transition hover:opacity-80"
+                    style={{ background: "rgba(0,0,0,0.05)" }}
                   >
-                    {l.label}
-                    {l.hint ? <span className="font-bold opacity-70"> · {l.hint}</span> : null}
+                    Clear
                   </button>
-                );
-              })}
+                )}
+              </div>
+              <p className="mt-1.5 text-[11px] leading-relaxed text-[#2c2823]/50">
+                Fresh AI ideas every click — across science, tech, history, business &amp; more.
+              </p>
+
+              {/* video length — Auto is a ~1-min short; longer lengths run the full
+                  research → script → chapters production pipeline */}
+              <div className="mt-4 w-full">
+                <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-[#2c2823]/50">Video length</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {LENGTHS.map((l) => {
+                    const sel = durationSec === l.sec;
+                    return (
+                      <button
+                        key={l.sec}
+                        type="button"
+                        onClick={() => setDurationSec(l.sec)}
+                        aria-pressed={sel}
+                        className="rounded-full px-3 py-1.5 text-[12px] font-extrabold transition hover:opacity-85"
+                        style={sel ? { background: ACCENT, color: "#fff" } : { background: "rgba(0,0,0,0.08)", color: INK }}
+                      >
+                        {l.label}
+                        {l.hint ? <span className="font-bold opacity-70"> · {l.hint}</span> : null}
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="mt-1.5 text-[11px] leading-relaxed text-[#2c2823]/50">
+                  {durationSec > 150 ? (
+                    <>
+                      ≈ {graphicsPlanCost(durationSec).toLocaleString()} credits + ~{(Math.round(durationSec / 10.5) * 2).toLocaleString()} narration per render (each
+                      aspect renders separately). Long videos research the topic, write a chaptered script, and mix in real footage — designing takes a few minutes
+                      {durationSec > 480 ? ", and creating the file works best in Chrome or Edge on a computer" : ""}.
+                    </>
+                  ) : (
+                    <>≈ {graphicsPlanCost(durationSec).toLocaleString()} credits + narration billed per line (each aspect renders separately).</>
+                  )}
+                </p>
+              </div>
             </div>
-            <p className="mt-1.5 text-[11px] leading-relaxed text-[#2c2823]/50">
-              {durationSec > 150 ? (
-                <>
-                  ≈ {graphicsPlanCost(durationSec).toLocaleString()} credits + ~{(Math.round(durationSec / 10.5) * 2).toLocaleString()} narration per render (each
-                  aspect renders separately). Long videos research the topic, write a chaptered script, and mix in real footage — designing takes a few minutes
-                  {durationSec > 480 ? ", and creating the file works best in Chrome or Edge on a computer" : ""}.
-                </>
-              ) : (
-                <>≈ {graphicsPlanCost(durationSec).toLocaleString()} credits + narration billed per line (each aspect renders separately).</>
-              )}
-            </p>
+
+            {/* RIGHT — narration voice (a dark "console" so the shared picker reads on paper) */}
+            <div className="w-full lg:sticky lg:top-16">
+              <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-[#2c2823]/50">Narration voice</p>
+              <div className="rounded-2xl p-2" style={{ background: "#26211c" }}>
+                <HostVoicePicker mode="video" />
+              </div>
+              <p className="mt-1.5 text-[11px] leading-relaxed text-[#2c2823]/50">
+                Narration is billed per line from your credits. Pick “Silent” for captions + music only.
+              </p>
+            </div>
           </div>
 
-          {/* narration voice — a dark "console" so the shared picker reads on paper */}
-          <div className="mt-4 w-full text-left">
-            <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-[#2c2823]/50">Narration voice</p>
-            <div className="rounded-2xl p-2" style={{ background: "#26211c" }}>
-              <HostVoicePicker mode="video" />
-            </div>
-            <p className="mt-1.5 text-[11px] leading-relaxed text-[#2c2823]/50">
-              Narration is billed per line from your credits. Pick “Silent” for captions + music only.
-            </p>
-          </div>
-
+          {/* the primary CTA lives below both columns — a clean centered pill */}
           <button
             type="submit"
             disabled={!request.trim() || planning}
-            className="mt-4 flex w-full items-center justify-center gap-2 rounded-full py-3.5 text-[16px] font-extrabold text-white shadow-xl transition enabled:hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-45"
+            className="mx-auto mt-6 flex w-full items-center justify-center gap-2 rounded-full py-3.5 text-[16px] font-extrabold text-white shadow-xl transition enabled:hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-45 lg:max-w-lg"
             style={{ background: "linear-gradient(120deg, #7c3aed 0%, #9333ea 50%, #db2777 100%)" }}
           >
             {planning ? <Loader2 size={20} className="animate-spin" /> : <Wand2 size={20} />}
@@ -384,11 +399,14 @@ export function GraphicsStudio({ initialRequest }: { initialRequest?: string }) 
           </button>
         </form>
 
-        {err && <p className="mt-4 text-sm font-bold" style={{ color: "#8a2433" }}>{err}</p>}
-        <p className="mt-4 max-w-sm text-[11px] leading-relaxed text-[#2c2823]/50">
+        {err && <p className="mt-4 text-center text-sm font-bold" style={{ color: "#8a2433" }}>{err}</p>}
+        <p className="mt-4 max-w-sm text-center text-[11px] leading-relaxed text-[#2c2823]/50">
           You’ll choose vertical, wide, or both on the next screen. Every video is saved to your history.
         </p>
       </div>
+
+      {/* verification popup — shows while access is checked, green tick on success */}
+      <GraphicsGate state={gate} />
 
       {/* history overlay — paper-themed */}
       {histOpen && (

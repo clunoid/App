@@ -3,10 +3,9 @@ import { generateObject } from "ai";
 import { z } from "zod";
 import { MODELS, hasAnthropic } from "@/lib/models";
 import { requireUser } from "@/lib/auth/requireUser";
-import { chargeCredits, chargeError, isAdmin, creditsAvailable } from "@/lib/billing/meter";
+import { chargeCredits, chargeError, isAdmin, creditsAvailable, refundSplit } from "@/lib/billing/meter";
 import { INPUT_CAPS, graphicsPlanCost, GRAPHICS_MAX_SEC, GRAPHICS_LONGFORM_SEC } from "@/lib/billing/costs";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { sceneSchema, ICON_NAMES, type MotionSpec, type MotionScene, type MotionElement } from "@/lib/graphics/spec";
 import { pexelsPhotos, pexelsClips, hasPexels } from "@/lib/data/pexels";
 import { webSearch, hasSearch } from "@/lib/data/search";
@@ -394,18 +393,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ spec });
   } catch (e) {
     console.error("[graphics] plan failed:", e);
-    // Refund into the PURCHASED bucket (never mints expiring allowance, preserves
-    // the purchased>0 access gate). Admins were never charged — never mint for them.
-    if (!admin) {
-      const adminDb = getSupabaseAdmin();
-      if (adminDb) {
-        try {
-          await adminDb.rpc("refund_credits_purchased", { p_user: user.id, p_amount: cost, p_action: "graphics_plan" });
-        } catch {
-          /* best-effort */
-        }
-      }
-    }
+    // Refund into the EXACT buckets the charge drained (monthly and/or purchased), so
+    // a subscriber's monthly spend is never laundered into permanent purchased credits
+    // and a purchased-funded charge is never lost to the expiring bucket. Admins spend
+    // nothing (charge returns 0/0) → refundSplit no-ops.
+    if (charge.ok) await refundSplit(user.id, charge.fromBalance, charge.fromPurchased, "graphics_plan");
     return NextResponse.json({ error: true }, { status: 200 });
   }
 }

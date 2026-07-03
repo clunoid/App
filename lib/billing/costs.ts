@@ -93,6 +93,7 @@ export const RATE_LIMITS: Record<string, [number, number]> = {
   game: [20, 60],
   video_plan: [6, 60], // Opus planner — a modest burst cap (heavy compute)
   graphics_plan: [3, 60], // Opus motion-graphics designer — the heaviest single call we run
+  graphics_suggest: [30, 60], // free Groq idea button — generous, but bounds spam of the LLM call
   caption: [20, 60],
   // Voice fires per line; a generous cap that normal beat-by-beat playback never
   // hits, but which bounds a burst of tiny concurrent calls (vendor overhead).

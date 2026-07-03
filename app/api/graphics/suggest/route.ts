@@ -3,6 +3,8 @@ import { generateObject } from "ai";
 import { z } from "zod";
 import { MODELS, hasGroq } from "@/lib/models";
 import { requireUser } from "@/lib/auth/requireUser";
+import { getSupabaseServer } from "@/lib/supabase/server";
+import { RATE_LIMITS } from "@/lib/billing/costs";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -37,6 +39,15 @@ export async function POST() {
   const user = await requireUser();
   if (!user) return NextResponse.json({ ideas: [] }, { status: 401 });
   if (!hasGroq()) return NextResponse.json({ ideas: [] }, { status: 200 });
+
+  // Free, but LLM-backed — bound how fast one user can spam it (abuse/cost guard).
+  // Empty ideas on 429 → the client silently falls back to its seed list.
+  const limit = RATE_LIMITS.graphics_suggest;
+  if (limit) {
+    const supabase = await getSupabaseServer();
+    const { data: ok } = await supabase.rpc("rate_check", { p_action: "graphics_suggest", p_max: limit[0], p_window_secs: limit[1] });
+    if (ok === false) return NextResponse.json({ ideas: [] }, { status: 429 });
+  }
 
   // Random subset of domains + a nonce so every call is different.
   const pool = [...DOMAINS].sort(() => Math.random() - 0.5).slice(0, 10);

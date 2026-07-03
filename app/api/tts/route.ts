@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { chargeCredits, chargeError, refund } from "@/lib/billing/meter";
+import { chargeCredits, chargeError, refundSplit } from "@/lib/billing/meter";
 import { ttsCost, INPUT_CAPS } from "@/lib/billing/costs";
 import { getSupabaseServer } from "@/lib/supabase/server";
 
@@ -158,7 +158,8 @@ export async function POST(req: NextRequest) {
     const {
       data: { user },
     } = await supabase.auth.getUser();
-    if (user) await refund(user.id, ttsCost(text.length), "tts");
+    // refund into the EXACT bucket the line was charged from (monthly and/or purchased)
+  if (user) await refundSplit(user.id, charge.fromBalance, charge.fromPurchased, "tts");
     return new Response(null, { status: 204 });
   }
 
@@ -233,6 +234,7 @@ export async function POST(req: NextRequest) {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (user) await refund(user.id, ttsCost(text.length), "tts");
+  // refund into the EXACT bucket the line was charged from (monthly and/or purchased)
+  if (user) await refundSplit(user.id, charge.fromBalance, charge.fromPurchased, "tts");
   return new Response(null, { status: 204 });
 }

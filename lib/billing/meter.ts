@@ -17,7 +17,12 @@ import { RATE_LIMITS } from "./costs";
  * expensive call.
  */
 
-export type Charge = { ok: true; balance: number } | { ok: false; status: 402 | 429; balance: number };
+export type Charge =
+  // fromBalance/fromPurchased = how much this charge drained from each bucket, so a
+  // later failure can refund EXACTLY what was spent into the RIGHT bucket (via
+  // refundSplit). Admin charges spend nothing → both 0.
+  | { ok: true; balance: number; fromBalance: number; fromPurchased: number }
+  | { ok: false; status: 402 | 429; balance: number };
 
 /**
  * ADMIN accounts (the owner / testers) bypass credit gating entirely so every feature
@@ -97,16 +102,16 @@ export async function chargeCredits(action: string, amount: number, meta: Record
       user = null;
     }
   }
-  if (isAdmin(user)) return { ok: true, balance: ADMIN_CREDITS };
+  if (isAdmin(user)) return { ok: true, balance: ADMIN_CREDITS, fromBalance: 0, fromPurchased: 0 };
   const limit = RATE_LIMITS[action];
   if (limit) {
     const { data: allowed } = await supabase.rpc("rate_check", { p_action: action, p_max: limit[0], p_window_secs: limit[1] });
     if (allowed === false) return { ok: false, status: 429, balance: -1 };
   }
   const { data, error } = await supabase.rpc("consume_credits", { p_amount: amount, p_action: action, p_meta: meta });
-  const d = (data ?? null) as { ok: boolean; balance: number } | null;
+  const d = (data ?? null) as { ok: boolean; balance: number; from_balance?: number; from_purchased?: number } | null;
   if (error || !d || !d.ok) return { ok: false, status: 402, balance: d?.balance ?? 0 };
-  return { ok: true, balance: d.balance };
+  return { ok: true, balance: d.balance, fromBalance: d.from_balance ?? amount, fromPurchased: d.from_purchased ?? 0 };
 }
 
 export type CappedCharge =
@@ -176,13 +181,32 @@ export async function gate(action: string, amount: number, meta: Record<string, 
 }
 
 /** Best-effort refund of an already-charged action that failed. Needs the service
- *  role; no-ops (logs nothing) if SUPABASE_SERVICE_ROLE_KEY isn't configured. */
+ *  role; no-ops (logs nothing) if SUPABASE_SERVICE_ROLE_KEY isn't configured.
+ *  Restores the MONTHLY bucket — prefer refundSplit() when you hold the charge's
+ *  per-bucket split, so a purchased-funded charge is refunded to purchased. */
 export async function refund(userId: string, amount: number, action: string): Promise<void> {
   if (amount <= 0) return;
   const admin = getSupabaseAdmin();
   if (!admin) return;
   try {
     await admin.rpc("refund_credits", { p_user: userId, p_amount: amount, p_action: action });
+  } catch {
+    /* best-effort — never block the response on a refund */
+  }
+}
+
+/** Refund a failed charge into the EXACT buckets it drained (from a successful
+ *  Charge's fromBalance/fromPurchased). This is the correct refund — it never
+ *  launders expiring monthly allowance into permanent purchased credits, and never
+ *  loses purchased credits by refunding them to the expiring bucket. */
+export async function refundSplit(userId: string, fromBalance: number, fromPurchased: number, action: string): Promise<void> {
+  const b = Math.max(0, Math.round(fromBalance || 0));
+  const p = Math.max(0, Math.round(fromPurchased || 0));
+  if (b === 0 && p === 0) return; // admin / nothing charged → nothing to refund
+  const admin = getSupabaseAdmin();
+  if (!admin) return;
+  try {
+    await admin.rpc("refund_credits_split", { p_user: userId, p_to_balance: b, p_to_purchased: p, p_action: action });
   } catch {
     /* best-effort — never block the response on a refund */
   }
