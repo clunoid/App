@@ -56,13 +56,21 @@ export async function encodeCanvasToMp4Web(opts: {
   H: number;
   fps: number;
   durationSec: number;
-  drawFrame: (ctx: CanvasRenderingContext2D, t: number) => void;
+  /** May return a promise (e.g. to seek a footage clip) — the loop awaits it. */
+  drawFrame: (ctx: CanvasRenderingContext2D, t: number) => void | Promise<void>;
   audio?: Mp4Audio | null;
   host?: HTMLElement | null;
   onProgress?: (p: number, l: string) => void;
   signal?: AbortSignal;
+  /** Video bitrate in bps. Default 9 Mbps (the proven stat-battle setting). */
+  bitrate?: number;
+  /** Stream muxer output into chunked parts instead of ONE contiguous ArrayBuffer —
+   *  for long renders (a 15-min 1080p file is ~0.5-1 GB; one contiguous allocation
+   *  of that size can OOM a tab where fragmented parts survive fine). */
+  stream?: boolean;
 }): Promise<RenderResult> {
   const { W, H, fps, durationSec, drawFrame, audio } = opts;
+  const bitrate = opts.bitrate ?? 9_000_000;
 
   const avc = await pickAvcCodec(W, H);
   if (!avc) throw new Error("no H.264 config");
@@ -84,11 +92,16 @@ export async function encodeCanvasToMp4Web(opts: {
     opts.host.appendChild(canvas);
   }
 
-  const { Muxer, ArrayBufferTarget } = await import("mp4-muxer");
-  const target = new ArrayBufferTarget();
+  const { Muxer, ArrayBufferTarget, StreamTarget } = await import("mp4-muxer");
+  // stream mode: collect 16 MB parts (position-ordered) instead of one giant buffer.
+  // Uses FRAGMENTED MP4 — its writes are append-only (no mdat backpatch), so the
+  // parts can be concatenated without ever allocating the whole file contiguously.
+  const parts: { pos: number; data: Uint8Array }[] = [];
+  const abTarget = opts.stream ? null : new ArrayBufferTarget();
+  const target = abTarget ?? new StreamTarget({ chunked: true, chunkSize: 16 * 1024 * 1024, onData: (data, position) => parts.push({ pos: position, data: data.slice() }) });
   const muxer = new Muxer({
-    target,
-    fastStart: "in-memory",
+    target: target as InstanceType<typeof ArrayBufferTarget>,
+    fastStart: opts.stream ? "fragmented" : "in-memory",
     video: { codec: "avc", width: W, height: H, frameRate: fps },
     ...(wantAudio ? { audio: { codec: "aac" as const, numberOfChannels: channels, sampleRate } } : {}),
   });
@@ -100,7 +113,7 @@ export async function encodeCanvasToMp4Web(opts: {
       encErr = e;
     },
   });
-  venc.configure({ codec: avc, width: W, height: H, bitrate: 9_000_000, framerate: fps, latencyMode: "quality" });
+  venc.configure({ codec: avc, width: W, height: H, bitrate, framerate: fps, latencyMode: "quality" });
 
   let aenc: AudioEncoder | null = null;
   if (wantAudio) {
@@ -140,7 +153,8 @@ export async function encodeCanvasToMp4Web(opts: {
     opts.onProgress?.(6, "Encoding in the background…");
     for (let f = 0; f < totalFrames; f++) {
       checkAbort();
-      drawFrame(ctx, f / fps);
+      const maybe = drawFrame(ctx, f / fps);
+      if (maybe && typeof (maybe as Promise<void>).then === "function") await maybe; // async draws (footage seeks)
       const frame = new VideoFrame(canvas, { timestamp: Math.round(f * usPerFrame), duration: Math.round(usPerFrame) });
       venc.encode(frame);
       frame.close();
@@ -172,7 +186,32 @@ export async function encodeCanvasToMp4Web(opts: {
 
     muxer.finalize();
     cleanup();
-    const blob = new Blob([target.buffer], { type: "video/mp4" });
+    let blob: Blob;
+    if (abTarget) {
+      blob = new Blob([abTarget.buffer], { type: "video/mp4" });
+    } else {
+      parts.sort((a, b) => a.pos - b.pos);
+      // fragmented writes should tile the file exactly; if the muxer ever emits an
+      // overlap/backpatch, fall back to replaying the write log contiguously
+      let tiled = true;
+      let expect = 0;
+      for (const p of parts) {
+        if (p.pos !== expect) {
+          tiled = false;
+          break;
+        }
+        expect += p.data.byteLength;
+      }
+      if (tiled) {
+        blob = new Blob(parts.map((p) => p.data as unknown as BlobPart), { type: "video/mp4" });
+      } else {
+        const size = parts.reduce((m, p) => Math.max(m, p.pos + p.data.byteLength), 0);
+        const all = new Uint8Array(size);
+        for (const p of parts) all.set(p.data, p.pos);
+        blob = new Blob([all], { type: "video/mp4" });
+      }
+      parts.length = 0;
+    }
     if (!blob.size) throw new Error("empty output");
     opts.onProgress?.(100, "Done");
     return { blob, ext: "mp4", mime: "video/mp4", hadVoice: !!audio };

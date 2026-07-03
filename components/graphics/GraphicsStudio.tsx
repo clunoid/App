@@ -12,8 +12,21 @@ import { saveGraphicsVideo, listGraphicsVideos, deleteGraphicsVideo, type SavedG
 import { deleteGameVideo } from "@/lib/games/videoStore";
 import { getVideoVoicePref, setVideoVoicePref } from "@/lib/voice/preference";
 import { useBilling } from "@/lib/billing/store";
+import { graphicsPlanCost } from "@/lib/billing/costs";
 import type { MotionSpec } from "@/lib/graphics/spec";
 import type { ReelAspect } from "@/lib/share/reel";
+
+/** Video length choices — Auto is the classic ~1-minute short; the rest run the
+ *  long-form pipeline (research → script outline → chapter writing). */
+const LENGTHS: { sec: number; label: string; hint: string }[] = [
+  { sec: 0, label: "Auto", hint: "~1 min" },
+  { sec: 120, label: "2 min", hint: "" },
+  { sec: 180, label: "3 min", hint: "" },
+  { sec: 300, label: "5 min", hint: "" },
+  { sec: 480, label: "8 min", hint: "" },
+  { sec: 720, label: "12 min", hint: "" },
+  { sec: 900, label: "15 min", hint: "" },
+];
 
 const INK = "#2c2823"; // primary text — matches the document theme (Stat Battle)
 const ACCENT = "#6d28d9"; // deep violet — the motion-graphics accent on warm paper
@@ -47,7 +60,9 @@ const UPGRADE_MSG = "Motion graphics videos use our most powerful AI. Subscribe 
 export function GraphicsStudio({ initialRequest }: { initialRequest?: string }) {
   const router = useRouter();
   const [request, setRequest] = useState(initialRequest || "");
+  const [durationSec, setDurationSec] = useState(0);
   const [planning, setPlanning] = useState(false);
+  const [planStage, setPlanStage] = useState("");
   const [suggesting, setSuggesting] = useState(false);
   const [err, setErr] = useState("");
   const [snap, setSnap] = useState<GraphicsSnapshot | null>(null);
@@ -60,6 +75,11 @@ export function GraphicsStudio({ initialRequest }: { initialRequest?: string }) 
   // background as it drains. Refs (not state) — churning these shouldn't re-render.
   const ideaQueue = useRef<string[]>([]);
   const fetchingIdeas = useRef(false);
+  // the staged "Researching… / Writing the script…" ticker — must die with the component
+  const stageTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  useEffect(() => () => {
+    if (stageTimer.current) clearInterval(stageTimer.current);
+  }, []);
   const plan = useBilling((s) => s.plan);
   const purchased = useBilling((s) => s.purchased);
   const loaded = useBilling((s) => s.loaded);
@@ -134,29 +154,47 @@ export function GraphicsStudio({ initialRequest }: { initialRequest?: string }) 
     setErr("");
     setPlanning(true);
     // VERIFY before Opus — auth + plan access + credits (no charge).
-    const pre = await preflightGraphics(req);
+    const pre = await preflightGraphics(req, durationSec);
     if (!pre.ok) {
       setPlanning(false);
       if (pre.reason === "plan") openUpgrade(UPGRADE_MSG);
-      else if (pre.reason === "credits") openUpgrade("You don't have enough credits for a motion graphics video. Add credits or subscribe to keep creating.");
+      else if (pre.reason === "credits") openUpgrade("You don't have enough credits for this video length. Add credits or subscribe to keep creating.");
       else if (pre.reason === "auth") setErr("Please sign in to generate a video.");
       return;
     }
-    const res = await planGraphics(req);
-    setPlanning(false);
+    // long-form runs research → script → chapters; narrate the wait honestly
+    const stages = durationSec > 150
+      ? ["Researching your topic…", "Writing the script…", "Designing chapters…", "Designing scenes…", "Casting visuals…"]
+      : ["Researching your topic…", "Designing your video…"];
+    let si = 0;
+    setPlanStage(stages[0]);
+    if (stageTimer.current) clearInterval(stageTimer.current);
+    stageTimer.current = setInterval(() => {
+      si = Math.min(si + 1, stages.length - 1);
+      setPlanStage(stages[si]);
+    }, durationSec > 150 ? 40_000 : 18_000);
+    let res: Awaited<ReturnType<typeof planGraphics>>;
+    try {
+      res = await planGraphics(req, durationSec);
+    } finally {
+      if (stageTimer.current) clearInterval(stageTimer.current);
+      stageTimer.current = null;
+      setPlanning(false);
+      setPlanStage("");
+    }
     if (!res.ok) {
       if (res.reason === "plan") openUpgrade(UPGRADE_MSG);
-      else if (res.reason === "credits") openUpgrade("You don't have enough credits for a motion graphics video. Add credits or subscribe to keep creating.");
+      else if (res.reason === "credits") openUpgrade("You don't have enough credits for this video length. Add credits or subscribe to keep creating.");
       else if (res.reason === "auth") setErr("Please sign in to generate a video.");
       else setErr("Couldn't design that one — try rephrasing your idea.");
       return;
     }
-    const s: GraphicsSnapshot = { prompt: req, voice: getVideoVoicePref(), spec: res.spec };
+    const s: GraphicsSnapshot = { prompt: req, voice: getVideoVoicePref(), spec: res.spec, durationSec };
     const id = await saveGraphicsVideo(s); // history, like games + stat battles
     setSnap(s);
     setVideoId(id ?? undefined);
     setShareOpen(true);
-  }, [request, planning, openUpgrade]);
+  }, [request, planning, durationSec, openUpgrade]);
 
   const openSaved = useCallback((g: SavedGraphics) => {
     // Re-render with the voice the video was ORIGINALLY made with (not whatever the
@@ -241,8 +279,8 @@ export function GraphicsStudio({ initialRequest }: { initialRequest?: string }) 
                 }
               }}
               rows={2}
-              maxLength={600}
-              placeholder="Describe your video — e.g. Explain how AI works · Create a product launch video · History of Ancient Rome"
+              maxLength={4000}
+              placeholder="Describe your video — e.g. Explain how AI works · Create a product launch video · History of Ancient Rome. Long videos can take a full brief: facts to include, chapters you want, tone."
               className="w-full resize-none bg-transparent text-[15px] font-bold leading-snug text-[#2c2823] outline-none placeholder:font-medium placeholder:text-[#2c2823]/50"
             />
           </div>
@@ -276,6 +314,41 @@ export function GraphicsStudio({ initialRequest }: { initialRequest?: string }) 
             Fresh AI ideas every click — across science, tech, history, business &amp; more.
           </p>
 
+          {/* video length — Auto is a ~1-min short; longer lengths run the full
+              research → script → chapters production pipeline */}
+          <div className="mt-4 w-full text-left">
+            <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-[#2c2823]/50">Video length</p>
+            <div className="flex flex-wrap gap-1.5">
+              {LENGTHS.map((l) => {
+                const sel = durationSec === l.sec;
+                return (
+                  <button
+                    key={l.sec}
+                    type="button"
+                    onClick={() => setDurationSec(l.sec)}
+                    aria-pressed={sel}
+                    className="rounded-full px-3 py-1.5 text-[12px] font-extrabold transition hover:opacity-85"
+                    style={sel ? { background: ACCENT, color: "#fff" } : { background: "rgba(0,0,0,0.08)", color: INK }}
+                  >
+                    {l.label}
+                    {l.hint ? <span className="font-bold opacity-70"> · {l.hint}</span> : null}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="mt-1.5 text-[11px] leading-relaxed text-[#2c2823]/50">
+              {durationSec > 150 ? (
+                <>
+                  ≈ {graphicsPlanCost(durationSec).toLocaleString()} credits + ~{(Math.round(durationSec / 10.5) * 2).toLocaleString()} narration per render (each
+                  aspect renders separately). Long videos research the topic, write a chaptered script, and mix in real footage — designing takes a few minutes
+                  {durationSec > 480 ? ", and creating the file works best in Chrome or Edge on a computer" : ""}.
+                </>
+              ) : (
+                <>≈ {graphicsPlanCost(durationSec).toLocaleString()} credits + narration billed per line (each aspect renders separately).</>
+              )}
+            </p>
+          </div>
+
           {/* narration voice — a dark "console" so the shared picker reads on paper */}
           <div className="mt-4 w-full text-left">
             <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-[#2c2823]/50">Narration voice</p>
@@ -294,7 +367,7 @@ export function GraphicsStudio({ initialRequest }: { initialRequest?: string }) 
             style={{ background: "linear-gradient(120deg, #7c3aed 0%, #9333ea 50%, #db2777 100%)" }}
           >
             {planning ? <Loader2 size={20} className="animate-spin" /> : <Wand2 size={20} />}
-            {planning ? "Designing your video…" : "Generate video"}
+            {planning ? planStage || "Designing your video…" : "Generate video"}
           </button>
         </form>
 

@@ -30,6 +30,39 @@ export async function pexelsPhotos(query: string, n = 4): Promise<string[]> {
   }
 }
 
+/**
+ * Stock-footage clips sized for CANVAS compositing (motion graphics b-roll): picks
+ * the smallest MP4 rendition ≥ ~960px wide (typically the ~1-3 MB SD file) so the
+ * client can download + seek it quickly, plus the poster for a graceful fallback.
+ * Pexels files are served with Access-Control-Allow-Origin:* (verified), so clips
+ * drawn with crossOrigin="anonymous" never taint the export canvas.
+ */
+export async function pexelsClips(query: string, n = 2, orientation: "landscape" | "portrait" = "landscape"): Promise<{ url: string; poster?: string; width: number; height: number }[]> {
+  const key = process.env.PEXELS_API_KEY;
+  if (!key || !query.trim()) return [];
+  try {
+    const res = await fetch(
+      `${API}/videos/search?query=${encodeURIComponent(query)}&per_page=${Math.max(2, n)}&orientation=${orientation}`,
+      { headers: { Authorization: key } }
+    );
+    if (!res.ok) return [];
+    const d = (await res.json()) as { videos?: (PexelsVideo & { duration?: number })[] };
+    const out: { url: string; poster?: string; width: number; height: number }[] = [];
+    for (const v of d.videos ?? []) {
+      const mp4s = (v.video_files ?? [])
+        .filter((f): f is VideoFile & { link: string; width: number } => f.file_type === "video/mp4" && !!f.link && !!f.width)
+        .sort((a, b) => a.width - b.width);
+      // smallest rendition that's still ≥960 wide; else the largest available
+      const pick = mp4s.find((f) => f.width >= 960) ?? mp4s[mp4s.length - 1];
+      if (pick?.link) out.push({ url: pick.link, poster: v.image, width: pick.width, height: (pick as VideoFile & { height?: number }).height ?? 0 });
+      if (out.length >= n) break;
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
 /** Top video clips for a query — an MP4 around HD width, plus a poster image. */
 export async function pexelsVideos(query: string, n = 4): Promise<{ url: string; poster?: string }[]> {
   const key = process.env.PEXELS_API_KEY;

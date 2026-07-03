@@ -58,6 +58,27 @@ export function ttsCost(chars: number): number {
   return Math.max(1, Math.ceil((chars || 0) / 100));
 }
 
+/** Longest motion-graphics video a user may request (seconds). */
+export const GRAPHICS_MAX_SEC = 900; // 15 minutes
+
+/** Videos LONGER than this run the multi-call research → outline → chapters
+ *  pipeline; at or below it, one classic Opus call plans the whole piece.
+ *  The cost formula below scales from the SAME boundary, so a user is only
+ *  charged the long-form surcharge when the long-form pipeline actually runs. */
+export const GRAPHICS_LONGFORM_SEC = 150;
+
+/**
+ * Motion Graphics plan cost scales with the REQUESTED duration: longer videos run
+ * research + a script outline + several parallel Opus chapter calls (real compute).
+ * Base 500 covers the single-call plan (up to 2.5 min); each extra minute adds 300.
+ * 15 min = 4250. Narration TTS is still billed per line on top.
+ */
+export function graphicsPlanCost(durationSec: number): number {
+  const sec = Math.min(GRAPHICS_MAX_SEC, Math.max(0, durationSec || 0));
+  if (sec <= GRAPHICS_LONGFORM_SEC) return ACTION_COSTS.graphics_plan;
+  return ACTION_COSTS.graphics_plan + Math.ceil((sec - GRAPHICS_LONGFORM_SEC) / 60) * 300;
+}
+
 /**
  * Per-user burst caps: action → [maxRequests, windowSeconds]. Bounds how fast a
  * user can spend even within their credit budget (protects model concurrency and
@@ -84,5 +105,6 @@ export const INPUT_CAPS = {
   brainHistory: 40, // messages of context
   ttsChars: 1200, // a single Isaac line
   statsRequest: 600, // chars of a stat-battle prompt
+  graphicsRequest: 4000, // chars of a motion-graphics brief (long-form briefs carry outlines/notes)
   editInstruction: 1000,
 };

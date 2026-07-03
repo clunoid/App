@@ -12,8 +12,8 @@ import { z } from "zod";
 /* ── elements ─────────────────────────────────────────────────────────────── */
 export const elementSchema = z.object({
   type: z
-    .enum(["title", "text", "bullets", "icon", "iconGrid", "chart", "counter", "uiCard", "timeline", "progress", "quote", "badge", "image", "logo"])
-    .describe("What to draw. title=big kinetic headline; text=supporting line(s); bullets=staggered list; icon=one hero icon; iconGrid=3-6 icons with labels; chart=animated bar/line/donut; counter=big number counting up; uiCard=animated app/browser/phone mockup; timeline=steps left→right; progress=filling ring/bar; quote=large quotation; badge=small pill label; image=photo (engine Ken-Burns); logo=brand wordmark animation."),
+    .enum(["title", "text", "bullets", "icon", "iconGrid", "chart", "counter", "uiCard", "timeline", "progress", "quote", "badge", "image", "video", "compare", "statRow", "flow", "logo"])
+    .describe("What to draw. title=big kinetic headline; text=supporting line(s); bullets=staggered list; icon=one hero icon; iconGrid=3-6 icons with labels; chart=animated bar/line/donut; counter=big number counting up; uiCard=animated app/browser/phone mockup; timeline=steps left→right; progress=filling ring/bar; quote=large quotation; badge=small pill label; image=photo (engine Ken-Burns); video=real stock FOOTAGE clip (cinematic b-roll — use for real-world subjects: places, nature, people, machines, cities); compare=two columns side-by-side (A vs B); statRow=2-4 big stat capsules in a row; flow=process diagram of icon nodes joined by arrows; logo=brand wordmark animation."),
   text: z.string().optional().describe("Main text (title/text/quote/badge/counter suffix label/logo wordmark)."),
   sub: z.string().optional().describe("Secondary smaller line under the main text."),
   items: z.array(z.string()).max(6).optional().describe("bullets/timeline steps/iconGrid labels (3-6 short items)."),
@@ -43,6 +43,25 @@ export const elementSchema = z.object({
     .describe("uiCard content (required for type=uiCard)."),
   imageQuery: z.string().optional().describe("image: a 2-4 word stock-photo search (the server resolves the actual photo)."),
   imageUrl: z.string().optional().describe("Filled by the server — never set this yourself."),
+  videoQuery: z.string().optional().describe("video: a 2-4 word stock-FOOTAGE search, e.g. 'ocean waves aerial', 'city night traffic' (the server resolves the actual clip)."),
+  videoUrl: z.string().optional().describe("Filled by the server — never set this yourself."),
+  compare: z
+    .object({
+      leftTitle: z.string(),
+      rightTitle: z.string(),
+      leftItems: z.array(z.string()).max(4),
+      rightItems: z.array(z.string()).max(4),
+      leftIcon: z.string().optional(),
+      rightIcon: z.string().optional(),
+      winner: z.enum(["left", "right", "none"]).optional().describe("Which side to highlight with the accent."),
+    })
+    .optional()
+    .describe("compare data (required for type=compare)."),
+  stats: z
+    .array(z.object({ value: z.string().describe("The big figure as display text, e.g. '4.2B', '$180M', '99.9%'."), label: z.string().describe("Tiny label under it, 1-3 words.") }))
+    .max(4)
+    .optional()
+    .describe("statRow data (required for type=statRow): 2-4 stat capsules."),
   anim: z.enum(["rise", "fade", "pop", "slide", "cascade", "draw"]).optional().describe("Entrance style. Default: engine picks per type (rise for text, pop for icons, draw for charts)."),
   emphasis: z.enum(["none", "pulse", "float", "glow"]).optional().describe("Subtle loop after entering. Default none."),
   accent: z.boolean().optional().describe("Tint this element with the accent color (use sparingly for the ONE key element of a scene)."),
@@ -57,8 +76,9 @@ export const sceneSchema = z.object({
   kicker: z.string().optional().describe("Tiny uppercase eyebrow above the headline, e.g. 'STEP 1', 'THE PROBLEM'."),
   elements: z.array(elementSchema).max(4).describe("0-3 visual elements beside/below the headline. ONE strong visual beats three weak ones."),
   transition: z.enum(["fade", "slide", "wipe", "zoom"]).optional().describe("Into the NEXT scene. Default fade."),
-  bg: z.enum(["gradient", "dots", "grid", "waves", "blobs", "beams"]).optional().describe("Animated background flavor for this scene. Default: follows the spec style."),
+  bg: z.enum(["gradient", "dots", "grid", "waves", "blobs", "beams", "rings", "diag"]).optional().describe("Animated background flavor for this scene. Default: follows the spec style."),
   tone: z.enum(["intro", "problem", "solution", "how", "proof", "cta", "neutral"]).optional().describe("The scene's storytelling role — nudges composition + color intensity."),
+  hueShift: z.number().min(-60).max(60).optional().describe("Rotate this scene's accent hue by this many degrees — use to give each chapter/act its own color mood while staying in the palette family."),
 });
 export type MotionScene = z.infer<typeof sceneSchema>;
 
@@ -74,7 +94,12 @@ export const motionSpecSchema = z.object({
     brand: z.string().optional().describe("A brand/product name to feature in the logo intro/outro, ONLY if the prompt is about a specific product/company."),
   }),
   captions: z.boolean().optional().describe("Burn word-synced subtitles into the video (great for social). Default true."),
-  scenes: z.array(sceneSchema).min(3).max(12).describe("The story, in order: hook → build → payoff → CTA. 5-8 scenes is the sweet spot."),
+  scenes: z.array(sceneSchema).min(3).max(140).describe("The story, in order: hook → build → payoff → CTA. 5-8 scenes for a short; long-form videos run to 100+."),
+  chapters: z
+    .array(z.object({ title: z.string().describe("Chapter title, 2-5 words."), at: z.number().int().min(0).describe("Index of the chapter's first scene.") }))
+    .max(12)
+    .optional()
+    .describe("Long-form only: chapter markers (the engine shows a documentary-style chapter card as each begins). Omit for shorts."),
 });
 export type MotionSpec = z.infer<typeof motionSpecSchema>;
 

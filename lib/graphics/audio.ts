@@ -113,36 +113,75 @@ export async function fetchNarrations(ac: AudioContext, spec: MotionSpec, onProg
 
 /* ── procedural music bed (deterministic, license-free) ───────────────────── */
 const NOTE = (semisFromA3: number) => 220 * Math.pow(2, semisFromA3 / 12);
-// warm pop progressions (semitones from A): vi–IV–I–V feel
-const PROG: number[][] = [
-  [0, 3, 7], // Am
-  [-4, 0, 5], // F
-  [3, 7, 12], // C
-  [-2, 2, 7], // G
+// Three progressions the bed rotates through in 8-bar SECTIONS, so a 15-minute
+// video never loops one 4-chord cycle 100+ times: verse (vi–IV–I–V), a lifted
+// variation, and a suspended "breathe" section.
+const PROGS: number[][][] = [
+  [
+    [0, 3, 7], // Am
+    [-4, 0, 5], // F
+    [3, 7, 12], // C
+    [-2, 2, 7], // G
+  ],
+  [
+    [-4, 0, 5], // F
+    [3, 7, 12], // C
+    [-2, 2, 7], // G
+    [0, 3, 7], // Am
+  ],
+  [
+    [0, 5, 7], // Asus4 color
+    [-4, 0, 5],
+    [-2, 2, 5], // Gsus feel
+    [3, 7, 12],
+  ],
 ];
 
-function scheduleMusic(off: OfflineAudioContext, total: number, style: "ambient" | "upbeat", master: GainNode) {
+/** Windows (seconds) where a voice is speaking — the bed ducks under them. */
+export type DuckWindow = { start: number; end: number };
+
+function scheduleMusic(off: OfflineAudioContext, total: number, style: "ambient" | "upbeat", master: GainNode, duck: DuckWindow[]) {
+  const level = style === "upbeat" ? 0.055 : 0.045;
   const bus = off.createGain();
-  bus.gain.value = style === "upbeat" ? 0.055 : 0.045;
+  bus.gain.value = level;
   // gentle fade in/out
   bus.gain.setValueAtTime(0, 0);
-  bus.gain.linearRampToValueAtTime(style === "upbeat" ? 0.055 : 0.045, 1.2);
-  bus.gain.setValueAtTime(style === "upbeat" ? 0.055 : 0.045, Math.max(1.3, total - 1.6));
+  bus.gain.linearRampToValueAtTime(level, 1.2);
+  bus.gain.setValueAtTime(level, Math.max(1.3, total - 1.6));
   bus.gain.linearRampToValueAtTime(0.0001, Math.max(1.4, total - 0.1));
   const lp = off.createBiquadFilter();
   lp.type = "lowpass";
   lp.frequency.value = style === "upbeat" ? 2400 : 1500;
-  bus.connect(lp).connect(master);
+  // sidechain-style ducking: the bed dips ~40% while narration speaks, swells back
+  // in the gaps — the mix breathes like an edited piece instead of a flat loop
+  const duckG = off.createGain();
+  duckG.gain.value = 1;
+  for (const w of duck) {
+    const a = Math.max(0, w.start - 0.15);
+    const b = Math.min(total, w.end + 0.25);
+    if (b <= a) continue;
+    duckG.gain.setValueAtTime(1, a);
+    duckG.gain.linearRampToValueAtTime(0.6, Math.min(total, a + 0.3));
+    duckG.gain.setValueAtTime(0.6, Math.max(a, b - 0.3));
+    duckG.gain.linearRampToValueAtTime(1, b);
+  }
+  bus.connect(lp).connect(duckG).connect(master);
 
   const BAR = style === "upbeat" ? 2.0 : 3.2; // seconds per chord
+  // one key lift (+2 semitones) at ~70% — the classic act-three energy bump
+  const liftAt = total > 180 ? total * 0.7 : Infinity;
   for (let t = 0, bar = 0; t < total; t += BAR, bar++) {
-    const chord = PROG[bar % PROG.length];
-    // pad: detuned triangle pair per chord tone
+    const section = Math.floor(bar / 8) % PROGS.length;
+    const prog = PROGS[section];
+    const lift = t >= liftAt ? 2 : 0;
+    const chord = prog[bar % prog.length].map((s) => s + lift);
+    // pad: detuned triangle pair per chord tone; alternate octave per section
+    const oct = section === 1 ? 0 : -12;
     for (const semi of chord) {
       for (const det of [-4, 4]) {
         const o = off.createOscillator();
         o.type = "triangle";
-        o.frequency.value = NOTE(semi - 12);
+        o.frequency.value = NOTE(semi + oct);
         o.detune.value = det;
         const g = off.createGain();
         g.gain.setValueAtTime(0.0001, t);
@@ -154,13 +193,14 @@ function scheduleMusic(off: OfflineAudioContext, total: number, style: "ambient"
       }
     }
     if (style === "upbeat") {
-      // soft plucks on the beat
+      // soft plucks on the beat — pattern flips direction each section
       for (let b = 0; b < 4; b++) {
         const bt = t + (b * BAR) / 4;
         if (bt >= total) break;
+        const pick = section % 2 ? chord[(chord.length - 1 - b % chord.length + chord.length) % chord.length] : chord[b % chord.length];
         const o = off.createOscillator();
         o.type = "sine";
-        o.frequency.value = NOTE(chord[b % chord.length]);
+        o.frequency.value = NOTE(pick);
         const g = off.createGain();
         g.gain.setValueAtTime(0.0001, bt);
         g.gain.exponentialRampToValueAtTime(0.09, bt + 0.015);
@@ -169,6 +209,18 @@ function scheduleMusic(off: OfflineAudioContext, total: number, style: "ambient"
         o.start(bt);
         o.stop(Math.min(total, bt + 0.3));
       }
+    } else if (bar % 4 === 3) {
+      // ambient: a sparse shimmer note every 4th bar — air and movement
+      const o = off.createOscillator();
+      o.type = "sine";
+      o.frequency.value = NOTE(chord[2] + 12);
+      const g = off.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.linearRampToValueAtTime(0.05, t + BAR * 0.5);
+      g.gain.linearRampToValueAtTime(0.0001, t + BAR);
+      o.connect(g).connect(bus);
+      o.start(t);
+      o.stop(Math.min(total, t + BAR * 1.02));
     }
   }
 }
@@ -183,6 +235,7 @@ export async function mixMotionAudio(spec: MotionSpec, timing: MotionTiming, nar
     const master = off.createGain();
     master.gain.value = 1;
     master.connect(off.destination);
+    const duck: DuckWindow[] = [];
     for (let i = 0; i < narrs.length; i++) {
       const buf = narrs[i].buf;
       if (!buf) continue;
@@ -191,10 +244,12 @@ export async function mixMotionAudio(spec: MotionSpec, timing: MotionTiming, nar
       const g = off.createGain();
       g.gain.value = 1;
       src.connect(g).connect(master);
-      src.start(Math.max(0, timing.sceneStarts[i] + NARRATION_LEAD));
+      const at = Math.max(0, timing.sceneStarts[i] + NARRATION_LEAD);
+      src.start(at);
+      duck.push({ start: at, end: at + buf.duration });
     }
     const music = spec.style.music || "ambient";
-    if (music !== "none") scheduleMusic(off, timing.total, music, master);
+    if (music !== "none") scheduleMusic(off, timing.total, music, master, duck);
     return await off.startRendering();
   } catch {
     return null;

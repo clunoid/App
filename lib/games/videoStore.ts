@@ -42,9 +42,14 @@ function openDb(): Promise<IDBDatabase | null> {
   });
 }
 
+/** Very large renders (long motion-graphics exports) would eat the whole per-origin
+ *  quota and evict everyone else's cached premium clips — don't cache those. */
+const MAX_CACHE_BYTES = 150 * 1024 * 1024;
+
 /** Save (or replace) the premium video for a game, then evict the oldest beyond CAP. */
 export async function saveGameVideo(v: SavedVideo): Promise<void> {
   if (!v.gameId || !v.items.length) return;
+  if (v.items.reduce((a, it) => a + (it.blob?.size || 0), 0) > MAX_CACHE_BYTES) return;
   const db = await openDb();
   if (!db) return;
   try {

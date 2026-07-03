@@ -9,7 +9,7 @@
 import { getSupabaseBrowser } from "@/lib/supabase/client";
 import type { MotionSpec } from "./spec";
 
-export type GraphicsSnapshot = { prompt: string; voice: string; spec: MotionSpec };
+export type GraphicsSnapshot = { prompt: string; voice: string; spec: MotionSpec; durationSec?: number };
 export type SavedGraphics = { id: string; title: string; created_at: string; data: GraphicsSnapshot };
 
 export async function saveGraphicsVideo(snap: GraphicsSnapshot): Promise<string | null> {

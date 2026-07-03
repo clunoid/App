@@ -10,13 +10,13 @@ import type { MotionSpec } from "./spec";
 export type GraphicsGateReason = "auth" | "plan" | "credits" | "failed";
 
 /** Read-only verify (no charge, no Opus): auth + plan/credits access + affordability. */
-export async function preflightGraphics(request: string): Promise<{ ok: boolean; reason?: GraphicsGateReason }> {
+export async function preflightGraphics(request: string, durationSec = 0): Promise<{ ok: boolean; reason?: GraphicsGateReason }> {
   let res: Response;
   try {
     res = await fetch("/api/graphics/plan", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ request, preflight: true }),
+      body: JSON.stringify({ request, durationSec, preflight: true }),
     });
   } catch {
     return { ok: true }; // transient — the gated call still verifies
@@ -47,13 +47,13 @@ export async function suggestGraphicsIdeas(): Promise<string[]> {
 
 export type GraphicsPlanResult = { ok: true; spec: MotionSpec } | { ok: false; reason: GraphicsGateReason };
 
-export async function planGraphics(request: string): Promise<GraphicsPlanResult> {
+export async function planGraphics(request: string, durationSec = 0): Promise<GraphicsPlanResult> {
   let res: Response;
   try {
     res = await fetch("/api/graphics/plan", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ request }),
+      body: JSON.stringify({ request, durationSec }),
     });
   } catch {
     return { ok: false, reason: "failed" };

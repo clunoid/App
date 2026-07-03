@@ -94,6 +94,7 @@ export function ShareModal({
   const [status, setStatus] = useState<Status>("idle");
   const [pct, setPct] = useState(0);
   const [label, setLabel] = useState("");
+  const [errMsg, setErrMsg] = useState(""); // renderer-provided user-facing failure reason
   // True once the renderer reports it's encoding in the BACKGROUND (WebCodecs path,
   // tab-safe). Stays false for the real-time recorder, which needs the tab open.
   const [bgSafe, setBgSafe] = useState(false);
@@ -199,6 +200,7 @@ export function ShareModal({
     setPct(0);
     setBgSafe(false);
     setFromSaved(false);
+    setErrMsg("");
     setStatus("rendering");
     const ac = new AbortController();
     abortRef.current = ac;
@@ -251,6 +253,8 @@ export function ShareModal({
       out.forEach((r) => URL.revokeObjectURL(r.url));
       if ((e as Error)?.name === "AbortError") return;
       console.error("reel render failed", e);
+      // a renderer may throw a USER-facing explanation (name it "FriendlyError")
+      setErrMsg((e as Error)?.name === "FriendlyError" ? (e as Error).message : "");
       setStatus("error");
     }
   }, [aspect, branded, cleanupUrls, makeSpec, render, gameId, videoVoice, durVert, durWide, videoDuration]);
@@ -599,7 +603,7 @@ export function ShareModal({
                     Video creation isn’t supported in this browser. Try Chrome on desktop or Android.
                   </p>
                 ) : status === "error" ? (
-                  <p className="px-6 text-center text-sm text-white/70">Something went wrong creating the video. Please try again.</p>
+                  <p className="px-6 text-center text-sm text-white/70">{errMsg || "Something went wrong creating the video. Please try again."}</p>
                 ) : ready && results[0] ? (
                   // eslint-disable-next-line jsx-a11y/media-has-caption
                   <video src={results[0].url} controls autoPlay muted loop playsInline className="max-h-full max-w-full rounded-2xl bg-black object-contain" />

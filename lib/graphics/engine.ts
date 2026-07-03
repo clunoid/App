@@ -225,6 +225,35 @@ function drawBg(ctx: CanvasRenderingContext2D, W: number, H: number, pal: Pal, f
       ctx.restore();
     }
     ctx.globalAlpha = 1;
+  } else if (flavor === "rings") {
+    // concentric arcs breathing out from an off-center focus
+    const cx = W * 0.72;
+    const cy = H * 0.3;
+    ctx.strokeStyle = pal.dark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)";
+    for (let i = 0; i < 6; i++) {
+      const rr2 = min * (0.14 + i * 0.16) + Math.sin(t * energy * 0.4 + i * 0.9) * min * 0.012;
+      ctx.lineWidth = Math.max(1, min * 0.0035);
+      ctx.beginPath();
+      ctx.arc(cx, cy, rr2, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.strokeStyle = pal.accentSoft;
+    ctx.lineWidth = Math.max(1.5, min * 0.005);
+    ctx.beginPath();
+    ctx.arc(cx, cy, min * (0.3 + ((t * energy * 0.05) % 0.16)), 0, Math.PI * 2);
+    ctx.stroke();
+  } else if (flavor === "diag") {
+    // soft diagonal stripes drifting slowly — editorial texture
+    ctx.save();
+    ctx.translate(W / 2, H / 2);
+    ctx.rotate(-0.42);
+    const stripeW = min * 0.16;
+    const drift = (t * energy * 8) % (stripeW * 2);
+    ctx.fillStyle = pal.dark ? "rgba(255,255,255,0.028)" : "rgba(0,0,0,0.03)";
+    for (let x = -W * 1.2 + drift; x < W * 1.2; x += stripeW * 2) ctx.fillRect(x, -H * 1.2, stripeW, H * 2.4);
+    ctx.fillStyle = pal.accentSoft.replace("0.16", "0.05").replace("0.12", "0.04");
+    ctx.fillRect(-W * 1.2 + drift + stripeW * 4, -H * 1.2, stripeW * 0.5, H * 2.4);
+    ctx.restore();
   }
   ctx.restore();
   // soft vignette for depth
@@ -236,7 +265,10 @@ function drawBg(ctx: CanvasRenderingContext2D, W: number, H: number, pal: Pal, f
 }
 
 /* ── kinetic headline + kicker ────────────────────────────────────────────── */
-function drawHeadline(ctx: CanvasRenderingContext2D, scene: MotionScene, pal: Pal, x: number, y: number, w: number, sc: number, align: "left" | "center", basePx: number): number {
+/** Vertical room the kicker eyebrow needs above the first headline line — the
+ *  headline's ascent is ~0.75×basePx, so anything less overlaps the kicker. */
+export const KICKER_ADVANCE = 0.98;
+function drawHeadline(ctx: CanvasRenderingContext2D, scene: MotionScene, pal: Pal, x: number, y: number, w: number, sc: number, align: "left" | "center", basePx: number, maxLines = 3): number {
   let cy = y;
   ctx.textBaseline = "alphabetic";
   ctx.textAlign = align;
@@ -257,10 +289,11 @@ function drawHeadline(ctx: CanvasRenderingContext2D, scene: MotionScene, pal: Pa
       ctx.fillText(scene.kicker.toUpperCase(), kx + (align === "left" ? px * 0.55 : 0), cy);
       ctx.globalAlpha = 1;
     }
-    cy += basePx * 0.52;
+    // full headline-ascent clearance — anything less prints the headline OVER the kicker
+    cy += basePx * KICKER_ADVANCE;
   }
   if (!scene.headline) return cy;
-  const lines = wrap(ctx, scene.headline, basePx, 900, w, 3);
+  const lines = wrap(ctx, scene.headline, basePx, 900, w, maxLines);
   const lh = basePx * 1.12;
   let wordIdx = 0;
   for (const line of lines) {
@@ -295,6 +328,7 @@ function drawHeadline(ctx: CanvasRenderingContext2D, scene: MotionScene, pal: Pa
 
 /* ── element drawers (each draws into rect r with scene-local time sc) ────── */
 type Rect = { x: number; y: number; w: number; h: number };
+export type MediaAssets = { images: Map<string, HTMLImageElement>; videos: Map<string, HTMLVideoElement> };
 
 function tileBg(ctx: CanvasRenderingContext2D, pal: Pal, r: Rect, rad: number, alpha = 1) {
   ctx.save();
@@ -376,7 +410,7 @@ function drawIconGrid(ctx: CanvasRenderingContext2D, el: MotionElement, pal: Pal
     const cx = r.x + (i % cols) * cw + cw / 2;
     const cy = r.y + Math.floor(i / cols) * ch + ch / 2;
     const s = Math.min(cw, ch);
-    const tile = s * 0.44;
+    const tile = s * 0.52;
     const e = outBack(p);
     ctx.save();
     ctx.translate(cx, cy - s * 0.1);
@@ -392,10 +426,10 @@ function drawIconGrid(ctx: CanvasRenderingContext2D, el: MotionElement, pal: Pal
     ctx.restore();
     ctx.globalAlpha = outCubic(p);
     ctx.textAlign = "center";
-    setFont(ctx, s * 0.085, 700);
-    ctx.fillStyle = pal.muted;
-    const lbl = wrap(ctx, items[i], s * 0.085, 700, cw * 0.9, 2);
-    lbl.forEach((ln, li) => ctx.fillText(ln, cx, cy + tile * 0.62 + s * 0.06 + li * s * 0.105));
+    setFont(ctx, s * 0.1, 700);
+    ctx.fillStyle = pal.ink;
+    const lbl = wrap(ctx, items[i], s * 0.1, 700, cw * 0.92, 2);
+    lbl.forEach((ln, li) => ctx.fillText(ln, cx, cy + tile * 0.62 + s * 0.07 + li * s * 0.12));
     ctx.globalAlpha = 1;
     ctx.textAlign = "left";
   }
@@ -446,6 +480,26 @@ function drawChart(ctx: CanvasRenderingContext2D, el: MotionElement, pal: Pal, r
   const maxV = Math.max(...c.values, 1e-9);
   const n = c.values.length;
   ctx.save();
+  // faint horizontal gridlines + baseline give bar/line/area charts a real "charted" feel
+  if (c.kind !== "donut") {
+    const gp = outCubic(seg(sc, at + 0.05, 0.5));
+    ctx.globalAlpha = gp;
+    ctx.strokeStyle = pal.dark ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.07)";
+    ctx.lineWidth = 1;
+    for (let g = 1; g <= 3; g++) {
+      const gy = inY + inH - (g / 3) * inH * 0.92;
+      ctx.beginPath();
+      ctx.moveTo(inX, gy);
+      ctx.lineTo(inX + inW, gy);
+      ctx.stroke();
+    }
+    ctx.strokeStyle = pal.dark ? "rgba(255,255,255,0.18)" : "rgba(0,0,0,0.16)";
+    ctx.beginPath();
+    ctx.moveTo(inX, inY + inH);
+    ctx.lineTo(inX + inW, inY + inH);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
   if (c.kind === "donut") {
     const cx = box.x + box.w / 2;
     const cy = box.y + box.h / 2;
@@ -498,10 +552,15 @@ function drawChart(ctx: CanvasRenderingContext2D, el: MotionElement, pal: Pal, r
       setFont(ctx, Math.min(bw * 0.34, inH * 0.09), 700);
       ctx.fillStyle = pal.muted;
       ctx.fillText(c.labels[i] || "", x + bw / 2, inY + inH + pad * 0.72);
+      // every bar gets its value (small); the highlight gets it big + ink
       if (i === c.highlight) {
         setFont(ctx, Math.min(bw * 0.4, inH * 0.11), 900);
         ctx.fillStyle = pal.ink;
         ctx.fillText(fmtNum(c.values[i]), x + bw / 2, y - pad * 0.3);
+      } else if (h > inH * 0.14) {
+        setFont(ctx, Math.min(bw * 0.26, inH * 0.062), 700);
+        ctx.fillStyle = pal.faint;
+        ctx.fillText(fmtNum(c.values[i]), x + bw / 2, y - pad * 0.24);
       }
       ctx.globalAlpha = 1;
       ctx.textAlign = "left";
@@ -537,6 +596,21 @@ function drawChart(ctx: CanvasRenderingContext2D, el: MotionElement, pal: Pal, r
     ctx.arc(last.x, last.y, inH * 0.028, 0, Math.PI * 2);
     ctx.fillStyle = pal.accent;
     ctx.fill();
+    // label the moving tip with its value — a chart should always show its number
+    const tipIdx = Math.min(upto, pts.length) - 1;
+    setFont(ctx, inH * 0.085, 900);
+    ctx.fillStyle = pal.ink;
+    const tipTxt = fmtNum(c.values[tipIdx]);
+    const tw = ctx.measureText(tipTxt).width;
+    ctx.fillText(tipTxt, Math.min(last.x + inH * 0.06, inX + inW - tw), Math.max(inY + inH * 0.12, last.y - inH * 0.07));
+    // first/last x labels anchor the series in time
+    if (c.labels.length >= 2) {
+      setFont(ctx, inH * 0.06, 700);
+      ctx.fillStyle = pal.faint;
+      ctx.fillText(c.labels[0] || "", inX, inY + inH + pad * 0.72);
+      const lastLbl = c.labels[c.labels.length - 1] || "";
+      ctx.fillText(lastLbl, inX + inW - ctx.measureText(lastLbl).width, inY + inH + pad * 0.72);
+    }
   }
   ctx.restore();
 }
@@ -715,11 +789,65 @@ function drawUiCard(ctx: CanvasRenderingContext2D, el: MotionElement, pal: Pal, 
   ctx.restore();
 }
 
-function drawTimeline(ctx: CanvasRenderingContext2D, el: MotionElement, pal: Pal, r: Rect, sc: number, at: number) {
+function drawTimeline(ctx: CanvasRenderingContext2D, el: MotionElement, pal: Pal, r: Rect, sc: number, at: number, vertical = false) {
   const items = el.items || [];
   const n = Math.max(2, items.length);
   const p = seg(sc, at, 0.3);
   if (p <= 0) return;
+  // PORTRAIT with 4+ steps: a horizontal line crams labels — go vertical instead
+  // (line down the left, labels to the right; the documentary "journey" look).
+  if (vertical && n >= 4) {
+    const lx = r.x + r.w * 0.11;
+    const y0 = r.y + r.h * 0.06;
+    const y1 = r.y + r.h * 0.94;
+    const prog = outCubic(seg(sc, at + 0.1, 1.4));
+    ctx.save();
+    ctx.strokeStyle = pal.line;
+    ctx.lineWidth = Math.max(2, r.w * 0.008);
+    ctx.beginPath();
+    ctx.moveTo(lx, y0);
+    ctx.lineTo(lx, y1);
+    ctx.stroke();
+    ctx.strokeStyle = pal.accent;
+    ctx.beginPath();
+    ctx.moveTo(lx, y0);
+    ctx.lineTo(lx, y0 + (y1 - y0) * prog);
+    ctx.stroke();
+    const nodeR = Math.min(r.h * 0.03, r.w * 0.03);
+    for (let i = 0; i < n; i++) {
+      const ny = y0 + ((y1 - y0) * i) / (n - 1);
+      const reached = prog >= i / (n - 1) - 0.001;
+      const np = seg(sc, at + 0.1 + (i / (n - 1)) * 1.3, 0.35);
+      if (np <= 0) continue;
+      const e = outBack(np);
+      ctx.save();
+      ctx.translate(lx, ny);
+      ctx.scale(e, e);
+      ctx.beginPath();
+      ctx.arc(0, 0, nodeR, 0, Math.PI * 2);
+      ctx.fillStyle = reached ? pal.accent : pal.dark ? "#232636" : "#e8e8f2";
+      ctx.fill();
+      ctx.strokeStyle = pal.dark ? "rgba(255,255,255,0.2)" : "rgba(0,0,0,0.1)";
+      ctx.lineWidth = nodeR * 0.24;
+      ctx.stroke();
+      ctx.restore();
+      ctx.globalAlpha = outCubic(np);
+      const tx = lx + nodeR * 3;
+      setFont(ctx, Math.min(r.h / n * 0.24, r.w * 0.052), 800);
+      ctx.fillStyle = pal.ink;
+      ctx.textBaseline = "middle";
+      const lines = wrap(ctx, items[i] || "", Math.min(r.h / n * 0.24, r.w * 0.052), 800, r.x + r.w - tx, 2);
+      lines.forEach((ln, li) => ctx.fillText(ln, tx, ny + (li - (lines.length - 1) / 2) * r.w * 0.06));
+      setFont(ctx, r.w * 0.032, 700);
+      ctx.fillStyle = pal.faint;
+      const numW = ctx.measureText(`0${i + 1}`).width;
+      ctx.fillText(`0${i + 1}`, lx - nodeR * 2.4 - numW, ny);
+      ctx.textBaseline = "alphabetic";
+      ctx.globalAlpha = 1;
+    }
+    ctx.restore();
+    return;
+  }
   const y = r.y + r.h * 0.42;
   const x0 = r.x + r.w * 0.06;
   const x1 = r.x + r.w * 0.94;
@@ -959,7 +1087,273 @@ function drawTextEl(ctx: CanvasRenderingContext2D, el: MotionElement, pal: Pal, 
   ctx.textAlign = "left";
 }
 
-function drawElement(ctx: CanvasRenderingContext2D, el: MotionElement, pal: Pal, r: Rect, sc: number, at: number, dur: number, vertical: boolean, images: Map<string, HTMLImageElement>) {
+/** compare — two rounded columns (A vs B), staggered items, optional winner accent. */
+function drawCompare(ctx: CanvasRenderingContext2D, el: MotionElement, pal: Pal, r: Rect, sc: number, at: number, vertical: boolean) {
+  const c = el.compare;
+  if (!c) return;
+  const p = seg(sc, at, 0.6);
+  if (p <= 0) return;
+  const gap = Math.min(r.w, r.h) * 0.04;
+  const cols: { title: string; items: string[]; icon?: string; win: boolean; cr: Rect }[] = [
+    { title: c.leftTitle, items: c.leftItems || [], icon: c.leftIcon, win: c.winner === "left", cr: { x: 0, y: 0, w: 0, h: 0 } },
+    { title: c.rightTitle, items: c.rightItems || [], icon: c.rightIcon, win: c.winner === "right", cr: { x: 0, y: 0, w: 0, h: 0 } },
+  ];
+  if (vertical && r.h > r.w * 1.1) {
+    const colH = (r.h - gap) / 2;
+    cols[0].cr = { x: r.x, y: r.y, w: r.w, h: colH };
+    cols[1].cr = { x: r.x, y: r.y + colH + gap, w: r.w, h: colH };
+  } else {
+    const colW = (r.w - gap) / 2;
+    cols[0].cr = { x: r.x, y: r.y, w: colW, h: r.h };
+    cols[1].cr = { x: r.x + colW + gap, y: r.y, w: colW, h: r.h };
+  }
+  cols.forEach((col, ci) => {
+    const cp = seg(sc, at + ci * 0.22, 0.6);
+    if (cp <= 0) return;
+    const e = outExpo(cp);
+    const cr = col.cr;
+    ctx.save();
+    ctx.globalAlpha = e;
+    ctx.translate(0, (1 - e) * cr.h * 0.05);
+    const rad = Math.min(cr.w, cr.h) * 0.07;
+    tileBg(ctx, pal, cr, rad);
+    if (col.win) {
+      rr(ctx, cr.x, cr.y, cr.w, cr.h, rad);
+      ctx.strokeStyle = pal.accent;
+      ctx.lineWidth = Math.max(2, rad * 0.16);
+      ctx.stroke();
+    }
+    const pad2 = Math.min(cr.w, cr.h) * 0.09;
+    let ty = cr.y + pad2 * 1.6;
+    // header: icon + title
+    if (col.icon) {
+      const node = iconNode(col.icon);
+      if (node) drawIcon(ctx, node, cr.x + pad2 + pad2 * 0.5, ty - pad2 * 0.28, pad2 * 1.1, col.win ? pal.accent : pal.muted, 1);
+    }
+    setFont(ctx, fitPx(ctx, col.title, pad2 * 0.95, 900, cr.w - pad2 * (col.icon ? 3.4 : 2)), 900);
+    ctx.fillStyle = col.win ? pal.accent : pal.ink;
+    ctx.fillText(col.title, cr.x + pad2 + (col.icon ? pad2 * 1.5 : 0), ty);
+    ty += pad2 * 1.15;
+    ctx.strokeStyle = pal.line;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(cr.x + pad2, ty - pad2 * 0.45);
+    ctx.lineTo(cr.x + cr.w - pad2, ty - pad2 * 0.45);
+    ctx.stroke();
+    // items
+    const rowH = Math.min((cr.y + cr.h - ty - pad2 * 0.5) / Math.max(1, col.items.length), pad2 * 1.35);
+    col.items.forEach((it, i) => {
+      const ip = seg(sc, at + 0.3 + ci * 0.22 + i * 0.14, 0.5);
+      if (ip <= 0) return;
+      const ie = outExpo(ip);
+      const iy = ty + i * rowH + rowH * 0.42;
+      ctx.globalAlpha = e * ie;
+      const tick = rowH * 0.42;
+      drawIcon(ctx, iconNode(col.win ? "check-circle" : "arrow-right")!, cr.x + pad2 + tick / 2, iy, tick, col.win ? pal.accent : pal.faint, 1);
+      ctx.textBaseline = "middle";
+      setFont(ctx, fitPx(ctx, it, rowH * 0.42, 700, cr.w - pad2 * 2 - tick * 1.6), 700);
+      ctx.fillStyle = pal.ink;
+      ctx.fillText(it, cr.x + pad2 + tick * 1.6, iy);
+      ctx.textBaseline = "alphabetic";
+    });
+    ctx.restore();
+  });
+  // the "VS" coin between the columns
+  const vp = seg(sc, at + 0.35, 0.5);
+  if (vp > 0 && !(vertical && r.h > r.w * 1.1)) {
+    const e = outBack(vp);
+    const cx = r.x + r.w / 2;
+    const cy = r.y + r.h * 0.5;
+    const R = Math.min(r.w, r.h) * 0.055;
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.scale(e, e);
+    ctx.beginPath();
+    ctx.arc(0, 0, R, 0, Math.PI * 2);
+    ctx.fillStyle = pal.dark ? "#10121e" : "#ffffff";
+    ctx.fill();
+    ctx.strokeStyle = pal.accent;
+    ctx.lineWidth = R * 0.14;
+    ctx.stroke();
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    setFont(ctx, R * 0.72, 900);
+    ctx.fillStyle = pal.accent;
+    ctx.fillText("VS", 0, R * 0.05);
+    ctx.textBaseline = "alphabetic";
+    ctx.textAlign = "left";
+    ctx.restore();
+  }
+}
+
+/** statRow — 2-4 big stat capsules ("4.2B" / "users"), the agency numbers strip. */
+function drawStatRow(ctx: CanvasRenderingContext2D, el: MotionElement, pal: Pal, r: Rect, sc: number, at: number, vertical: boolean) {
+  const stats = el.stats || [];
+  if (!stats.length) return;
+  const n = stats.length;
+  const twoByTwo = vertical && n >= 3;
+  const cols = twoByTwo ? 2 : n;
+  const rows = twoByTwo ? Math.ceil(n / 2) : 1;
+  const gap = Math.min(r.w, r.h) * 0.035;
+  const cw = (r.w - gap * (cols - 1)) / cols;
+  const chh = Math.min((r.h - gap * (rows - 1)) / rows, cw * 0.85);
+  const y0 = r.y + (r.h - (chh * rows + gap * (rows - 1))) / 2;
+  for (let i = 0; i < n; i++) {
+    const p = seg(sc, at + i * 0.16, 0.6);
+    if (p <= 0) continue;
+    const e = outBack(p);
+    const cx = r.x + (i % cols) * (cw + gap) + cw / 2;
+    const cy = y0 + Math.floor(i / cols) * (chh + gap) + chh / 2;
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.scale(e, e);
+    tileBg(ctx, pal, { x: -cw / 2, y: -chh / 2, w: cw, h: chh }, chh * 0.16);
+    // accent top rule
+    ctx.fillStyle = pal.accent;
+    rr(ctx, -cw * 0.14, -chh / 2 + chh * 0.1, cw * 0.28, chh * 0.035, chh * 0.02);
+    ctx.fill();
+    ctx.textAlign = "center";
+    setFont(ctx, fitPx(ctx, stats[i].value, chh * 0.34, 900, cw * 0.86), 900);
+    ctx.fillStyle = pal.ink;
+    ctx.fillText(stats[i].value, 0, chh * 0.1);
+    setFont(ctx, fitPx(ctx, stats[i].label, chh * 0.115, 700, cw * 0.86), 700);
+    ctx.fillStyle = pal.muted;
+    ctx.fillText(stats[i].label, 0, chh * 0.3);
+    ctx.textAlign = "left";
+    ctx.restore();
+  }
+}
+
+/** flow — icon nodes joined by animated arrows: the "how it works" process strip. */
+function drawFlow(ctx: CanvasRenderingContext2D, el: MotionElement, pal: Pal, r: Rect, sc: number, at: number, vertical: boolean) {
+  const items = (el.items || []).slice(0, 5);
+  if (items.length < 2) return;
+  const n = items.length;
+  const down = vertical && n >= 4; // stack on portrait with many steps
+  const gap = down ? r.h / n : r.w / n;
+  const tile = Math.min(down ? r.w * 0.32 : gap * 0.52, down ? gap * 0.62 : r.h * 0.44);
+  for (let i = 0; i < n; i++) {
+    const p = seg(sc, at + i * 0.28, 0.55);
+    if (p <= 0) continue;
+    const e = outBack(p);
+    const cx = down ? r.x + r.w * 0.28 : r.x + gap * i + gap / 2;
+    const cy = down ? r.y + gap * i + gap / 2 : r.y + r.h * 0.4;
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.scale(e, e);
+    rr(ctx, -tile / 2, -tile / 2, tile, tile, tile * 0.26);
+    ctx.fillStyle = pal.dark ? "rgba(255,255,255,0.07)" : "rgba(255,255,255,0.95)";
+    ctx.fill();
+    ctx.strokeStyle = i === n - 1 ? pal.accent : pal.line;
+    ctx.lineWidth = Math.max(1.5, tile * 0.035);
+    ctx.stroke();
+    const node = iconNode(el.icons?.[i]) || iconNode("arrow-right")!;
+    drawIcon(ctx, node, 0, 0, tile * 0.54, pal.accent, 1);
+    ctx.restore();
+    // label
+    ctx.globalAlpha = outCubic(p);
+    setFont(ctx, Math.min(tile * 0.24, (down ? r.w * 0.5 : gap * 0.9) * 0.14), 800);
+    ctx.fillStyle = pal.ink;
+    if (down) {
+      ctx.textBaseline = "middle";
+      const lines = wrap(ctx, items[i], tile * 0.24, 800, r.w - (cx - r.x) - tile, 2);
+      lines.forEach((ln, li) => ctx.fillText(ln, cx + tile * 0.75, cy + (li - (lines.length - 1) / 2) * tile * 0.3));
+      ctx.textBaseline = "alphabetic";
+    } else {
+      ctx.textAlign = "center";
+      const lines = wrap(ctx, items[i], tile * 0.24, 800, gap * 0.92, 2);
+      lines.forEach((ln, li) => ctx.fillText(ln, cx, cy + tile * 0.78 + tile * 0.06 + li * tile * 0.28));
+      ctx.textAlign = "left";
+    }
+    ctx.globalAlpha = 1;
+    // arrow to the next node (draw-on)
+    if (i < n - 1) {
+      const ap = seg(sc, at + i * 0.28 + 0.3, 0.4);
+      if (ap > 0) {
+        const ae = outCubic(ap);
+        ctx.save();
+        ctx.strokeStyle = pal.accent;
+        ctx.lineWidth = Math.max(2, tile * 0.05);
+        ctx.lineCap = "round";
+        const ax0 = down ? cx : cx + tile * 0.62;
+        const ay0 = down ? cy + tile * 0.62 : cy;
+        const ax1 = down ? cx : cx + gap - tile * 0.62;
+        const ay1 = down ? cy + gap - tile * 0.62 : cy;
+        const axm = ax0 + (ax1 - ax0) * ae;
+        const aym = ay0 + (ay1 - ay0) * ae;
+        ctx.beginPath();
+        ctx.moveTo(ax0, ay0);
+        ctx.lineTo(axm, aym);
+        ctx.stroke();
+        if (ap >= 1) {
+          const hs = tile * 0.12;
+          ctx.beginPath();
+          if (down) {
+            ctx.moveTo(ax1 - hs, ay1 - hs);
+            ctx.lineTo(ax1, ay1);
+            ctx.lineTo(ax1 + hs, ay1 - hs);
+          } else {
+            ctx.moveTo(ax1 - hs, ay1 - hs);
+            ctx.lineTo(ax1, ay1);
+            ctx.lineTo(ax1 - hs, ay1 + hs);
+          }
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+    }
+  }
+}
+
+/** video — real stock footage, cover-fit in a rounded frame with a cinematic tint.
+ *  The export path seeks the element to the right time BEFORE each frame; if the
+ *  clip failed to load we fall back to its poster image, then to a placeholder. */
+function drawVideoEl(ctx: CanvasRenderingContext2D, el: MotionElement, pal: Pal, r: Rect, sc: number, at: number, video: HTMLVideoElement | null, poster: HTMLImageElement | null) {
+  const p = seg(sc, at, 0.7);
+  if (p <= 0) return;
+  const e = outCubic(p);
+  const rad = Math.min(r.w, r.h) * 0.06;
+  ctx.save();
+  ctx.globalAlpha = e;
+  tileBg(ctx, pal, r, rad);
+  rr(ctx, r.x + rad * 0.25, r.y + rad * 0.25, r.w - rad * 0.5, r.h - rad * 0.5, rad * 0.8);
+  ctx.clip();
+  const vw = video?.videoWidth || 0;
+  const vh = video?.videoHeight || 0;
+  if (video && vw && vh) {
+    const k = 1.04 + 0.03 * clamp01(sc / 8); // gentle push-in over the footage
+    const s = Math.max((r.w / vw) * k, (r.h / vh) * k);
+    ctx.drawImage(video, r.x + r.w / 2 - (vw * s) / 2, r.y + r.h / 2 - (vh * s) / 2, vw * s, vh * s);
+  } else if (poster && poster.width) {
+    const s = Math.max(r.w / poster.width, r.h / poster.height) * 1.05;
+    ctx.drawImage(poster, r.x + r.w / 2 - (poster.width * s) / 2, r.y + r.h / 2 - (poster.height * s) / 2, poster.width * s, poster.height * s);
+  } else {
+    ctx.fillStyle = pal.accentSoft;
+    ctx.fillRect(r.x, r.y, r.w, r.h);
+    drawIcon(ctx, iconNode("film")!, r.x + r.w / 2, r.y + r.h / 2, Math.min(r.w, r.h) * 0.24, pal.accent, 1);
+  }
+  // cinematic grade: soft dark edges + bottom tint so overlaid text always reads
+  const tint = ctx.createLinearGradient(r.x, r.y, r.x, r.y + r.h);
+  tint.addColorStop(0, "rgba(0,0,0,0.08)");
+  tint.addColorStop(0.6, "rgba(0,0,0,0)");
+  tint.addColorStop(1, "rgba(4,6,14,0.5)");
+  ctx.fillStyle = tint;
+  ctx.fillRect(r.x, r.y, r.w, r.h);
+  ctx.restore();
+  if (el.text) {
+    const tp = seg(sc, at + 0.3, 0.5);
+    ctx.globalAlpha = outCubic(tp);
+    setFont(ctx, Math.min(r.w, r.h) * 0.07, 800);
+    ctx.fillStyle = "#fff";
+    ctx.shadowColor = "rgba(0,0,0,0.6)";
+    ctx.shadowBlur = 8;
+    ctx.fillText(el.text, r.x + rad, r.y + r.h - rad);
+    ctx.shadowColor = "transparent";
+    ctx.globalAlpha = 1;
+  }
+}
+
+function drawElement(ctx: CanvasRenderingContext2D, el: MotionElement, pal: Pal, r: Rect, sc: number, at: number, dur: number, vertical: boolean, media: MediaAssets) {
   switch (el.type) {
     case "title": {
       const fake: MotionScene = { narration: "", headline: el.text || "", elements: [] };
@@ -973,19 +1367,23 @@ function drawElement(ctx: CanvasRenderingContext2D, el: MotionElement, pal: Pal,
     case "chart": return drawChart(ctx, el, pal, r, sc, at);
     case "counter": return drawCounter(ctx, el, pal, r, sc, at);
     case "uiCard": return drawUiCard(ctx, el, pal, r, sc, at, dur);
-    case "timeline": return drawTimeline(ctx, el, pal, r, sc, at);
+    case "timeline": return drawTimeline(ctx, el, pal, r, sc, at, vertical);
     case "progress": return drawProgress(ctx, el, pal, r, sc, at);
     case "quote": return drawQuote(ctx, el, pal, r, sc, at);
     case "badge": return drawBadge(ctx, el, pal, r, sc, at);
-    case "image": return drawImageEl(ctx, el, pal, r, sc, at, dur, el.imageUrl ? images.get(el.imageUrl) ?? null : null);
+    case "compare": return drawCompare(ctx, el, pal, r, sc, at, vertical);
+    case "statRow": return drawStatRow(ctx, el, pal, r, sc, at, vertical);
+    case "flow": return drawFlow(ctx, el, pal, r, sc, at, vertical);
+    case "image": return drawImageEl(ctx, el, pal, r, sc, at, dur, el.imageUrl ? media.images.get(el.imageUrl) ?? null : null);
+    case "video": return drawVideoEl(ctx, el, pal, r, sc, at, el.videoUrl ? media.videos.get(el.videoUrl) ?? null : null, el.imageUrl ? media.images.get(el.imageUrl) ?? null : null);
     case "logo": return drawLogo(ctx, el.text || "", pal, r, sc, at);
   }
 }
 
 /* ── scene composition ────────────────────────────────────────────────────── */
-const BG_CYCLE = ["blobs", "dots", "beams", "grid", "waves"] as const;
+const BG_CYCLE = ["blobs", "dots", "beams", "rings", "grid", "waves", "diag"] as const;
 
-function drawScene(ctx: CanvasRenderingContext2D, W: number, H: number, spec: MotionSpec, idx: number, sc: number, dur: number, pal: Pal, images: Map<string, HTMLImageElement>, energy: number) {
+function drawScene(ctx: CanvasRenderingContext2D, W: number, H: number, spec: MotionSpec, idx: number, sc: number, dur: number, pal: Pal, media: MediaAssets, energy: number) {
   const scene = spec.scenes[idx];
   const vertical = H > W;
   const min = Math.min(W, H);
@@ -1009,63 +1407,71 @@ function drawScene(ctx: CanvasRenderingContext2D, W: number, H: number, spec: Mo
     if (hasHeadline) {
       // vertically-centered headline block
       const lines = scene.headline ? wrap(ctx, scene.headline, headPx * 1.15, 900, W - pad * 2, 3).length : 0;
-      const blockH = (scene.kicker ? headPx * 0.6 : 0) + lines * headPx * 1.3;
+      const blockH = (scene.kicker ? headPx * 1.15 * KICKER_ADVANCE : 0) + lines * headPx * 1.3;
       const startY = els.length ? H * 0.2 : (H - blockH) / 2 + headPx;
       drawHeadline(ctx, scene, pal, pad, startY, W - pad * 2, sc, "center", headPx * 1.15);
       if (els.length) {
         const r: Rect = { x: pad, y: startY + blockH * 0.6, w: W - pad * 2, h: H - (startY + blockH * 0.6) - pad * 1.6 };
-        els.slice(0, 1).forEach((el) => drawElement(ctx, el, pal, r, sc, 0.5, dur, vertical, images));
+        els.slice(0, 1).forEach((el) => drawElement(ctx, el, pal, r, sc, 0.5, dur, vertical, media));
       }
     } else if (els.length) {
       const r: Rect = { x: pad, y: pad * 1.5, w: W - pad * 2, h: H - pad * 3.4 };
-      els.slice(0, 1).forEach((el) => drawElement(ctx, el, pal, r, sc, 0.3, dur, vertical, images));
+      els.slice(0, 1).forEach((el) => drawElement(ctx, el, pal, r, sc, 0.3, dur, vertical, media));
     }
   } else if (layout === "split" && !vertical) {
     const txtW = W * 0.44;
-    let cy = H * (hasHeadline ? 0.3 : 0.4);
-    cy = drawHeadline(ctx, scene, pal, pad, cy, txtW - pad, sc, "left", headPx);
-    // supporting text elements flow under the headline; visuals go right
     const textEls = els.filter((e) => e.type === "text" || e.type === "bullets" || e.type === "badge");
     const visEls = els.filter((e) => !textEls.includes(e));
+    // measure the whole left block first so it sits vertically CENTERED (no dead
+    // bottom-left void — the imbalance that made split scenes feel unfinished)
+    const headLines = scene.headline ? wrap(ctx, scene.headline, headPx, 900, txtW - pad, 3).length : 0;
+    let blockH = (scene.kicker ? headPx * KICKER_ADVANCE : 0) + headLines * headPx * 1.12;
+    for (const el of textEls) blockH += el.type === "bullets" ? Math.min((el.items?.length || 1) * min * 0.1, H * 0.4) : min * 0.16;
+    let cy = Math.max(H * 0.16, (H - blockH) / 2) + headPx * 0.8;
+    cy = drawHeadline(ctx, scene, pal, pad, cy, txtW - pad, sc, "left", headPx);
     let ty = cy + min * 0.03;
     for (const el of textEls) {
       const h = H - ty - pad * 2;
       if (h < min * 0.08) break; // no room left below a tall headline — never draw into a negative rect
       const r: Rect = { x: pad, y: ty, w: txtW - pad, h };
-      drawElement(ctx, el, pal, r, sc, 0.55, dur, false, images);
+      drawElement(ctx, el, pal, r, sc, 0.55, dur, false, media);
       ty += el.type === "bullets" ? Math.min((el.items?.length || 1) * min * 0.1, r.h) : min * 0.16;
     }
     const vr: Rect = { x: txtW + pad * 0.5, y: pad * 1.4, w: W - txtW - pad * 1.8, h: H - pad * 3 };
-    visEls.slice(0, 1).forEach((el) => drawElement(ctx, el, pal, vr, sc, 0.45, dur, false, images));
+    visEls.slice(0, 1).forEach((el) => drawElement(ctx, el, pal, vr, sc, 0.45, dur, false, media));
   } else if (layout === "grid") {
     const cy = drawHeadline(ctx, scene, pal, pad, H * (vertical ? 0.13 : 0.17), W - pad * 2, sc, "center", headPx * 0.9);
     const gy = cy + min * 0.02;
     const r: Rect = { x: pad, y: gy, w: W - pad * 2, h: H - gy - pad * 1.8 };
     const n = Math.min(els.length, 3);
-    if (n === 1) drawElement(ctx, els[0], pal, r, sc, 0.5, dur, vertical, images);
+    if (n === 1) drawElement(ctx, els[0], pal, r, sc, 0.5, dur, vertical, media);
     else {
       // side-by-side (or stacked on vertical)
       for (let i = 0; i < n; i++) {
         const cellR: Rect = vertical
           ? { x: r.x, y: r.y + (r.h / n) * i, w: r.w, h: r.h / n - pad * 0.3 }
           : { x: r.x + (r.w / n) * i + (i ? pad * 0.3 : 0), y: r.y, w: r.w / n - pad * 0.3, h: r.h };
-        drawElement(ctx, els[i], pal, cellR, sc, 0.5 + i * 0.22, dur, vertical, images);
+        drawElement(ctx, els[i], pal, cellR, sc, 0.5 + i * 0.22, dur, vertical, media);
       }
     }
   } else if (layout === "full") {
-    // visual fills the frame; headline overlays lower third
-    const vis = els[0];
-    if (vis) drawElement(ctx, vis, pal, { x: pad * 0.6, y: pad * 0.6, w: W - pad * 1.2, h: H - pad * 1.2 }, sc, 0.15, dur, vertical, images);
+    // visual fills the frame; headline overlays lower third. The visual's own text
+    // label is dropped here — it would collide with the caption band, and the
+    // lower-third headline already labels the scene.
+    const vis = els[0] ? (els[0].text ? { ...els[0], text: undefined } : els[0]) : undefined;
+    if (vis) drawElement(ctx, vis, pal, { x: pad * 0.6, y: pad * 0.6, w: W - pad * 1.2, h: H - pad * 1.2 }, sc, 0.15, dur, vertical, media);
     if (hasHeadline) {
-      const y = H * 0.78;
+      // max 2 lines and a higher anchor so the lower-third headline can never
+      // collide with the burned-in captions at the bottom edge
+      const y = H * 0.72;
       ctx.save();
-      const grad = ctx.createLinearGradient(0, H * 0.55, 0, H);
+      const grad = ctx.createLinearGradient(0, H * 0.5, 0, H);
       grad.addColorStop(0, "rgba(0,0,0,0)");
       grad.addColorStop(1, pal.dark ? "rgba(6,8,16,0.88)" : "rgba(255,255,255,0.92)");
       ctx.fillStyle = grad;
-      ctx.fillRect(0, H * 0.55, W, H * 0.45);
+      ctx.fillRect(0, H * 0.5, W, H * 0.5);
       ctx.restore();
-      drawHeadline(ctx, scene, pal, pad, y, W - pad * 2, sc, "left", headPx * 0.85);
+      drawHeadline(ctx, scene, pal, pad, y, W - pad * 2, sc, "left", headPx * 0.8, 2);
     }
   } else {
     // "stack" (default vertical): headline top, one visual below
@@ -1074,34 +1480,65 @@ function drawScene(ctx: CanvasRenderingContext2D, W: number, H: number, spec: Mo
     els.slice(0, 2).forEach((el, i) => {
       const half = els.length > 1;
       const cell: Rect = half ? { x: r.x, y: r.y + (r.h / 2) * i, w: r.w, h: r.h / 2 - pad * 0.2 } : r;
-      drawElement(ctx, el, pal, cell, sc, 0.5 + i * 0.3, dur, vertical, images);
+      drawElement(ctx, el, pal, cell, sc, 0.5 + i * 0.3, dur, vertical, media);
     });
   }
   ctx.restore();
 }
 
 /* ── captions (word-synced, social style) ─────────────────────────────────── */
+/** Chunk caption words at CLAUSE boundaries (., ! ? ; :) up to 5 words — so the
+ *  on-screen phrase reads like language, not an arbitrary 4-word window. */
+function chunkWords(words: CaptionWord[]): CaptionWord[][] {
+  const groups: CaptionWord[][] = [];
+  let cur: CaptionWord[] = [];
+  for (const w of words) {
+    cur.push(w);
+    const clauseEnd = /[.!?;:,]$/.test(w.text);
+    if (cur.length >= 5 || (clauseEnd && cur.length >= 2)) {
+      groups.push(cur);
+      cur = [];
+    }
+  }
+  if (cur.length) {
+    // never leave a 1-word orphan chunk — merge it back into the previous group
+    if (cur.length === 1 && groups.length) groups[groups.length - 1].push(cur[0]);
+    else groups.push(cur);
+  }
+  return groups;
+}
+
 function drawCaptions(ctx: CanvasRenderingContext2D, W: number, H: number, pal: Pal, words: CaptionWord[], sc: number) {
   if (!words.length) return;
-  // group words into short chunks (~4) and show the active chunk
-  const CHUNK = 4;
-  let gi = -1;
-  for (let i = 0; i < words.length; i += CHUNK) {
-    const end = words[Math.min(i + CHUNK, words.length) - 1].end;
-    if (sc <= end + 0.12) {
-      gi = i;
+  const groups = chunkWords(words);
+  let group: CaptionWord[] | null = null;
+  for (const g of groups) {
+    if (sc <= g[g.length - 1].end + 0.12) {
+      group = g;
       break;
     }
   }
-  if (gi < 0) return;
-  const group = words.slice(gi, gi + CHUNK);
+  if (!group) return;
   if (sc < group[0].start - 0.25) return;
+  const g = group;
   const min = Math.min(W, H);
-  const px = min * 0.042;
+  let px = min * 0.042;
   setFont(ctx, px, 800);
-  const gapW = px * 0.32;
-  const widths = group.map((w) => ctx.measureText(w.text).width);
-  const totalW = widths.reduce((a, b) => a + b, 0) + gapW * (group.length - 1);
+  const measure = () => {
+    const gw = px * 0.32;
+    const ws = g.map((w) => ctx.measureText(w.text).width);
+    return { gw, ws, total: ws.reduce((a, b) => a + b, 0) + gw * (g.length - 1) };
+  };
+  let m = measure();
+  // a 5-word clause must still fit the frame — shrink until it does
+  while (m.total > W * 0.9 && px > min * 0.026) {
+    px *= 0.93;
+    setFont(ctx, px, 800);
+    m = measure();
+  }
+  const gapW = m.gw;
+  const widths = m.ws;
+  const totalW = m.total;
   const padX = px * 0.7;
   const y = H - min * 0.075;
   const x0 = W / 2 - totalW / 2;
@@ -1157,8 +1594,43 @@ function drawEndCard(ctx: CanvasRenderingContext2D, W: number, H: number, pal: P
   ctx.restore();
 }
 
+/* ── chapter card: documentary lower-third as each chapter opens ──────────── */
+function drawChapterCard(ctx: CanvasRenderingContext2D, W: number, H: number, pal: Pal, num: number, title: string, sc: number) {
+  const IN = 0.35;
+  const HOLD = 2.4;
+  const OUT = 0.45;
+  if (sc > IN + HOLD + OUT) return;
+  const p = sc < IN + HOLD ? outExpo(seg(sc, 0.12, IN)) : 1 - inOut(seg(sc, IN + HOLD, OUT));
+  if (p <= 0) return;
+  const min = Math.min(W, H);
+  const px = min * 0.032;
+  setFont(ctx, px, 900);
+  const tw = ctx.measureText(title).width;
+  setFont(ctx, px * 0.62, 800);
+  const kick = `CHAPTER ${num}`;
+  const kw = ctx.measureText(kick).width;
+  const w = Math.max(tw, kw) + px * 2.2;
+  const h = px * 2.9;
+  const x = min * 0.055 - (1 - p) * w * 0.3;
+  const y = H - min * 0.075 - h - min * 0.055; // sits above the caption band
+  ctx.save();
+  ctx.globalAlpha = p;
+  rr(ctx, x, y, w, h, px * 0.5);
+  ctx.fillStyle = "rgba(8,9,16,0.66)";
+  ctx.fill();
+  ctx.fillStyle = pal.accent;
+  ctx.fillRect(x, y, px * 0.28, h);
+  setFont(ctx, px * 0.62, 800);
+  ctx.fillStyle = pal.accent;
+  ctx.fillText(kick, x + px * 0.9, y + px * 1.05);
+  setFont(ctx, px, 900);
+  ctx.fillStyle = "#fff";
+  ctx.fillText(title, x + px * 0.9, y + px * 2.25);
+  ctx.restore();
+}
+
 /* ── public: one deterministic frame ──────────────────────────────────────── */
-export type MotionAssets = { images: Map<string, HTMLImageElement>; captionWords: CaptionWord[][] };
+export type MotionAssets = { images: Map<string, HTMLImageElement>; videos: Map<string, HTMLVideoElement>; captionWords: CaptionWord[][] };
 
 export function drawMotionFrame(
   ctx: CanvasRenderingContext2D,
@@ -1185,12 +1657,29 @@ export function drawMotionFrame(
   const sc = t - timing.sceneStarts[idx];
   const dur = timing.sceneDurs[idx];
 
+  // per-scene hue-shifted palette (each chapter/act gets its own color mood);
+  // memoized per shift value — a frame only ever touches one or two shifts
+  const palFor = (i: number): Pal => {
+    const shift = spec.scenes[i]?.hueShift || 0;
+    if (!shift) return pal;
+    const key = `${spec.style.theme}|${spec.style.hue}|${spec.style.hue2 ?? ""}|${shift}`;
+    const cached = shiftCache.get(key);
+    if (cached) return cached;
+    const h = ((((spec.style.hue ?? 250) + shift) % 360) + 360) % 360;
+    const h2 = ((((spec.style.hue2 ?? (spec.style.hue ?? 250) + 40) + shift) % 360) + 360) % 360;
+    const p = makePalette({ ...spec, style: { ...spec.style, hue: h, hue2: h2 } });
+    if (shiftCache.size > 64) shiftCache.clear();
+    shiftCache.set(key, p);
+    return p;
+  };
+
   // cross-transition into the NEXT scene during the last TRANS/2 + first TRANS/2
   const nextStart = timing.sceneStarts[idx] + dur;
   const inTransOut = idx < n - 1 && t > nextStart - TRANS / 2;
   const inTransIn = idx > 0 && sc < TRANS / 2;
 
-  const renderOne = (i: number, localT: number) => drawScene(ctx, W, H, spec, i, localT, timing.sceneDurs[i], pal, assets.images, energy);
+  const media: MediaAssets = { images: assets.images, videos: assets.videos };
+  const renderOne = (i: number, localT: number) => drawScene(ctx, W, H, spec, i, localT, timing.sceneDurs[i], palFor(i), media, energy);
 
   if (inTransOut) {
     const nt = spec.scenes[idx].transition || "fade";
@@ -1204,10 +1693,28 @@ export function drawMotionFrame(
     renderOne(idx, sc);
   }
 
+  const scenePal = palFor(idx);
+  // documentary chapter card as each chapter opens (long-form only)
+  const chapters = spec.chapters || [];
+  const chIdx = chapters.findIndex((c) => c.at === idx);
+  if (chIdx >= 0 && chapters[chIdx].title) drawChapterCard(ctx, W, H, scenePal, chIdx + 1, chapters[chIdx].title, sc);
+
   // captions ride on top (not affected by scene camera)
-  if (spec.captions !== false) drawCaptions(ctx, W, H, pal, assets.captionWords[idx] || [], sc);
+  if (spec.captions !== false) drawCaptions(ctx, W, H, scenePal, assets.captionWords[idx] || [], sc);
+
+  // long-form: a whisper-thin progress line along the bottom edge
+  if (chapters.length > 1) {
+    ctx.save();
+    ctx.fillStyle = "rgba(255,255,255,0.10)";
+    ctx.fillRect(0, H - Math.max(3, H * 0.004), W, Math.max(3, H * 0.004));
+    ctx.fillStyle = scenePal.accent;
+    ctx.globalAlpha = 0.85;
+    ctx.fillRect(0, H - Math.max(3, H * 0.004), W * clamp01(t / Math.max(1, bodyEnd)), Math.max(3, H * 0.004));
+    ctx.restore();
+  }
   if (branded) drawWatermark(ctx, W, H, pal);
 }
+const shiftCache = new Map<string, Pal>();
 
 function applyTransition(ctx: CanvasRenderingContext2D, W: number, H: number, kind: string, p: number, drawA: () => void, drawB: () => void) {
   if (kind === "slide") {
