@@ -1594,6 +1594,112 @@ function drawEndCard(ctx: CanvasRenderingContext2D, W: number, H: number, pal: P
   ctx.restore();
 }
 
+/* ── mention cutaways: SEE what the narration names, timed to the word ────── */
+type MentionWindow = { start: number; end: number; term: string; url: string; tilt: number };
+
+/** Compute each mention's on-screen window from the scene's word timestamps. */
+function mentionWindows(scene: MotionScene, words: CaptionWord[], dur: number, sceneIdx: number): MentionWindow[] {
+  const ms = scene.mentions || [];
+  if (!ms.length) return [];
+  const nWords = Math.max(1, (scene.narration || "").split(/\s+/).filter(Boolean).length);
+  const raw = ms
+    .filter((m) => m.imageUrl)
+    .map((m, i) => {
+      const w = m.atWord !== undefined ? words[Math.min(Math.max(0, m.atWord), words.length - 1)] : undefined;
+      // no timestamps (silent voice) → place proportionally along the scene
+      const start = w ? w.start : 0.35 + ((m.atWord ?? i * (nWords / (ms.length + 1))) / nWords) * Math.max(1, dur - 2);
+      return { m, start, i };
+    })
+    .sort((a, b) => a.start - b.start);
+  const out: MentionWindow[] = [];
+  for (let i = 0; i < raw.length; i++) {
+    const start = Math.max(0.9, Math.min(raw[i].start, dur - 1.6));
+    const nextAt = i < raw.length - 1 ? Math.max(0.9, Math.min(raw[i + 1].start, dur - 1.6)) : Infinity;
+    const end = Math.min(start + 4.2, nextAt - 0.25, dur - 0.45);
+    if (end - start < 1.2) continue; // too squeezed to register — skip, don't flash
+    out.push({ start, end, term: raw[i].m.term, url: raw[i].m.imageUrl!, tilt: ((sceneIdx + i) % 2 ? 1 : -1) * 0.035 });
+  }
+  return out;
+}
+
+/** A polaroid-style documentary insert: white print frame, cover-fit photo with a
+ *  slow push-in, the term on the frame's chin. Center stage (with a soft scrim)
+ *  when the scene is graphics-led; a corner card when footage/UI already leads. */
+function drawMentionCard(ctx: CanvasRenderingContext2D, W: number, H: number, pal: Pal, win: MentionWindow, sc: number, img: HTMLImageElement | null, corner: boolean) {
+  if (!img || !img.width) return;
+  if (sc < win.start || sc > win.end) return;
+  const p = seg(sc, win.start, 0.5);
+  const outP = seg(sc, win.end - 0.35, 0.35);
+  const alpha = outCubic(p) * (1 - outP);
+  if (alpha <= 0) return;
+  const min = Math.min(W, H);
+  const size = corner ? min * 0.3 : min * 0.5;
+  const cx = corner ? W - size / 2 - min * 0.06 : W / 2;
+  const cy = corner ? (H > W ? H * 0.52 : H - size / 2 - min * 0.16) : H > W ? H * 0.45 : H * 0.44;
+
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  if (!corner) {
+    // scrim: the scene dims and the cutaway takes the room's attention
+    const scrim = ctx.createRadialGradient(cx, cy, size * 0.4, cx, cy, Math.hypot(W, H) * 0.6);
+    scrim.addColorStop(0, "rgba(4,5,10,0.62)");
+    scrim.addColorStop(1, "rgba(4,5,10,0.5)");
+    ctx.fillStyle = scrim;
+    ctx.fillRect(0, 0, W, H);
+  }
+  const e = outBack(p);
+  const settle = 1 - outP * 0.04;
+  ctx.translate(cx, cy);
+  ctx.rotate(win.tilt * (1 - p * 0.35)); // eases toward level as it lands
+  ctx.scale(e * settle, e * settle);
+
+  const frame = size * 0.045; // the white print border
+  const chin = size * 0.16; // label strip at the bottom (polaroid chin)
+  const w = size;
+  const h = size * 0.78 + chin;
+  // print shadow
+  ctx.shadowColor = "rgba(0,0,0,0.5)";
+  ctx.shadowBlur = size * 0.09;
+  ctx.shadowOffsetY = size * 0.03;
+  rr(ctx, -w / 2, -h / 2, w, h, size * 0.03);
+  ctx.fillStyle = "#f7f5f0";
+  ctx.fill();
+  ctx.shadowColor = "transparent";
+  // photo (cover-fit with a slow push-in)
+  const px0 = -w / 2 + frame;
+  const py0 = -h / 2 + frame;
+  const pw = w - frame * 2;
+  const ph = h - frame * 2 - chin;
+  ctx.save();
+  rr(ctx, px0, py0, pw, ph, size * 0.012);
+  ctx.clip();
+  const k = 1.04 + 0.06 * clamp01((sc - win.start) / Math.max(0.5, win.end - win.start));
+  const s = Math.max((pw / img.width) * k, (ph / img.height) * k);
+  ctx.drawImage(img, px0 + pw / 2 - (img.width * s) / 2, py0 + ph / 2 - (img.height * s) / 2, img.width * s, img.height * s);
+  ctx.restore();
+  // the term on the chin — the "caption on the archival print"
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  setFont(ctx, fitPx(ctx, win.term, chin * 0.42, 800, pw * 0.94), 800);
+  ctx.fillStyle = "#232019";
+  ctx.fillText(win.term, 0, h / 2 - chin / 2 - frame * 0.3);
+  // a small accent tick on the chin, brand-colored
+  ctx.fillStyle = pal.accent;
+  rr(ctx, -w * 0.06, h / 2 - frame * 0.75, w * 0.12, frame * 0.35, frame * 0.17);
+  ctx.fill();
+  ctx.textBaseline = "alphabetic";
+  ctx.textAlign = "left";
+  ctx.restore();
+}
+
+function drawMentions(ctx: CanvasRenderingContext2D, W: number, H: number, pal: Pal, scene: MotionScene, words: CaptionWord[], sc: number, dur: number, sceneIdx: number, images: Map<string, HTMLImageElement>) {
+  const wins = mentionWindows(scene, words, dur, sceneIdx);
+  if (!wins.length) return;
+  // footage / UI / full-frame scenes keep the stage — the cutaway takes a corner
+  const corner = scene.layout === "full" || (scene.elements || []).some((el) => el.type === "video" || el.type === "image" || el.type === "uiCard");
+  for (const win of wins) drawMentionCard(ctx, W, H, pal, win, sc, images.get(win.url) ?? null, corner);
+}
+
 /* ── chapter card: documentary lower-third as each chapter opens ──────────── */
 function drawChapterCard(ctx: CanvasRenderingContext2D, W: number, H: number, pal: Pal, num: number, title: string, sc: number) {
   const IN = 0.35;
@@ -1694,6 +1800,10 @@ export function drawMotionFrame(
   }
 
   const scenePal = palFor(idx);
+  // word-synced documentary cutaways — SEE what the narration names (over the
+  // scene, under the captions; skipped during the transition-in by their ≥0.9s floor)
+  if (spec.scenes[idx].mentions?.length) drawMentions(ctx, W, H, scenePal, spec.scenes[idx], assets.captionWords[idx] || [], sc, dur, idx, assets.images);
+
   // documentary chapter card as each chapter opens (long-form only)
   const chapters = spec.chapters || [];
   const chIdx = chapters.findIndex((c) => c.at === idx);

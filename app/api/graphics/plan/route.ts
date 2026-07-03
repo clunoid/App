@@ -7,9 +7,10 @@ import { chargeCredits, chargeError, isAdmin, creditsAvailable } from "@/lib/bil
 import { INPUT_CAPS, graphicsPlanCost, GRAPHICS_MAX_SEC, GRAPHICS_LONGFORM_SEC } from "@/lib/billing/costs";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { motionSpecSchema, sceneSchema, ICON_NAMES, type MotionSpec, type MotionScene, type MotionElement } from "@/lib/graphics/spec";
+import { sceneSchema, ICON_NAMES, type MotionSpec, type MotionScene, type MotionElement } from "@/lib/graphics/spec";
 import { pexelsPhotos, pexelsClips, hasPexels } from "@/lib/data/pexels";
 import { webSearch, hasSearch } from "@/lib/data/search";
+import { resolveMentions } from "@/lib/graphics/mentions";
 
 export const runtime = "nodejs";
 export const maxDuration = 300; // research + outline + parallel chapter calls — our longest route
@@ -39,7 +40,8 @@ SCRIPT CRAFT (this is what makes people finish the video):
 VISUAL DIRECTION:
 - ONE strong focal element per scene. 0-2 elements; a headline-only scene is fine for a beat of emphasis.
 - Match element to content: steps → timeline or flow · comparison → compare or chart · big stat → counter or statRow · product/app → uiCard (browser=web, phone=app; give rows/stat/cta) · concepts → icon or iconGrid · benefits → bullets · famous line → quote · REAL-WORLD subject (place, nature, machine, city, people, food, sport) → video (stock footage b-roll!) or image · process → flow · brand moment → logo.
-- VARIETY IS LAW: never the same element type in two consecutive scenes; alternate text-led and visual-led scenes; mix at least 6 different element types across any 10 scenes; use video/image b-roll to break up graphic scenes.
+- VARIETY IS LAW: never the same element type in two consecutive scenes; alternate text-led and visual-led scenes; mix at least 6 different element types across any 10 scenes; aim for a video/image b-roll scene roughly every 3rd-4th scene — real footage between graphics is what makes it feel produced.
+- MENTION CUTAWAYS (the documentary rule — this hooks viewers): the viewer must SEE whatever the narration NAMES, at the moment it's spoken. For EVERY named person, place, organization, artifact, event or concrete thing in a scene's narration, add a mentions entry: term (display name), kind, query (what the photo should SHOW), anchor (the EXACT words copied verbatim from that scene's narration). Say "Julius Caesar" → show Caesar; say "the Colosseum" → show the Colosseum. 1-3 per scene whenever the narration names things; skip only what the scene's main visual already shows.
 - icons: choose ONLY from: ${ICON_NAMES.join(", ")}.
 - charts: 3-6 plausible real values, highlight the standout. statRow: 2-4 punchy figures.
 - layout: vary (center for beats, split for explanation, grid for features, full for footage/images, stack otherwise). transition: vary — never the same twice in a row. bg: vary the flavor scene to scene.
@@ -79,6 +81,21 @@ const outlineSchema = z.object({
 });
 
 const chapterScenesSchema = z.object({ scenes: z.array(sceneSchema).min(3).max(18) });
+
+// SHORT-path plan schema — like the outline, style fields are FLAT (assembled into
+// spec.style server-side) because Opus's tool-mode serializer occasionally derails
+// on a small nested object, junking an otherwise perfect 16k-token plan.
+const shortPlanSchema = z.object({
+  title: z.string().describe("Short video title (for the file + history)."),
+  theme: z.enum(["dark", "light"]),
+  hue: z.number().min(0).max(360).describe("Brand accent hue 0-360, matched to the topic's emotion."),
+  hue2: z.number().min(0).max(360).optional(),
+  energy: z.enum(["calm", "medium", "high"]).optional().catch(undefined),
+  music: z.enum(["ambient", "upbeat", "none"]).optional().catch(undefined),
+  brand: z.string().optional().describe("ONLY for a specific named product/company."),
+  captions: z.boolean().optional(),
+  scenes: z.array(sceneSchema).min(3).max(16).describe("The story, in order: hook → build → payoff → CTA."),
+});
 
 /* ── research ─────────────────────────────────────────────────────────────── */
 async function researchTopic(request: string, long: boolean): Promise<string> {
@@ -122,7 +139,7 @@ async function resolveMedia(spec: MotionSpec, longForm: boolean): Promise<void> 
   type Slot = { el: MotionElement; kind: "image" | "video"; query: string };
   const slots: Slot[] = [];
   let footage = 0;
-  const footageCap = longForm ? Math.max(4, Math.ceil(spec.scenes.length / 8)) : 3;
+  const footageCap = longForm ? Math.max(5, Math.ceil(spec.scenes.length / 6)) : 4;
   for (const scene of spec.scenes) {
     for (const el of scene.elements || []) {
       if (el.chart) el.chart.values = el.chart.values.map((v) => Math.max(0, Number(v) || 0));
@@ -254,15 +271,23 @@ export async function POST(req: NextRequest) {
     if (!longForm) {
       // 2a ── SHORT: one Opus call designs the whole piece (classic path, research-grounded).
       const targetScenes = durationSec ? Math.max(5, Math.min(14, Math.round(durationSec / 8))) : 7;
-      const { object } = await generateObject({
-        model: MODELS.max(),
-        schema: motionSpecSchema,
-        system: `${CRAFT}\n\n${STYLE_GUIDE}\n\nSTORY: build a real arc across ~${targetScenes} scenes: HOOK (grab in 1 line) → PROBLEM/CONTEXT → CORE IDEA → HOW IT WORKS → PROOF (numbers) → CTA. Adapt to the topic. narration 1-3 short sentences per scene. FINAL scene = a clear CTA under 12 narration words. Do NOT emit the chapters field.`,
-        prompt: `${request}${researchBlock}`,
-        maxRetries: 2,
-        maxTokens: 16000,
-      });
-      spec = object as MotionSpec;
+      const genShort = () =>
+        generateObject({
+          model: MODELS.max(),
+          schema: shortPlanSchema,
+          system: `${CRAFT}\n\n${STYLE_GUIDE}\n\nSTORY: build a real arc across ~${targetScenes} scenes: HOOK (grab in 1 line) → PROBLEM/CONTEXT → CORE IDEA → HOW IT WORKS → PROOF (numbers) → CTA. Adapt to the topic. narration 1-3 short sentences per scene. FINAL scene = a clear CTA under 12 narration words.`,
+          prompt: `${request}${researchBlock}`,
+          maxRetries: 1,
+          maxTokens: 16000,
+        });
+      // manual retry — the SDK does NOT retry schema-validation misses
+      const { object } = await genShort().catch(() => genShort());
+      spec = {
+        title: object.title,
+        style: { theme: object.theme, hue: object.hue, hue2: object.hue2, energy: object.energy, music: object.music, brand: object.brand },
+        captions: object.captions,
+        scenes: object.scenes,
+      };
     } else {
       // 2b ── LONG-FORM: outline first (the SCRIPT pass), then chapters in parallel.
       // ~10.5s per scene: ~24 narration words (2.3 words/s spoken) + 1s settle.
@@ -356,9 +381,13 @@ export async function POST(req: NextRequest) {
 
     if (!spec.scenes?.length) throw new Error("empty spec");
 
-    // 4 ── sanitize + variety guard + media (photos + footage, deduped, parallel)
+    // 4 ── sanitize + variety guard + media (photos + footage + mention cutaways)
     enforceVariety(spec.scenes);
-    await resolveMedia(spec, longForm);
+    await Promise.all([
+      resolveMedia(spec, longForm),
+      // word-synced documentary cutaways: cap scales with length (memory-bound)
+      resolveMentions(spec.scenes, longForm ? Math.min(150, spec.scenes.length * 2) : 12),
+    ]);
 
     return NextResponse.json({ spec });
   } catch (e) {

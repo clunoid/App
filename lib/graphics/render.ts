@@ -125,11 +125,13 @@ export async function renderMotionVideo(spec: MotionSpec, aspect: ReelAspect, op
   // images (Pexels URLs resolved by the planner) — CORS-safe, optional
   const urls = new Set<string>();
   const clipUrls: string[] = [];
-  for (const s of spec.scenes)
+  for (const s of spec.scenes) {
     for (const el of s.elements || []) {
       if (el.imageUrl) urls.add(el.imageUrl);
       if (el.type === "video" && el.videoUrl && !clipUrls.includes(el.videoUrl) && clipUrls.length < MAX_CLIPS) clipUrls.push(el.videoUrl);
     }
+    for (const m of s.mentions || []) if (m.imageUrl) urls.add(m.imageUrl); // documentary cutaways
+  }
   const images = new Map<string, HTMLImageElement>();
   const videos = new Map<string, HTMLVideoElement>();
   await Promise.all([

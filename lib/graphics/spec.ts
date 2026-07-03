@@ -53,7 +53,7 @@ export const elementSchema = z.object({
       rightItems: z.array(z.string()).max(4),
       leftIcon: z.string().optional(),
       rightIcon: z.string().optional(),
-      winner: z.enum(["left", "right", "none"]).optional().describe("Which side to highlight with the accent."),
+      winner: z.enum(["left", "right", "none"]).optional().catch(undefined).describe("Which side to highlight with the accent."),
     })
     .optional()
     .describe("compare data (required for type=compare)."),
@@ -62,8 +62,8 @@ export const elementSchema = z.object({
     .max(4)
     .optional()
     .describe("statRow data (required for type=statRow): 2-4 stat capsules."),
-  anim: z.enum(["rise", "fade", "pop", "slide", "cascade", "draw"]).optional().describe("Entrance style. Default: engine picks per type (rise for text, pop for icons, draw for charts)."),
-  emphasis: z.enum(["none", "pulse", "float", "glow"]).optional().describe("Subtle loop after entering. Default none."),
+  anim: z.enum(["rise", "fade", "pop", "slide", "cascade", "draw"]).optional().catch(undefined).describe("Entrance style. Default: engine picks per type (rise for text, pop for icons, draw for charts)."),
+  emphasis: z.enum(["none", "pulse", "float", "glow"]).optional().catch(undefined).describe("Subtle loop after entering. Default none."),
   accent: z.boolean().optional().describe("Tint this element with the accent color (use sparingly for the ONE key element of a scene)."),
 });
 export type MotionElement = z.infer<typeof elementSchema>;
@@ -71,16 +71,31 @@ export type MotionElement = z.infer<typeof elementSchema>;
 /* ── scenes ───────────────────────────────────────────────────────────────── */
 export const sceneSchema = z.object({
   narration: z.string().min(1).describe("What the voice says over this scene — 1-3 short conversational sentences (spoken style, no markdown). The scene lasts as long as this takes to say. Write in the USER'S language."),
-  layout: z.enum(["center", "split", "stack", "grid", "full"]).optional().describe("center=one focal element; split=text left, visual right (flips on vertical); stack=headline above visual; grid=elements tiled; full=edge-to-edge visual with overlaid text. Default: engine picks."),
+  layout: z.enum(["center", "split", "stack", "grid", "full"]).optional().catch(undefined).describe("center=one focal element; split=text left, visual right (flips on vertical); stack=headline above visual; grid=elements tiled; full=edge-to-edge visual with overlaid text. Default: engine picks."),
   headline: z.string().optional().describe("The scene's on-screen headline (2-6 punchy words) — kinetic type. Most scenes should have one."),
   kicker: z.string().optional().describe("Tiny uppercase eyebrow above the headline, e.g. 'STEP 1', 'THE PROBLEM'."),
   elements: z.array(elementSchema).max(4).describe("0-3 visual elements beside/below the headline. ONE strong visual beats three weak ones."),
-  transition: z.enum(["fade", "slide", "wipe", "zoom"]).optional().describe("Into the NEXT scene. Default fade."),
-  bg: z.enum(["gradient", "dots", "grid", "waves", "blobs", "beams", "rings", "diag"]).optional().describe("Animated background flavor for this scene. Default: follows the spec style."),
-  tone: z.enum(["intro", "problem", "solution", "how", "proof", "cta", "neutral"]).optional().describe("The scene's storytelling role — nudges composition + color intensity."),
-  hueShift: z.number().min(-60).max(60).optional().describe("Rotate this scene's accent hue by this many degrees — use to give each chapter/act its own color mood while staying in the palette family."),
+  transition: z.enum(["fade", "slide", "wipe", "zoom"]).optional().catch(undefined).describe("Into the NEXT scene. Default fade."),
+  bg: z.enum(["gradient", "dots", "grid", "waves", "blobs", "beams", "rings", "diag"]).optional().catch(undefined).describe("Animated background flavor for this scene. Default: follows the spec style."),
+  tone: z.enum(["intro", "problem", "solution", "how", "proof", "cta", "neutral"]).optional().catch(undefined).describe("The scene's storytelling role — nudges composition + color intensity."),
+  hueShift: z.number().min(-60).max(60).optional().catch(undefined).describe("Rotate this scene's accent hue by this many degrees — use to give each chapter/act its own color mood while staying in the palette family."),
+  mentions: z
+    .array(
+      z.object({
+        term: z.string().describe("Display name shown under the picture, e.g. 'Julius Caesar', 'The Colosseum'."),
+        kind: z.enum(["person", "place", "org", "thing", "event"]).catch("thing"),
+        query: z.string().describe("What the photo should SHOW, 2-5 words, e.g. 'Julius Caesar marble bust', 'Colosseum Rome exterior'."),
+        anchor: z.string().describe("The EXACT words copied verbatim from THIS scene's narration where the entity is first spoken — the picture appears at that spoken moment."),
+        atWord: z.number().int().optional().describe("Filled by the server — never set this yourself."),
+        imageUrl: z.string().optional().describe("Filled by the server — never set this yourself."),
+      })
+    )
+    .max(3)
+    .optional()
+    .describe("Documentary cutaways: EVERY named person/place/org/artifact/event in the narration gets one — the viewer must SEE what they hear, timed to the word. Skip only what the scene's main visual already shows."),
 });
 export type MotionScene = z.infer<typeof sceneSchema>;
+export type MotionMention = NonNullable<MotionScene["mentions"]>[number];
 
 /* ── the spec ─────────────────────────────────────────────────────────────── */
 export const motionSpecSchema = z.object({
