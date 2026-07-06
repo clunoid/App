@@ -206,6 +206,235 @@ const donchianMomo: StrategyFn = (bars, p, pair, tf) => {
   return out;
 };
 
+/* ── 6. RSI(2) reversion (Connors) — short-horizon snap-back in a trend ────── */
+const rsi2Reversion: StrategyFn = (bars, p, pair, tf) => {
+  const out: Setup[] = [];
+  const closes = bars.map((b) => b.c);
+  const e200 = ema(closes, 200);
+  const r2 = rsi(closes, 2);
+  const a = atr(bars, 14);
+  for (let i = 210; i < bars.length; i++) {
+    if ([e200[i], r2[i], a[i]].some(Number.isNaN)) continue;
+    const h = utcHour(bars[i].t);
+    if (!hourIn(h, 1, 21)) continue; // avoid the illiquid rollover hours
+    const vol = percentileRank(a, i, VOL_WINDOW);
+    if (vol > 0.9) continue;
+    if (closes[i] > e200[i] && r2[i] < p.rsiTh) {
+      const stop = closes[i] - p.slAtr * a[i];
+      const target = closes[i] + p.tpAtr * a[i];
+      out.push(mk(pair, tf, "long", closes[i], stop, [target], "rsi2Reversion", i, [`RSI(2) washed out at ${r2[i].toFixed(0)}`, "Price above EMA200 — dip in an uptrend", volNote(vol)]));
+    } else if (closes[i] < e200[i] && r2[i] > 100 - p.rsiTh) {
+      const stop = closes[i] + p.slAtr * a[i];
+      const target = closes[i] - p.tpAtr * a[i];
+      out.push(mk(pair, tf, "short", closes[i], stop, [target], "rsi2Reversion", i, [`RSI(2) stretched at ${r2[i].toFixed(0)}`, "Price below EMA200 — pop in a downtrend", volNote(vol)]));
+    }
+  }
+  return out;
+};
+
+/* ── 7. Inside-bar breakout — compression release with trend filter ───────── */
+const insideBarBreakout: StrategyFn = (bars, p, pair, tf) => {
+  const out: Setup[] = [];
+  const closes = bars.map((b) => b.c);
+  const e50 = ema(closes, 50);
+  const e200 = ema(closes, 200);
+  const a = atr(bars, 14);
+  for (let i = 210; i < bars.length; i++) {
+    if ([e50[i], e200[i], a[i]].some(Number.isNaN)) continue;
+    const h = utcHour(bars[i].t);
+    if (!hourIn(h, 6, 20)) continue;
+    const vol = percentileRank(a, i, VOL_WINDOW);
+    if (vol > 0.93) continue;
+    // bar i-1 fully inside the "mother" bar i-2; mother must be a real bar
+    const mother = bars[i - 2];
+    const inner = bars[i - 1];
+    if (!(inner.h < mother.h && inner.l > mother.l)) continue;
+    const mRange = mother.h - mother.l;
+    if (mRange < p.minMother * a[i]) continue;
+    const up = e50[i] > e200[i];
+    const dn = e50[i] < e200[i];
+    if (up && bars[i].c > mother.h) {
+      const stop = Math.max(mother.l, mother.h - mRange * 0.75) - 0.1 * a[i];
+      const risk = bars[i].c - stop;
+      if (risk > 0.25 * a[i] && risk < 3 * a[i]) out.push(mk(pair, tf, "long", bars[i].c, stop, [bars[i].c + risk, bars[i].c + p.tpR * risk], "insideBarBreakout", i, ["Inside-bar compression under the mother-bar high", "Break with the EMA50>EMA200 trend", volNote(vol)]));
+    } else if (dn && bars[i].c < mother.l) {
+      const stop = Math.min(mother.h, mother.l + mRange * 0.75) + 0.1 * a[i];
+      const risk = stop - bars[i].c;
+      if (risk > 0.25 * a[i] && risk < 3 * a[i]) out.push(mk(pair, tf, "short", bars[i].c, stop, [bars[i].c - risk, bars[i].c - p.tpR * risk], "insideBarBreakout", i, ["Inside-bar compression over the mother-bar low", "Break with the EMA50<EMA200 trend", volNote(vol)]));
+    }
+  }
+  return out;
+};
+
+/* ── 8. NY opening-range breakout — the US-session sibling of londonBreakout ─ */
+const nyOpenRange: StrategyFn = (bars, p, pair, tf) => {
+  const out: Setup[] = [];
+  const a = atr(bars, 14);
+  const perBarMs = bars.length > 1 ? Math.min(bars[1].t - bars[0].t, bars[2] ? bars[2].t - bars[1].t : Infinity) : 3_600_000;
+  const barsPerHour = Math.max(1, Math.round(3_600_000 / perBarMs));
+  for (let i = 30; i < bars.length; i++) {
+    const h = utcHour(bars[i].t);
+    if (!hourIn(h, 14, 19)) continue; // break window: NY morning after the range forms
+    if (Number.isNaN(a[i])) continue;
+    const vol = percentileRank(a, i, VOL_WINDOW);
+    if (vol > 0.95) continue;
+    // opening range: bars with UTC hour ∈ [12,14) on the same UTC day
+    const dayStart = new Date(bars[i].t);
+    dayStart.setUTCHours(0, 0, 0, 0);
+    let hi = -Infinity;
+    let lo = Infinity;
+    let n = 0;
+    for (let j = i - 1; j >= 0 && j > i - 8 * barsPerHour; j--) {
+      if (bars[j].t < dayStart.getTime()) break;
+      const bh = utcHour(bars[j].t);
+      if (bh < 12 || bh >= 14) continue;
+      hi = Math.max(hi, bars[j].h);
+      lo = Math.min(lo, bars[j].l);
+      n++;
+    }
+    if (n < 2 * barsPerHour - 1 || !isFinite(hi) || !isFinite(lo)) continue;
+    const range = hi - lo;
+    if (range < p.minRangeAtr * a[i] || range > 4 * a[i]) continue;
+    const buf = p.bufferAtr * a[i];
+    const c = bars[i].c;
+    if (c > hi + buf) {
+      const stop = Math.max(lo, hi - range * 0.5) - buf;
+      const risk = c - stop;
+      if (risk > 0.2 * a[i]) out.push(mk(pair, tf, "long", c, stop, [c + risk, c + p.tpR * risk], "nyOpenRange", i, [`NY opening range ${fmtR(range, a[i])}×ATR broken up`, "US-session momentum window", volNote(vol)]));
+    } else if (c < lo - buf) {
+      const stop = Math.min(hi, lo + range * 0.5) + buf;
+      const risk = stop - c;
+      if (risk > 0.2 * a[i]) out.push(mk(pair, tf, "short", c, stop, [c - risk, c - p.tpR * risk], "nyOpenRange", i, [`NY opening range ${fmtR(range, a[i])}×ATR broken down`, "US-session momentum window", volNote(vol)]));
+    }
+  }
+  return dedupeDaily(out, bars);
+};
+
+/* ── 9. EMA cross with ADX filter — classic trend engagement ──────────────── */
+const emaCrossTrend: StrategyFn = (bars, p, pair, tf) => {
+  const out: Setup[] = [];
+  const closes = bars.map((b) => b.c);
+  const e20 = ema(closes, 20);
+  const e50 = ema(closes, 50);
+  const e200 = ema(closes, 200);
+  const trendStr = adx(bars, 14);
+  const a = atr(bars, 14);
+  for (let i = 210; i < bars.length; i++) {
+    if ([e20[i], e50[i], e200[i], trendStr[i], a[i], e20[i - 1], e50[i - 1]].some(Number.isNaN)) continue;
+    const h = utcHour(bars[i].t);
+    if (!hourIn(h, 6, 20)) continue;
+    const vol = percentileRank(a, i, VOL_WINDOW);
+    if (vol < 0.2 || vol > 0.9) continue;
+    if (trendStr[i] < p.adxTh) continue; // only engage when a real trend is measured
+    const crossedUp = e20[i - 1] <= e50[i - 1] && e20[i] > e50[i];
+    const crossedDn = e20[i - 1] >= e50[i - 1] && e20[i] < e50[i];
+    if (crossedUp && closes[i] > e200[i]) {
+      const stop = closes[i] - p.slAtr * a[i];
+      const risk = closes[i] - stop;
+      out.push(mk(pair, tf, "long", closes[i], stop, [closes[i] + risk, closes[i] + p.tpR * risk], "emaCrossTrend", i, ["EMA20 crossed above EMA50", `ADX ${trendStr[i].toFixed(0)} confirms trend`, "Above EMA200 regime", volNote(vol)]));
+    } else if (crossedDn && closes[i] < e200[i]) {
+      const stop = closes[i] + p.slAtr * a[i];
+      const risk = stop - closes[i];
+      out.push(mk(pair, tf, "short", closes[i], stop, [closes[i] - risk, closes[i] - p.tpR * risk], "emaCrossTrend", i, ["EMA20 crossed below EMA50", `ADX ${trendStr[i].toFixed(0)} confirms trend`, "Below EMA200 regime", volNote(vol)]));
+    }
+  }
+  return out;
+};
+
+/* ── 10. Keltner pullback — price-action reclaim of the mid-band in a trend ── */
+const keltnerPullback: StrategyFn = (bars, p, pair, tf) => {
+  const out: Setup[] = [];
+  const closes = bars.map((b) => b.c);
+  const e200 = ema(closes, 200);
+  const kc = keltner(bars, 20, 1.5);
+  const a = atr(bars, 14);
+  for (let i = 210; i < bars.length; i++) {
+    if ([e200[i], kc.mid[i], a[i]].some(Number.isNaN)) continue;
+    const h = utcHour(bars[i].t);
+    if (!hourIn(h, 6, 20)) continue;
+    const vol = percentileRank(a, i, VOL_WINDOW);
+    if (vol > 0.93) continue;
+    const up = kc.mid[i] > e200[i] && closes[i] > e200[i];
+    const dn = kc.mid[i] < e200[i] && closes[i] < e200[i];
+    // pullback: prior bar tagged the mid-band against the trend; this bar reclaims
+    // with a price-action trigger (close beyond the prior bar's extreme)
+    if (up && bars[i - 1].l <= kc.mid[i - 1] && closes[i] > bars[i - 1].h) {
+      const stop = Math.min(bars[i - 1].l, bars[i].l) - p.slAtr * a[i];
+      const risk = closes[i] - stop;
+      if (risk > 0.25 * a[i] && risk < 3 * a[i]) out.push(mk(pair, tf, "long", closes[i], stop, [closes[i] + risk, closes[i] + p.tpR * risk], "keltnerPullback", i, ["Pullback tagged the Keltner mid-band", "Reclaim bar closed above the prior high", "Trend regime above EMA200", volNote(vol)]));
+    } else if (dn && bars[i - 1].h >= kc.mid[i - 1] && closes[i] < bars[i - 1].l) {
+      const stop = Math.max(bars[i - 1].h, bars[i].h) + p.slAtr * a[i];
+      const risk = stop - closes[i];
+      if (risk > 0.25 * a[i] && risk < 3 * a[i]) out.push(mk(pair, tf, "short", closes[i], stop, [closes[i] - risk, closes[i] - p.tpR * risk], "keltnerPullback", i, ["Pullback tagged the Keltner mid-band", "Rejection bar closed below the prior low", "Trend regime below EMA200", volNote(vol)]));
+    }
+  }
+  return out;
+};
+
+/* ── 11. HTF trend rider — higher-timeframe regime, H1 pullback entry ─────── */
+const htfTrendRider: StrategyFn = (bars, p, pair, tf) => {
+  const out: Setup[] = [];
+  const closes = bars.map((b) => b.c);
+  // H1 proxies for higher-timeframe regime: EMA(240)≈10-day, EMA(1200)≈50-day
+  const eFast = ema(closes, 240);
+  const eSlow = ema(closes, 1200);
+  const a = atr(bars, 14);
+  for (let i = 1260; i < bars.length; i++) {
+    if ([eFast[i], eSlow[i], a[i]].some(Number.isNaN)) continue;
+    const h = utcHour(bars[i].t);
+    if (!hourIn(h, 6, 20)) continue;
+    const vol = percentileRank(a, i, VOL_WINDOW);
+    if (vol > 0.93) continue;
+    const up = eFast[i] > eSlow[i] && closes[i] > eFast[i];
+    const dn = eFast[i] < eSlow[i] && closes[i] < eFast[i];
+    // entry: an N-bar counter-trend drift, then a close back through the prior high/low
+    const N = p.pullBars;
+    let drifted = true;
+    for (let j = i - N; j < i; j++) {
+      if (up && bars[j].c > bars[j - 1].c) drifted = false;
+      if (dn && bars[j].c < bars[j - 1].c) drifted = false;
+    }
+    if (!drifted) continue;
+    if (up && closes[i] > bars[i - 1].h) {
+      const stop = Math.min(bars[i - 1].l, bars[i - 2].l) - p.slAtr * a[i];
+      const risk = closes[i] - stop;
+      if (risk > 0.25 * a[i] && risk < 3 * a[i]) out.push(mk(pair, tf, "long", closes[i], stop, [closes[i] + risk, closes[i] + p.tpR * risk], "htfTrendRider", i, ["Higher-timeframe uptrend (10d>50d proxy)", `${N}-bar drift resolved back up`, volNote(vol)]));
+    } else if (dn && closes[i] < bars[i - 1].l) {
+      const stop = Math.max(bars[i - 1].h, bars[i - 2].h) + p.slAtr * a[i];
+      const risk = stop - closes[i];
+      if (risk > 0.25 * a[i] && risk < 3 * a[i]) out.push(mk(pair, tf, "short", closes[i], stop, [closes[i] - risk, closes[i] - p.tpR * risk], "htfTrendRider", i, ["Higher-timeframe downtrend (10d<50d proxy)", `${N}-bar drift resolved back down`, volNote(vol)]));
+    }
+  }
+  return out;
+};
+
+/* ── 12. Wide-range continuation — momentum ignition follow-through ───────── */
+const wideRangeContinuation: StrategyFn = (bars, p, pair, tf) => {
+  const out: Setup[] = [];
+  const a = atr(bars, 14);
+  for (let i = 30; i < bars.length; i++) {
+    if (Number.isNaN(a[i])) continue;
+    const h = utcHour(bars[i].t);
+    if (!hourIn(h, 7, 19)) continue; // London + NY ignition hours
+    const vol = percentileRank(a, i, VOL_WINDOW);
+    if (vol > 0.9) continue;
+    const b = bars[i];
+    const range = b.h - b.l;
+    if (range < p.rangeAtr * a[i]) continue; // must be a genuine ignition bar
+    const posInRange = range > 0 ? (b.c - b.l) / range : 0.5;
+    if (posInRange > 0.75) {
+      const stop = b.l + range * 0.5 - 0.1 * a[i]; // bar midpoint
+      const risk = b.c - stop;
+      if (risk > 0.25 * a[i]) out.push(mk(pair, tf, "long", b.c, stop, [b.c + risk, b.c + p.tpR * risk], "wideRangeContinuation", i, [`Ignition bar ${(range / a[i]).toFixed(1)}×ATR closing strong`, "Active-session momentum follow-through", volNote(vol)]));
+    } else if (posInRange < 0.25) {
+      const stop = b.h - range * 0.5 + 0.1 * a[i];
+      const risk = stop - b.c;
+      if (risk > 0.25 * a[i]) out.push(mk(pair, tf, "short", b.c, stop, [b.c - risk, b.c - p.tpR * risk], "wideRangeContinuation", i, [`Ignition bar ${(range / a[i]).toFixed(1)}×ATR closing weak`, "Active-session momentum follow-through", volNote(vol)]));
+    }
+  }
+  return out;
+};
+
 /* ── helpers ──────────────────────────────────────────────────────────────── */
 function mk(pair: Pair, timeframe: Timeframe, direction: "long" | "short", entry: number, stop: number, targets: number[], strategy: string, barIndex: number, factors: string[]): Setup {
   return { pair, timeframe, direction, entry, stop, targets, strategy, factors, barIndex };
@@ -228,11 +457,21 @@ function dedupeDaily(setups: Setup[], bars: Bar[]): Setup[] {
 }
 
 export const STRATEGIES: StrategyDef[] = [
-  { id: "londonBreakout", label: "London Open Breakout", family: "breakout", run: londonBreakout, grid: { bufferAtr: [0.05, 0.1], minRangeAtr: [0.8, 1.2], tpR: [1.5, 2.0] } },
-  { id: "trendPullback", label: "Trend Pullback", family: "trend", run: trendPullback, grid: { rsiTrig: [45, 50], slAtr: [0.3, 0.5], tpR: [1.8, 2.2] } },
+  // grids stay COARSE on purpose (small overfitting surface); the two 2024-cohort
+  // near-misses (londonBreakout, trendPullback) carry one extra option per axis so
+  // the walk-forward can explore the plateau the neighborhood test hinted at.
+  { id: "londonBreakout", label: "London Open Breakout", family: "breakout", run: londonBreakout, grid: { bufferAtr: [0.05, 0.1, 0.15], minRangeAtr: [0.8, 1.2], tpR: [1.2, 1.6, 2.0] } },
+  { id: "trendPullback", label: "Trend Pullback", family: "trend", run: trendPullback, grid: { rsiTrig: [40, 45, 50], slAtr: [0.3, 0.5], tpR: [1.6, 2.0, 2.4] } },
   { id: "squeezeBreakout", label: "Squeeze Breakout", family: "volatility", run: squeezeBreakout, grid: { minSqueeze: [4, 6], tpR: [1.6, 2.0] } },
   { id: "rangeFade", label: "Range Fade", family: "meanReversion", run: rangeFade, grid: { adxTh: [18, 22], slAtr: [1.0, 1.4] } },
   { id: "donchianMomo", label: "Donchian Momentum", family: "momentum", run: donchianMomo, grid: { period: [20, 28], slAtr: [1.0, 1.4] } },
+  { id: "rsi2Reversion", label: "RSI(2) Reversion", family: "meanReversion", run: rsi2Reversion, grid: { rsiTh: [5, 10], slAtr: [1.2, 1.6], tpAtr: [0.8, 1.2] } },
+  { id: "insideBarBreakout", label: "Inside-Bar Breakout", family: "breakout", run: insideBarBreakout, grid: { minMother: [0.6, 1.0], tpR: [1.5, 2.0] } },
+  { id: "nyOpenRange", label: "NY Opening Range", family: "breakout", run: nyOpenRange, grid: { bufferAtr: [0.05, 0.1], minRangeAtr: [0.5, 0.8], tpR: [1.5, 2.0] } },
+  { id: "emaCrossTrend", label: "EMA Cross Trend", family: "trend", run: emaCrossTrend, grid: { adxTh: [18, 22], slAtr: [1.2, 1.6], tpR: [2.0, 2.5] } },
+  { id: "keltnerPullback", label: "Keltner Pullback", family: "trend", run: keltnerPullback, grid: { slAtr: [0.3, 0.5], tpR: [1.6, 2.0, 2.4] } },
+  { id: "htfTrendRider", label: "HTF Trend Rider", family: "trend", run: htfTrendRider, grid: { pullBars: [2, 3], slAtr: [0.3, 0.5], tpR: [1.8, 2.4] } },
+  { id: "wideRangeContinuation", label: "Wide-Range Continuation", family: "momentum", run: wideRangeContinuation, grid: { rangeAtr: [1.6, 2.0], tpR: [1.5, 2.0] } },
 ];
 
 export const strategyById = (id: string): StrategyDef | undefined => STRATEGIES.find((s) => s.id === id);

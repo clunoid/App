@@ -25,7 +25,9 @@ import playbookFile from "./research/playbooks.json";
 export const CONFIDENCE_THRESHOLD = 65;
 const SIGNAL_TTL_BARS: Record<Timeframe, number> = { "1h": 60, "30m": 60, "15m": 60 };
 
-export const playbooks: PairPlaybook[] = (playbookFile as { playbooks: PairPlaybook[] }).playbooks;
+// via `unknown`: the JSON literal's inferred type shifts with every research run
+// (param keys differ per champion), but the runtime shape is always PairPlaybook[].
+export const playbooks: PairPlaybook[] = (playbookFile as unknown as { playbooks: PairPlaybook[] }).playbooks;
 
 export type PairScan = {
   pair: Pair;

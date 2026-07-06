@@ -1,23 +1,35 @@
 {
- "generatedAt": "2026-07-06T15:00:41.972Z",
+ "generatedAt": "2026-07-06T21:01:19.265Z",
  "playbooks": [
   {
    "pair": "EURUSD",
-   "champions": [],
+   "champions": [
+    {
+     "strategy": "emaCrossTrend",
+     "timeframe": "1h",
+     "params": {
+      "adxTh": 18,
+      "slAtr": 1.2,
+      "tpR": 2
+     },
+     "oosProfitFactor": 1.44,
+     "oosTrades": 43
+    }
+   ],
    "spreadPips": 0.9,
-   "generatedAt": "2026-07-06T15:00:13.378Z"
+   "generatedAt": "2026-07-06T21:00:55.841Z"
   },
   {
    "pair": "GBPUSD",
    "champions": [],
    "spreadPips": 1.3,
-   "generatedAt": "2026-07-06T15:00:23.456Z"
+   "generatedAt": "2026-07-06T21:01:02.273Z"
   },
   {
    "pair": "USDJPY",
    "champions": [],
    "spreadPips": 1,
-   "generatedAt": "2026-07-06T15:00:27.123Z"
+   "generatedAt": "2026-07-06T21:01:07.541Z"
   },
   {
    "pair": "AUDUSD",
@@ -34,11 +46,22 @@
     }
    ],
    "spreadPips": 1.1,
-   "generatedAt": "2026-07-06T15:00:31.758Z"
+   "generatedAt": "2026-07-06T21:01:13.524Z"
   },
   {
    "pair": "USDCAD",
    "champions": [
+    {
+     "strategy": "emaCrossTrend",
+     "timeframe": "1h",
+     "params": {
+      "adxTh": 18,
+      "slAtr": 1.2,
+      "tpR": 2
+     },
+     "oosProfitFactor": 1.98,
+     "oosTrades": 31
+    },
     {
      "strategy": "squeezeBreakout",
      "timeframe": "1h",
@@ -51,7 +74,7 @@
     }
    ],
    "spreadPips": 1.5,
-   "generatedAt": "2026-07-06T15:00:41.959Z"
+   "generatedAt": "2026-07-06T21:01:19.257Z"
   }
  ]
 }

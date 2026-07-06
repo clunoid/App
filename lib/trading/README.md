@@ -55,19 +55,29 @@ Gates (all must pass): OOS ≥30 trades · PF ≥1.15 · expectancy >0 · ≥55%
 non-negative · ≥50% param-neighbors profitable · MC(5k, seeded) p95 DD ≤25R ·
 P(profit) ≥80% · not losing in 2 of 3 ATR regimes.
 
-**Result (run 2026-07-06, real data, after the look-ahead + honest-gap fixes):**
-23/25 H1 candidates REJECTED. Champions: **AUDUSD squeezeBreakout** (41 OOS trades,
-PF 1.46, +0.223R, MC p95 DD 6.3R, 100% neighborhood) and **USDCAD squeezeBreakout**
-(63 OOS trades, PF 1.20). EURUSD, GBPUSD **and USDJPY**: **monitor-only** — no
-candidate met the gates, so the system refuses to signal them.
+**Result (run 2026-07-07, real data, 12 strategy families · 70 candidates):**
+Champions — **EURUSD emaCrossTrend** (43 OOS trades, PF 1.44, +0.252R, 100%
+neighborhood), **AUDUSD squeezeBreakout** (41 tr, PF 1.46, +0.223R), **USDCAD
+emaCrossTrend + squeezeBreakout** (31 tr PF 1.98 / 63 tr PF 1.20). **GBPUSD and
+USDJPY: monitor-only.** Their best candidates were instructive rejections:
+USDJPY trendPullback posted PF 1.44 but only 25% of its parameter neighbors were
+profitable — an isolated peak, i.e. overfit; GBPUSD squeezeBreakout (PF 1.18) had
+0% neighborhood. Two families purpose-built for these markets (htfTrendRider,
+wideRangeContinuation) also failed. The desk refuses to trade what it cannot
+defend; both pairs stay monitored and the research re-runs on demand as regimes
+change.
 
-Notably USDJPY trendPullback PASSED (PF 1.31) on the first run but was REJECTED
-(PF 1.17, only 46% of walk-forward windows non-negative) once a look-ahead bug in
-its swing-stop placement was fixed and weekend gaps were modeled honestly — the
-validation caught its own overfit and pulled it from live trading. That is the
-gate doing exactly what it must. Sub-hourly (M30) echoes all failed
-micro-validation → live signals are H1-only until an LTF edge proves out. Full
-dossiers: `research/reports.json`, rendered in the Playbooks tab.
+MULTIPLE-TESTING DISCLOSURE: 70 candidates were examined against fixed gates.
+At this search breadth a naive PF gate alone would pass 2-3 false positives by
+chance — the window-consistency, parameter-neighborhood and Monte-Carlo gates
+exist precisely to kill those (and demonstrably did, above). Treat early live
+performance as the final arbiter; outcomes accrue in trading_signals.
+
+History note: USDJPY trendPullback PASSED (PF 1.31) on the very first run but was
+rejected once a look-ahead bug in its swing-stop placement was fixed and weekend
+gaps were modeled honestly — the harness caught its own overfit. Sub-hourly (M30)
+echoes all failed micro-validation → live signals are H1-only until an LTF edge
+proves out. Full dossiers: `research/reports.json`, rendered in the Playbooks tab.
 
 Re-run research anytime: `npx tsx lib/trading/research/run.ts` (rewrites both JSONs);
 smoke-test a live cycle: `npx tsx lib/trading/research/smoke.ts`.
