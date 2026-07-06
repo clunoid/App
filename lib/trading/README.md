@@ -94,5 +94,12 @@ insert (deduped on pair+strategy+tf+direction+bar) → browser notification in t
 - Heartbeats in `trading_scans` (pruned to last 2000) power the Health rail.
 - Correctness beats availability: a pair's fetch failure records an error and skips
   that pair — nothing is interpolated to keep a scan "complete".
-- Vercel cron requires a plan that allows sub-daily schedules; the terminal's
-  self-healing scan covers gaps whenever the admin has the desk open.
+- **Scan cadence & the Hobby-plan constraint:** the intended cadence is `*/15`
+  (`vercel.json`), but Vercel **Hobby** allows only DAILY cron, so it currently
+  ships as `0 13 * * *` (one baseline autonomous scan/day at the London–NY
+  overlap). The real continuous 24/5 engine is the **terminal's self-healing loop**
+  (`components/trading/Terminal.tsx`): every 60s while the desk is open it scans if
+  the last heartbeat is >12min old — so an admin watching the desk gets true live
+  coverage today. Upgrading to Vercel **Pro** = change the schedule back to
+  `*/15 * * * *` (one line), nothing else. (Alternatively point any external
+  scheduler at `POST /api/trading/scan` with `Authorization: Bearer $CRON_SECRET`.)

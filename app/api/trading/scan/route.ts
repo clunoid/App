@@ -12,8 +12,11 @@ export const maxDuration = 300; // worst-case provider retries + per-signal anno
 /**
  * THE SCANNER — one full analysis cycle. Invoked two ways (belt and braces, so
  * the system keeps running regardless of hosting-plan cron granularity):
- *   • Vercel Cron (vercel.json, every 15 min) — authorized by CRON_SECRET
- *   • the trading terminal while an admin has it open (session-authorized)
+ *   • Vercel Cron (vercel.json — daily baseline on Hobby, `*/15` on Pro) —
+ *     authorized by CRON_SECRET (Vercel sends it as the Bearer token automatically)
+ *   • the trading terminal's self-healing loop while an admin has it open
+ *     (session-authorized) — the true continuous 24/5 driver today
+ *   • any external scheduler POSTing with `Authorization: Bearer $CRON_SECRET`
  *
  * A cycle: market clock → fetch fresh bars per pair → resolve open signals
  * (tp/sl/expiry, backtest-identical touch rules) → run validated champions →
