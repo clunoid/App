@@ -16,11 +16,13 @@ import Link from "next/link";
 import { ArrowLeft, Activity, Bell, BellOff, CalendarClock, History as HistoryIcon, Loader2, RefreshCw, ShieldAlert, TrendingUp } from "lucide-react";
 import { PairChart, type Candle, type ChartLevels } from "./PairChart";
 import { Playbooks } from "./Playbooks";
+import { TerminalBackground } from "./TerminalBackground";
 
-/* ── palette (desk-local, deliberately its own product surface) ── */
+/* ── palette (desk-local, deliberately its own product surface) ──
+ * Panels are slightly translucent so the grid material reads through them. */
 const T = {
-  ground: "#0a0d13",
-  panel: "#10141d",
+  ground: "#060709",
+  panel: "rgba(13,17,26,0.82)",
   line: "rgba(140,150,175,0.12)",
   text: "#e8eaf2",
   muted: "#8b93a7",
@@ -198,8 +200,11 @@ export function Terminal() {
 
   if (denied)
     return (
-      <div className="grid min-h-[100dvh] place-items-center px-6 text-center" style={{ background: T.ground }}>
-        <div>
+      <div className="relative grid min-h-[100dvh] place-items-center px-6 text-center" style={{ background: T.ground }}>
+        <div className="pointer-events-none fixed inset-0 z-0">
+          <TerminalBackground />
+        </div>
+        <div className="relative z-10">
           <ShieldAlert size={40} className="mx-auto" style={{ color: T.faint }} />
           <h1 className="mt-3 text-xl font-bold" style={{ color: T.text }}>Restricted terminal</h1>
           <p className="mt-1 text-sm" style={{ color: T.muted }}>The trading desk is limited to the Clunoid administrator account.</p>
@@ -214,10 +219,14 @@ export function Terminal() {
   const lastScan = state?.scans?.[0];
 
   return (
-    <div className="min-h-[100dvh] pb-16" style={{ background: `radial-gradient(80% 50% at 80% -10%, rgba(79,209,197,0.06), transparent 60%), ${T.ground}`, color: T.text }}>
+    <div className="relative min-h-[100dvh] pb-16" style={{ background: T.ground, color: T.text }}>
+      {/* the desk material — pinned to the viewport so it covers every scroll position */}
+      <div className="pointer-events-none fixed inset-0 z-0">
+        <TerminalBackground />
+      </div>
       {/* ── status strip ── */}
-      <header className="sticky top-0 z-20 border-b backdrop-blur" style={{ borderColor: T.line, background: "rgba(10,13,19,0.85)" }}>
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2.5">
+      <header className="sticky top-0 z-20 border-b backdrop-blur" style={{ borderColor: T.line, background: "rgba(8,10,14,0.85)" }}>
+        <div className="flex w-full flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2.5 sm:px-6 xl:px-10">
           <Link href="/home" aria-label="Home" className="flex items-center gap-1 font-mono text-[12px] font-bold transition hover:brightness-125" style={{ color: T.muted }}>
             <ArrowLeft size={14} /> clunoid
           </Link>
@@ -240,7 +249,7 @@ export function Terminal() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-7xl px-4 pt-4">
+      <main className="relative z-10 w-full px-4 pt-4 sm:px-6 xl:px-10">
         {!state ? (
           <div className="grid h-[60dvh] place-items-center"><Loader2 size={28} className="animate-spin" style={{ color: T.faint }} /></div>
         ) : (
@@ -314,7 +323,7 @@ export function Terminal() {
             )}
 
             {tab === "desk" && (
-              <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_300px]">
+              <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_300px] 2xl:grid-cols-[minmax(0,1fr)_380px]">
                 <div className="min-w-0">
                   {/* chart */}
                   <div className="rounded-xl border p-3" style={{ borderColor: T.line, background: T.panel }}>
@@ -322,7 +331,7 @@ export function Terminal() {
                       <span className="font-bold" style={{ color: T.text }}>{chartPair}</span> · H1 · data age {chartQuote?.ageMin ?? "—"}m
                       {levels?.entry && <span style={{ color: T.accent }}>· signal levels shown</span>}
                     </div>
-                    {chartQuote?.candles?.length ? <PairChart candles={chartQuote.candles} levels={levels} /> : <div className="grid h-64 place-items-center text-[12px]" style={{ color: T.faint }}>no chart data</div>}
+                    {chartQuote?.candles?.length ? <PairChart candles={chartQuote.candles} levels={levels} height={380} /> : <div className="grid h-64 place-items-center text-[12px]" style={{ color: T.faint }}>no chart data</div>}
                   </div>
                   {/* signals */}
                   <h2 className="mt-4 mb-2 font-mono text-[11px] font-bold uppercase tracking-widest" style={{ color: T.faint }}>Active signals</h2>
@@ -332,7 +341,7 @@ export function Terminal() {
                       <p className="mt-1 text-[12px]" style={{ color: T.faint }}>The scanner only signals validated, high-confidence conditions — standing aside is a position too.</p>
                     </div>
                   ) : (
-                    <div className="grid gap-3 xl:grid-cols-2">
+                    <div className="grid gap-3 xl:grid-cols-2 min-[1900px]:grid-cols-3">
                       {open.map((s) => (
                         <SignalCard key={s.id} s={s} onView={() => { setChartPair(s.pair); setLevels({ entry: s.entry, stop: s.stop, targets: s.targets, direction: s.direction }); }} />
                       ))}

@@ -75,7 +75,7 @@ export function Playbooks() {
         ))}
         <span className="ml-auto font-mono text-[11px] text-[#5c6478]">validated {data.generatedAt.slice(0, 10)} · walk-forward + Monte Carlo + neighborhood + regime</span>
       </div>
-      <div className="grid gap-3 lg:grid-cols-2">
+      <div className="grid gap-3 lg:grid-cols-2 min-[1700px]:grid-cols-3">
         {reports.map((r) => (
           <div key={`${r.strategy}-${r.timeframe}`} className={`rounded-xl border p-4 ${r.passed ? "border-[#34d399]/25 bg-[#0d1a16]/60" : "border-white/[0.07] bg-white/[0.02]"}`}>
             <div className="flex items-center gap-2">

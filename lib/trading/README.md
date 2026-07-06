@@ -94,12 +94,12 @@ insert (deduped on pair+strategy+tf+direction+bar) → browser notification in t
 - Heartbeats in `trading_scans` (pruned to last 2000) power the Health rail.
 - Correctness beats availability: a pair's fetch failure records an error and skips
   that pair — nothing is interpolated to keep a scan "complete".
-- **Scan cadence & the Hobby-plan constraint:** the intended cadence is `*/15`
-  (`vercel.json`), but Vercel **Hobby** allows only DAILY cron, so it currently
-  ships as `0 13 * * *` (one baseline autonomous scan/day at the London–NY
-  overlap). The real continuous 24/5 engine is the **terminal's self-healing loop**
-  (`components/trading/Terminal.tsx`): every 60s while the desk is open it scans if
-  the last heartbeat is >12min old — so an admin watching the desk gets true live
-  coverage today. Upgrading to Vercel **Pro** = change the schedule back to
-  `*/15 * * * *` (one line), nothing else. (Alternatively point any external
-  scheduler at `POST /api/trading/scan` with `Authorization: Bearer $CRON_SECRET`.)
+- **Scan cadence — fully autonomous, zero cost:** the primary scheduler is
+  **Supabase pg_cron + pg_net** (migration `20260706150000_trading_cron`): job
+  `trading-scan-15m` fires `POST /api/trading/scan` with the CRON_SECRET bearer
+  every 15 minutes, 24/7, from inside the database — no browser, no Vercel Pro,
+  no third-party service. Belt-and-braces layers on top: a daily Vercel Hobby
+  cron (`vercel.json`) and the terminal's self-healing loop (scans while open if
+  the last heartbeat is >12 min old). Observability:
+  `select * from cron.job_run_details order by start_time desc` + the app-level
+  heartbeats in `trading_scans` (Health rail).
