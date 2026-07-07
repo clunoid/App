@@ -19,16 +19,19 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { PAIRS, SPREAD_PIPS, type Pair, type PairPlaybook, type Timeframe, type ValidationReport } from "../types";
-import { fetchBars } from "../data";
+import { PAIRS, SPREAD_PIPS, type Bar, type Pair, type PairPlaybook, type Timeframe, type ValidationReport } from "../types";
+import { fetchBars, resampleBars } from "../data";
 import { STRATEGIES } from "../strategies";
 import { validateCandidate, DEFAULT_GATES } from "../validate";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
-const H1_TRAIN = 4000; // ≈ 9 months of hourly bars
-const H1_TEST = 1000; // ≈ 8 weeks
-const M30_TRAIN = 1400; // ≈ 40 days of 30m bars
+// Walk-forward geometry per validation timeframe — identical CALENDAR spans
+// (≈9-month train, ≈8-week test) expressed in that timeframe's bars, so every
+// timeframe faces the same market history and the same fixed gates.
+const H1_TRAIN = 4000;
+const H1_TEST = 1000;
+const M30_TRAIN = 1400; // ≈ 40 days of 30m bars (provider depth limit)
 const M30_TEST = 700; // ≈ 20 days
 
 // M30 gates: same discipline, sample floor scaled to the 60-day depth.
@@ -44,24 +47,36 @@ async function main() {
     const m30 = await fetchBars(pair, "30m");
     console.log(`   data: H1 ${h1.length} bars (${new Date(h1[0].t).toISOString().slice(0, 10)} → ${new Date(h1[h1.length - 1].t).toISOString().slice(0, 10)}), M30 ${m30.length} bars`);
 
+    // 2h/4h series resample from the SAME verified H1 history via the SAME
+    // code path the live scanner uses (data.resampleBars) — one source of truth.
+    const plans: { tf: Timeframe; bars: Bar[]; train: number; test: number }[] = [
+      { tf: "1h", bars: h1, train: H1_TRAIN, test: H1_TEST },
+      { tf: "2h", bars: resampleBars(h1, "2h"), train: H1_TRAIN / 2, test: H1_TEST / 2 },
+      { tf: "4h", bars: resampleBars(h1, "4h"), train: H1_TRAIN / 4, test: H1_TEST / 4 },
+    ];
+
     const pairReports: ValidationReport[] = [];
-    for (const strat of STRATEGIES) {
-      const t0 = Date.now();
-      const rep = validateCandidate(h1, strat, pair, "1h", H1_TRAIN, H1_TEST);
-      pairReports.push(rep);
-      console.log(
-        `   H1  ${strat.id.padEnd(16)} ${rep.passed ? "PASS" : "fail"}  oos: ${String(rep.oosMetrics.trades).padStart(3)}tr  PF ${rep.oosMetrics.profitFactor === Infinity ? "inf" : rep.oosMetrics.profitFactor.toFixed(2)}  exp ${rep.oosMetrics.expectancyR.toFixed(3)}R  dd ${rep.oosMetrics.maxDrawdownR.toFixed(1)}R  nb ${(rep.neighborhoodProfitable * 100).toFixed(0)}%  (${((Date.now() - t0) / 1000).toFixed(1)}s)${rep.passed ? "" : `  [${rep.gateNotes[0] || ""}]`}`
-      );
+    for (const plan of plans) {
+      for (const strat of STRATEGIES) {
+        const t0 = Date.now();
+        const rep = validateCandidate(plan.bars, strat, pair, plan.tf, plan.train, plan.test);
+        pairReports.push(rep);
+        console.log(
+          `   ${plan.tf.toUpperCase().padEnd(3)} ${strat.id.padEnd(18)} ${rep.passed ? "PASS" : "fail"}  oos: ${String(rep.oosMetrics.trades).padStart(3)}tr  PF ${rep.oosMetrics.profitFactor === Infinity ? "inf" : rep.oosMetrics.profitFactor.toFixed(2)}  exp ${rep.oosMetrics.expectancyR.toFixed(3)}R  dd ${rep.oosMetrics.maxDrawdownR.toFixed(1)}R  nb ${(rep.neighborhoodProfitable * 100).toFixed(0)}%  (${((Date.now() - t0) / 1000).toFixed(1)}s)${rep.passed ? "" : `  [${rep.gateNotes[0] || ""}]`}`
+        );
+      }
     }
 
-    // M30 micro-validation — only for families with an H1 PASS on this pair
-    const h1PassFamilies = new Set(pairReports.filter((r) => r.passed).map((r) => STRATEGIES.find((s) => s.id === r.strategy)?.family));
+    // M30 micro-validation — only for families with a full-depth (1h/2h/4h)
+    // PASS on this pair: a lower-timeframe echo of a proven edge, never a
+    // standalone claim.
+    const htfPassFamilies = new Set(pairReports.filter((r) => r.passed).map((r) => STRATEGIES.find((s) => s.id === r.strategy)?.family));
     for (const strat of STRATEGIES) {
-      if (!h1PassFamilies.has(strat.family)) continue;
+      if (!htfPassFamilies.has(strat.family)) continue;
       const rep = validateCandidate(m30, strat, pair, "30m", M30_TRAIN, M30_TEST, M30_GATES);
-      rep.gateNotes.unshift("micro-validation: 60-day depth only — echo of the H1 edge, reduced confidence");
+      rep.gateNotes.unshift("micro-validation: 60-day depth only — echo of the HTF edge, reduced confidence");
       pairReports.push(rep);
-      console.log(`   M30 ${strat.id.padEnd(16)} ${rep.passed ? "PASS" : "fail"}  oos: ${String(rep.oosMetrics.trades).padStart(3)}tr  PF ${rep.oosMetrics.profitFactor === Infinity ? "inf" : rep.oosMetrics.profitFactor.toFixed(2)}  exp ${rep.oosMetrics.expectancyR.toFixed(3)}R`);
+      console.log(`   M30 ${strat.id.padEnd(18)} ${rep.passed ? "PASS" : "fail"}  oos: ${String(rep.oosMetrics.trades).padStart(3)}tr  PF ${rep.oosMetrics.profitFactor === Infinity ? "inf" : rep.oosMetrics.profitFactor.toFixed(2)}  exp ${rep.oosMetrics.expectancyR.toFixed(3)}R`);
     }
 
     reports.push(...pairReports);

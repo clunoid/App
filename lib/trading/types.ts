@@ -11,10 +11,19 @@
  *   • the terminal UI — renders the same evidence objects it was tested on.
  */
 
-export type Pair = "EURUSD" | "GBPUSD" | "USDJPY" | "AUDUSD" | "USDCAD";
-export const PAIRS: Pair[] = ["EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD"];
+export type Pair =
+  | "EURUSD" | "GBPUSD" | "USDJPY" | "USDCHF" | "AUDUSD" | "NZDUSD" | "USDCAD"
+  | "EURGBP" | "EURJPY" | "GBPJPY" | "AUDJPY" | "AUDCAD";
+/** The 12-market desk universe: all seven USD majors + the five most liquid
+ *  crosses. Ordering = watchlist order (majors first). */
+export const PAIRS: Pair[] = [
+  "EURUSD", "GBPUSD", "USDJPY", "USDCHF", "AUDUSD", "NZDUSD", "USDCAD",
+  "EURGBP", "EURJPY", "GBPJPY", "AUDJPY", "AUDCAD",
+];
 
-export type Timeframe = "15m" | "30m" | "1h";
+/** 2h/4h are resampled server-side from the 1h feed (Yahoo has no native 2h/4h)
+ *  by the SAME resample code in research and live — see data.resampleBars. */
+export type Timeframe = "15m" | "30m" | "1h" | "2h" | "4h";
 
 /** One OHLCV bar. `t` = bar OPEN time, epoch ms UTC. Volume is tick volume where
  *  the provider supplies it (FX has no true volume) and 0 otherwise. */
@@ -37,6 +46,11 @@ export type Setup = {
   factors: string[];
   /** Bar index the setup fired on (backtest bookkeeping). */
   barIndex: number;
+  /** Optional time-boxed exit: close at market after this many bars if neither
+   *  stop nor target hit (session strategies whose edge is intraday only).
+   *  Absent = the engine-wide 60-bar TTL. Backtest and live resolver honor it
+   *  through the SAME expiry path, so the mirror invariant is untouched. */
+  maxBars?: number;
 };
 
 /** A finished (or open) trade in the backtester's ledger. */
@@ -148,6 +162,8 @@ export type LiveSignal = {
   aiNarrative?: string; // Sonnet explanation (annotation only — never decides)
   warnings: string[];
   status: "open" | "tp" | "sl" | "expired" | "suppressed";
+  /** Optional per-signal time-boxed exit (bars) — see Setup.maxBars. */
+  maxBars?: number;
   /** Open time (ISO) of the signal bar — the anchor for outcome resolution. */
   barTime?: string;
   createdAt?: string;
@@ -164,28 +180,43 @@ export type EconomicEvent = {
   previous?: string;
 };
 
-/** Pip size per pair (JPY pairs quote 2dp). */
+/** Pip size per pair (JPY-quoted pairs quote 2dp). */
 export const PIP: Record<Pair, number> = {
   EURUSD: 0.0001,
   GBPUSD: 0.0001,
   USDJPY: 0.01,
+  USDCHF: 0.0001,
   AUDUSD: 0.0001,
+  NZDUSD: 0.0001,
   USDCAD: 0.0001,
+  EURGBP: 0.0001,
+  EURJPY: 0.01,
+  GBPJPY: 0.01,
+  AUDJPY: 0.01,
+  AUDCAD: 0.0001,
 };
 
 /** Conservative typical retail spreads (pips) used as the COST model in every
  *  backtest and in live R:R math — sourced from major-broker published averages;
- *  deliberately on the expensive side so validation under-promises. */
+ *  deliberately on the expensive side so validation under-promises. Crosses pay
+ *  more than majors by construction (two legs of liquidity). */
 export const SPREAD_PIPS: Record<Pair, number> = {
   EURUSD: 0.9,
   GBPUSD: 1.3,
   USDJPY: 1.0,
+  USDCHF: 1.4,
   AUDUSD: 1.1,
+  NZDUSD: 1.6,
   USDCAD: 1.5,
+  EURGBP: 1.5,
+  EURJPY: 1.6,
+  GBPJPY: 2.5,
+  AUDJPY: 1.8,
+  AUDCAD: 2.0,
 };
 
 /** Extra slippage assumption per side (pips). */
 export const SLIPPAGE_PIPS = 0.3;
 
-export const digitsFor = (pair: Pair): number => (pair === "USDJPY" ? 3 : 5);
+export const digitsFor = (pair: Pair): number => (pair.endsWith("JPY") ? 3 : 5);
 export const fmtPrice = (pair: Pair, p: number): string => p.toFixed(digitsFor(pair));

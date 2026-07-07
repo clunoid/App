@@ -16,6 +16,7 @@
  * All fetches are server-side only.
  */
 import type { Bar, EconomicEvent, Pair, Timeframe } from "./types";
+import { isMarketOpen } from "./sessions";
 
 const UA = { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0 Safari/537.36" };
 
@@ -23,16 +24,26 @@ const YAHOO_SYMBOL: Record<Pair, string> = {
   EURUSD: "EURUSD=X",
   GBPUSD: "GBPUSD=X",
   USDJPY: "USDJPY=X",
+  USDCHF: "USDCHF=X",
   AUDUSD: "AUDUSD=X",
+  NZDUSD: "NZDUSD=X",
   USDCAD: "USDCAD=X",
+  EURGBP: "EURGBP=X",
+  EURJPY: "EURJPY=X",
+  GBPJPY: "GBPJPY=X",
+  AUDJPY: "AUDJPY=X",
+  AUDCAD: "AUDCAD=X",
 };
 
-const YAHOO_INTERVAL: Record<Timeframe, string> = { "15m": "15m", "30m": "30m", "1h": "60m" };
-/** Max range Yahoo serves per interval (verified live). */
-export const MAX_RANGE: Record<Timeframe, string> = { "15m": "60d", "30m": "60d", "1h": "730d" };
+/** Timeframes fetched natively from the provider. 2h/4h are RESAMPLED from the
+ *  1h feed (Yahoo has no native 2h/4h) — see resampleBars / fetchBars. */
+type NativeTimeframe = Exclude<Timeframe, "2h" | "4h">;
+const YAHOO_INTERVAL: Record<NativeTimeframe, string> = { "15m": "15m", "30m": "30m", "1h": "60m" };
+/** Max range Yahoo serves per interval (verified live). 2h/4h ride the 1h feed. */
+export const MAX_RANGE: Record<Timeframe, string> = { "15m": "60d", "30m": "60d", "1h": "730d", "2h": "730d", "4h": "730d" };
 /** Bar interval in ms — the ONLY reliable way to tell a closed bar from Yahoo's
  *  trailing forming-bar + live-quote pseudo-rows. */
-export const INTERVAL_MS: Record<Timeframe, number> = { "15m": 900_000, "30m": 1_800_000, "1h": 3_600_000 };
+export const INTERVAL_MS: Record<Timeframe, number> = { "15m": 900_000, "30m": 1_800_000, "1h": 3_600_000, "2h": 7_200_000, "4h": 14_400_000 };
 
 async function fetchJsonRetry(url: string, tries = 3, timeoutMs = 15_000): Promise<unknown> {
   let lastErr: unknown;
@@ -92,16 +103,16 @@ function toBars(j: YahooChart): Bar[] {
   return dedup;
 }
 
-async function yahooBars(pair: Pair, tf: Timeframe, range?: string): Promise<Bar[]> {
+async function yahooBars(pair: Pair, tf: NativeTimeframe, range?: string): Promise<Bar[]> {
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${YAHOO_SYMBOL[pair]}?interval=${YAHOO_INTERVAL[tf]}&range=${range || MAX_RANGE[tf]}`;
   const bars = toBars((await fetchJsonRetry(url)) as YahooChart);
   if (bars.length < 30) throw new Error(`too few bars for ${pair} ${tf} (${bars.length})`);
   return bars;
 }
 
-const TD_INTERVAL: Record<Timeframe, string> = { "15m": "15min", "30m": "30min", "1h": "1h" };
+const TD_INTERVAL: Record<NativeTimeframe, string> = { "15m": "15min", "30m": "30min", "1h": "1h" };
 
-async function twelveDataBars(pair: Pair, tf: Timeframe, key: string): Promise<Bar[]> {
+async function twelveDataBars(pair: Pair, tf: NativeTimeframe, key: string): Promise<Bar[]> {
   const sym = `${pair.slice(0, 3)}/${pair.slice(3)}`;
   // &timezone=UTC so the datetime is UTC — the "Z" append below is then correct.
   const url = `https://api.twelvedata.com/time_series?symbol=${encodeURIComponent(sym)}&interval=${TD_INTERVAL[tf]}&outputsize=5000&timezone=UTC&apikey=${key}`;
@@ -137,9 +148,60 @@ export function closedBars(bars: Bar[], tf: Timeframe, now = Date.now()): Bar[] 
   return bars.filter((b) => b.t % iv === 0 && b.t + iv <= now);
 }
 
+/**
+ * Resample 1h bars into aligned 2h/4h bars — the ONE resample code path shared
+ * by research and the live scanner, so an H2/H4 champion is validated on exactly
+ * the bars it will trade. Buckets align to the UTC interval grid (4h → 00/04/08/
+ * 12/16/20). Non-hour-aligned rows (Yahoo's live-quote pseudo-row) are dropped
+ * before bucketing.
+ *
+ * COMPLETENESS RULE (drop, never patch): a bucket is emitted only when it holds
+ * a constituent 1h bar for EVERY hour the market was open inside its window.
+ * Session-edge stubs (Friday 20:00, Sunday 21:00) are structural — the market
+ * really traded only those hours — and are kept; a bucket missing an hour the
+ * market DID trade (a feed drop, a validator-rejected row, an unmodeled holiday)
+ * is incomplete evidence and is dropped entirely. This also drops the trailing
+ * still-forming bucket (its later hours have no bars yet), which call sites
+ * would exclude via closedBars() anyway.
+ */
+export function resampleBars(h1: Bar[], tf: "2h" | "4h"): Bar[] {
+  const iv = INTERVAL_MS[tf];
+  const hoursPerBucket = iv / 3_600_000;
+  type Acc = { bar: Bar; got: number };
+  const acc: Acc[] = [];
+  let cur: Acc | null = null;
+  for (const b of h1) {
+    if (b.t % 3_600_000 !== 0) continue;
+    const bucket = Math.floor(b.t / iv) * iv;
+    if (!cur || cur.bar.t !== bucket) {
+      if (cur) acc.push(cur);
+      cur = { bar: { t: bucket, o: b.o, h: b.h, l: b.l, c: b.c, v: b.v }, got: 1 };
+    } else {
+      if (b.h > cur.bar.h) cur.bar.h = b.h;
+      if (b.l < cur.bar.l) cur.bar.l = b.l;
+      cur.bar.c = b.c;
+      cur.bar.v += b.v;
+      cur.got++;
+    }
+  }
+  if (cur) acc.push(cur);
+  const out: Bar[] = [];
+  for (const a of acc) {
+    let expected = 0;
+    for (let k = 0; k < hoursPerBucket; k++) if (isMarketOpen(a.bar.t + k * 3_600_000)) expected++;
+    if (expected > 0 && a.got >= expected) out.push(a.bar);
+  }
+  return out;
+}
+
 /** Public entry: latest bars for a pair/timeframe. Yahoo primary; TwelveData is
- *  used automatically as FALLBACK when configured and Yahoo fails. */
+ *  used automatically as FALLBACK when configured and Yahoo fails. 2h/4h are
+ *  resampled from the 1h feed (`range` then means the 1h range fetched). */
 export async function fetchBars(pair: Pair, tf: Timeframe, range?: string): Promise<Bar[]> {
+  if (tf === "2h" || tf === "4h") {
+    const h1 = await fetchBars(pair, "1h", range);
+    return resampleBars(h1, tf);
+  }
   try {
     return await yahooBars(pair, tf, range);
   } catch (e) {

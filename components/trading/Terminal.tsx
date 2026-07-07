@@ -129,7 +129,7 @@ export function Terminal() {
   const [state, setState] = useState<State | null>(null);
   const [denied, setDenied] = useState(false);
   const [tab, setTab] = useState<"desk" | "playbooks" | "history">("desk");
-  const [chartPair, setChartPair] = useState("USDJPY");
+  const [chartPair, setChartPair] = useState("EURUSD");
   const [levels, setLevels] = useState<ChartLevels>(null);
   const [notify, setNotify] = useState(false);
   const [scanning, setScanning] = useState(false);
@@ -255,7 +255,7 @@ export function Terminal() {
         ) : (
           <>
             {/* ── watchlist ── */}
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
               {state.quotes.map((q) => {
                 const pb = state.playbooks.find((p) => p.pair === q.pair);
                 return (

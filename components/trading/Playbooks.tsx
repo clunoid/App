@@ -55,7 +55,7 @@ const pf = (x: number) => (x === null || x === undefined ? "—" : x === Infinit
 
 export function Playbooks() {
   const [data, setData] = useState<ReportsFile | null>(null);
-  const [pair, setPair] = useState<string>("USDJPY");
+  const [pair, setPair] = useState<string>("EURUSD");
   useEffect(() => {
     // the dossier file is sizable — load it only when this tab opens
     void import("@/lib/trading/research/reports.json").then((m) => setData(m.default as unknown as ReportsFile));

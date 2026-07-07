@@ -52,8 +52,15 @@ const CCY: Record<Pair, [string, string]> = {
   EURUSD: ["EUR", "USD"],
   GBPUSD: ["GBP", "USD"],
   USDJPY: ["USD", "JPY"],
+  USDCHF: ["USD", "CHF"],
   AUDUSD: ["AUD", "USD"],
+  NZDUSD: ["NZD", "USD"],
   USDCAD: ["USD", "CAD"],
+  EURGBP: ["EUR", "GBP"],
+  EURJPY: ["EUR", "JPY"],
+  GBPJPY: ["GBP", "JPY"],
+  AUDJPY: ["AUD", "JPY"],
+  AUDCAD: ["AUD", "CAD"],
 };
 export const pairCurrencies = (pair: Pair): [string, string] => CCY[pair];
 

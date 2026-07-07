@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/requireUser";
 import { isAdmin } from "@/lib/billing/meter";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { PAIRS, type LiveSignal } from "@/lib/trading/types";
+import { PAIRS, type LiveSignal, type Pair, type Timeframe } from "@/lib/trading/types";
 import { runScan, resolveOpenSignals, CONFIDENCE_THRESHOLD, type ResolveInput } from "@/lib/trading/engine";
 import { annotateSignal } from "@/lib/trading/ai";
 
@@ -45,19 +45,38 @@ async function handleScan(req: NextRequest) {
   if (!db) return NextResponse.json({ error: "no service role" }, { status: 500 });
 
   const t0 = Date.now();
-  const { result, barsByPair } = await runScan(PAIRS);
+
+  // Open signals are read BEFORE the scan so their timeframes' bars are fetched
+  // even if a research re-run retired that champion — a signal is never orphaned.
+  let open: Record<string, unknown>[] = [];
+  let openErr: string | null = null;
+  {
+    const q = await db
+      .from("trading_signals")
+      .select("id,pair,timeframe,direction,entry,stop,targets,bar_time,max_bars")
+      .eq("status", "open");
+    // supabase-js reports failures via `error`, it does not throw — a silent
+    // miss here would freeze ALL outcome resolution with zero observability
+    if (q.error) openErr = `open-select: ${q.error.message}`;
+    open = q.data ?? [];
+  }
+  const extraTfs: Partial<Record<Pair, Timeframe[]>> = {};
+  for (const o of open) {
+    const list = (extraTfs[o.pair as Pair] ??= []);
+    const tf = o.timeframe as Timeframe;
+    if (!list.includes(tf)) list.push(tf);
+  }
+
+  const { result, barsByPair } = await runScan(PAIRS, Date.now(), extraTfs);
 
   let resolved = 0;
   let inserted = 0;
   const notes: string[] = result.errors.map((e) => `${e.pair}: ${e.message}`);
+  if (openErr) notes.push(openErr);
 
   if (result.marketOpen) {
     // 1 ── resolve open signals against the fresh bars
     try {
-      const { data: open } = await db
-        .from("trading_signals")
-        .select("id,pair,timeframe,direction,entry,stop,targets,bar_time")
-        .eq("status", "open");
       if (open?.length) {
         const inputs: ResolveInput[] = open.map((o) => ({
           id: o.id as string,
@@ -68,8 +87,12 @@ async function handleScan(req: NextRequest) {
           stop: o.stop as number,
           targets: (o.targets as number[]) || [],
           barTime: o.bar_time as string,
+          maxBars: o.max_bars as number | null,
         }));
-        for (const r of resolveOpenSignals(inputs, barsByPair)) {
+        // closedness is judged at the time the bars were FETCHED (scan start),
+        // never at resolve time — a bar whose boundary falls inside the scan
+        // would otherwise be treated as closed with its tail minutes missing
+        for (const r of resolveOpenSignals(inputs, barsByPair, Date.parse(result.startedAt))) {
           const { error } = await db
             .from("trading_signals")
             .update({ status: r.status, result_r: r.resultR, resolved_at: r.resolvedAt })
@@ -88,6 +111,10 @@ async function handleScan(req: NextRequest) {
     for (const pairScan of result.pairs) {
       for (const sig of pairScan.candidates) {
         if (sig.status !== "open" || sig.confidence < CONFIDENCE_THRESHOLD) continue; // suppressed → not persisted
+        // one open position per champion — mirrors the backtester's busyUntil
+        // rule, so the live R stream contains only trades the validation would
+        // also have taken (overlapping re-fires are skipped, not stacked)
+        if (open.some((o) => o.pair === sig.pair && o.strategy === sig.strategy && o.timeframe === sig.timeframe)) continue;
         try {
           const { data: row, error } = await db.from("trading_signals").insert(toRow(sig)).select("id").single();
           if (error) {
@@ -149,6 +176,7 @@ function toRow(s: LiveSignal) {
     news_risk: s.newsRisk,
     warnings: s.warnings,
     status: "open",
+    max_bars: s.maxBars ?? null,
     bar_time: s.barTime ?? new Date().toISOString(),
   };
 }

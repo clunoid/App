@@ -23,7 +23,12 @@ import { strategyById } from "./strategies";
 import playbookFile from "./research/playbooks.json";
 
 export const CONFIDENCE_THRESHOLD = 65;
-const SIGNAL_TTL_BARS: Record<Timeframe, number> = { "1h": 60, "30m": 60, "15m": 60 };
+const SIGNAL_TTL_BARS: Record<Timeframe, number> = { "15m": 60, "30m": 60, "1h": 60, "2h": 60, "4h": 60 };
+
+/** Live fetch window per timeframe — sized so the VOL_WINDOW=400 ATR-percentile
+ *  regime gate sees the same trailing depth it saw in validation. 2h/4h windows
+ *  are 1h ranges (the data layer resamples). */
+const FETCH_RANGE: Record<Timeframe, string> = { "15m": "10d", "30m": "10d", "1h": "30d", "2h": "100d", "4h": "200d" };
 
 // via `unknown`: the JSON literal's inferred type shifts with every research run
 // (param keys differ per champion), but the runtime shape is always PairPlaybook[].
@@ -41,7 +46,7 @@ export type PairScan = {
   error?: string;
 };
 
-export type ResolveInput = { id: string; pair: Pair; timeframe: Timeframe; direction: "long" | "short"; entry: number; stop: number; targets: number[]; barTime: string };
+export type ResolveInput = { id: string; pair: Pair; timeframe: Timeframe; direction: "long" | "short"; entry: number; stop: number; targets: number[]; barTime: string; maxBars?: number | null };
 export type Resolution = { id: string; status: "tp" | "sl" | "expired"; resultR: number; resolvedAt: string };
 
 const volRegimeOf = (p: number): LiveSignal["volRegime"] => (p < 0.25 ? "low" : p < 0.75 ? "normal" : p < 0.93 ? "high" : "extreme");
@@ -76,8 +81,9 @@ function confidenceFor(setup: Setup, pb: PairPlaybook, volP: number, news: Retur
     score -= 18;
     warnings.push("Extreme volatility regime — spreads and slippage widen");
   }
-  // timeframe evidence depth
-  if (tf !== "1h") {
+  // timeframe evidence depth: sub-hourly champions validate on a 60-day
+  // micro-sample only; 2h/4h validate on the same ~2y depth as 1h (no penalty)
+  if (tf === "15m" || tf === "30m") {
     score -= 6;
     warnings.push("Sub-hourly setup: validated on 60-day micro-sample only");
   }
@@ -101,12 +107,22 @@ function confidenceFor(setup: Setup, pb: PairPlaybook, volP: number, news: Retur
 /** Resolve open signals against fresh bars using the EXACT backtester math:
  *  entry = published price + costs, exits pay costs and clamp gaps to the bar
  *  open, stop checked before target intrabar. This is what makes live outcome R
- *  comparable to the OOS R the strategy was validated on. */
-export function resolveOpenSignals(open: ResolveInput[], barsByPair: Partial<Record<Pair, Partial<Record<Timeframe, Bar[]>>>>): Resolution[] {
+ *  comparable to the OOS R the strategy was validated on.
+ *  `now` MUST be the time the bars were FETCHED (runScan's start), never the
+ *  time of resolution — a bar whose interval boundary falls between fetch and
+ *  resolve would otherwise pass the closed filter with its tail minutes of
+ *  price action missing, and a tp booked on that truncated bar is permanent. */
+export function resolveOpenSignals(open: ResolveInput[], barsByPair: Partial<Record<Pair, Partial<Record<Timeframe, Bar[]>>>>, now = Date.now()): Resolution[] {
   const out: Resolution[] = [];
   for (const s of open) {
-    const bars = barsByPair[s.pair]?.[s.timeframe];
-    if (!bars?.length) continue;
+    const raw = barsByPair[s.pair]?.[s.timeframe];
+    if (!raw?.length) continue;
+    // CLOSED bars only — the backtest never sees a forming bar, so the resolver
+    // must not either (a forming bar's provisional high could book a tp the
+    // completed bar would book as sl under the stop-first rule, and Yahoo's
+    // live-quote pseudo-row would inflate the expiry bar count).
+    const bars = closedBars(raw, s.timeframe, now);
+    if (!bars.length) continue;
     const dir = s.direction === "long" ? 1 : -1;
     const cost = (SPREAD_PIPS[s.pair] / 2 + SLIPPAGE_PIPS) * PIP[s.pair];
     const entry = s.entry + dir * cost;
@@ -132,7 +148,7 @@ export function resolveOpenSignals(open: ResolveInput[], barsByPair: Partial<Rec
         out.push({ id: s.id, status: "tp", resultR: Number(((dir * (fill - entry)) / risk).toFixed(2)), resolvedAt: new Date(b.t).toISOString() });
         break;
       }
-      if (barsSeen >= SIGNAL_TTL_BARS[s.timeframe]) {
+      if (barsSeen >= (s.maxBars ?? SIGNAL_TTL_BARS[s.timeframe])) {
         const fill = b.c - dir * cost;
         out.push({ id: s.id, status: "expired", resultR: Number(((dir * (fill - entry)) / risk).toFixed(2)), resolvedAt: new Date(b.t).toISOString() });
         break;
@@ -142,13 +158,16 @@ export function resolveOpenSignals(open: ResolveInput[], barsByPair: Partial<Rec
   return out;
 }
 
-/** Scan one pair: fetch data, build live context, run its champions. */
-export async function scanPair(pair: Pair, events: EconomicEvent[], now = Date.now()): Promise<{ scan: PairScan; bars: Partial<Record<Timeframe, Bar[]>> }> {
+/** Scan one pair: fetch data, build live context, run its champions.
+ *  `extraTfs` = timeframes of still-open signals (possibly from a RETIRED
+ *  champion after a research re-run) — their bars must keep flowing so every
+ *  open signal always resolves; a signal may never be orphaned. */
+export async function scanPair(pair: Pair, events: EconomicEvent[], now = Date.now(), extraTfs: Timeframe[] = []): Promise<{ scan: PairScan; bars: Partial<Record<Timeframe, Bar[]>> }> {
   const pb = playbooks.find((p) => p.pair === pair);
-  const tfs = new Set<Timeframe>(["1h"]);
+  const tfs = new Set<Timeframe>(["1h", ...extraTfs]);
   for (const c of pb?.champions ?? []) tfs.add(c.timeframe);
   const bars: Partial<Record<Timeframe, Bar[]>> = {};
-  for (const tf of tfs) bars[tf] = await fetchBars(pair, tf, tf === "1h" ? "20d" : "10d");
+  for (const tf of tfs) bars[tf] = await fetchBars(pair, tf, FETCH_RANGE[tf]);
 
   const h1 = bars["1h"]!;
   const a = atr(h1, 14);
@@ -176,6 +195,12 @@ export async function scanPair(pair: Pair, events: EconomicEvent[], now = Date.n
     // live-quote pseudo-row during market hours; slicing one off is not enough.
     const closed = closedBars(tfBars, champ.timeframe, now);
     if (closed.length < 60) continue;
+    // a champion whose warmup exceeds the live window must fail LOUDLY, not
+    // silently produce zero setups forever
+    if (strat.warmupBars && closed.length < strat.warmupBars) {
+      scan.error = [scan.error, `${champ.strategy}@${champ.timeframe}: ${closed.length} live bars < ${strat.warmupBars} warmup`].filter(Boolean).join("; ");
+      continue;
+    }
     // FRESHNESS: the newest closed bar must be recent (guards provider staleness
     // and DST session-boundary drift) — a stale setup is never actionable.
     if (now - (closed[closed.length - 1].t + INTERVAL_MS[champ.timeframe]) > 2 * INTERVAL_MS[champ.timeframe]) continue;
@@ -203,6 +228,7 @@ export async function scanPair(pair: Pair, events: EconomicEvent[], now = Date.n
       newsRisk: { level: news.level, events: news.events.slice(0, 3).map((e) => ({ title: e.title, currency: e.currency, at: new Date(e.at).toISOString(), impact: e.impact })) },
       warnings,
       status: score >= CONFIDENCE_THRESHOLD ? "open" : "suppressed",
+      maxBars: last.maxBars,
       barTime: new Date(closed[closed.length - 1].t).toISOString(),
     };
     scan.candidates.push(sig);
@@ -219,7 +245,7 @@ export type ScanResult = {
   events: EconomicEvent[];
 };
 
-export async function runScan(pairs: Pair[], now = Date.now()): Promise<{ result: ScanResult; barsByPair: Partial<Record<Pair, Partial<Record<Timeframe, Bar[]>>>> }> {
+export async function runScan(pairs: Pair[], now = Date.now(), extraTfsByPair: Partial<Record<Pair, Timeframe[]>> = {}): Promise<{ result: ScanResult; barsByPair: Partial<Record<Pair, Partial<Record<Timeframe, Bar[]>>>> }> {
   const started = Date.now();
   const open = isMarketOpen(now);
   const result: ScanResult = { marketOpen: open, startedAt: new Date(started).toISOString(), durationMs: 0, pairs: [], errors: [], events: [] };
@@ -237,13 +263,14 @@ export async function runScan(pairs: Pair[], now = Date.now()): Promise<{ result
   }
   result.events = events.filter((e) => e.impact === "High" && e.at > now - 3600_000 && e.at < now + 48 * 3600_000);
 
-  // pairs scan sequentially-ish (2 at a time) to stay polite to the provider
+  // pairs scan sequentially-ish (3 at a time) to stay polite to the provider
+  // while keeping a 12-pair sweep well inside the route's time budget
   const queue = [...pairs];
-  const workers = Array.from({ length: 2 }, async () => {
+  const workers = Array.from({ length: 3 }, async () => {
     while (queue.length) {
       const pair = queue.shift()!;
       try {
-        const { scan, bars } = await scanPair(pair, events, now);
+        const { scan, bars } = await scanPair(pair, events, now, extraTfsByPair[pair] ?? []);
         result.pairs.push(scan);
         barsByPair[pair] = bars;
       } catch (e) {

@@ -29,6 +29,10 @@ export type StrategyDef = {
    *  surface, and the neighborhood-stability gate needs a meaningful plateau. */
   grid: Record<string, number[]>;
   run: StrategyFn;
+  /** Bars of history the strategy needs before it can fire (longest look-back).
+   *  The live engine refuses to run a champion with fewer closed bars than this
+   *  — loudly, via the pair's scan error — instead of silently never firing. */
+  warmupBars?: number;
 };
 
 const VOL_WINDOW = 400; // bars for the ATR percentile regime classifier
@@ -435,9 +439,316 @@ const wideRangeContinuation: StrategyFn = (bars, p, pair, tf) => {
   return out;
 };
 
+/* ── 13. Asian compression breakout — narrow overnight range → London release ─ */
+// Refinement of the (rejected) naive londonBreakout: Crabel's contraction→
+// expansion effect says the tradeable Asian-range breaks are the UNUSUALLY
+// NARROW ones (overnight information accumulates in thin liquidity, then
+// releases into deep London liquidity). compRatio 1.0 = filter off — a built-in
+// ablation cell: the filtered cells must beat it or the hypothesis is dead.
+const asianCompression: StrategyFn = (bars, p, pair, tf) => {
+  const out: Setup[] = [];
+  const a = atr(bars, 14);
+  const tfH = TF_HOURS[tf];
+  // full Asian range (UTC 00:00–06:59) per UTC calendar day — complete before
+  // any London-window decision bar of the same day, so no look-ahead
+  const dayKey = (t: number) => Math.floor(t / 86_400_000);
+  const asian = new Map<number, { hi: number; lo: number; hours: number }>();
+  for (const b of bars) {
+    if (utcHour(b.t) >= 7) continue;
+    const k = dayKey(b.t);
+    const s = asian.get(k);
+    if (!s) asian.set(k, { hi: b.h, lo: b.l, hours: tfH });
+    else {
+      if (b.h > s.hi) s.hi = b.h;
+      if (b.l < s.lo) s.lo = b.l;
+      s.hours += tfH;
+    }
+  }
+  const dayKeys = [...asian.keys()].sort((x, y) => x - y);
+  const keyPos = new Map(dayKeys.map((k, idx) => [k, idx]));
+  for (let i = 30; i < bars.length; i++) {
+    const h = utcHour(bars[i].t);
+    if (!hourIn(h, 7, 11)) continue;
+    if (Number.isNaN(a[i])) continue;
+    const vol = percentileRank(a, i, VOL_WINDOW);
+    if (vol > 0.95) continue;
+    const k = dayKey(bars[i].t);
+    const s = asian.get(k);
+    if (!s || s.hours < 5) continue;
+    const range = s.hi - s.lo;
+    if (!(range > 0)) continue;
+    // compression: today's Asian range vs the average of the prior ≤20 sessions
+    const pos = keyPos.get(k)!;
+    if (pos < 10) continue;
+    let sum = 0;
+    let n = 0;
+    for (let j = pos - 1; j >= 0 && n < 20; j--) {
+      const prev = asian.get(dayKeys[j])!;
+      if (prev.hours < 5) continue;
+      sum += prev.hi - prev.lo;
+      n++;
+    }
+    if (n < 10) continue;
+    if (range > p.compRatio * (sum / n)) continue;
+    const buf = p.bufferAtr * a[i];
+    const c = bars[i].c;
+    if (c > s.hi + buf) {
+      // structure stop at the range midpoint, floored at 0.8×ATR so compressed-
+      // range stops cannot sit inside the noise band
+      const stop = Math.min(Math.max(s.lo, s.hi - range * 0.5) - buf, c - 0.8 * a[i]);
+      const risk = c - stop;
+      if (risk > 0.25 * a[i]) out.push(mk(pair, tf, "long", c, stop, [c + risk, c + p.tpR * risk], "asianCompression", i, [`Compressed Asian range (${((range / (sum / n)) * 100).toFixed(0)}% of 20-day avg) broken up`, "London-open expansion window", volNote(vol)]));
+    } else if (c < s.lo - buf) {
+      const stop = Math.max(Math.min(s.hi, s.lo + range * 0.5) + buf, c + 0.8 * a[i]);
+      const risk = stop - c;
+      if (risk > 0.25 * a[i]) out.push(mk(pair, tf, "short", c, stop, [c - risk, c - p.tpR * risk], "asianCompression", i, [`Compressed Asian range (${((range / (sum / n)) * 100).toFixed(0)}% of 20-day avg) broken down`, "London-open expansion window", volNote(vol)]));
+    }
+  }
+  return dedupeDaily(out, bars);
+};
+
+/* ── 14. Breakout–retest continuation — prior-day extreme, held on retest ───── */
+// The suite's only two-stage entry: a close through the prior day's extreme ARMS
+// the level; a later bar that tags the level and CLOSES back beyond it confirms
+// that a second wave of order flow defends the break (filters the false
+// breakouts that plague choppy pairs). A close back through the level cancels.
+const breakoutRetest: StrategyFn = (bars, p, pair, tf) => {
+  const out: Setup[] = [];
+  const a = atr(bars, 14);
+  const dc = dayContext(bars);
+  let armL = -1; // bar index the long side armed at (-1 = not armed)
+  let armS = -1;
+  let curDay = -1;
+  for (let i = 30; i < bars.length; i++) {
+    if (dc.dayOf[i] !== curDay) {
+      curDay = dc.dayOf[i];
+      armL = -1;
+      armS = -1;
+    }
+    const prev = dc.prevDay(i);
+    if (!prev) continue;
+    const c = bars[i].c;
+    // CANCEL/TIMEOUT transitions run on EVERY bar of the day — a failed
+    // breakout must disarm even on bars the entry-quality gates below would
+    // skip (a p95-volatility news bar closing back through the level is
+    // precisely the false breakout this family exists to filter).
+    if (armL >= 0 && (c < prev.hi || i - armL > p.retestBars)) armL = -1;
+    if (armS >= 0 && (c > prev.lo || i - armS > p.retestBars)) armS = -1;
+    // entry-quality gates apply only to ARMING and CONFIRMING
+    if (Number.isNaN(a[i])) continue;
+    const h = utcHour(bars[i].t);
+    if (!hourIn(h, 7, 15)) continue; // arming and retesting live in London/early NY
+    const vol = percentileRank(a, i, VOL_WINDOW);
+    if (vol > 0.93) continue;
+    // long side
+    if (armL < 0) {
+      if (c > prev.hi && bars[i - 1].c <= prev.hi) armL = i;
+    } else if (i > armL && bars[i].l <= prev.hi + 0.25 * a[i] && c > prev.hi) {
+      const stop = bars[i].l - p.slAtr * a[i];
+      const risk = c - stop;
+      if (risk > 0.25 * a[i] && risk < 4 * a[i]) out.push(mk(pair, tf, "long", c, stop, [c + risk, c + p.tpR * risk], "breakoutRetest", i, ["Prior-day high broken, retest held on a close", "Second-wave order flow defends the level", volNote(vol)]));
+      armL = -1;
+    }
+    // short side
+    if (armS < 0) {
+      if (c < prev.lo && bars[i - 1].c >= prev.lo) armS = i;
+    } else if (i > armS && bars[i].h >= prev.lo - 0.25 * a[i] && c < prev.lo) {
+      const stop = bars[i].h + p.slAtr * a[i];
+      const risk = stop - c;
+      if (risk > 0.25 * a[i] && risk < 4 * a[i]) out.push(mk(pair, tf, "short", c, stop, [c - risk, c - p.tpR * risk], "breakoutRetest", i, ["Prior-day low broken, retest held on a close", "Second-wave order flow defends the level", volNote(vol)]));
+      armS = -1;
+    }
+  }
+  return dedupeDaily(out, bars);
+};
+
+/* ── 15. NR7 daily breakout — narrowest daily range in N → expansion day ────── */
+// Crabel (1990): a daily range narrower than the prior N-1 days means both sides
+// withdrew; the next initiative order flow travels through a vacuum. N∈{4,7} are
+// Crabel's published values — priors fixed 35 years out-of-sample. Time-boxed to
+// the same trading day (maxBars → 21:00 UTC), no overnight hold.
+const nr7Breakout: StrategyFn = (bars, p, pair, tf) => {
+  const out: Setup[] = [];
+  const a = atr(bars, 14);
+  const dc = dayContext(bars);
+  const tfH = TF_HOURS[tf];
+  for (let i = 30; i < bars.length; i++) {
+    if (Number.isNaN(a[i])) continue;
+    const h = utcHour(bars[i].t);
+    if (!hourIn(h, 7, 15)) continue;
+    const vol = percentileRank(a, i, VOL_WINDOW);
+    if (vol > 0.95) continue;
+    const d = dc.dayOf[i];
+    if (d < p.nrN + 1) continue;
+    const prev = dc.days[d - 1];
+    let isNR = true;
+    for (let j = 2; j <= p.nrN; j++) {
+      if (prev.range >= dc.days[d - j].range) {
+        isNR = false;
+        break;
+      }
+    }
+    if (!isNR || !(prev.range > 0)) continue;
+    const adr14 = dc.adr(i, 14);
+    if (Number.isNaN(adr14)) continue;
+    const buf = p.buffer * adr14;
+    const c = bars[i].c;
+    const maxBars = Math.max(1, Math.round((21 - h) / tfH) - 1);
+    if (c > prev.hi + buf) {
+      const stop = prev.lo - buf;
+      const risk = c - stop;
+      if (risk > 0.3 * a[i] && risk < 8 * a[i]) out.push(mk(pair, tf, "long", c, stop, [c + risk, c + p.tpR * risk], "nr7Breakout", i, [`NR${p.nrN} day: narrowest range of ${p.nrN} sessions`, "Expansion-day breakout, same-day time box", volNote(vol)], maxBars));
+    } else if (c < prev.lo - buf) {
+      const stop = prev.hi + buf;
+      const risk = stop - c;
+      if (risk > 0.3 * a[i] && risk < 8 * a[i]) out.push(mk(pair, tf, "short", c, stop, [c - risk, c - p.tpR * risk], "nr7Breakout", i, [`NR${p.nrN} day: narrowest range of ${p.nrN} sessions`, "Expansion-day breakout, same-day time box", volNote(vol)], maxBars));
+    }
+  }
+  return dedupeDaily(out, bars);
+};
+
+/* ── 16. London-close fade — stretched day reverses off the 16:00 fix ───────── */
+// Evans (2018) and the FCA occasional paper 46 document systematic reversal of
+// moves into the 4pm London WMR fix; Breedon & Ranaldo tie intraday FX drift to
+// local-session order flow that reverts when the driving session closes. The
+// stretch condition (day move ≥ stretch×ADR20) selects the forced-flow days.
+// sigHour is gridded {15,16} because the fix is 16:00 LONDON time (UTC drifts
+// with DST — same fixed-UTC-window convention the whole suite validates under).
+const londonCloseFade: StrategyFn = (bars, p, pair, tf) => {
+  const out: Setup[] = [];
+  const a = atr(bars, 14);
+  const dc = dayContext(bars);
+  const tfH = TF_HOURS[tf];
+  // first bar at/after 07:00 UTC per UTC calendar day → the London "day open"
+  const dayKey = (t: number) => Math.floor(t / 86_400_000);
+  const open7 = new Map<number, number>();
+  for (const b of bars) {
+    if (utcHour(b.t) < 7) continue;
+    const k = dayKey(b.t);
+    if (!open7.has(k)) open7.set(k, b.o);
+  }
+  for (let i = 30; i < bars.length; i++) {
+    const h = utcHour(bars[i].t);
+    if (h !== p.sigHour) continue;
+    if (Number.isNaN(a[i])) continue;
+    const vol = percentileRank(a, i, VOL_WINDOW);
+    if (vol > 0.95) continue;
+    const adr20 = dc.adr(i, 20);
+    if (Number.isNaN(adr20) || !(adr20 > 0)) continue;
+    const o7 = open7.get(dayKey(bars[i].t));
+    if (o7 === undefined) continue;
+    const c = bars[i].c;
+    const dayMove = c - o7;
+    if (Math.abs(dayMove) < p.stretch * adr20) continue;
+    const maxBars = Math.max(1, Math.round((21 - h) / tfH) - 1);
+    const closeHHMM = `${String(Math.floor((h + tfH) % 24)).padStart(2, "0")}:00 UTC`;
+    if (dayMove > 0) {
+      const stop = dc.runHi[i] + 0.5 * adr20;
+      const target = c - p.tgt * adr20;
+      const risk = stop - c;
+      if (risk > 0.25 * a[i]) out.push(mk(pair, tf, "short", c, stop, [target], "londonCloseFade", i, [`Day stretched +${(Math.abs(dayMove) / adr20).toFixed(2)}×ADR20 by the ${closeHHMM} close`, "Session-flow reversal window, same-day time box", volNote(vol)], maxBars));
+    } else {
+      const stop = dc.runLo[i] - 0.5 * adr20;
+      const target = c + p.tgt * adr20;
+      const risk = c - stop;
+      if (risk > 0.25 * a[i]) out.push(mk(pair, tf, "long", c, stop, [target], "londonCloseFade", i, [`Day stretched -${(Math.abs(dayMove) / adr20).toFixed(2)}×ADR20 by the ${closeHHMM} close`, "Session-flow reversal window, same-day time box", volNote(vol)], maxBars));
+    }
+  }
+  return dedupeDaily(out, bars);
+};
+
+/* ── 17. ADR exhaustion fade — the day's range budget is spent ──────────────── */
+// Base-rate anchor, not a price pattern: price exceeds ~100% of its average
+// daily range on only ~40% of days (and 200% on ~3%) — once the budget is spent
+// AND price sits at the day's extreme, extension odds collapse. All parameters
+// are in ADR units (scale-free across pairs — a real plateau should appear on
+// several pairs or none). Same-day time box, never holds overnight by design.
+const adrExhaustionFade: StrategyFn = (bars, p, pair, tf) => {
+  const out: Setup[] = [];
+  const a = atr(bars, 14);
+  const dc = dayContext(bars);
+  const tfH = TF_HOURS[tf];
+  for (let i = 30; i < bars.length; i++) {
+    const h = utcHour(bars[i].t);
+    if (!hourIn(h, 8, 16)) continue;
+    if (Number.isNaN(a[i])) continue;
+    const vol = percentileRank(a, i, VOL_WINDOW);
+    if (vol > 0.95) continue;
+    const adr20 = dc.adr(i, 20);
+    if (Number.isNaN(adr20) || !(adr20 > 0)) continue;
+    const dayRange = dc.runHi[i] - dc.runLo[i];
+    if (dayRange < p.trig * adr20) continue;
+    const c = bars[i].c;
+    const posInDay = (c - dc.runLo[i]) / dayRange;
+    const maxBars = Math.max(1, Math.round((21 - h) / tfH) - 1);
+    if (posInDay >= 0.8) {
+      const stop = dc.runHi[i] + p.slAdr * adr20;
+      const target = c - p.tgt * adr20;
+      const risk = stop - c;
+      if (risk > 0.25 * a[i] && target < c) out.push(mk(pair, tf, "short", c, stop, [target], "adrExhaustionFade", i, [`Day range ${((dayRange / adr20) * 100).toFixed(0)}% of ADR20, close at the day's high`, "Range-budget exhaustion fade, same-day time box", volNote(vol)], maxBars));
+    } else if (posInDay <= 0.2) {
+      const stop = dc.runLo[i] - p.slAdr * adr20;
+      const target = c + p.tgt * adr20;
+      const risk = c - stop;
+      if (risk > 0.25 * a[i] && target > c) out.push(mk(pair, tf, "long", c, stop, [target], "adrExhaustionFade", i, [`Day range ${((dayRange / adr20) * 100).toFixed(0)}% of ADR20, close at the day's low`, "Range-budget exhaustion fade, same-day time box", volNote(vol)], maxBars));
+    }
+  }
+  return dedupeDaily(out, bars);
+};
+
 /* ── helpers ──────────────────────────────────────────────────────────────── */
-function mk(pair: Pair, timeframe: Timeframe, direction: "long" | "short", entry: number, stop: number, targets: number[], strategy: string, barIndex: number, factors: string[]): Setup {
-  return { pair, timeframe, direction, entry, stop, targets, strategy, factors, barIndex };
+/** Hours per bar by timeframe — declared, not inferred (a weekend gap between
+ *  the first two bars would corrupt an inferred value). */
+const TF_HOURS: Record<Timeframe, number> = { "15m": 0.25, "30m": 0.5, "1h": 1, "2h": 2, "4h": 4 };
+
+/** Per-bar trading-day context under the NY-close convention (day boundary at
+ *  21:00 UTC, the FX daily-bar standard — Sunday's 3-hour stub belongs to
+ *  Monday's day). Everything exposed is strictly backward-looking at bar i:
+ *  prevDay/adr read only COMPLETED days; runHi/runLo are the running extremes
+ *  up to and including bar i (which is closed at decision time). */
+function dayContext(bars: Bar[]) {
+  const key = (t: number) => Math.floor((t + 10_800_000) / 86_400_000);
+  const dayOf = new Array<number>(bars.length);
+  const days: { hi: number; lo: number; range: number }[] = [];
+  const runHi = new Array<number>(bars.length);
+  const runLo = new Array<number>(bars.length);
+  let curKey = NaN;
+  for (let i = 0; i < bars.length; i++) {
+    const k = key(bars[i].t);
+    if (k !== curKey) {
+      curKey = k;
+      days.push({ hi: bars[i].h, lo: bars[i].l, range: bars[i].h - bars[i].l });
+    }
+    const d = days[days.length - 1];
+    if (bars[i].h > d.hi) d.hi = bars[i].h;
+    if (bars[i].l < d.lo) d.lo = bars[i].l;
+    d.range = d.hi - d.lo;
+    dayOf[i] = days.length - 1;
+    runHi[i] = d.hi;
+    runLo[i] = d.lo;
+  }
+  return {
+    dayOf,
+    days,
+    runHi,
+    runLo,
+    /** Average daily range of the n COMPLETED days before bar i's day. */
+    adr(i: number, n: number): number {
+      const d = dayOf[i];
+      if (d < n) return NaN;
+      let s = 0;
+      for (let j = d - n; j < d; j++) s += days[j].range;
+      return s / n;
+    },
+    /** The completed day before bar i's day (full-session extremes). */
+    prevDay(i: number): { hi: number; lo: number; range: number } | null {
+      return dayOf[i] >= 1 ? days[dayOf[i] - 1] : null;
+    },
+  };
+}
+
+function mk(pair: Pair, timeframe: Timeframe, direction: "long" | "short", entry: number, stop: number, targets: number[], strategy: string, barIndex: number, factors: string[], maxBars?: number): Setup {
+  return { pair, timeframe, direction, entry, stop, targets, strategy, factors, barIndex, ...(maxBars !== undefined ? { maxBars } : {}) };
 }
 const fmtR = (x: number, atrV: number) => (x / atrV).toFixed(1);
 const volNote = (v: number) => `ATR regime p${Math.round(v * 100)}`;
@@ -470,8 +781,17 @@ export const STRATEGIES: StrategyDef[] = [
   { id: "nyOpenRange", label: "NY Opening Range", family: "breakout", run: nyOpenRange, grid: { bufferAtr: [0.05, 0.1], minRangeAtr: [0.5, 0.8], tpR: [1.5, 2.0] } },
   { id: "emaCrossTrend", label: "EMA Cross Trend", family: "trend", run: emaCrossTrend, grid: { adxTh: [18, 22], slAtr: [1.2, 1.6], tpR: [2.0, 2.5] } },
   { id: "keltnerPullback", label: "Keltner Pullback", family: "trend", run: keltnerPullback, grid: { slAtr: [0.3, 0.5], tpR: [1.6, 2.0, 2.4] } },
-  { id: "htfTrendRider", label: "HTF Trend Rider", family: "trend", run: htfTrendRider, grid: { pullBars: [2, 3], slAtr: [0.3, 0.5], tpR: [1.8, 2.4] } },
+  { id: "htfTrendRider", label: "HTF Trend Rider", family: "trend", run: htfTrendRider, warmupBars: 1260, grid: { pullBars: [2, 3], slAtr: [0.3, 0.5], tpR: [1.8, 2.4] } },
   { id: "wideRangeContinuation", label: "Wide-Range Continuation", family: "momentum", run: wideRangeContinuation, grid: { rangeAtr: [1.6, 2.0], tpR: [1.5, 2.0] } },
+  // 2026-07 cohort — evidence-based families from the literature review (Crabel
+  // contraction→expansion, break-retest order-flow defense, London-fix reversal,
+  // ADR range-budget base rates). Grids stay coarse; compRatio 1.0 is a built-in
+  // ablation cell (filter off) the compressed cells must beat out-of-sample.
+  { id: "asianCompression", label: "Asian Compression Breakout", family: "breakout", run: asianCompression, grid: { compRatio: [0.6, 0.8, 1.0], bufferAtr: [0.05, 0.1], tpR: [1.5, 2.0] } },
+  { id: "breakoutRetest", label: "Breakout Retest", family: "breakout", run: breakoutRetest, grid: { retestBars: [6, 12], slAtr: [1.0, 1.5], tpR: [1.5, 2.0] } },
+  { id: "nr7Breakout", label: "NR7 Daily Breakout", family: "volatility", run: nr7Breakout, grid: { nrN: [4, 7], buffer: [0.1, 0.2], tpR: [1.5, 2.0] } },
+  { id: "londonCloseFade", label: "London-Close Fade", family: "meanReversion", run: londonCloseFade, grid: { sigHour: [15, 16], stretch: [0.6, 0.8], tgt: [0.25, 0.35] } },
+  { id: "adrExhaustionFade", label: "ADR Exhaustion Fade", family: "meanReversion", run: adrExhaustionFade, grid: { trig: [1.0, 1.2], tgt: [0.25, 0.35], slAdr: [0.5, 0.75] } },
 ];
 
 export const strategyById = (id: string): StrategyDef | undefined => STRATEGIES.find((s) => s.id === id);

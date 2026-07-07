@@ -46,7 +46,10 @@ export function simulate(bars: Bar[], setups: Setup[], pair: Pair, opts: Backtes
     let exitTime = 0;
     let outcome: SimTrade["outcome"] = "expiry";
     let barsHeld = 0;
-    const lastJ = Math.min(bars.length, i + 1 + maxBars) - 1;
+    // per-setup time-boxed exit (session strategies) — same expiry path, shorter
+    // leash; the live resolver honors the identical bar count (engine TTL logic)
+    const ttl = s.maxBars ?? maxBars;
+    const lastJ = Math.min(bars.length, i + 1 + ttl) - 1;
     for (let j = i + 1; j <= lastJ; j++) {
       barsHeld = j - i;
       const b = bars[j];
