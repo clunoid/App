@@ -245,7 +245,7 @@ export type ScanResult = {
   events: EconomicEvent[];
 };
 
-export async function runScan(pairs: Pair[], now = Date.now(), extraTfsByPair: Partial<Record<Pair, Timeframe[]>> = {}): Promise<{ result: ScanResult; barsByPair: Partial<Record<Pair, Partial<Record<Timeframe, Bar[]>>>> }> {
+export async function runScan(pairs: Pair[], now = Date.now(), extraTfsByPair: Partial<Record<Pair, Timeframe[]>> = {}, providedEvents?: EconomicEvent[]): Promise<{ result: ScanResult; barsByPair: Partial<Record<Pair, Partial<Record<Timeframe, Bar[]>>>> }> {
   const started = Date.now();
   const open = isMarketOpen(now);
   const result: ScanResult = { marketOpen: open, startedAt: new Date(started).toISOString(), durationMs: 0, pairs: [], errors: [], events: [] };
@@ -255,11 +255,16 @@ export async function runScan(pairs: Pair[], now = Date.now(), extraTfsByPair: P
     result.durationMs = Date.now() - started;
     return { result, barsByPair };
   }
-  let events: EconomicEvent[] = [];
-  try {
-    events = await fetchCalendar();
-  } catch {
-    /* calendar is an enhancement — a fetch miss must never stop price analysis */
+  // Calendar: use the events the caller supplies (the scan route reads/refreshes
+  // the cached copy — one fetch per cycle, not one per page load). Only fetch
+  // here as a fallback (e.g. the smoke test calls runScan directly).
+  let events: EconomicEvent[] = providedEvents ?? [];
+  if (!providedEvents) {
+    try {
+      events = await fetchCalendar();
+    } catch {
+      /* calendar is an enhancement — a fetch miss must never stop price analysis */
+    }
   }
   result.events = events.filter((e) => e.impact === "High" && e.at > now - 3600_000 && e.at < now + 48 * 3600_000);
 

@@ -47,6 +47,7 @@ type State = {
   now: string; marketOpen: boolean; session: string; quotes: Quote[]; signals: Sig[];
   stats: { closed: number; open: number; winRate: number | null; netR: number; profitFactor: number | null };
   scans: { started_at: string; duration_ms: number; market_open: boolean; pairs_ok: number; pairs_err: number; new_signals: number; resolved: number }[];
+  calendarLoaded: boolean;
   calendar: { title: string; currency: string; at: string; forecast?: string; previous?: string }[];
   playbooks: { pair: string; champions: { strategy: string; timeframe: string; oosProfitFactor: number; oosTrades: number }[]; monitorOnly: boolean }[];
 };
@@ -369,7 +370,11 @@ export function Terminal() {
                   <div className="rounded-xl border p-3" style={{ borderColor: T.line, background: T.panel }}>
                     <h3 className="flex items-center gap-1.5 font-mono text-[10px] font-bold uppercase tracking-widest" style={{ color: T.faint }}><CalendarClock size={12} /> High-impact calendar</h3>
                     <ul className="mt-2 space-y-2">
-                      {state.calendar.length === 0 && <li className="text-[12px]" style={{ color: T.faint }}>Quiet — no high-impact events ahead this week.</li>}
+                      {state.calendar.length === 0 && (
+                        <li className="text-[12px]" style={{ color: T.faint }}>
+                          {state.calendarLoaded ? "Quiet — no high-impact events ahead this week." : "Loading this week's calendar…"}
+                        </li>
+                      )}
                       {state.calendar.map((e) => (
                         <li key={`${e.at}-${e.title}`} className="flex items-baseline gap-2 text-[12px]">
                           <span className="font-mono text-[10px] font-bold" style={{ color: T.warn }}>{e.currency}</span>

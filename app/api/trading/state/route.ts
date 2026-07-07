@@ -2,10 +2,9 @@ import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/requireUser";
 import { isAdmin } from "@/lib/billing/meter";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { PAIRS, type Pair } from "@/lib/trading/types";
-import { fetchBars, fetchCalendar } from "@/lib/trading/data";
+import { PAIRS, PIP, type EconomicEvent, type Pair } from "@/lib/trading/types";
+import { fetchBars } from "@/lib/trading/data";
 import { atr, percentileRank } from "@/lib/trading/indicators";
-import { PIP } from "@/lib/trading/types";
 import { isMarketOpen, sessionLabel } from "@/lib/trading/sessions";
 import { playbooks } from "@/lib/trading/engine";
 
@@ -26,10 +25,12 @@ export async function GET() {
   const supabase = await getSupabaseServer(); // RLS as the admin user
   const now = Date.now();
 
-  const [signalsQ, scansQ, calendar, quotes] = await Promise.all([
+  const [signalsQ, scansQ, calQ, quotes] = await Promise.all([
     supabase.from("trading_signals").select("*").order("created_at", { ascending: false }).limit(200),
     supabase.from("trading_scans").select("*").order("id", { ascending: false }).limit(20),
-    fetchCalendar().catch(() => []),
+    // Read the CACHED calendar (refreshed by the scanner) — never fetch the
+    // rate-limited feed here, so the display can't flicker to a false "Quiet".
+    supabase.from("trading_calendar").select("events, fetched_at").eq("id", 1).maybeSingle(),
     Promise.all(
       PAIRS.map(async (pair) => {
         try {
@@ -54,6 +55,12 @@ export async function GET() {
     ),
   ]);
 
+  const calRow = calQ.data as { events?: EconomicEvent[]; fetched_at?: string } | null;
+  const calEvents = calRow?.events ?? [];
+  // `calendarLoaded` is false until the scanner has cached at least one
+  // successful fetch — the UI shows "loading" (not a false "Quiet") until then.
+  const calendarLoaded = !!calRow?.fetched_at;
+
   const signals = signalsQ.data ?? [];
   const closed = signals.filter((s) => s.status !== "open" && s.status !== "suppressed" && typeof s.result_r === "number");
   const wins = closed.filter((s) => (s.result_r as number) > 0);
@@ -74,8 +81,10 @@ export async function GET() {
       profitFactor: grossL > 0 ? Number((grossW / grossL).toFixed(2)) : null,
     },
     scans: scansQ.data ?? [],
-    calendar: (calendar || [])
+    calendarLoaded,
+    calendar: calEvents
       .filter((e) => e.impact === "High" && e.at > now - 2 * 3600_000)
+      .sort((a, b) => a.at - b.at)
       .slice(0, 12)
       .map((e) => ({ title: e.title, currency: e.currency, at: new Date(e.at).toISOString(), forecast: e.forecast, previous: e.previous })),
     playbooks: playbooks.map((p) => ({ pair: p.pair, champions: p.champions, monitorOnly: !p.champions.length })),

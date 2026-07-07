@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/requireUser";
 import { isAdmin } from "@/lib/billing/meter";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { PAIRS, type LiveSignal, type Pair, type Timeframe } from "@/lib/trading/types";
+import { PAIRS, type EconomicEvent, type LiveSignal, type Pair, type Timeframe } from "@/lib/trading/types";
 import { runScan, resolveOpenSignals, CONFIDENCE_THRESHOLD, type ResolveInput } from "@/lib/trading/engine";
+import { fetchCalendar } from "@/lib/trading/data";
 import { annotateSignal } from "@/lib/trading/ai";
 import { sendPushToAll, signalPayload } from "@/lib/trading/push";
 
@@ -68,12 +69,34 @@ async function handleScan(req: NextRequest) {
     if (!list.includes(tf)) list.push(tf);
   }
 
-  const { result, barsByPair } = await runScan(PAIRS, Date.now(), extraTfs);
+  const notes: string[] = [];
+  if (openErr) notes.push(openErr);
+
+  // Calendar cache — the scanner is the SOLE fetcher of the rate-limited feed
+  // (once per 5-min cycle, safely under the limit). On success we refresh the
+  // single-row cache the terminal reads; on failure we KEEP the last good copy
+  // (never wipe it to empty) and reuse it for this scan's news gating. This is
+  // what stops the calendar flickering to a false "Quiet" on every page load.
+  let calEvents: EconomicEvent[] = [];
+  let calFresh = false;
+  try {
+    calEvents = await fetchCalendar();
+    calFresh = calEvents.length > 0;
+  } catch {
+    /* keep last good below */
+  }
+  if (calFresh) {
+    await db.from("trading_calendar").upsert({ id: 1, events: calEvents, fetched_at: new Date().toISOString() }).then(({ error }) => { if (error) notes.push(`calendar cache: ${error.message}`); });
+  } else {
+    const { data: cached } = await db.from("trading_calendar").select("events").eq("id", 1).maybeSingle();
+    calEvents = (cached?.events as EconomicEvent[]) ?? [];
+  }
+
+  const { result, barsByPair } = await runScan(PAIRS, Date.now(), extraTfs, calEvents);
 
   let resolved = 0;
   let inserted = 0;
-  const notes: string[] = result.errors.map((e) => `${e.pair}: ${e.message}`);
-  if (openErr) notes.push(openErr);
+  for (const e of result.errors) notes.push(`${e.pair}: ${e.message}`);
 
   if (result.marketOpen) {
     // 1 ── resolve open signals against the fresh bars
