@@ -8,7 +8,9 @@
  *  • loads /api/trading/state on mount, refreshes every 60s while visible
  *  • self-healing scans: if the newest heartbeat is stale (>12 min) it POSTs
  *    /api/trading/scan itself — the desk keeps analyzing even without cron
- *  • browser notifications (opt-in bell) fire once per new open signal
+ *  • Web Push alerts (opt-in bell): a validated signal is pushed from the SERVER,
+ *    so it lands even with this tab closed/refreshed; the bell reflects the REAL
+ *    subscription state, so it stays on across reloads
  *  • tabs: Desk (live) · Playbooks (validation dossiers) · History (outcomes)
  */
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -17,6 +19,7 @@ import { ArrowLeft, Activity, Bell, BellOff, CalendarClock, History as HistoryIc
 import { PairChart, type Candle, type ChartLevels } from "./PairChart";
 import { Playbooks } from "./Playbooks";
 import { TerminalBackground } from "./TerminalBackground";
+import { currentPushState, enablePush, disablePush, pushSupported } from "./push-client";
 
 /* ── palette (desk-local, deliberately its own product surface) ──
  * Panels are slightly translucent so the grid material reads through them. */
@@ -132,12 +135,11 @@ export function Terminal() {
   const [chartPair, setChartPair] = useState("EURUSD");
   const [levels, setLevels] = useState<ChartLevels>(null);
   const [notify, setNotify] = useState(false);
+  const [notifyBusy, setNotifyBusy] = useState(false);
+  const [notifyMsg, setNotifyMsg] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
-  const seenIds = useRef<Set<string>>(new Set());
-  const booted = useRef(false);
-  // refs so the mount-only interval always reads the LATEST values (a captured
-  // `notify`/`state` closure would silently go stale)
-  const notifyRef = useRef(false);
+  // ref so the mount-only interval always reads the LATEST state (a captured
+  // closure would silently go stale)
   const stateRef = useRef<State | null>(null);
 
   const load = useCallback(async () => {
@@ -148,19 +150,6 @@ export function Terminal() {
       const s = (await res.json()) as State;
       setState(s);
       stateRef.current = s;
-      // notifications for signals we haven't seen yet (skip the initial page load)
-      const open = s.signals.filter((x) => x.status === "open");
-      if (booted.current && notifyRef.current && typeof Notification !== "undefined" && Notification.permission === "granted") {
-        for (const sig of open) {
-          if (seenIds.current.has(sig.id)) continue;
-          new Notification(`FX signal · ${sig.pair} ${sig.direction.toUpperCase()}`, {
-            body: `${sig.strategy} · entry ${px(sig.pair, sig.entry)} · SL ${px(sig.pair, sig.stop)} · ${sig.rr}R · ${sig.confidence}%`,
-            tag: sig.id,
-          });
-        }
-      }
-      open.forEach((x) => seenIds.current.add(x.id));
-      booted.current = true;
       return s;
     } catch {
       return null; // transient — next tick retries
@@ -182,6 +171,9 @@ export function Terminal() {
 
   useEffect(() => {
     void load().then((s) => void maybeScan(s));
+    // reflect the REAL push-subscription state so the bell is correct after a
+    // refresh (the whole fix: the toggle is no longer ephemeral page state)
+    void currentPushState().then(setNotify);
     // the interval reads refs, so it never captures a stale closure
     const t = setInterval(() => {
       if (document.visibilityState !== "visible") return;
@@ -191,12 +183,26 @@ export function Terminal() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const setNotifyBoth = useCallback((v: boolean) => { notifyRef.current = v; setNotify(v); }, []);
-  const askNotify = useCallback(async () => {
-    if (typeof Notification === "undefined") return;
-    if (Notification.permission !== "granted") await Notification.requestPermission();
-    setNotifyBoth(Notification.permission === "granted");
-  }, [setNotifyBoth]);
+  const toggleNotify = useCallback(async () => {
+    if (notifyBusy) return;
+    setNotifyBusy(true);
+    setNotifyMsg(null);
+    try {
+      if (notify) {
+        await disablePush();
+        setNotify(false);
+      } else {
+        if (!pushSupported()) { setNotifyMsg("This browser can't do background alerts."); return; }
+        const r = await enablePush();
+        setNotify(r.ok);
+        setNotifyMsg(r.ok ? "Alerts on — a test push was just sent." : r.reason || "Couldn't enable alerts.");
+      }
+    } catch {
+      setNotifyMsg("Couldn't change alert settings.");
+    } finally {
+      setNotifyBusy(false);
+    }
+  }, [notify, notifyBusy]);
 
   if (denied)
     return (
@@ -242,11 +248,17 @@ export function Terminal() {
             <button type="button" onClick={() => void maybeScan(null)} disabled={scanning} title="Run a scan now" className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 font-mono text-[11px] font-bold transition hover:brightness-125 disabled:opacity-50" style={{ color: T.muted, background: "rgba(140,150,175,0.08)" }}>
               {scanning ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />} scan
             </button>
-            <button type="button" onClick={() => (notify ? setNotifyBoth(false) : void askNotify())} title="Browser alerts" className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 font-mono text-[11px] font-bold transition hover:brightness-125" style={{ color: notify ? T.accent : T.muted, background: notify ? "rgba(79,209,197,0.12)" : "rgba(140,150,175,0.08)" }}>
-              {notify ? <Bell size={13} /> : <BellOff size={13} />} alerts
+            <button type="button" onClick={() => void toggleNotify()} disabled={notifyBusy} title="Background push alerts — survive refresh & closed tabs" className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 font-mono text-[11px] font-bold transition hover:brightness-125 disabled:opacity-50" style={{ color: notify ? T.accent : T.muted, background: notify ? "rgba(79,209,197,0.12)" : "rgba(140,150,175,0.08)" }}>
+              {notifyBusy ? <Loader2 size={13} className="animate-spin" /> : notify ? <Bell size={13} /> : <BellOff size={13} />} {notify ? "alerts on" : "alerts"}
             </button>
           </div>
         </div>
+        {notifyMsg && (
+          <div className="flex items-center gap-2 border-t px-4 py-1.5 font-mono text-[11px] sm:px-6 xl:px-10" style={{ borderColor: T.line, color: T.accent, background: "rgba(79,209,197,0.06)" }}>
+            <Bell size={12} /> {notifyMsg}
+            <button type="button" onClick={() => setNotifyMsg(null)} className="ml-auto hover:brightness-125" style={{ color: T.faint }}>dismiss</button>
+          </div>
+        )}
       </header>
 
       <main className="relative z-10 w-full px-4 pt-4 sm:px-6 xl:px-10">

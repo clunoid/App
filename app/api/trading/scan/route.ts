@@ -5,6 +5,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { PAIRS, type LiveSignal, type Pair, type Timeframe } from "@/lib/trading/types";
 import { runScan, resolveOpenSignals, CONFIDENCE_THRESHOLD, type ResolveInput } from "@/lib/trading/engine";
 import { annotateSignal } from "@/lib/trading/ai";
+import { sendPushToAll, signalPayload } from "@/lib/trading/push";
 
 export const runtime = "nodejs";
 export const maxDuration = 300; // worst-case provider retries + per-signal annotation
@@ -122,8 +123,17 @@ async function handleScan(req: NextRequest) {
             continue; // already known → skip AI
           }
           inserted++;
+          const id = (row as { id: string }).id;
+          // AUTONOMOUS ALERT: push to every subscribed device the moment a
+          // validated signal is persisted — server-side, so it lands even with
+          // no tab open. Best-effort; a push failure never fails the scan.
+          try {
+            await sendPushToAll(db, signalPayload({ ...sig, id }));
+          } catch (e) {
+            notes.push(`push ${sig.pair}: ${e instanceof Error ? e.message : e}`);
+          }
           const ai = await annotateSignal(sig, result.events); // best-effort, new signals only
-          if (ai) await db.from("trading_signals").update({ ai_narrative: ai }).eq("id", (row as { id: string }).id);
+          if (ai) await db.from("trading_signals").update({ ai_narrative: ai }).eq("id", id);
         } catch (e) {
           notes.push(`persist ${sig.pair}: ${e instanceof Error ? e.message : e}`);
         }

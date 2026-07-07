@@ -128,6 +128,22 @@ regime, spread sanity, sub-hourly penalty → confidence 0–100 (base = champio
 PF; fully deterministic) → `< 65` = no signal → Sonnet annotation (best-effort) →
 insert (deduped on pair+strategy+tf+direction+bar) → browser notification in terminal.
 
+## Alerts — autonomous Web Push
+Signals are pushed from the SERVER the instant one is persisted, so they arrive
+even with the tab closed, the page refreshed, or the laptop just woken — nothing
+depends on a page being open. Flow: the scanner inserts a validated signal →
+`lib/trading/push.ts` sends a Web Push (VAPID) to every subscribed device →
+`public/trading-sw.js` (a push-only service worker with NO fetch handler, so it
+can't touch anything else) renders the notification. Opt in once via the bell in
+the terminal header: it registers the service worker, subscribes, stores the
+subscription in `trading_push_subs` (admin-RLS, service-role writes) and fires a
+confirmation push so you SEE it works. The bell reflects the REAL subscription,
+so it stays on across reloads. Dead subscriptions (404/410) self-prune. Why you
+might see few alerts: signals are rare BY DESIGN — confidence ≥65, a champion
+must fire on the newest CLOSED bar — so many scans legitimately produce none
+("no trade" is the intended output). The private VAPID key lives only in server
+env; the browser only ever gets the public key.
+
 ## Security & rollout
 - Server: every `/api/trading/*` request verifies the session against the immutable
   admin id allow-list (same mechanism as billing). Cron authorizes via `CRON_SECRET`
@@ -157,7 +173,8 @@ insert (deduped on pair+strategy+tf+direction+bar) → browser notification in t
 - **Scan cadence — fully autonomous, zero cost:** the primary scheduler is
   **Supabase pg_cron + pg_net** (migration `20260706150000_trading_cron`): job
   `trading-scan-15m` fires `POST /api/trading/scan` with the CRON_SECRET bearer
-  every 15 minutes, 24/7, from inside the database — no browser, no Vercel Pro,
+  every **5 minutes** (tightened from 15 for lower alert latency; the jobname is
+  historical), 24/7, from inside the database — no browser, no Vercel Pro,
   no third-party service. Belt-and-braces layers on top: a daily Vercel Hobby
   cron (`vercel.json`) and the terminal's self-healing loop (scans while open if
   the last heartbeat is >12 min old). Observability:
