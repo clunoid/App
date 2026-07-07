@@ -18,7 +18,7 @@ export type BacktestOpts = { maxBars?: number };
 
 export function simulate(bars: Bar[], setups: Setup[], pair: Pair, opts: BacktestOpts = {}): SimTrade[] {
   const maxBars = opts.maxBars ?? 60;
-  const cost = (SPREAD_PIPS[pair] / 2 + SLIPPAGE_PIPS) * PIP[pair]; // per side, price units
+  const cost = (SPREAD_PIPS[pair] / 2 + SLIPPAGE_PIPS[pair]) * PIP[pair]; // per side, price units
   const trades: SimTrade[] = [];
   const byBar = new Map<number, Setup[]>();
   for (const s of setups) {
@@ -50,14 +50,21 @@ export function simulate(bars: Bar[], setups: Setup[], pair: Pair, opts: Backtes
     // leash; the live resolver honors the identical bar count (engine TTL logic)
     const ttl = s.maxBars ?? maxBars;
     const lastJ = Math.min(bars.length, i + 1 + ttl) - 1;
+    // Optional chandelier trail: ratchets toward price using the SIGNAL-BAR ATR
+    // frozen on the setup. The ratchet updates at the BOTTOM of each iteration —
+    // the stop active during bar j derives only from bars < j, so there is no
+    // intrabar look-ahead. resolveOpenSignals runs this IDENTICAL block.
+    const trailing = !!(s.trailMult && s.trailAtr);
+    let trail = stop;
     for (let j = i + 1; j <= lastJ; j++) {
       barsHeld = j - i;
       const b = bars[j];
-      const hitStop = dir === 1 ? b.l <= stop : b.h >= stop;
+      const effStop = trailing ? (dir === 1 ? Math.max(stop, trail) : Math.min(stop, trail)) : stop;
+      const hitStop = dir === 1 ? b.l <= effStop : b.h >= effStop;
       const hitTp = dir === 1 ? b.h >= target : b.l <= target;
       if (hitStop) {
         // a bar that OPENS beyond the stop fills at the (worse) open, not the level
-        const stopFill = dir === 1 ? Math.min(b.o, stop) : Math.max(b.o, stop);
+        const stopFill = dir === 1 ? Math.min(b.o, effStop) : Math.max(b.o, effStop);
         exit = stopFill - dir * cost;
         exitTime = b.t;
         outcome = "sl";
@@ -75,6 +82,7 @@ export function simulate(bars: Bar[], setups: Setup[], pair: Pair, opts: Backtes
         exitTime = b.t;
         outcome = "expiry";
       }
+      if (trailing) trail = dir === 1 ? Math.max(trail, b.h - s.trailMult! * s.trailAtr!) : Math.min(trail, b.l + s.trailMult! * s.trailAtr!);
     }
     if (!isFinite(exit)) continue;
     const r = (dir * (exit - entry)) / risk;

@@ -37,7 +37,7 @@ export type PushPayload = {
 /** The notification payload for a live signal (what the service worker renders). */
 export function signalPayload(s: LiveSignal): PushPayload {
   return {
-    title: `FX signal · ${s.pair} ${s.direction.toUpperCase()} · ${s.confidence}%`,
+    title: `Trade signal · ${s.pair} ${s.direction.toUpperCase()} · ${s.confidence}%`,
     body: `${s.strategy} · entry ${fmtPrice(s.pair, s.entry)} · SL ${fmtPrice(s.pair, s.stop)} · ${s.rr}R\n${signalHeadline(s)}`,
     tag: s.id || `${s.pair}-${s.strategy}-${s.barTime}`,
     url: "/trading",

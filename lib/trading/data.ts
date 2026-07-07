@@ -15,8 +15,8 @@
  *
  * All fetches are server-side only.
  */
-import type { Bar, EconomicEvent, Pair, Timeframe } from "./types";
-import { isMarketOpen } from "./sessions";
+import { FUTURES_MARKETS, type Bar, type EconomicEvent, type Pair, type Timeframe } from "./types";
+import { isMarketOpenFor } from "./sessions";
 
 const UA = { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0 Safari/537.36" };
 
@@ -33,6 +33,16 @@ const YAHOO_SYMBOL: Record<Pair, string> = {
   GBPJPY: "GBPJPY=X",
   AUDJPY: "AUDJPY=X",
   AUDCAD: "AUDCAD=X",
+  // CME/NYMEX futures — verified live: Yahoo 404s spot metals (XAUUSD=X) and
+  // the cash indices (^NDX/^GSPC) are :30-stamped with <1/3 the bars, so the
+  // hour-alignment guard would reject them. Futures are the clean 23h feeds.
+  XAUUSD: "GC=F",
+  XAGUSD: "SI=F",
+  USOIL: "CL=F",
+  NATGAS: "NG=F",
+  SPX500: "ES=F",
+  NAS100: "NQ=F",
+  US30: "YM=F",
 };
 
 /** Timeframes fetched natively from the provider. 2h/4h are RESAMPLED from the
@@ -40,7 +50,7 @@ const YAHOO_SYMBOL: Record<Pair, string> = {
 type NativeTimeframe = Exclude<Timeframe, "2h" | "4h">;
 const YAHOO_INTERVAL: Record<NativeTimeframe, string> = { "15m": "15m", "30m": "30m", "1h": "60m" };
 /** Max range Yahoo serves per interval (verified live). 2h/4h ride the 1h feed. */
-export const MAX_RANGE: Record<Timeframe, string> = { "15m": "60d", "30m": "60d", "1h": "730d", "2h": "730d", "4h": "730d" };
+const MAX_RANGE: Record<Timeframe, string> = { "15m": "60d", "30m": "60d", "1h": "730d", "2h": "730d", "4h": "730d" };
 /** Bar interval in ms — the ONLY reliable way to tell a closed bar from Yahoo's
  *  trailing forming-bar + live-quote pseudo-rows. */
 export const INTERVAL_MS: Record<Timeframe, number> = { "15m": 900_000, "30m": 1_800_000, "1h": 3_600_000, "2h": 7_200_000, "4h": 14_400_000 };
@@ -156,15 +166,30 @@ export function closedBars(bars: Bar[], tf: Timeframe, now = Date.now()): Bar[] 
  * before bucketing.
  *
  * COMPLETENESS RULE (drop, never patch): a bucket is emitted only when it holds
- * a constituent 1h bar for EVERY hour the market was open inside its window.
- * Session-edge stubs (Friday 20:00, Sunday 21:00) are structural — the market
- * really traded only those hours — and are kept; a bucket missing an hour the
- * market DID trade (a feed drop, a validator-rejected row, an unmodeled holiday)
- * is incomplete evidence and is dropped entirely. This also drops the trailing
- * still-forming bucket (its later hours have no bars yet), which call sites
- * would exclude via closedBars() anyway.
+ * a constituent 1h bar for EVERY hour the market was open inside its window —
+ * judged by the MARKET'S OWN clock (isMarketOpenFor): FX 24/5 vs the Globex
+ * futures day with its daily maintenance halt. Session-edge stubs (FX Friday
+ * 20:00, futures Sunday open) are structural — the market really traded only
+ * those hours — and are kept; a bucket missing an hour the market DID trade
+ * (a feed drop, a validator-rejected row, an unmodeled holiday) is incomplete
+ * evidence and is dropped entirely. `got >= expected` makes extra bars (e.g.
+ * a futures halt-hour that DID trade in the other DST regime) harmless. This
+ * also drops the trailing still-forming bucket (its later hours have no bars
+ * yet), which call sites would exclude via closedBars() anyway.
+ *
+ * `expected` uses the CONSERVATIVE both-DST clock deliberately: the exactly-
+ * correct per-regime count needs a US-DST calendar the quant core doesn't carry,
+ * and the conservative choice's failure mode is far milder than the alternatives.
+ * Residual (documented, not hidden): on a futures halt-spanning bucket a feed
+ * drop landing exactly on the one halt-window hour that traded THIS regime can
+ * pass `got >= expected` and yield a bucket missing that hour's high/low — one
+ * slightly-narrow wick among thousands of bars. It is IDENTICAL in research and
+ * live (same code), introduces no look-ahead, and is bounded to that one bar.
+ * The two rejected alternatives are worse: the permissive union count would drop
+ * every valid halt-spanning bucket, and a naive `expected+1` would wrongly drop
+ * the legitimate Friday end-of-week EDT stub.
  */
-export function resampleBars(h1: Bar[], tf: "2h" | "4h"): Bar[] {
+export function resampleBars(h1: Bar[], tf: "2h" | "4h", pair: Pair): Bar[] {
   const iv = INTERVAL_MS[tf];
   const hoursPerBucket = iv / 3_600_000;
   type Acc = { bar: Bar; got: number };
@@ -188,7 +213,7 @@ export function resampleBars(h1: Bar[], tf: "2h" | "4h"): Bar[] {
   const out: Bar[] = [];
   for (const a of acc) {
     let expected = 0;
-    for (let k = 0; k < hoursPerBucket; k++) if (isMarketOpen(a.bar.t + k * 3_600_000)) expected++;
+    for (let k = 0; k < hoursPerBucket; k++) if (isMarketOpenFor(pair, a.bar.t + k * 3_600_000)) expected++;
     if (expected > 0 && a.got >= expected) out.push(a.bar);
   }
   return out;
@@ -200,13 +225,16 @@ export function resampleBars(h1: Bar[], tf: "2h" | "4h"): Bar[] {
 export async function fetchBars(pair: Pair, tf: Timeframe, range?: string): Promise<Bar[]> {
   if (tf === "2h" || tf === "4h") {
     const h1 = await fetchBars(pair, "1h", range);
-    return resampleBars(h1, tf);
+    return resampleBars(h1, tf, pair);
   }
   try {
     return await yahooBars(pair, tf, range);
   } catch (e) {
+    // TwelveData's symbol grammar (EUR/USD) covers FX only; a spot fallback for
+    // a futures market would splice a DIFFERENT instrument into the series —
+    // worse than failing. Futures markets fail honestly and retry next scan.
     const key = process.env.TWELVEDATA_API_KEY;
-    if (key) return await twelveDataBars(pair, tf, key);
+    if (key && !FUTURES_MARKETS.has(pair)) return await twelveDataBars(pair, tf, key);
     throw e;
   }
 }

@@ -39,10 +39,12 @@ async function main() {
   }
 
   // ── MIRROR ASSERTION: simulate() ≡ resolveOpenSignals() on identical bars ──
+  // Three planted variants: fixed stop, time-boxed (maxBars), and chandelier
+  // trailing — every exit mechanism the desk ships must mirror exactly.
   const raw = barsByPair.USDJPY?.["1h"];
   if (raw && raw.length > 80) {
     const bars = closedBars(raw, "1h");
-    for (const maxBars of [undefined, 3]) {
+    for (const variant of [{}, { maxBars: 3 }, { trailMult: 2.0, trailAtr: 0.15 }] as Partial<Setup>[]) {
       // 71 bars of history follow the plant so the 60-bar TTL elapses inside the
       // series — simulate's end-of-data censoring (a research-only convention)
       // must not be confused with a live still-open signal.
@@ -52,18 +54,19 @@ async function main() {
         pair: "USDJPY", timeframe: "1h", direction: "long",
         entry: sig.c, stop: sig.c - 0.35, targets: [sig.c + 0.7],
         strategy: "mirrorTest", factors: [], barIndex: i,
-        ...(maxBars !== undefined ? { maxBars } : {}),
+        ...variant,
       };
       const sim = simulate(bars, [setup], "USDJPY")[0];
       const live = resolveOpenSignals(
-        [{ id: "m", pair: "USDJPY", timeframe: "1h", direction: "long", entry: setup.entry, stop: setup.stop, targets: setup.targets, barTime: new Date(sig.t).toISOString(), maxBars: maxBars ?? null }],
+        [{ id: "m", pair: "USDJPY", timeframe: "1h", direction: "long", entry: setup.entry, stop: setup.stop, targets: setup.targets, barTime: new Date(sig.t).toISOString(), maxBars: setup.maxBars ?? null, trailMult: setup.trailMult ?? null, trailAtr: setup.trailAtr ?? null }],
         { USDJPY: { "1h": bars } }
       )[0];
+      const label = setup.trailMult ? `trail=${setup.trailMult}x` : setup.maxBars ? `maxBars=${setup.maxBars}` : "fixed";
       const simStatus = sim ? (sim.outcome === "expiry" ? "expired" : sim.outcome) : "open";
       const liveStatus = live?.status ?? "open";
       const rMatch = !sim || !live || Math.abs(sim.r - live.resultR) <= 0.005 + 1e-9;
-      console.log(`mirror(maxBars=${maxBars ?? "-"}): sim=${simStatus} r=${sim?.r.toFixed(3) ?? "-"} · live=${liveStatus} r=${live?.resultR ?? "-"} · ${simStatus === liveStatus && rMatch ? "MATCH" : "MISMATCH"}`);
-      if (simStatus !== liveStatus || !rMatch) throw new Error(`MIRROR BROKEN (maxBars=${maxBars}): sim ${simStatus}/${sim?.r} vs live ${liveStatus}/${live?.resultR}`);
+      console.log(`mirror(${label}): sim=${simStatus} r=${sim?.r.toFixed(3) ?? "-"} · live=${liveStatus} r=${live?.resultR ?? "-"} · ${simStatus === liveStatus && rMatch ? "MATCH" : "MISMATCH"}`);
+      if (simStatus !== liveStatus || !rMatch) throw new Error(`MIRROR BROKEN (${label}): sim ${simStatus}/${sim?.r} vs live ${liveStatus}/${live?.resultR}`);
     }
   }
   console.log("\nSMOKE OK");

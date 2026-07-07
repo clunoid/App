@@ -37,11 +37,17 @@ const M30_TEST = 700; // ≈ 20 days
 // M30 gates: same discipline, sample floor scaled to the 60-day depth.
 const M30_GATES = { ...DEFAULT_GATES, minTrades: 15, minWindowsNonNeg: 0.5 };
 
+// Optional chunking for long runs: RESEARCH_PAIRS="XAUUSD,USOIL" validates a
+// subset and RESEARCH_OUT="part1" writes reports.part1.json/playbooks.part1.json
+// (merge parts with research/merge.ts). No env vars = the full canonical run.
+const RUN_PAIRS: Pair[] = process.env.RESEARCH_PAIRS ? (process.env.RESEARCH_PAIRS.split(",").map((s) => s.trim()) as Pair[]) : PAIRS;
+const OUT_SUFFIX = process.env.RESEARCH_OUT ? `.${process.env.RESEARCH_OUT}` : "";
+
 async function main() {
   const reports: ValidationReport[] = [];
   const playbooks: PairPlaybook[] = [];
 
-  for (const pair of PAIRS) {
+  for (const pair of RUN_PAIRS) {
     console.log(`\n══ ${pair} ═════════════════════════════════════`);
     const h1 = await fetchBars(pair, "1h");
     const m30 = await fetchBars(pair, "30m");
@@ -51,8 +57,8 @@ async function main() {
     // code path the live scanner uses (data.resampleBars) — one source of truth.
     const plans: { tf: Timeframe; bars: Bar[]; train: number; test: number }[] = [
       { tf: "1h", bars: h1, train: H1_TRAIN, test: H1_TEST },
-      { tf: "2h", bars: resampleBars(h1, "2h"), train: H1_TRAIN / 2, test: H1_TEST / 2 },
-      { tf: "4h", bars: resampleBars(h1, "4h"), train: H1_TRAIN / 4, test: H1_TEST / 4 },
+      { tf: "2h", bars: resampleBars(h1, "2h", pair), train: H1_TRAIN / 2, test: H1_TEST / 2 },
+      { tf: "4h", bars: resampleBars(h1, "4h", pair), train: H1_TRAIN / 4, test: H1_TEST / 4 },
     ];
 
     const pairReports: ValidationReport[] = [];
@@ -97,9 +103,9 @@ async function main() {
   }));
 
   mkdirSync(HERE, { recursive: true });
-  writeFileSync(join(HERE, "reports.json"), JSON.stringify({ generatedAt: new Date().toISOString(), gates: DEFAULT_GATES, reports: slim }, null, 1));
-  writeFileSync(join(HERE, "playbooks.json"), JSON.stringify({ generatedAt: new Date().toISOString(), playbooks }, null, 1));
-  console.log(`\nWrote ${reports.length} reports, ${playbooks.filter((p) => p.champions.length).length}/${PAIRS.length} pairs tradeable.`);
+  writeFileSync(join(HERE, `reports${OUT_SUFFIX}.json`), JSON.stringify({ generatedAt: new Date().toISOString(), gates: DEFAULT_GATES, reports: slim }, null, 1));
+  writeFileSync(join(HERE, `playbooks${OUT_SUFFIX}.json`), JSON.stringify({ generatedAt: new Date().toISOString(), playbooks }, null, 1));
+  console.log(`\nWrote ${reports.length} reports, ${playbooks.filter((p) => p.champions.length).length}/${RUN_PAIRS.length} pairs tradeable.`);
 }
 
 function downsample(xs: number[], n: number): number[] {

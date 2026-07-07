@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-07-07T02:36:15.376Z",
+ "generatedAt": "2026-07-07T09:24:36.256Z",
  "playbooks": [
   {
    "pair": "EURUSD",
@@ -17,7 +17,7 @@
     }
    ],
    "spreadPips": 0.9,
-   "generatedAt": "2026-07-07T02:34:09.791Z"
+   "generatedAt": "2026-07-07T09:20:39.317Z"
   },
   {
    "pair": "GBPUSD",
@@ -46,7 +46,7 @@
     }
    ],
    "spreadPips": 1.3,
-   "generatedAt": "2026-07-07T02:34:19.869Z"
+   "generatedAt": "2026-07-07T09:20:57.445Z"
   },
   {
    "pair": "USDJPY",
@@ -64,7 +64,7 @@
     }
    ],
    "spreadPips": 1,
-   "generatedAt": "2026-07-07T02:34:29.158Z"
+   "generatedAt": "2026-07-07T09:21:13.838Z"
   },
   {
    "pair": "USDCHF",
@@ -91,7 +91,7 @@
     }
    ],
    "spreadPips": 1.4,
-   "generatedAt": "2026-07-07T02:34:42.891Z"
+   "generatedAt": "2026-07-07T09:21:30.965Z"
   },
   {
    "pair": "AUDUSD",
@@ -108,11 +108,21 @@
     }
    ],
    "spreadPips": 1.1,
-   "generatedAt": "2026-07-07T02:34:53.979Z"
+   "generatedAt": "2026-07-07T09:21:48.882Z"
   },
   {
    "pair": "NZDUSD",
    "champions": [
+    {
+     "strategy": "chandelierTrend",
+     "timeframe": "30m",
+     "params": {
+      "atrMult": 3,
+      "lookback": 100
+     },
+     "oosProfitFactor": 2.17,
+     "oosTrades": 20
+    },
     {
      "strategy": "emaCrossTrend",
      "timeframe": "1h",
@@ -126,7 +136,7 @@
     }
    ],
    "spreadPips": 1.6,
-   "generatedAt": "2026-07-07T02:35:07.752Z"
+   "generatedAt": "2026-07-07T09:22:04.768Z"
   },
   {
    "pair": "USDCAD",
@@ -155,13 +165,13 @@
     }
    ],
    "spreadPips": 1.5,
-   "generatedAt": "2026-07-07T02:35:19.630Z"
+   "generatedAt": "2026-07-07T09:20:44.970Z"
   },
   {
    "pair": "EURGBP",
    "champions": [],
    "spreadPips": 1.5,
-   "generatedAt": "2026-07-07T02:35:33.872Z"
+   "generatedAt": "2026-07-07T09:21:00.758Z"
   },
   {
    "pair": "EURJPY",
@@ -190,7 +200,7 @@
     }
    ],
    "spreadPips": 1.6,
-   "generatedAt": "2026-07-07T02:35:43.437Z"
+   "generatedAt": "2026-07-07T09:21:18.706Z"
   },
   {
    "pair": "GBPJPY",
@@ -207,19 +217,19 @@
      "oosTrades": 87
     },
     {
-     "strategy": "nr7Breakout",
-     "timeframe": "1h",
+     "strategy": "reversionChandelier",
+     "timeframe": "2h",
      "params": {
-      "nrN": 4,
-      "buffer": 0.1,
-      "tpR": 1.5
+      "rsiTh": 5,
+      "k": 1.6,
+      "maxBars": 12
      },
-     "oosProfitFactor": 1.24,
-     "oosTrades": 58
+     "oosProfitFactor": 1.16,
+     "oosTrades": 163
     }
    ],
    "spreadPips": 2.5,
-   "generatedAt": "2026-07-07T02:35:53.276Z"
+   "generatedAt": "2026-07-07T09:21:35.272Z"
   },
   {
    "pair": "AUDJPY",
@@ -237,7 +247,7 @@
     }
    ],
    "spreadPips": 1.8,
-   "generatedAt": "2026-07-07T02:36:02.715Z"
+   "generatedAt": "2026-07-07T09:21:54.007Z"
   },
   {
    "pair": "AUDCAD",
@@ -266,7 +276,181 @@
     }
    ],
    "spreadPips": 2,
-   "generatedAt": "2026-07-07T02:36:15.325Z"
+   "generatedAt": "2026-07-07T09:22:08.220Z"
+  },
+  {
+   "pair": "XAUUSD",
+   "champions": [
+    {
+     "strategy": "chandelierTrend",
+     "timeframe": "2h",
+     "params": {
+      "atrMult": 2.5,
+      "lookback": 100
+     },
+     "oosProfitFactor": 1.54,
+     "oosTrades": 103
+    },
+    {
+     "strategy": "nr7Breakout",
+     "timeframe": "1h",
+     "params": {
+      "nrN": 4,
+      "buffer": 0.1,
+      "tpR": 1.5
+     },
+     "oosProfitFactor": 2.88,
+     "oosTrades": 64
+    }
+   ],
+   "spreadPips": 5,
+   "generatedAt": "2026-07-07T09:20:39.071Z"
+  },
+  {
+   "pair": "XAGUSD",
+   "champions": [
+    {
+     "strategy": "keltnerPullback",
+     "timeframe": "30m",
+     "params": {
+      "slAtr": 0.5,
+      "tpR": 1.6
+     },
+     "oosProfitFactor": 2.97,
+     "oosTrades": 17
+    },
+    {
+     "strategy": "chandelierTrend",
+     "timeframe": "4h",
+     "params": {
+      "atrMult": 3.5,
+      "lookback": 60
+     },
+     "oosProfitFactor": 1.59,
+     "oosTrades": 49
+    }
+   ],
+   "spreadPips": 4,
+   "generatedAt": "2026-07-07T09:20:53.873Z"
+  },
+  {
+   "pair": "USOIL",
+   "champions": [
+    {
+     "strategy": "breakoutRetest",
+     "timeframe": "4h",
+     "params": {
+      "retestBars": 6,
+      "slAtr": 1,
+      "tpR": 1.5
+     },
+     "oosProfitFactor": 1.25,
+     "oosTrades": 30
+    }
+   ],
+   "spreadPips": 5,
+   "generatedAt": "2026-07-07T09:21:06.839Z"
+  },
+  {
+   "pair": "NATGAS",
+   "champions": [
+    {
+     "strategy": "reversionChandelier",
+     "timeframe": "2h",
+     "params": {
+      "rsiTh": 5,
+      "k": 1.2,
+      "maxBars": 12
+     },
+     "oosProfitFactor": 1.18,
+     "oosTrades": 109
+    }
+   ],
+   "spreadPips": 6,
+   "generatedAt": "2026-07-07T09:21:20.885Z"
+  },
+  {
+   "pair": "SPX500",
+   "champions": [
+    {
+     "strategy": "insideBarBreakout",
+     "timeframe": "1h",
+     "params": {
+      "minMother": 1,
+      "tpR": 1.5
+     },
+     "oosProfitFactor": 1.81,
+     "oosTrades": 63
+    },
+    {
+     "strategy": "rangeFade",
+     "timeframe": "2h",
+     "params": {
+      "adxTh": 18,
+      "slAtr": 1
+     },
+     "oosProfitFactor": 1.54,
+     "oosTrades": 59
+    }
+   ],
+   "spreadPips": 0.75,
+   "generatedAt": "2026-07-07T09:21:38.422Z"
+  },
+  {
+   "pair": "NAS100",
+   "champions": [
+    {
+     "strategy": "nyOpenRange",
+     "timeframe": "1h",
+     "params": {
+      "bufferAtr": 0.1,
+      "minRangeAtr": 0.8,
+      "tpR": 2
+     },
+     "oosProfitFactor": 1.35,
+     "oosTrades": 229
+    },
+    {
+     "strategy": "nr7Breakout",
+     "timeframe": "4h",
+     "params": {
+      "nrN": 4,
+      "buffer": 0.1,
+      "tpR": 2
+     },
+     "oosProfitFactor": 1.7,
+     "oosTrades": 30
+    }
+   ],
+   "spreadPips": 2.5,
+   "generatedAt": "2026-07-07T09:21:53.182Z"
+  },
+  {
+   "pair": "US30",
+   "champions": [
+    {
+     "strategy": "rangeFade",
+     "timeframe": "4h",
+     "params": {
+      "adxTh": 18,
+      "slAtr": 1
+     },
+     "oosProfitFactor": 1.77,
+     "oosTrades": 31
+    },
+    {
+     "strategy": "rangeFade",
+     "timeframe": "1h",
+     "params": {
+      "adxTh": 22,
+      "slAtr": 1
+     },
+     "oosProfitFactor": 1.28,
+     "oosTrades": 85
+    }
+   ],
+   "spreadPips": 4,
+   "generatedAt": "2026-07-07T09:24:02.311Z"
   }
  ]
 }

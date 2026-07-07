@@ -3,9 +3,9 @@
  * drift is acceptable for session FILTERS and is exactly how the strategies were
  * validated, so live behavior matches the backtest by construction).
  */
-import type { EconomicEvent, Pair } from "./types";
+import { FUTURES_MARKETS, type EconomicEvent, type Pair } from "./types";
 
-export type SessionName = "sydney" | "tokyo" | "london" | "newyork" | "closed";
+type SessionName = "sydney" | "tokyo" | "london" | "newyork" | "closed";
 
 /** UTC hour windows [start, end) — overlapping by nature. */
 const WINDOWS: { name: SessionName; start: number; end: number }[] = [
@@ -15,7 +15,7 @@ const WINDOWS: { name: SessionName; start: number; end: number }[] = [
   { name: "newyork", start: 12, end: 21 },
 ];
 
-export function sessionsAt(tMs: number): SessionName[] {
+function sessionsAt(tMs: number): SessionName[] {
   if (!isMarketOpen(tMs)) return ["closed"];
   const h = new Date(tMs).getUTCHours();
   const active = WINDOWS.filter((w) => (w.start < w.end ? h >= w.start && h < w.end : h >= w.start || h < w.end)).map((w) => w.name);
@@ -40,6 +40,41 @@ export function isMarketOpen(tMs: number): boolean {
   return true;
 }
 
+/**
+ * Per-market clock. FX uses the 24/5 clock above. CME/NYMEX futures run Globex:
+ * Sun ~22:00 → Fri ~21:00 UTC with a DAILY maintenance halt whose UTC hour
+ * shifts with US DST (21:00–22:00 in EDT, 22:00–23:00 in EST). This predicate is
+ * deliberately CONSERVATIVE — it returns true only for hours the market trades
+ * in BOTH DST regimes — because its consumer is the resample completeness rule
+ * (data.resampleBars), where the `got >= expected` comparison makes extra bars
+ * harmless but a phantom "expected" hour would wrongly drop every bucket
+ * spanning the halt. Not used for the scan-cycle gate (the FX clock is a
+ * superset there; a closed futures market simply yields no fresh bars).
+ */
+export function isMarketOpenFor(pair: Pair, tMs: number): boolean {
+  if (!FUTURES_MARKETS.has(pair)) return isMarketOpen(tMs);
+  const d = new Date(tMs);
+  const day = d.getUTCDay();
+  const h = d.getUTCHours();
+  if (day === 6) return false;
+  if (day === 0) return h === 23; // Sunday open is 22:00 (EDT) or 23:00 (EST) — only 23 is certain
+  if (h === 21 || h === 22) return false; // daily halt window across both DST regimes
+  if (day === 5) return h < 21;
+  return true;
+}
+
+/** Is ANY desk market open — the scan-cycle gate. The FX clock is a superset of
+ *  the futures clock at every hour EXCEPT Friday 21:00-22:00 UTC, when CME/NYMEX
+ *  still trade in US winter (EST close 22:00) after FX has closed (21:00). Adding
+ *  that hour closes the only window where a ready futures signal could go
+ *  unscanned. Safe for FX: their last closed bar there was already evaluated at
+ *  the 21:00 scan, so the dedupe index yields no new/duplicate FX signals. */
+export function isAnyMarketOpen(tMs: number): boolean {
+  if (isMarketOpen(tMs)) return true;
+  const d = new Date(tMs);
+  return d.getUTCDay() === 5 && d.getUTCHours() === 21; // futures-only tail of the week
+}
+
 /** Bar hour helper for strategy session filters (UTC hour of bar open). */
 export const utcHour = (tMs: number): number => new Date(tMs).getUTCHours();
 
@@ -61,8 +96,16 @@ const CCY: Record<Pair, [string, string]> = {
   GBPJPY: ["GBP", "JPY"],
   AUDJPY: ["AUD", "JPY"],
   AUDCAD: ["AUD", "CAD"],
+  // metals/energies/US indices react to USD high-impact events (FOMC, CPI, NFP)
+  XAUUSD: ["USD", "USD"],
+  XAGUSD: ["USD", "USD"],
+  USOIL: ["USD", "USD"],
+  NATGAS: ["USD", "USD"],
+  SPX500: ["USD", "USD"],
+  NAS100: ["USD", "USD"],
+  US30: ["USD", "USD"],
 };
-export const pairCurrencies = (pair: Pair): [string, string] => CCY[pair];
+const pairCurrencies = (pair: Pair): [string, string] => CCY[pair];
 
 /** News proximity for a pair at time t: blackout inside ±blackoutMin of a
  *  high-impact event on either currency; caution inside ±cautionMin. */

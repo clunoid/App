@@ -22,7 +22,7 @@ export function ema(values: number[], period: number): number[] {
   return out;
 }
 
-export function sma(values: number[], period: number): number[] {
+function sma(values: number[], period: number): number[] {
   const out = new Array<number>(values.length).fill(NaN);
   let sum = 0;
   for (let i = 0; i < values.length; i++) {
@@ -72,7 +72,7 @@ export function atr(bars: Bar[], period = 14): number[] {
   return out;
 }
 
-export function stdev(values: number[], period: number): number[] {
+function stdev(values: number[], period: number): number[] {
   const out = new Array<number>(values.length).fill(NaN);
   for (let i = period - 1; i < values.length; i++) {
     let m = 0;

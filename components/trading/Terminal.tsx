@@ -20,6 +20,7 @@ import { PairChart, type Candle, type ChartLevels } from "./PairChart";
 import { Playbooks } from "./Playbooks";
 import { TerminalBackground } from "./TerminalBackground";
 import { currentPushState, enablePush, disablePush, pushSupported } from "./push-client";
+import { digitsFor, fmtPrice, pointLabel, type Pair } from "@/lib/trading/types";
 
 /* ── palette (desk-local, deliberately its own product surface) ──
  * Panels are slightly translucent so the grid material reads through them. */
@@ -52,8 +53,9 @@ type State = {
   playbooks: { pair: string; champions: { strategy: string; timeframe: string; oosProfitFactor: number; oosTrades: number }[]; monitorOnly: boolean }[];
 };
 
-const digits = (pair: string) => (pair.includes("JPY") ? 3 : 5);
-const px = (pair: string, v: number) => v.toFixed(digits(pair));
+// canonical per-market formatting from the quant core (client-safe, pure TS)
+const px = (pair: string, v: number) => fmtPrice(pair as Pair, v);
+const unit = (pair: string) => pointLabel(pair as Pair);
 const fmtMins = (m: number) => (m < 60 ? `${m}m` : m < 60 * 48 ? `${Math.round(m / 60)}h` : `${Math.round(m / 1440)}d`);
 const ago = (iso: string) => fmtMins(Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60000)));
 /** Hold duration between two timestamps (creation → resolution). */
@@ -246,7 +248,7 @@ export function Terminal() {
               server-side (pg_cron), so there is no manual scan button: nothing to
               click, nothing to keep running. The spinner only reflects a rare
               self-heal scan if the page ever notices a stale heartbeat. */}
-          <span className="hidden items-center gap-1.5 font-mono text-[11px] sm:flex" style={{ color: T.faint }} title="Fully automatic — the desk scans all 12 pairs every 5 minutes, server-side, 24/5. You never trigger it; you never need this tab open.">
+          <span className="hidden items-center gap-1.5 font-mono text-[11px] sm:flex" style={{ color: T.faint }} title="Fully automatic — the desk scans all 18 markets every 5 minutes, server-side, 24/5. You never trigger it; you never need this tab open.">
             <RefreshCw size={11} className={scanning ? "animate-spin" : ""} style={{ color: scanning ? T.accent : T.up }} />
             <span style={{ color: T.up }}>auto-scan</span>
             <span>· every 5m{lastScan ? ` · last ${ago(lastScan.started_at)} ago` : ""}</span>
@@ -287,7 +289,7 @@ export function Terminal() {
                         <div className="mt-1 font-mono text-[18px] font-bold tabular-nums">{q.price !== undefined ? px(q.pair, q.price) : "—"}</div>
                         <div className="mt-0.5 flex items-center gap-2 font-mono text-[10.5px]" style={{ color: T.faint }}>
                           <span style={{ color: (q.changePct ?? 0) >= 0 ? T.up : T.down }}>{(q.changePct ?? 0) >= 0 ? "+" : ""}{q.changePct}%</span>
-                          <span>ATR {q.atrPips}p</span>
+                          <span>ATR {q.atrPips}{unit(q.pair)}</span>
                           <span>{q.volRegime}</span>
                         </div>
                       </>
@@ -347,7 +349,7 @@ export function Terminal() {
                       <span className="font-bold" style={{ color: T.text }}>{chartPair}</span> · H1 · data age {chartQuote?.ageMin ?? "—"}m
                       {levels?.entry && <span style={{ color: T.accent }}>· signal levels shown</span>}
                     </div>
-                    {chartQuote?.candles?.length ? <PairChart candles={chartQuote.candles} levels={levels} height={380} /> : <div className="grid h-64 place-items-center text-[12px]" style={{ color: T.faint }}>no chart data</div>}
+                    {chartQuote?.candles?.length ? <PairChart candles={chartQuote.candles} levels={levels} height={380} digits={digitsFor(chartPair as Pair)} /> : <div className="grid h-64 place-items-center text-[12px]" style={{ color: T.faint }}>no chart data</div>}
                   </div>
                   {/* signals */}
                   <h2 className="mt-4 mb-2 font-mono text-[11px] font-bold uppercase tracking-widest" style={{ color: T.faint }}>Active signals</h2>

@@ -14,7 +14,7 @@ export type ChartLevels = { entry?: number; stop?: number; targets?: number[]; d
 const UP = "#34d399";
 const DOWN = "#f87171";
 
-export function PairChart({ candles, levels, height = 320 }: { candles: Candle[]; levels: ChartLevels; height?: number }) {
+export function PairChart({ candles, levels, height = 320, digits = 5 }: { candles: Candle[]; levels: ChartLevels; height?: number; digits?: number }) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
@@ -40,6 +40,8 @@ export function PairChart({ candles, levels, height = 320 }: { candles: Candle[]
       borderDownColor: DOWN,
       wickUpColor: UP,
       wickDownColor: DOWN,
+      // per-market precision (FX 5dp, JPY 3dp, gold 2dp, indices 2dp…)
+      priceFormat: { type: "price", precision: digits, minMove: Number((10 ** -digits).toFixed(digits)) },
     });
     chartRef.current = chart;
     seriesRef.current = series;
@@ -52,14 +54,17 @@ export function PairChart({ candles, levels, height = 320 }: { candles: Candle[]
       seriesRef.current = null;
       linesRef.current = [];
     };
-  }, [height]);
+    // digits participates: switching to a market with different precision must
+    // rebuild the series (priceFormat is fixed at creation)
+  }, [height, digits]);
 
   useEffect(() => {
     const series = seriesRef.current;
     if (!series) return;
     series.setData(candles.map((c) => ({ time: c.t as never, open: c.o, high: c.h, low: c.l, close: c.c })));
     chartRef.current?.timeScale().fitContent();
-  }, [candles]);
+    // digits: repopulate after a precision-change rebuild even if candles are identical
+  }, [candles, digits]);
 
   useEffect(() => {
     const series = seriesRef.current;

@@ -696,6 +696,131 @@ const adrExhaustionFade: StrategyFn = (bars, p, pair, tf) => {
   return dedupeDaily(out, bars);
 };
 
+/* ── 18. Chandelier trend rider — momentum entry, trailing exit does the work ─ */
+// Time-series momentum (Moskowitz/Ooi/Pedersen 2012) harvested with LeBeau's
+// chandelier exit instead of a fixed target: trend profits live in the right
+// tail, and a ratcheting stop keeps the tail that fixed-R targets amputate.
+// The trail uses the SIGNAL-BAR ATR(22), FROZEN on the setup — the one design
+// where live resolution can replay the exact stop the backtest saw. A far 6R
+// cap target exists so the position is never uncapped (validated as such; the
+// trail does virtually all exiting). R stays denominated in the initial stop.
+const chandelierTrend: StrategyFn = (bars, p, pair, tf) => {
+  const out: Setup[] = [];
+  const closes = bars.map((b) => b.c);
+  const e50 = ema(closes, 50);
+  const a14 = atr(bars, 14);
+  const a22 = atr(bars, 22);
+  for (let i = Math.max(110, p.lookback + 2); i < bars.length; i++) {
+    if ([e50[i], e50[i - 6], a14[i], a22[i]].some(Number.isNaN)) continue;
+    const h = utcHour(bars[i].t);
+    if (!hourIn(h, 0, 21)) continue; // skip only the illiquid rollover hour
+    const vol = percentileRank(a14, i, VOL_WINDOW);
+    if (vol > 0.95) continue;
+    // strictly-prior extremes of the closing price (no look-ahead)
+    let hc = -Infinity;
+    let lc = Infinity;
+    for (let j = i - p.lookback; j < i; j++) {
+      if (closes[j] > hc) hc = closes[j];
+      if (closes[j] < lc) lc = closes[j];
+    }
+    const c = closes[i];
+    if (c > hc && e50[i] > e50[i - 6]) {
+      // chandelier seed: highest high of the last 22 bars − mult×ATR(22)
+      let hh = -Infinity;
+      for (let j = i - 21; j <= i; j++) if (bars[j].h > hh) hh = bars[j].h;
+      const stop = hh - p.atrMult * a22[i];
+      const risk = c - stop;
+      if (risk > 0.25 * a14[i] && risk < 6 * a14[i]) out.push(mkTrail(pair, tf, "long", c, stop, [c + 6 * risk], "chandelierTrend", i, [`${p.lookback}-bar closing-high breakout`, "EMA50 slope confirms the trend", `Chandelier trail ${p.atrMult}×ATR(22) — the exit rides the tail`, volNote(vol)], p.atrMult, a22[i]));
+    } else if (c < lc && e50[i] < e50[i - 6]) {
+      let ll = Infinity;
+      for (let j = i - 21; j <= i; j++) if (bars[j].l < ll) ll = bars[j].l;
+      const stop = ll + p.atrMult * a22[i];
+      const risk = stop - c;
+      if (risk > 0.25 * a14[i] && risk < 6 * a14[i]) out.push(mkTrail(pair, tf, "short", c, stop, [c - 6 * risk], "chandelierTrend", i, [`${p.lookback}-bar closing-low breakdown`, "EMA50 slope confirms the trend", `Chandelier trail ${p.atrMult}×ATR(22) — the exit rides the tail`, volNote(vol)], p.atrMult, a22[i]));
+    }
+  }
+  return out;
+};
+
+/* ── 19. Reversion + chandelier give-back guard — the pre-registered EURGBP C1 ─ */
+// Honest read of EURGBP's 51 failures: no intraday trend persistence exists;
+// the near-water cells were all reversion/compression, and the killer was
+// arithmetic — a 2.1-pip round trip eats ~30% of a 1×ATR 1h target but <5% of
+// a full-swing 2-3×ATR multi-day capture. So: the proven RSI(2) reversion
+// entry, a WIDE 3×ATR cap target, a chandelier that locks in the swing once it
+// moves, and a 2-3 day time box. Pre-registered as the FINAL EURGBP cohort —
+// the multiple-testing budget there is spent.
+const reversionChandelier: StrategyFn = (bars, p, pair, tf) => {
+  const out: Setup[] = [];
+  const closes = bars.map((b) => b.c);
+  const e200 = ema(closes, 200);
+  const r2 = rsi(closes, 2);
+  const a = atr(bars, 14);
+  for (let i = 210; i < bars.length; i++) {
+    if ([e200[i], r2[i], a[i]].some(Number.isNaN)) continue;
+    const h = utcHour(bars[i].t);
+    if (!hourIn(h, 1, 21)) continue;
+    const vol = percentileRank(a, i, VOL_WINDOW);
+    if (vol > 0.9) continue;
+    const c = closes[i];
+    if (c > e200[i] && r2[i] < p.rsiTh) {
+      const stop = c - 1.6 * a[i];
+      out.push(mkTrail(pair, tf, "long", c, stop, [c + 3.0 * a[i]], "reversionChandelier", i, [`RSI(2) washed out at ${r2[i].toFixed(0)} above EMA200`, "Full-swing target — costs under 5% of the move", `Chandelier ${p.k}×ATR locks the swing in`, volNote(vol)], p.k, a[i], p.maxBars));
+    } else if (c < e200[i] && r2[i] > 100 - p.rsiTh) {
+      const stop = c + 1.6 * a[i];
+      out.push(mkTrail(pair, tf, "short", c, stop, [c - 3.0 * a[i]], "reversionChandelier", i, [`RSI(2) stretched at ${r2[i].toFixed(0)} below EMA200`, "Full-swing target — costs under 5% of the move", `Chandelier ${p.k}×ATR locks the swing in`, volNote(vol)], p.k, a[i], p.maxBars));
+    }
+  }
+  return out;
+};
+
+/* ── 20. US cash-open range breakout — the index-futures analog of London open ─ */
+// Crabel ORB, revalidated net-of-costs by Zarattini & Aziz (2023, SSRN 4416622)
+// on QQQ: the US cash open is the max-liquidity, max-volatility event of the
+// 23h index session. OR bar = the 1h bar opening at openUtc (13/14 gridded to
+// span US DST, the same fixed-UTC convention londonCloseFade validates under).
+// Direction filter per Zarattini–Aziz: trade only the side agreeing with the
+// OR bar's close-vs-open sign — dirFilter=0 is the built-in ablation cell that
+// the filtered cells must beat out-of-sample. Chandelier trail, same-day box.
+const usOpenChandelier: StrategyFn = (bars, p, pair, tf) => {
+  const out: Setup[] = [];
+  const a = atr(bars, 14);
+  const tfH = TF_HOURS[tf];
+  const dayKey = (t: number) => Math.floor(t / 86_400_000);
+  let orDay = -1;
+  let orHi = NaN;
+  let orLo = NaN;
+  let orBull = false;
+  for (let i = 30; i < bars.length; i++) {
+    const h = utcHour(bars[i].t);
+    const k = dayKey(bars[i].t);
+    if (h === p.openUtc && k !== orDay) {
+      orDay = k;
+      orHi = bars[i].h;
+      orLo = bars[i].l;
+      orBull = bars[i].c > bars[i].o;
+      continue; // never enter on the OR bar itself
+    }
+    if (k !== orDay || Number.isNaN(orHi)) continue;
+    if (!(h > p.openUtc && h < 20)) continue;
+    if (Number.isNaN(a[i])) continue;
+    const vol = percentileRank(a, i, VOL_WINDOW);
+    if (vol > 0.95) continue;
+    const c = bars[i].c;
+    const maxBars = Math.max(1, Math.round((21 - h) / tfH) - 1);
+    if (c > orHi && (!p.dirFilter || orBull)) {
+      const stop = Math.min(orLo, c - 0.75 * a[i]); // OR low, floored outside the noise band
+      const risk = c - stop;
+      if (risk > 0.25 * a[i] && risk < 5 * a[i]) out.push(mkTrail(pair, tf, "long", c, stop, [c + 4 * risk], "usOpenChandelier", i, ["US cash-open range broken up", p.dirFilter ? "Opening bar direction agrees" : "Direction filter off (ablation)", `Chandelier ${p.k}×ATR trail, same-day box`, volNote(vol)], p.k, a[i], maxBars));
+    } else if (c < orLo && (!p.dirFilter || !orBull)) {
+      const stop = Math.max(orHi, c + 0.75 * a[i]);
+      const risk = stop - c;
+      if (risk > 0.25 * a[i] && risk < 5 * a[i]) out.push(mkTrail(pair, tf, "short", c, stop, [c - 4 * risk], "usOpenChandelier", i, ["US cash-open range broken down", p.dirFilter ? "Opening bar direction agrees" : "Direction filter off (ablation)", `Chandelier ${p.k}×ATR trail, same-day box`, volNote(vol)], p.k, a[i], maxBars));
+    }
+  }
+  return dedupeDaily(out, bars);
+};
+
 /* ── helpers ──────────────────────────────────────────────────────────────── */
 /** Hours per bar by timeframe — declared, not inferred (a weekend gap between
  *  the first two bars would corrupt an inferred value). */
@@ -750,6 +875,10 @@ function dayContext(bars: Bar[]) {
 function mk(pair: Pair, timeframe: Timeframe, direction: "long" | "short", entry: number, stop: number, targets: number[], strategy: string, barIndex: number, factors: string[], maxBars?: number): Setup {
   return { pair, timeframe, direction, entry, stop, targets, strategy, factors, barIndex, ...(maxBars !== undefined ? { maxBars } : {}) };
 }
+/** mk + chandelier trail params (trailAtr = the signal-bar ATR value, frozen). */
+function mkTrail(pair: Pair, timeframe: Timeframe, direction: "long" | "short", entry: number, stop: number, targets: number[], strategy: string, barIndex: number, factors: string[], trailMult: number, trailAtr: number, maxBars?: number): Setup {
+  return { pair, timeframe, direction, entry, stop, targets, strategy, factors, barIndex, trailMult, trailAtr, ...(maxBars !== undefined ? { maxBars } : {}) };
+}
 const fmtR = (x: number, atrV: number) => (x / atrV).toFixed(1);
 const volNote = (v: number) => `ATR regime p${Math.round(v * 100)}`;
 
@@ -792,6 +921,11 @@ export const STRATEGIES: StrategyDef[] = [
   { id: "nr7Breakout", label: "NR7 Daily Breakout", family: "volatility", run: nr7Breakout, grid: { nrN: [4, 7], buffer: [0.1, 0.2], tpR: [1.5, 2.0] } },
   { id: "londonCloseFade", label: "London-Close Fade", family: "meanReversion", run: londonCloseFade, grid: { sigHour: [15, 16], stretch: [0.6, 0.8], tgt: [0.25, 0.35] } },
   { id: "adrExhaustionFade", label: "ADR Exhaustion Fade", family: "meanReversion", run: adrExhaustionFade, grid: { trig: [1.0, 1.2], tgt: [0.25, 0.35], slAdr: [0.5, 0.75] } },
+  // 2026-07 exit-engineering cohort: trailing-exit families. atrMult/k values
+  // are LeBeau/Elder published defaults — priors, not fits.
+  { id: "chandelierTrend", label: "Chandelier Trend", family: "trend", run: chandelierTrend, warmupBars: 130, grid: { atrMult: [2.5, 3.0, 3.5], lookback: [60, 100] } },
+  { id: "reversionChandelier", label: "Reversion + Chandelier", family: "meanReversion", run: reversionChandelier, warmupBars: 210, grid: { rsiTh: [5, 10], k: [1.2, 1.6], maxBars: [12, 18] } },
+  { id: "usOpenChandelier", label: "US Open Chandelier", family: "breakout", run: usOpenChandelier, grid: { openUtc: [13, 14], k: [2, 3], dirFilter: [1, 0] } },
 ];
 
 export const strategyById = (id: string): StrategyDef | undefined => STRATEGIES.find((s) => s.id === id);

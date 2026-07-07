@@ -16,7 +16,7 @@ import { fmtPrice } from "./types";
 
 const schema = z.object({
   narrative: z.string().describe("4-6 sentences, professional desk-note tone: why this setup exists, what the market context is, what invalidates it. No hype, no advice disclaimers, no first person."),
-  macroRead: z.string().describe("1-2 sentences on the macro/news backdrop for this pair right now, grounded ONLY in the events provided (or 'Calendar is quiet.' if none)."),
+  macroRead: z.string().describe("1-2 sentences on the macro/news backdrop for this market right now, grounded ONLY in the events provided (or 'Calendar is quiet.' if none)."),
 });
 
 export async function annotateSignal(sig: LiveSignal, events: EconomicEvent[]): Promise<string | null> {
@@ -31,7 +31,7 @@ export async function annotateSignal(sig: LiveSignal, events: EconomicEvent[]): 
       model: MODELS.genius(),
       schema,
       system:
-        "You are a senior FX desk analyst writing the note that accompanies a SYSTEMATIC signal. The signal was generated and validated statistically — your job is interpretation, not judgement of the system. Be concrete and calm; reference the actual levels and factors given; never invent data, prices or events.",
+        "You are a senior multi-asset desk analyst (FX, metals, energies, index futures) writing the note that accompanies a SYSTEMATIC signal. The signal was generated and validated statistically — your job is interpretation, not judgement of the system. Be concrete and calm; reference the actual levels and factors given; never invent data, prices or events.",
       prompt: `Signal: ${sig.pair} ${sig.direction.toUpperCase()} (${sig.strategy}, ${sig.timeframe})
 Entry ${fmtPrice(sig.pair, sig.entry)} · Stop ${fmtPrice(sig.pair, sig.stop)} · Targets ${sig.targets.map((t) => fmtPrice(sig.pair, t)).join(", ")} · ${sig.rr}R · confidence ${sig.confidence}%
 Factors: ${sig.factors.join("; ")}

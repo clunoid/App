@@ -18,7 +18,7 @@ import type { Bar, EconomicEvent, LiveSignal, Pair, PairPlaybook, Setup, Timefra
 import { PIP, SLIPPAGE_PIPS, SPREAD_PIPS, fmtPrice } from "./types";
 import { closedBars, fetchBars, fetchCalendar, INTERVAL_MS } from "./data";
 import { atr, ema, percentileRank, swings } from "./indicators";
-import { isMarketOpen, newsRiskAt, sessionLabel } from "./sessions";
+import { isAnyMarketOpen, newsRiskAt, sessionLabel } from "./sessions";
 import { strategyById } from "./strategies";
 import playbookFile from "./research/playbooks.json";
 
@@ -46,7 +46,7 @@ export type PairScan = {
   error?: string;
 };
 
-export type ResolveInput = { id: string; pair: Pair; timeframe: Timeframe; direction: "long" | "short"; entry: number; stop: number; targets: number[]; barTime: string; maxBars?: number | null };
+export type ResolveInput = { id: string; pair: Pair; timeframe: Timeframe; direction: "long" | "short"; entry: number; stop: number; targets: number[]; barTime: string; maxBars?: number | null; trailMult?: number | null; trailAtr?: number | null };
 export type Resolution = { id: string; status: "tp" | "sl" | "expired"; resultR: number; resolvedAt: string };
 
 const volRegimeOf = (p: number): LiveSignal["volRegime"] => (p < 0.25 ? "low" : p < 0.75 ? "normal" : p < 0.93 ? "high" : "extreme");
@@ -124,7 +124,7 @@ export function resolveOpenSignals(open: ResolveInput[], barsByPair: Partial<Rec
     const bars = closedBars(raw, s.timeframe, now);
     if (!bars.length) continue;
     const dir = s.direction === "long" ? 1 : -1;
-    const cost = (SPREAD_PIPS[s.pair] / 2 + SLIPPAGE_PIPS) * PIP[s.pair];
+    const cost = (SPREAD_PIPS[s.pair] / 2 + SLIPPAGE_PIPS[s.pair]) * PIP[s.pair];
     const entry = s.entry + dir * cost;
     const target = s.targets[s.targets.length - 1];
     const risk = Math.abs(entry - s.stop);
@@ -132,14 +132,24 @@ export function resolveOpenSignals(open: ResolveInput[], barsByPair: Partial<Rec
     // resolve only against bars STRICTLY AFTER the signal bar's open (the signal
     // bar is where the setup fired; the trade is live from its close onward).
     const after = Date.parse(s.barTime);
+    // Chandelier trail — the IDENTICAL block simulate() runs: ratchet from the
+    // frozen signal-bar ATR, updated at the BOTTOM of each iteration, gap
+    // clamps on the effective stop, R still denominated in the ORIGINAL stop.
+    const trailing = !!(s.trailMult && s.trailAtr);
+    // A trailing exit is recomputed from ENTRY — if the fetch window doesn't
+    // reach back to the signal bar, a partial replay would produce a too-loose
+    // trail and a WRONG exit (not merely a late one). Wait for the next cycle.
+    if (trailing && bars[0].t > after) continue;
+    let trail = s.stop;
     let barsSeen = 0;
     for (const b of bars) {
       if (b.t <= after) continue;
       barsSeen++;
-      const hitStop = dir === 1 ? b.l <= s.stop : b.h >= s.stop;
+      const effStop = trailing ? (dir === 1 ? Math.max(s.stop, trail) : Math.min(s.stop, trail)) : s.stop;
+      const hitStop = dir === 1 ? b.l <= effStop : b.h >= effStop;
       const hitTp = dir === 1 ? b.h >= target : b.l <= target;
       if (hitStop) {
-        const fill = (dir === 1 ? Math.min(b.o, s.stop) : Math.max(b.o, s.stop)) - dir * cost;
+        const fill = (dir === 1 ? Math.min(b.o, effStop) : Math.max(b.o, effStop)) - dir * cost;
         out.push({ id: s.id, status: "sl", resultR: Number(((dir * (fill - entry)) / risk).toFixed(2)), resolvedAt: new Date(b.t).toISOString() });
         break;
       }
@@ -153,6 +163,7 @@ export function resolveOpenSignals(open: ResolveInput[], barsByPair: Partial<Rec
         out.push({ id: s.id, status: "expired", resultR: Number(((dir * (fill - entry)) / risk).toFixed(2)), resolvedAt: new Date(b.t).toISOString() });
         break;
       }
+      if (trailing) trail = dir === 1 ? Math.max(trail, b.h - s.trailMult! * s.trailAtr!) : Math.min(trail, b.l + s.trailMult! * s.trailAtr!);
     }
   }
   return out;
@@ -162,7 +173,7 @@ export function resolveOpenSignals(open: ResolveInput[], barsByPair: Partial<Rec
  *  `extraTfs` = timeframes of still-open signals (possibly from a RETIRED
  *  champion after a research re-run) — their bars must keep flowing so every
  *  open signal always resolves; a signal may never be orphaned. */
-export async function scanPair(pair: Pair, events: EconomicEvent[], now = Date.now(), extraTfs: Timeframe[] = []): Promise<{ scan: PairScan; bars: Partial<Record<Timeframe, Bar[]>> }> {
+async function scanPair(pair: Pair, events: EconomicEvent[], now = Date.now(), extraTfs: Timeframe[] = []): Promise<{ scan: PairScan; bars: Partial<Record<Timeframe, Bar[]>> }> {
   const pb = playbooks.find((p) => p.pair === pair);
   const tfs = new Set<Timeframe>(["1h", ...extraTfs]);
   for (const c of pb?.champions ?? []) tfs.add(c.timeframe);
@@ -229,6 +240,8 @@ export async function scanPair(pair: Pair, events: EconomicEvent[], now = Date.n
       warnings,
       status: score >= CONFIDENCE_THRESHOLD ? "open" : "suppressed",
       maxBars: last.maxBars,
+      trailMult: last.trailMult,
+      trailAtr: last.trailAtr,
       barTime: new Date(closed[closed.length - 1].t).toISOString(),
     };
     scan.candidates.push(sig);
@@ -247,7 +260,7 @@ export type ScanResult = {
 
 export async function runScan(pairs: Pair[], now = Date.now(), extraTfsByPair: Partial<Record<Pair, Timeframe[]>> = {}, providedEvents?: EconomicEvent[]): Promise<{ result: ScanResult; barsByPair: Partial<Record<Pair, Partial<Record<Timeframe, Bar[]>>>> }> {
   const started = Date.now();
-  const open = isMarketOpen(now);
+  const open = isAnyMarketOpen(now); // scan whenever ANY market (FX or futures) trades
   const result: ScanResult = { marketOpen: open, startedAt: new Date(started).toISOString(), durationMs: 0, pairs: [], errors: [], events: [] };
   const barsByPair: Partial<Record<Pair, Partial<Record<Timeframe, Bar[]>>>> = {};
   // Market closed → cheap heartbeat: no data fetches, no signals, no resolution.

@@ -34,7 +34,7 @@ function rng(seed: number) {
   };
 }
 
-export function monteCarlo(trades: SimTrade[], runs = 5000, seed = 42): MonteCarlo {
+function monteCarlo(trades: SimTrade[], runs = 5000, seed = 42): MonteCarlo {
   const rs = trades.map((t) => t.r);
   if (!rs.length) return { runs, ddP50: 0, ddP95: 0, pProfit: 0, finalP5: 0 };
   const rand = rng(seed);
@@ -77,14 +77,14 @@ const score = (m: Metrics) => (m.trades >= 8 ? m.expectancyR * Math.sqrt(m.trade
 
 const iso = (ms: number) => new Date(ms).toISOString().slice(0, 10);
 
-export type WalkForwardResult = {
+type WalkForwardResult = {
   windows: WalkWindow[];
   oosTrades: SimTrade[];
   finalParams: Record<string, number>;
 };
 
 /** Anchored walk-forward: [trainBars] → test [testBars], stepping by testBars. */
-export function walkForward(bars: Bar[], strat: StrategyDef, pair: Pair, tf: Timeframe, trainBars: number, testBars: number): WalkForwardResult {
+function walkForward(bars: Bar[], strat: StrategyDef, pair: Pair, tf: Timeframe, trainBars: number, testBars: number): WalkForwardResult {
   const combos = gridCombos(strat.grid);
   const windows: WalkWindow[] = [];
   const oosTrades: SimTrade[] = [];
@@ -129,7 +129,7 @@ export function walkForward(bars: Bar[], strat: StrategyDef, pair: Pair, tf: Tim
 /** Fraction of one-step grid neighbors of `params` that stay profitable over the
  *  full series (an IN-SAMPLE plateau check: the chosen params must sit on a broad
  *  ridge, not an isolated spike — cheap but effective anti-overfit signal). */
-export function neighborhoodStability(bars: Bar[], strat: StrategyDef, pair: Pair, tf: Timeframe, params: Record<string, number>): number {
+function neighborhoodStability(bars: Bar[], strat: StrategyDef, pair: Pair, tf: Timeframe, params: Record<string, number>): number {
   const neighbors: Record<string, number>[] = [];
   for (const [k, vals] of Object.entries(strat.grid)) {
     const idx = vals.indexOf(params[k]);
@@ -148,7 +148,7 @@ export function neighborhoodStability(bars: Bar[], strat: StrategyDef, pair: Pai
 }
 
 /** OOS net R by ATR-percentile tercile at each trade's entry bar. */
-export function regimeSplit(bars: Bar[], trades: SimTrade[]): { low: number; mid: number; high: number } {
+function regimeSplit(bars: Bar[], trades: SimTrade[]): { low: number; mid: number; high: number } {
   const a = atr(bars, 14);
   const byTime = new Map<number, number>();
   bars.forEach((b, i) => byTime.set(b.t, i));

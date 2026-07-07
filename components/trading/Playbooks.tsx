@@ -10,7 +10,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { ValidationReport } from "@/lib/trading/types";
 
-type ReportsFile = { generatedAt: string; gates: Record<string, number>; reports: ValidationReport[] };
+type ReportsFile = { generatedAt: string; reports: ValidationReport[] };
 
 function Equity({ curve, pass }: { curve: number[]; pass: boolean }) {
   const ref = useRef<HTMLCanvasElement | null>(null);

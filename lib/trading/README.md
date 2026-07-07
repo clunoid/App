@@ -1,8 +1,10 @@
 # Clunoid Trading Desk — Architecture
 
-AI-assisted, statistically validated FX trading analysis across 12 markets (all
-seven USD majors + the five most liquid crosses). Admin-only (`/trading`), built
-to widen to all users by editing two allow-lists.
+AI-assisted, statistically validated multi-asset trading analysis across 18
+markets: seven USD majors, five liquid crosses, two metals (gold, silver), two
+energies (WTI, natgas) and two equity indices (S&P 500, Nasdaq 100 — CME/NYMEX
+futures feeds). Admin-only (`/trading`), built to widen to all users by editing
+two allow-lists.
 
 ```
 ┌─ DATA ────────────────┐   ┌─ RESEARCH (offline) ─────────────┐
@@ -40,7 +42,7 @@ to widen to all users by editing two allow-lists.
 ## Provider selection (evaluated live before implementation)
 | Need | Chosen | Why | Alternates |
 |---|---|---|---|
-| Intraday + historical OHLCV | Yahoo chart API | verified live for all 12 pairs: 1h×2y (~17.2k bars each, 0 OHLC-inconsistent rows), 15m/30m×60d, 1–2s latency, no key. 2h/4h are resampled from 1h by ONE shared code path (`data.resampleBars`) in research and live | TwelveData adapter built-in (activates with `TWELVEDATA_API_KEY`), Polygon/OANDA documented seams |
+| Intraday + historical OHLCV | Yahoo chart API | verified live for all 18 markets: FX `<PAIR>=X` 1h×2y (~17.2k bars, 0 OHLC-inconsistent rows); futures GC=F/SI=F/CL=F/NG=F/ES=F/NQ=F 1h×~2.4y (~13.7k bars, 0 inconsistent — spot metals 404 and cash indices are :30-stamped, so futures are the clean feeds); 15m/30m×60d. 2h/4h resampled from 1h by ONE shared code path (`data.resampleBars`), completeness judged by each market's OWN clock (FX 24/5 vs Globex daily halt) | TwelveData adapter (FX ONLY — its symbol grammar can't name futures; futures fail honestly and retry next scan) |
 | Economic calendar | ForexFactory weekly JSON | verified live, high/med/low impact + forecast/previous, ~300ms, no key | Tavily news search (already integrated app-wide) |
 | Spreads/slippage | Static conservative model | FX retail spreads are stable; modeled EXPENSIVE side (see `types.SPREAD_PIPS`) so validation under-promises | live spread feed when a broker API is added |
 
@@ -59,47 +61,64 @@ Gates (all must pass, NEVER lowered): OOS ≥30 trades · PF ≥1.15 · expectan
 ≥55% windows non-negative · ≥50% param-neighbors profitable · MC(5k, seeded) p95
 DD ≤25R · P(profit) ≥80% · not losing in 2 of 3 ATR regimes.
 
-17 strategy families: the 12 of the 2026-07-06 cohort plus five 2026-07-07
+20 strategy families: the 12 of the 2026-07-06 cohort; five 2026-07-07
 literature-anchored additions — asianCompression (Crabel contraction→expansion at
 the London open, with a built-in filter-off ablation cell), breakoutRetest
 (two-stage prior-day-extreme break + held retest), nr7Breakout (Crabel NR-N daily
 compression, params published 1990 = 35y out-of-sample priors), londonCloseFade
 (Evans 2018 / FCA OP46 fix-flow reversal) and adrExhaustionFade (daily range-budget
-base rates; all params in ADR units, scale-free across pairs).
+base rates; all params in ADR units, scale-free across pairs); and the 2026-07
+EXIT-ENGINEERING cohort — chandelierTrend (time-series momentum entry, LeBeau
+chandelier trailing exit on the FROZEN signal-bar ATR, the only design where the
+live resolver replays the exact trail the backtest saw), reversionChandelier (the
+pre-registered EURGBP candidate: wide 3×ATR target + chandelier give-back guard +
+2-3 day time box, because a 2.1-pip round trip eats tight targets whole) and
+usOpenChandelier (Crabel/Zarattini-Aziz US cash-open range breakout with a
+direction-filter ablation cell). Trailing stops mirror EXACTLY between backtest
+and live: ratchet updates at the bottom of each bar iteration (no intrabar
+look-ahead), gap clamps on the effective stop, R denominated in the ORIGINAL stop.
 
-**Result (run 2026-07-07 final, real data, 12 pairs × 17 families × 3 timeframes
-= 672 dossiers, post-adversarial-review code): 11/12 markets validated, 19 live
-champions from 21 full-depth passes.**
+**Result (run 2026-07-07 final, real data, 19 markets × 20 families × 3
+timeframes = 1281 dossiers): 18/19 markets live, EURGBP monitor-only.**
 
-| Market | Champions (OOS) |
-|---|---|
-| EURUSD | emaCrossTrend@1h · 43tr · PF 1.64 · nb 100% |
-| GBPUSD | **trendPullback@4h · 49tr · PF 1.70** + nr7Breakout@4h · PF 1.22 (H4 was the missing dimension) |
-| USDJPY | **trendPullback@1h · 134tr · PF 1.43 · +0.250R** |
-| USDCHF | keltnerPullback@4h · 81tr · PF 1.38 + squeezeBreakout@1h · PF 1.44 |
-| AUDUSD | squeezeBreakout@1h · 41tr · PF 1.45 · nb 100% |
-| NZDUSD | emaCrossTrend@1h · 41tr · PF 1.49 |
-| USDCAD | emaCrossTrend@1h · PF 1.97 + breakoutRetest@2h · 62tr · PF 1.64 · nb 100% |
-| EURGBP | **monitor-only** — best of 51 candidates: PF 1.06 < 1.15 (honest no-trade) |
-| EURJPY | asianCompression@4h · 47tr · **PF 2.11** + @2h · PF 1.51 (also passed @1h, 197tr) |
-| GBPJPY | rsi2Reversion@4h · 87tr · PF 1.20 + nr7Breakout@1h · PF 1.24 |
-| AUDJPY | trendPullback@4h · 35tr · PF 1.40 · nb 100% |
-| AUDCAD | rsi2Reversion@4h · 69tr · PF 1.45 + londonCloseFade@2h · PF 1.51 · dd 1.5R |
+| Market | Champions (OOS) | Market | Champions (OOS) |
+|---|---|---|---|
+| EURUSD | emaCrossTrend@1h · PF 1.64 | AUDCAD | rsi2Reversion@4h · PF 1.45 + londonCloseFade@2h |
+| GBPUSD | trendPullback@4h · PF 1.70 + nr7@4h | XAUUSD | chandelierTrend@2h · PF 1.54 + nr7Breakout@1h · **PF 2.88** |
+| USDJPY | trendPullback@1h · 134tr · PF 1.43 | XAGUSD | keltnerPullback@30m · PF 2.97 + chandelierTrend@4h · PF 1.59 |
+| USDCHF | keltnerPullback@4h + squeeze@1h | USOIL | breakoutRetest@4h · PF 1.25 |
+| AUDUSD | squeezeBreakout@1h · PF 1.45 | NATGAS | reversionChandelier@2h · PF 1.18 |
+| NZDUSD | chandelierTrend@30m + emaCross@1h | SPX500 | insideBarBreakout@1h · PF 1.81 + rangeFade@2h · PF 1.54 |
+| USDCAD | emaCrossTrend@1h · PF 1.97 + breakoutRetest@2h | NAS100 | nyOpenRange@1h · PF 1.35 + nr7Breakout@4h · PF 1.70 |
+| EURJPY | asianCompression@4h · **PF 2.11** + @2h | US30 | rangeFade@4h · PF 1.77 + rangeFade@1h · PF 1.28 |
+| GBPJPY | rsi2Reversion@4h + reversionChandelier@2h | **EURGBP** | **monitor-only** (see below) |
+| AUDJPY | trendPullback@4h · PF 1.40 | | |
 
-The GBPUSD/USDJPY breakthrough came from ENLARGING THE HYPOTHESIS SPACE (2h/4h
-timeframes + five new families), never from touching a gate. EURGBP found
-nothing net of costs across 51 candidates and correctly ships as monitor-only —
-no trade is the designed output for weak evidence. Candidates that sat exactly
-on a gate edge in the pre-review snapshot (USDJPY squeezeBreakout@2h at 30
-trades, AUDUSD asianCompression@2h at PF 1.15) fell out when the resample
-completeness rule tightened the 2h/4h series — gate-boundary evidence is
-fragile by nature and the desk simply doesn't trade it.
+**EURGBP — the honest exception.** ~110 candidates have now been examined across
+three research campaigns, including a PRE-REGISTERED final cohort purpose-built
+from its failure analysis (reversionChandelier: wide-target reversion with a
+chandelier give-back guard — the only economically grounded mechanism left for a
+market whose 2.1-pip round trip eats tight targets whole). It failed decisively
+(PF 0.57–0.95, 0% neighborhoods). The multiple-testing budget on this market is
+SPENT: further searching would be curve-fitting, not research. It ships fully
+monitored (quotes, chart, regime, news) and is re-audited by every future
+research run; the desk refuses to trade it until real evidence exists. US30
+(Dow futures — rangeFade@4h · 31tr · PF 1.77 · +0.409R) joined the universe so
+the desk still fields 18 LIVE markets without lowering any bar.
 
-MULTIPLE-TESTING DISCLOSURE: ~612 full-depth candidates were examined against
-fixed gates; at this breadth a naive PF cutoff alone would admit several false
-positives by chance. The window-consistency, parameter-neighborhood, Monte-Carlo
-and regime gates are the false-discovery control, and champions cap at 2 per
-pair. Two honesty flags recorded rather than hidden: (1) USDJPY trendPullback@1h
+Notes: the exit-engineering cohort earned 6 champion seats on merit
+(chandelierTrend ×3, reversionChandelier ×2, and GBPJPY's runner-up) — trailing
+exits, not looser gates, is what unlocked several of these markets. Two 30m
+champions (NZDUSD, XAGUSD) arose under the documented micro-validation rules
+(same-family HTF pass required, reduced-depth gates, −6 live confidence
+penalty). Futures validate on ~2.4y of history (feed depth) vs FX's 2y — same
+gates, ~8-9 walk-forward windows vs 13.
+
+MULTIPLE-TESTING DISCLOSURE: ~1,200 full-depth candidates were examined against
+fixed gates across the 19-market universe; at this breadth a naive PF cutoff
+alone would admit several false positives by chance. The window-consistency,
+parameter-neighborhood, Monte-Carlo and regime gates are the false-discovery
+control, and champions cap at 2 per market. Two honesty flags recorded rather than hidden: (1) USDJPY trendPullback@1h
 sat at 25% neighborhood in the 2026-07-06 snapshot and 60% in this one — the
 walk-forward's final-window parameter choice moved to a healthier plateau as the
 730-day data window rolled; the candidate lives near the gate boundary, which the
@@ -116,8 +135,12 @@ plateau with three corroborating families. Sub-hourly (M30) echoes all failed
 micro-validation → no sub-hourly signals ship. Full dossiers:
 `research/reports.json`, rendered in the Playbooks tab.
 
-Re-run research anytime: `npx tsx lib/trading/research/run.ts` (rewrites both JSONs);
-smoke-test a live cycle: `npx tsx lib/trading/research/smoke.ts`.
+Re-run research anytime: `npx tsx lib/trading/research/run.ts` (rewrites both
+JSONs). For long runs, chunk by market and merge:
+`RESEARCH_PAIRS="XAUUSD,USOIL" RESEARCH_OUT=part1 npx tsx lib/trading/research/run.ts`
+then `npx tsx lib/trading/research/merge.ts part1 part2 …` (refuses partial
+universes; deletes the part files). Smoke-test a live cycle (including the
+fixed/time-boxed/trailing mirror assertions): `npx tsx lib/trading/research/smoke.ts`.
 
 ## Live signal lifecycle
 scan (cron `*/15` + terminal self-heal >12min) → resolve open signals against fresh
@@ -175,8 +198,9 @@ env; the browser only ever gets the public key.
   regime gate sees the same depth it saw in validation — a deliberate 2026-07-07
   recalibration, one-time shift in live volRegime/confidence inputs.
 - The TwelveData fallback's free tier (8 req/min) cannot cover a full Yahoo
-  outage across 12 pairs in one sweep — during such an outage some pairs error
-  per-scan and retry next cycle; known, accepted (fallback is best-effort).
+  outage across 18 markets in one sweep — during such an outage some markets
+  error per-scan and retry next cycle; known, accepted (fallback is best-effort,
+  and FX-only: futures never silently substitute a spot feed).
 - **Scan cadence — fully autonomous, zero cost:** the primary scheduler is
   **Supabase pg_cron + pg_net** (migration `20260706150000_trading_cron`): job
   `trading-scan-15m` fires `POST /api/trading/scan` with the CRON_SECRET bearer

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/requireUser";
 import { isAdmin } from "@/lib/billing/meter";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { PAIRS, PIP, type EconomicEvent, type Pair } from "@/lib/trading/types";
+import { PAIRS, PIP, type EconomicEvent } from "@/lib/trading/types";
 import { fetchBars } from "@/lib/trading/data";
 import { atr, percentileRank } from "@/lib/trading/indicators";
 import { isMarketOpen, sessionLabel } from "@/lib/trading/sessions";

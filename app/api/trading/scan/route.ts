@@ -55,7 +55,9 @@ async function handleScan(req: NextRequest) {
   {
     const q = await db
       .from("trading_signals")
-      .select("id,pair,timeframe,direction,entry,stop,targets,bar_time,max_bars")
+      // `strategy` is REQUIRED here: the one-position-per-champion guard below
+      // compares o.strategy — omitting it silently disabled that guard entirely.
+      .select("id,pair,strategy,timeframe,direction,entry,stop,targets,bar_time,max_bars,trail_mult,trail_atr")
       .eq("status", "open");
     // supabase-js reports failures via `error`, it does not throw — a silent
     // miss here would freeze ALL outcome resolution with zero observability
@@ -112,6 +114,8 @@ async function handleScan(req: NextRequest) {
           targets: (o.targets as number[]) || [],
           barTime: o.bar_time as string,
           maxBars: o.max_bars as number | null,
+          trailMult: o.trail_mult as number | null,
+          trailAtr: o.trail_atr as number | null,
         }));
         // closedness is judged at the time the bars were FETCHED (scan start),
         // never at resolve time — a bar whose boundary falls inside the scan
@@ -210,6 +214,8 @@ function toRow(s: LiveSignal) {
     warnings: s.warnings,
     status: "open",
     max_bars: s.maxBars ?? null,
+    trail_mult: s.trailMult ?? null,
+    trail_atr: s.trailAtr ?? null,
     bar_time: s.barTime ?? new Date().toISOString(),
   };
 }

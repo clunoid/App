@@ -11,15 +11,24 @@
  *   • the terminal UI — renders the same evidence objects it was tested on.
  */
 
+/** A tradeable market. Historically named `Pair` (the desk began FX-only);
+ *  since 2026-07 it also covers metals, energies and equity-index futures. */
 export type Pair =
   | "EURUSD" | "GBPUSD" | "USDJPY" | "USDCHF" | "AUDUSD" | "NZDUSD" | "USDCAD"
-  | "EURGBP" | "EURJPY" | "GBPJPY" | "AUDJPY" | "AUDCAD";
-/** The 12-market desk universe: all seven USD majors + the five most liquid
- *  crosses. Ordering = watchlist order (majors first). */
+  | "EURGBP" | "EURJPY" | "GBPJPY" | "AUDJPY" | "AUDCAD"
+  | "XAUUSD" | "XAGUSD" | "USOIL" | "NATGAS" | "SPX500" | "NAS100" | "US30";
+/** The 19-market desk universe: seven USD majors + five liquid crosses +
+ *  two metals + two energies + three equity indices (CME/NYMEX futures feeds).
+ *  Ordering = watchlist order. */
 export const PAIRS: Pair[] = [
   "EURUSD", "GBPUSD", "USDJPY", "USDCHF", "AUDUSD", "NZDUSD", "USDCAD",
   "EURGBP", "EURJPY", "GBPJPY", "AUDJPY", "AUDCAD",
+  "XAUUSD", "XAGUSD", "USOIL", "NATGAS", "SPX500", "NAS100", "US30",
 ];
+
+/** Markets fed by CME-group futures (Globex clock: Sun ~22:00 → Fri ~21:00 UTC
+ *  with a daily maintenance halt — vs the FX Sun 21:00 → Fri 21:00 clock). */
+export const FUTURES_MARKETS: ReadonlySet<Pair> = new Set<Pair>(["XAUUSD", "XAGUSD", "USOIL", "NATGAS", "SPX500", "NAS100", "US30"]);
 
 /** 2h/4h are resampled server-side from the 1h feed (Yahoo has no native 2h/4h)
  *  by the SAME resample code in research and live — see data.resampleBars. */
@@ -51,6 +60,14 @@ export type Setup = {
    *  Absent = the engine-wide 60-bar TTL. Backtest and live resolver honor it
    *  through the SAME expiry path, so the mirror invariant is untouched. */
   maxBars?: number;
+  /** Optional chandelier trailing stop: stop ratchets to (extreme since entry
+   *  − trailMult × trailAtr), never loosening. `trailAtr` is the SIGNAL-BAR ATR
+   *  FROZEN at setup construction — the only design where the live resolver can
+   *  recompute the exact trail the backtest saw (a live-recomputed ATR could
+   *  never bit-match the backtest's recursion). R stays denominated in the
+   *  ORIGINAL stop. Both fields or neither. */
+  trailMult?: number;
+  trailAtr?: number;
 };
 
 /** A finished (or open) trade in the backtester's ledger. */
@@ -164,6 +181,9 @@ export type LiveSignal = {
   status: "open" | "tp" | "sl" | "expired" | "suppressed";
   /** Optional per-signal time-boxed exit (bars) — see Setup.maxBars. */
   maxBars?: number;
+  /** Optional chandelier trail params — see Setup.trailMult/trailAtr. */
+  trailMult?: number;
+  trailAtr?: number;
   /** Open time (ISO) of the signal bar — the anchor for outcome resolution. */
   barTime?: string;
   createdAt?: string;
@@ -180,7 +200,9 @@ export type EconomicEvent = {
   previous?: string;
 };
 
-/** Pip size per pair (JPY-quoted pairs quote 2dp). */
+/** Point size per market — the unit all spread/slippage figures below are
+ *  denominated in. For FX this is the classic pip; for futures it's a
+ *  market-natural point (gold $0.10, oil ¢1, indices 1 pt, gas $0.001). */
 export const PIP: Record<Pair, number> = {
   EURUSD: 0.0001,
   GBPUSD: 0.0001,
@@ -194,12 +216,20 @@ export const PIP: Record<Pair, number> = {
   GBPJPY: 0.01,
   AUDJPY: 0.01,
   AUDCAD: 0.0001,
+  XAUUSD: 0.1,
+  XAGUSD: 0.01,
+  USOIL: 0.01,
+  NATGAS: 0.001,
+  SPX500: 1,
+  NAS100: 1,
+  US30: 1,
 };
 
-/** Conservative typical retail spreads (pips) used as the COST model in every
- *  backtest and in live R:R math — sourced from major-broker published averages;
- *  deliberately on the expensive side so validation under-promises. Crosses pay
- *  more than majors by construction (two legs of liquidity). */
+/** Conservative typical retail spreads (in PIP units above) used as the COST
+ *  model in every backtest and in live R:R math — sourced from major-broker
+ *  published averages; deliberately on the expensive side so validation
+ *  under-promises. Crosses pay more than majors by construction; futures
+ *  spreads verified against retail CFD ranges (gold $0.50, oil $0.05, ES 0.75pt). */
 export const SPREAD_PIPS: Record<Pair, number> = {
   EURUSD: 0.9,
   GBPUSD: 1.3,
@@ -213,10 +243,62 @@ export const SPREAD_PIPS: Record<Pair, number> = {
   GBPJPY: 2.5,
   AUDJPY: 1.8,
   AUDCAD: 2.0,
+  XAUUSD: 5,
+  XAGUSD: 4,
+  USOIL: 5,
+  NATGAS: 6,
+  SPX500: 0.75,
+  NAS100: 2.5,
+  US30: 4,
 };
 
-/** Extra slippage assumption per side (pips). */
-export const SLIPPAGE_PIPS = 0.3;
+/** Extra slippage assumption per side (in PIP units) — expensive-side like the
+ *  spread model; futures slip more points in fast tape than FX slips pips. */
+export const SLIPPAGE_PIPS: Record<Pair, number> = {
+  EURUSD: 0.3,
+  GBPUSD: 0.3,
+  USDJPY: 0.3,
+  USDCHF: 0.3,
+  AUDUSD: 0.3,
+  NZDUSD: 0.3,
+  USDCAD: 0.3,
+  EURGBP: 0.3,
+  EURJPY: 0.3,
+  GBPJPY: 0.3,
+  AUDJPY: 0.3,
+  AUDCAD: 0.3,
+  XAUUSD: 2,
+  XAGUSD: 1,
+  USOIL: 2,
+  NATGAS: 2,
+  SPX500: 0.25,
+  NAS100: 0.5,
+  US30: 1,
+};
 
-export const digitsFor = (pair: Pair): number => (pair.endsWith("JPY") ? 3 : 5);
+/** Display decimals per market (the canonical formatter — UI imports this). */
+const DIGITS: Record<Pair, number> = {
+  EURUSD: 5,
+  GBPUSD: 5,
+  USDJPY: 3,
+  USDCHF: 5,
+  AUDUSD: 5,
+  NZDUSD: 5,
+  USDCAD: 5,
+  EURGBP: 5,
+  EURJPY: 3,
+  GBPJPY: 3,
+  AUDJPY: 3,
+  AUDCAD: 5,
+  XAUUSD: 2,
+  XAGUSD: 3,
+  USOIL: 2,
+  NATGAS: 3,
+  SPX500: 2,
+  NAS100: 2,
+  US30: 0,
+};
+export const digitsFor = (pair: Pair): number => DIGITS[pair];
+/** Unit label for point-denominated displays ("p" pips for FX, "pt" for futures). */
+export const pointLabel = (pair: Pair): string => (FUTURES_MARKETS.has(pair) ? "pt" : "p");
 export const fmtPrice = (pair: Pair, p: number): string => p.toFixed(digitsFor(pair));
