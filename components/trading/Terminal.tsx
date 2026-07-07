@@ -19,7 +19,7 @@ import { ArrowLeft, Activity, Bell, BellOff, CalendarClock, History as HistoryIc
 import { PairChart, type Candle, type ChartLevels } from "./PairChart";
 import { Playbooks } from "./Playbooks";
 import { TerminalBackground } from "./TerminalBackground";
-import { currentPushState, enablePush, disablePush, pushSupported } from "./push-client";
+import { ensurePush, enablePush, disablePush, pushSupported } from "./push-client";
 import { digitsFor, fmtPrice, pointLabel, type Pair } from "@/lib/trading/types";
 
 /* ── palette (desk-local, deliberately its own product surface) ──
@@ -174,9 +174,9 @@ export function Terminal() {
 
   useEffect(() => {
     void load().then((s) => void maybeScan(s));
-    // reflect the REAL push-subscription state so the bell is correct after a
-    // refresh (the whole fix: the toggle is no longer ephemeral page state)
-    void currentPushState().then(setNotify);
+    // reflect + self-heal the REAL push subscription so the bell is correct
+    // after a reopen and can't get stuck OFF (fixes the cold-start read race)
+    void ensurePush().then(setNotify);
     // the interval reads refs, so it never captures a stale closure
     const t = setInterval(() => {
       if (document.visibilityState !== "visible") return;
@@ -272,25 +272,27 @@ export function Terminal() {
           <div className="grid h-[60dvh] place-items-center"><Loader2 size={28} className="animate-spin" style={{ color: T.faint }} /></div>
         ) : (
           <>
-            {/* ── watchlist ── */}
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
+            {/* ── watchlist ── compact tiles; the grid scales from 3 cols on
+                 phones to 10 on ultra-wide so all 19 markets stay 2-3 rows. */}
+            <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-7 xl:grid-cols-9 min-[1800px]:grid-cols-10">
               {state.quotes.map((q) => {
                 const pb = state.playbooks.find((p) => p.pair === q.pair);
+                const monitor = pb?.monitorOnly;
+                const up = (q.changePct ?? 0) >= 0;
                 return (
-                  <button key={q.pair} type="button" onClick={() => { setChartPair(q.pair); setLevels(null); }} className="rounded-xl border p-3 text-left transition hover:brightness-110" style={{ borderColor: chartPair === q.pair ? "rgba(79,209,197,0.4)" : T.line, background: T.panel }}>
-                    <div className="flex items-center justify-between">
-                      <span className="font-mono text-[13px] font-bold">{q.pair}</span>
-                      {pb?.monitorOnly ? <Chip tone="dim">monitor</Chip> : <Chip tone="accent">live</Chip>}
+                  <button key={q.pair} type="button" onClick={() => { setChartPair(q.pair); setLevels(null); }} title={monitor ? "monitor only — no validated strategy" : "live — validated strategy running"} className="rounded-lg border px-2 py-1.5 text-left transition hover:brightness-110" style={{ borderColor: chartPair === q.pair ? "rgba(79,209,197,0.55)" : T.line, background: T.panel }}>
+                    <div className="flex items-center gap-1">
+                      <span className="min-w-0 flex-1 truncate font-mono text-[11px] font-bold tracking-tight">{q.pair}</span>
+                      <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: monitor ? T.faint : T.up }} />
                     </div>
                     {q.error ? (
-                      <p className="mt-1 text-[11px]" style={{ color: T.warn }}>data unavailable</p>
+                      <p className="mt-0.5 text-[10px]" style={{ color: T.warn }}>no data</p>
                     ) : (
                       <>
-                        <div className="mt-1 font-mono text-[18px] font-bold tabular-nums">{q.price !== undefined ? px(q.pair, q.price) : "—"}</div>
-                        <div className="mt-0.5 flex items-center gap-2 font-mono text-[10.5px]" style={{ color: T.faint }}>
-                          <span style={{ color: (q.changePct ?? 0) >= 0 ? T.up : T.down }}>{(q.changePct ?? 0) >= 0 ? "+" : ""}{q.changePct}%</span>
-                          <span>ATR {q.atrPips}{unit(q.pair)}</span>
-                          <span>{q.volRegime}</span>
+                        <div className="mt-0.5 font-mono text-[14px] font-bold tabular-nums leading-tight">{q.price !== undefined ? px(q.pair, q.price) : "—"}</div>
+                        <div className="mt-0.5 flex items-center gap-1.5 font-mono text-[9.5px]" style={{ color: T.faint }}>
+                          <span style={{ color: up ? T.up : T.down }}>{up ? "+" : ""}{q.changePct}%</span>
+                          <span className="truncate">{q.atrPips}{unit(q.pair)}</span>
                         </div>
                       </>
                     )}

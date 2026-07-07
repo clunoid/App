@@ -14,7 +14,7 @@ export const runtime = "nodejs";
  * client polling. POST also fires a one-off confirmation push so the operator
  * SEES that delivery works the moment they opt in.
  */
-type SubBody = { subscription?: { endpoint?: string; keys?: { p256dh?: string; auth?: string } } };
+type SubBody = { subscription?: { endpoint?: string; keys?: { p256dh?: string; auth?: string } }; silent?: boolean };
 
 export async function POST(req: NextRequest) {
   const user = await requireUser();
@@ -33,14 +33,17 @@ export async function POST(req: NextRequest) {
     .upsert({ endpoint: sub.endpoint, subscription: sub, user_agent: req.headers.get("user-agent") || null, last_ok_at: new Date().toISOString() }, { onConflict: "endpoint" });
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  // immediate confirmation — to THIS device only (not a fan-out to every sub),
-  // so the operator sees a real push land right away the moment they opt in
-  const testDelivered = await sendPushToOne(sub as unknown as Parameters<typeof sendPushToOne>[0], {
-    title: "Clunoid Trading Desk · alerts on",
-    body: "You'll get a push here whenever a validated signal fires — even with this tab closed. 24/5, fully autonomous.",
-    tag: "trading-alerts-enabled",
-    url: "/trading",
-  });
+  // silent = a mount-time self-heal re-registering a dropped subscription; only
+  // the deliberate opt-in click fires the confirmation push so the operator sees
+  // a real alert land right away.
+  const testDelivered = body.silent
+    ? 0
+    : await sendPushToOne(sub as unknown as Parameters<typeof sendPushToOne>[0], {
+        title: "Clunoid Trading Desk · alerts on",
+        body: "You'll get a push here whenever a validated signal fires — even with this tab closed. 24/5, fully autonomous.",
+        tag: "trading-alerts-enabled",
+        url: "/trading",
+      });
   return NextResponse.json({ ok: true, testDelivered });
 }
 

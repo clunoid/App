@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { Mic, MicOff, Send, Loader2, Search, History, Sparkles } from "lucide-react";
+import { Mic, MicOff, Send, Loader2, Search, History, Sparkles, CandlestickChart } from "lucide-react";
 import { useClunoid } from "@/lib/store/useClunoid";
 import { useSpeechInput } from "@/lib/voice/useSpeechInput";
 import { useMicLevel } from "@/lib/voice/useMicLevel";
@@ -35,6 +35,12 @@ export default function Home() {
   const router = useRouter();
   const authChecked = useClunoid((s) => s.authChecked);
   const isAuthed = useClunoid((s) => s.user.isAuthed);
+  const userId = useClunoid((s) => s.user.id);
+  const userEmail = useClunoid((s) => s.user.email);
+  // Admin-only entry point for the Trading Desk. Mirrors the server allow-list
+  // (lib/billing/meter ADMIN_USER_IDS + the clunoid@gmail.com owner); the real
+  // gate lives on every /api/trading route, so this only decides visibility.
+  const isAdminUser = userId === "5191f3cf-f0e5-4187-9c08-8921eb57a64c" || userEmail?.toLowerCase() === "clunoid@gmail.com";
   const isaac = useClunoid((s) => s.isaac);
   const experience = useClunoid((s) => s.experience);
   const isaacSearchOn = useClunoid((s) => s.isaacSearchOn);
@@ -215,6 +221,17 @@ export default function Home() {
                 <f.Icon size={15} /> {f.label}
               </Link>
             ))}
+            {/* Admin-only: the Trading Desk isn't in the shared feature registry
+                (so it can't be typed/searched into) — it appears here for the
+                owner alone, on every screen size, as their private entry point. */}
+            {isAdminUser && (
+              <Link
+                href="/trading"
+                className="inline-flex items-center gap-1.5 rounded-full border border-clay/40 bg-clay/10 px-3 py-1 text-sm text-clay-soft transition hover:border-clay hover:text-clay"
+              >
+                <CandlestickChart size={15} /> Trading
+              </Link>
+            )}
           </div>
           {isaac === "thinking" ? (
             <div className="inline-flex shrink-0 items-center gap-2 rounded-full border border-border bg-surface/90 px-3 py-1 backdrop-blur">
