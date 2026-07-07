@@ -241,14 +241,17 @@ export function Terminal() {
             <span className="h-1.5 w-1.5 animate-pulse rounded-full" style={{ background: state?.marketOpen ? T.up : T.down }} />
             {state ? (state.marketOpen ? `OPEN · ${state.session}` : "MARKET CLOSED") : "…"}
           </span>
-          <span className="hidden font-mono text-[11px] sm:inline" style={{ color: T.faint }}>
-            last scan {lastScan ? `${ago(lastScan.started_at)} ago · ${lastScan.pairs_ok} pairs · ${lastScan.duration_ms}ms` : "—"}
+          {/* Passive auto-scan indicator — the desk scans ITSELF every 5 min
+              server-side (pg_cron), so there is no manual scan button: nothing to
+              click, nothing to keep running. The spinner only reflects a rare
+              self-heal scan if the page ever notices a stale heartbeat. */}
+          <span className="hidden items-center gap-1.5 font-mono text-[11px] sm:flex" style={{ color: T.faint }} title="Fully automatic — the desk scans all 12 pairs every 5 minutes, server-side, 24/5. You never trigger it; you never need this tab open.">
+            <RefreshCw size={11} className={scanning ? "animate-spin" : ""} style={{ color: scanning ? T.accent : T.up }} />
+            <span style={{ color: T.up }}>auto-scan</span>
+            <span>· every 5m{lastScan ? ` · last ${ago(lastScan.started_at)} ago` : ""}</span>
           </span>
           <div className="ml-auto flex items-center gap-2">
-            <button type="button" onClick={() => void maybeScan(null)} disabled={scanning} title="Run a scan now" className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 font-mono text-[11px] font-bold transition hover:brightness-125 disabled:opacity-50" style={{ color: T.muted, background: "rgba(140,150,175,0.08)" }}>
-              {scanning ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />} scan
-            </button>
-            <button type="button" onClick={() => void toggleNotify()} disabled={notifyBusy} title="Background push alerts — survive refresh & closed tabs" className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 font-mono text-[11px] font-bold transition hover:brightness-125 disabled:opacity-50" style={{ color: notify ? T.accent : T.muted, background: notify ? "rgba(79,209,197,0.12)" : "rgba(140,150,175,0.08)" }}>
+            <button type="button" onClick={() => void toggleNotify()} disabled={notifyBusy} title="Background push alerts — survive refresh & closed tabs. One-time browser permission." className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 font-mono text-[11px] font-bold transition hover:brightness-125 disabled:opacity-50" style={{ color: notify ? T.accent : T.muted, background: notify ? "rgba(79,209,197,0.12)" : "rgba(140,150,175,0.08)" }}>
               {notifyBusy ? <Loader2 size={13} className="animate-spin" /> : notify ? <Bell size={13} /> : <BellOff size={13} />} {notify ? "alerts on" : "alerts"}
             </button>
           </div>
