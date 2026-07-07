@@ -161,6 +161,13 @@ env; the browser only ever gets the public key.
   dropped whole, and outcome resolution judges bar-closedness at FETCH time, not
   resolve time, so a boundary falling mid-scan can only delay a verdict, never
   corrupt one.
+- **Economic calendar is DB-cached** (`trading_calendar`, single row). The
+  ForexFactory feed rate-limits hard (429 after a couple of rapid requests), so
+  the scanner is its ONLY fetcher — once per 5-min cycle, upserting on success
+  and never wiping good data on failure. The terminal reads the cache, so the
+  display is stable; a `calendarLoaded` flag distinguishes "not fetched yet"
+  (shows "Loading…") from a genuine quiet week (shows "Quiet"). The scanner also
+  reuses the cached copy for its own news-blackout gating when a fetch misses.
 - Live mirrors the backtester's one-position rule: while a champion has an open
   signal, its re-fires are skipped (not stacked), so the live R ledger contains
   only trades the validation would also have taken.
