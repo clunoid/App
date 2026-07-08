@@ -14,7 +14,8 @@ import { ArrowLeft, Sparkles, Loader2, ShieldAlert, TrendingUp, CalendarDays, Ar
 import { EdgeBackground } from "./EdgeBackground";
 import type { PredictionReport, Fixture, LeagueDef, MarketOdds } from "@/lib/edge/types";
 
-/* palette — deep ink + electric lime, cool blue for the away side (never white) */
+/* palette — deep ink + the Edge emerald (matches the home chip), cool blue for
+   the away side (never white) */
 const C = {
   bg: "#0a0c0d",
   panel: "rgba(255,255,255,0.026)",
@@ -23,8 +24,8 @@ const C = {
   text: "#f3f6f4",
   muted: "#9aa5a0",
   faint: "#626d68",
-  lime: "#bef264",
-  limeDim: "rgba(190,242,100,0.13)",
+  accent: "#34d399", // emerald — the /home Edge chip colour
+  accentDim: "rgba(52,211,153,0.13)",
   blue: "#7dd3fc",
   amber: "#fbbf24",
   red: "#f87171",
@@ -47,7 +48,7 @@ function Logo({ src, alt, size = 24 }: { src?: string; alt: string; size?: numbe
 
 function Stance({ stance }: { stance: PredictionReport["verdict"]["stance"] }) {
   const m = {
-    bet: { label: "VALUE", color: "#0a0c0d", bg: C.lime },
+    bet: { label: "VALUE", color: "#0a0c0d", bg: C.accent },
     lean: { label: "LEAN", color: C.amber, bg: "rgba(251,191,36,0.15)" },
     "no-bet": { label: "NO BET", color: C.muted, bg: "rgba(255,255,255,0.06)" },
   }[stance];
@@ -59,7 +60,7 @@ function Card({ title, icon: Icon, children, className = "" }: { title?: string;
     <section className={`rounded-2xl border p-4 sm:p-5 ${className}`} style={{ borderColor: C.line, background: C.panel }}>
       {title && (
         <h3 className="mb-3 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.18em]" style={{ color: C.faint }}>
-          {Icon && <Icon size={12} style={{ color: C.lime }} />} {title}
+          {Icon && <Icon size={12} style={{ color: C.accent }} />} {title}
         </h3>
       )}
       {children}
@@ -73,12 +74,12 @@ function ProbBar({ home, draw, away, homeName, awayName }: { home: number; draw?
   return (
     <div>
       <div className="mb-1.5 flex items-baseline justify-between text-[13px]">
-        <span className="font-semibold" style={{ color: C.lime }}>{homeName} <span style={mono}>{pct(home)}</span></span>
+        <span className="font-semibold" style={{ color: C.accent }}>{homeName} <span style={mono}>{pct(home)}</span></span>
         {draw != null && <span style={{ color: C.muted }}>Draw <span style={mono}>{pct(draw)}</span></span>}
         <span className="font-semibold" style={{ color: C.blue }}>{awayName} <span style={mono}>{pct(away)}</span></span>
       </div>
       <div className="flex h-2.5 w-full gap-0.5 overflow-hidden rounded-full">
-        {seg(home, C.lime)}
+        {seg(home, C.accent)}
         {draw != null ? seg(draw, "#5b6b64") : null}
         {seg(away, C.blue)}
       </div>
@@ -108,8 +109,8 @@ function ReportView({ r }: { r: PredictionReport }) {
           <span className="ml-auto flex items-center gap-2 text-[12px]" style={{ color: C.muted }}>
             confidence
             <span className="inline-flex items-center gap-1.5">
-              <span className="h-1.5 w-16 overflow-hidden rounded-full" style={{ background: "rgba(255,255,255,0.08)" }}><span className="block h-full rounded-full" style={{ width: `${r.verdict.confidence}%`, background: r.verdict.confidence >= 60 ? C.lime : C.muted }} /></span>
-              <b style={{ ...mono, color: r.verdict.confidence >= 60 ? C.lime : C.text }}>{r.verdict.confidence}</b>
+              <span className="h-1.5 w-16 overflow-hidden rounded-full" style={{ background: "rgba(255,255,255,0.08)" }}><span className="block h-full rounded-full" style={{ width: `${r.verdict.confidence}%`, background: r.verdict.confidence >= 60 ? C.accent : C.muted }} /></span>
+              <b style={{ ...mono, color: r.verdict.confidence >= 60 ? C.accent : C.text }}>{r.verdict.confidence}</b>
             </span>
           </span>
         </div>
@@ -140,7 +141,7 @@ function ReportView({ r }: { r: PredictionReport }) {
                         <td className="px-2 py-2 font-semibold">{s.pick}</td>
                         <td className="px-2 py-2">{(s.modelProb * 100).toFixed(0)}%</td>
                         <td className="px-2 py-2">{s.bookOdds ? s.bookOdds.toFixed(2) : "—"}</td>
-                        <td className="px-2 py-2 font-semibold" style={{ color: s.edgePct != null ? (s.edgePct >= 4 ? C.lime : s.edgePct >= 0 ? C.amber : C.red) : C.faint }}>{s.edgePct != null ? `${s.edgePct > 0 ? "+" : ""}${s.edgePct}%` : "—"}</td>
+                        <td className="px-2 py-2 font-semibold" style={{ color: s.edgePct != null ? (s.edgePct >= 4 ? C.accent : s.edgePct >= 0 ? C.amber : C.red) : C.faint }}>{s.edgePct != null ? `${s.edgePct > 0 ? "+" : ""}${s.edgePct}%` : "—"}</td>
                         <td className="px-2 py-2" style={{ color: C.faint }}>{s.kellyFraction ? `${(s.kellyFraction * 100).toFixed(1)}%` : "—"}</td>
                       </tr>
                     ))}
@@ -166,7 +167,7 @@ function ReportView({ r }: { r: PredictionReport }) {
               <ul className="space-y-2">
                 {r.evidence.map((ev, i) => { const Icon = kindIcon[ev.kind] || Info; return (
                   <li key={i} className="flex items-start gap-2.5 text-[12.5px]" style={{ color: C.muted }}>
-                    <Icon size={13} className="mt-0.5 shrink-0" style={{ color: C.lime }} />
+                    <Icon size={13} className="mt-0.5 shrink-0" style={{ color: C.accent }} />
                     <span>{ev.text}{ev.source ? <span style={{ color: C.faint }}> — {ev.source.length > 26 ? "web" : ev.source}</span> : null}</span>
                   </li>); })}
               </ul>
@@ -195,13 +196,13 @@ function FixtureCard({ f, odds, onAnalyze }: { f: Fixture; odds?: MarketOdds; on
     <button type="button" onClick={onAnalyze} className="group rounded-2xl border p-3.5 text-left transition hover:border-white/25" style={{ borderColor: C.line, background: C.panel }}>
       <div className="flex items-center justify-between text-[10.5px]" style={{ ...mono, color: C.faint }}>
         <span>{new Date(f.startsAt).toLocaleString(undefined, { weekday: "short", hour: "2-digit", minute: "2-digit" })}</span>
-        {f.status !== "scheduled" && <span style={{ color: C.lime }}>{f.status === "in" ? "● LIVE" : `${f.homeScore}-${f.awayScore}`}</span>}
+        {f.status !== "scheduled" && <span style={{ color: C.accent }}>{f.status === "in" ? "● LIVE" : `${f.homeScore}-${f.awayScore}`}</span>}
       </div>
       <div className="mt-2.5 space-y-2">
         <div className="flex items-center gap-2.5"><Logo src={f.home.logo} alt={f.home.name} /><span className="min-w-0 flex-1 truncate text-[13.5px] font-semibold" style={{ color: C.text }}>{f.home.name}</span>{imp?.home != null && <span className="text-[11px]" style={{ ...mono, color: C.muted }}>{(imp.home * 100).toFixed(0)}%</span>}</div>
         <div className="flex items-center gap-2.5"><Logo src={f.away.logo} alt={f.away.name} /><span className="min-w-0 flex-1 truncate text-[13.5px] font-semibold" style={{ color: C.text }}>{f.away.name}</span>{imp?.away != null && <span className="text-[11px]" style={{ ...mono, color: C.muted }}>{(imp.away * 100).toFixed(0)}%</span>}</div>
       </div>
-      <div className="mt-3 flex items-center gap-1.5 text-[10.5px] font-semibold transition group-hover:gap-2.5" style={{ color: C.lime }}>
+      <div className="mt-3 flex items-center gap-1.5 text-[10.5px] font-semibold transition group-hover:gap-2.5" style={{ color: C.accent }}>
         Analyse <ArrowRight size={12} />{odds ? <span style={{ color: C.faint }}>· odds live</span> : null}
       </div>
     </button>
@@ -258,7 +259,7 @@ export function EdgeConsole() {
           <ShieldAlert size={38} className="mx-auto" style={{ color: C.faint }} />
           <h1 className="mt-3 text-2xl font-bold tracking-tight">Restricted</h1>
           <p className="mt-1 text-sm" style={{ color: C.muted }}>Edge is limited to the Clunoid administrator account.</p>
-          <Link href="/home" className="mt-5 inline-block rounded-full px-4 py-2 text-[13px] font-semibold" style={{ color: "#0a0c0d", background: C.lime }}>← back home</Link>
+          <Link href="/home" className="mt-5 inline-block rounded-full px-4 py-2 text-[13px] font-semibold" style={{ color: "#0a0c0d", background: C.accent }}>← back home</Link>
         </div>
       </div>
     );
@@ -274,7 +275,7 @@ export function EdgeConsole() {
         <div className="flex w-full items-center gap-4 px-4 py-3 sm:px-6 xl:px-10">
           <Link href="/home" aria-label="Home" className="flex items-center gap-1 text-[13px] transition hover:text-white" style={{ color: C.muted }}><ArrowLeft size={15} /> clunoid</Link>
           <div className="flex items-baseline gap-2.5">
-            <span className="text-[19px] font-bold tracking-[0.14em]" style={{ color: C.lime }}>EDGE</span>
+            <span className="text-[19px] font-bold tracking-[0.14em]" style={{ color: C.accent }}>EDGE</span>
             <span className="hidden text-[12px] sm:inline" style={{ color: C.faint }}>Sports Intelligence</span>
           </div>
           <span className="ml-auto flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold tracking-wide" style={{ ...mono, color: C.amber, background: "rgba(251,191,36,0.1)" }}><ShieldAlert size={11} /> 18+ · ANALYSIS ONLY</span>
@@ -286,14 +287,14 @@ export function EdgeConsole() {
         {/* hero ask */}
         <div>
           <h1 className="text-2xl font-bold leading-tight tracking-tight sm:text-4xl">
-            Ask anything. Get an <span style={{ color: C.lime }}>evidence-based</span> read.
+            Ask anything. Get an <span style={{ color: C.accent }}>evidence-based</span> read.
           </h1>
           <p className="mt-2 max-w-2xl text-[14px]" style={{ color: C.muted }}>
             Real fixtures, live market odds, injuries, form and head-to-head — modelled, researched by top-tier AI, and explained. When there is no edge, it says so.
           </p>
           <div className="mt-5 flex items-stretch gap-2.5">
             <div className="flex flex-1 items-center rounded-full border px-4" style={{ borderColor: C.line, background: C.panelHi }}>
-              <Sparkles size={17} className="shrink-0" style={{ color: C.lime }} />
+              <Sparkles size={17} className="shrink-0" style={{ color: C.accent }} />
               <input
                 value={question}
                 onChange={(e) => setQuestion(e.target.value)}
@@ -303,7 +304,7 @@ export function EdgeConsole() {
                 style={{ color: C.text }}
               />
             </div>
-            <button type="button" onClick={() => void ask(question)} disabled={loading || !question.trim()} className="flex shrink-0 items-center gap-2 rounded-full px-5 text-[14px] font-bold transition hover:brightness-110 disabled:opacity-40" style={{ background: C.lime, color: "#0a0c0d" }}>
+            <button type="button" onClick={() => void ask(question)} disabled={loading || !question.trim()} className="flex shrink-0 items-center gap-2 rounded-full px-5 text-[14px] font-bold transition hover:brightness-110 disabled:opacity-40" style={{ background: C.accent, color: "#0a0c0d" }}>
               {loading ? <Loader2 size={18} className="animate-spin" /> : <ArrowRight size={18} />}
               <span className="hidden sm:inline">Analyse</span>
             </button>
@@ -319,7 +320,7 @@ export function EdgeConsole() {
           <div ref={reportRef} className="mt-6">
             {loading ? (
               <div className="grid place-items-center gap-3 rounded-2xl border py-16" style={{ borderColor: C.line, background: C.panel }}>
-                <Loader2 size={28} className="animate-spin" style={{ color: C.lime }} />
+                <Loader2 size={28} className="animate-spin" style={{ color: C.accent }} />
                 <span className="text-[13px]" style={{ color: C.muted }}>Resolving the fixture · gathering stats, odds & team news · modelling · reasoning…</span>
               </div>
             ) : report ? <ReportView r={report} /> : null}
@@ -331,8 +332,8 @@ export function EdgeConsole() {
           <div className="mb-4 flex flex-wrap items-center gap-2">
             <span className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: C.faint }}><CalendarDays size={13} /> Upcoming fixtures</span>
             <div className="ml-auto flex flex-wrap gap-1.5">
-              <button type="button" onClick={() => setLeague("")} className="rounded-full px-2.5 py-1 text-[11px] font-semibold transition" style={league === "" ? { color: "#0a0c0d", background: C.lime } : { color: C.muted, background: "rgba(255,255,255,0.04)" }}>All</button>
-              {fx?.leagues.map((l) => <button key={l.id} type="button" onClick={() => setLeague(l.id)} className="rounded-full px-2.5 py-1 text-[11px] font-semibold transition" style={league === l.id ? { color: "#0a0c0d", background: C.lime } : { color: C.muted, background: "rgba(255,255,255,0.04)" }}>{l.emoji} {l.name}</button>)}
+              <button type="button" onClick={() => setLeague("")} className="rounded-full px-2.5 py-1 text-[11px] font-semibold transition" style={league === "" ? { color: "#0a0c0d", background: C.accent } : { color: C.muted, background: "rgba(255,255,255,0.04)" }}>All</button>
+              {fx?.leagues.map((l) => <button key={l.id} type="button" onClick={() => setLeague(l.id)} className="rounded-full px-2.5 py-1 text-[11px] font-semibold transition" style={league === l.id ? { color: "#0a0c0d", background: C.accent } : { color: C.muted, background: "rgba(255,255,255,0.04)" }}>{l.emoji} {l.name}</button>)}
             </div>
           </div>
           {!fx ? (

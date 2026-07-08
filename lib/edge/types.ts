@@ -14,7 +14,7 @@
  */
 
 /** A sport + its ESPN path segment (sport/league) — the keyless data backbone. */
-export type Sport = "soccer" | "basketball" | "football" | "baseball" | "hockey" | "mma";
+export type Sport = "soccer" | "basketball" | "football" | "baseball" | "hockey" | "mma" | "tennis";
 
 export type LeagueDef = {
   id: string; // internal id, e.g. "eng.1"

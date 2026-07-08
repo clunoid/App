@@ -66,13 +66,16 @@ function num(x: unknown): number | undefined {
 
 function parseTeam(competitor: J): Team {
   const t = competitor?.team ?? {};
+  // individual sports (tennis, MMA) carry an `athlete`/`athletes` not a `team`
+  const ath = competitor?.athlete ?? (Array.isArray(competitor?.athletes) ? competitor.athletes[0]?.athlete ?? competitor.athletes[0] : undefined);
   const record = Array.isArray(competitor?.records) && competitor.records[0]?.summary ? String(competitor.records[0].summary) : undefined;
+  const teamLogo = typeof t.logo === "string" ? t.logo : Array.isArray(t.logos) && t.logos[0]?.href ? t.logos[0].href : undefined;
   return {
-    id: String(t.id ?? competitor?.id ?? ""),
-    name: String(t.displayName || t.name || t.shortDisplayName || "Unknown"),
-    shortName: t.shortDisplayName || t.name || undefined,
-    abbrev: t.abbreviation || undefined,
-    logo: typeof t.logo === "string" ? t.logo : Array.isArray(t.logos) && t.logos[0]?.href ? t.logos[0].href : undefined,
+    id: String(t.id ?? ath?.id ?? competitor?.id ?? ""),
+    name: String(t.displayName || t.name || t.shortDisplayName || ath?.displayName || ath?.fullName || ath?.shortName || "Unknown"),
+    shortName: t.shortDisplayName || t.name || ath?.shortName || undefined,
+    abbrev: t.abbreviation || ath?.abbreviation || undefined,
+    logo: teamLogo ?? (typeof ath?.headshot === "string" ? ath.headshot : ath?.headshot?.href) ?? ath?.flag?.href ?? undefined,
     record,
     form: typeof competitor?.form === "string" ? competitor.form : undefined,
   };

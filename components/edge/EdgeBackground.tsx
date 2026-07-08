@@ -2,8 +2,9 @@
 
 /**
  * Edge's material — a clean, modern, minimal dark canvas (never white): a deep
- * ink ground, a soft lime glow bleeding from the top, a cool teal glow at the
- * corner, a fine dot-matrix that fades out downward, and a whisper of grain.
+ * ink ground, a soft emerald glow bleeding from the top (matching the /home Edge
+ * chip), a cool teal glow at the corner, a fine dot-matrix that fades out
+ * downward, and a whisper of grain.
  * No heavy borders or bezels — quiet and premium so the data does the talking.
  * Pure CSS/SVG, no animation.
  */
@@ -14,7 +15,7 @@ export function EdgeBackground() {
         className="absolute inset-0"
         style={{
           background:
-            "radial-gradient(85% 55% at 50% -10%, rgba(190,242,100,0.10), transparent 60%), radial-gradient(55% 45% at 102% 2%, rgba(94,234,212,0.06), transparent 55%), radial-gradient(60% 50% at 0% 100%, rgba(125,211,252,0.04), transparent 55%)",
+            "radial-gradient(85% 55% at 50% -10%, rgba(52,211,153,0.11), transparent 60%), radial-gradient(55% 45% at 102% 2%, rgba(94,234,212,0.06), transparent 55%), radial-gradient(60% 50% at 0% 100%, rgba(125,211,252,0.04), transparent 55%)",
         }}
       />
       <div

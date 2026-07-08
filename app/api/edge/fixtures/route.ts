@@ -5,7 +5,7 @@ import { upcomingFixtures } from "@/lib/edge/engine";
 import { LEAGUES } from "@/lib/edge/leagues";
 
 export const runtime = "nodejs";
-export const maxDuration = 45;
+export const maxDuration = 60; // fans out across all covered competitions in parallel
 
 /** Upcoming fixtures across the covered leagues (real ESPN scoreboard data),
  *  with embedded market odds where the book has posted them. Admin-only. */
