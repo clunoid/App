@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { generateObject } from "ai";
 import { z } from "zod";
 import { requireUser } from "@/lib/auth/requireUser";
-import { isAdmin } from "@/lib/billing/meter";
+import { chargeCredits, chargeError, refundSplit } from "@/lib/billing/meter";
+import { ACTION_COSTS } from "@/lib/billing/costs";
+import { edgeDenied } from "@/lib/edge/access";
 import { MODELS, hasAnthropic } from "@/lib/models";
 import { pexelsPhotos, hasPexels } from "@/lib/data/pexels";
 import { predict, predictMany, isBulkPrompt } from "@/lib/edge/engine";
@@ -76,11 +78,16 @@ function buildMatch(rep: PredictionReport, sport: string, bg?: string): VideoMat
 
 export async function POST(req: NextRequest) {
   const user = await requireUser();
-  if (!user || !isAdmin(user)) return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  if (!user) return NextResponse.json({ error: "auth" }, { status: 401 });
+  const denied = await edgeDenied(user);
+  if (denied) return denied;
   if (!hasAnthropic()) return NextResponse.json({ error: "AI not configured" }, { status: 503 });
 
   const prompt = ((await req.json().catch(() => ({}))) as { prompt?: string }).prompt?.trim().slice(0, 500) || "";
   if (!prompt) return NextResponse.json({ error: "name the matches" }, { status: 400 });
+
+  const charge = await chargeCredits("edge_video_plan", ACTION_COSTS.edge_video_plan, { p: prompt.slice(0, 80) }, user);
+  if (!charge.ok) return chargeError(charge);
 
   try {
     const now = new Date();
@@ -114,7 +121,10 @@ export async function POST(req: NextRequest) {
       const vm = buildMatch(rep, sport, bg || undefined);
       if (vm) matches.push(vm);
     }
-    if (!matches.length) return NextResponse.json({ error: "couldn't resolve any of those to real fixtures — try a competition (e.g. 'World Cup') or two named teams." }, { status: 422 });
+    if (!matches.length) {
+      await refundSplit(user.id, charge.fromBalance, charge.fromPurchased, "edge_video_plan");
+      return NextResponse.json({ error: "couldn't resolve any of those to real fixtures — try a competition (e.g. 'World Cup') or two named teams." }, { status: 422 });
+    }
 
     // BRIEF two-voice dialogue — straight to the matches, NO intro/outro, NO
     // explanations, and NO numbers/odds/betting language (entertainment, not
@@ -124,7 +134,7 @@ export async function POST(req: NextRequest) {
       model: MODELS.max(),
       schema: z.object({ scenes: z.array(z.object({ speaker: z.enum(["a", "b"]), line: z.string(), matchIndex: z.number() })) }),
       system:
-        "You script a SHORT, upbeat two-host preview for a sports highlights video. Speaker 'a' (Isaac) NAMES the match and asks how the other sees it — ONE short line. Speaker 'b' (Matilda) replies with ONE short, natural prediction: exactly the 'call' given for that match, in her own conversational words. HARD RULES: dive STRAIGHT into the matches — no intro, no outro, no greetings, no sign-off. One short sentence per line (5–11 words). NO reasons or explanations — just the likelihood, phrased naturally ('good chance…', 'likely…', 'expect…'). NEVER say any number, scoreline, percentage, odds, or the words bet/betting/odds/stake/wager/value/money — this is entertainment, not betting advice. Per match: exactly one 'a' then one 'b', matchIndex = that match. Use the exact team names.",
+        "You script a SHORT, upbeat two-host preview for a sports highlights video. Speaker 'a' (Isaac) NAMES the match and asks how the other sees it — ONE short line. Speaker 'b' (Cluno) replies with ONE short, natural prediction: exactly the 'call' given for that match, in her own conversational words. HARD RULES: dive STRAIGHT into the matches — no intro, no outro, no greetings, no sign-off. One short sentence per line (5–11 words). NO reasons or explanations — just the likelihood, phrased naturally ('good chance…', 'likely…', 'expect…'). NEVER say any number, scoreline, percentage, odds, or the words bet/betting/odds/stake/wager/value/money — this is entertainment, not betting advice. Per match: exactly one 'a' then one 'b', matchIndex = that match. Use the exact team names.",
       prompt: `Matches — for each, 'b' conveys this call in natural words:\n${summary}`,
       maxRetries: 1,
       maxTokens: 500,
@@ -157,6 +167,7 @@ export async function POST(req: NextRequest) {
     const plan: VideoPlan = { title, matches, scenes, createdAt: now.toISOString() };
     return NextResponse.json({ plan });
   } catch (e) {
+    await refundSplit(user.id, charge.fromBalance, charge.fromPurchased, "edge_video_plan");
     return NextResponse.json({ error: e instanceof Error ? e.message : "plan failed" }, { status: 500 });
   }
 }

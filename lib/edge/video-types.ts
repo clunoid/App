@@ -27,7 +27,7 @@ export type VideoMatch = {
   bgImage?: string; // canvas-safe Pexels sport background
 };
 
-/** One spoken beat. speaker "a" = Isaac (asks), "b" = Matilda (the analyst, answers). */
+/** One spoken beat. speaker "a" = Isaac (asks), "b" = Cluno (the analyst, answers). */
 export type VideoScene = {
   speaker: "a" | "b";
   line: string;

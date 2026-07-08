@@ -1,17 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/requireUser";
-import { isAdmin } from "@/lib/billing/meter";
 import { upcomingFixtures } from "@/lib/edge/engine";
 import { LEAGUES } from "@/lib/edge/leagues";
 
 export const runtime = "nodejs";
 export const maxDuration = 60; // fans out across all covered competitions in parallel
 
-/** Upcoming fixtures across the covered leagues (real ESPN scoreboard data),
- *  with embedded market odds where the book has posted them. Admin-only. */
+/** Upcoming fixtures across the covered leagues (real ESPN scoreboard data), with
+ *  embedded market odds where the book has posted them. Free to browse for any
+ *  signed-in user (a teaser); running a prediction/video on one is the paid part. */
 export async function GET(req: NextRequest) {
   const user = await requireUser();
-  if (!user || !isAdmin(user)) return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  if (!user) return NextResponse.json({ error: "auth" }, { status: 401 });
 
   const league = req.nextUrl.searchParams.get("league") || undefined;
   try {

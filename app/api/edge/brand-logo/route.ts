@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/requireUser";
-import { isAdmin } from "@/lib/billing/meter";
+import { edgeDenied } from "@/lib/edge/access";
 import dns from "node:dns/promises";
 import net from "node:net";
 
@@ -137,7 +137,9 @@ function candidates(html: string, base: URL): string[] {
 
 export async function POST(req: NextRequest) {
   const user = await requireUser();
-  if (!user || !isAdmin(user)) return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  if (!user) return NextResponse.json({ error: "auth" }, { status: 401 });
+  const denied = await edgeDenied(user); // branding is part of the paid video feature
+  if (denied) return denied;
 
   const website = ((await req.json().catch(() => ({}))) as { website?: string }).website?.trim() || "";
   let base: URL;

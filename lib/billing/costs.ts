@@ -41,6 +41,12 @@ export const ACTION_COSTS = {
   // Motion Graphics: Opus designs a full multi-scene motion-graphics spec (the most
   // expensive plan we run — long structured output). Narration TTS billed per line on top.
   graphics_plan: 500, // /api/graphics/plan — Opus scene-graph designer (~$2)
+  // Edge — AI sports prediction & prediction videos (Pro/Max feature). Analysis runs
+  // Opus + Tavily for a single deep read (ESPN-only + light for bulk slates); the video
+  // planner runs several Opus calls; premium ElevenLabs narration is billed per line
+  // (action "edge_tts", variable via ttsCost) during the client-side render.
+  edge_analyze: 40, //  /api/edge/predict     — Opus interpret + Tavily research (~$0.2)
+  edge_video_plan: 180, // /api/edge/video/plan — Opus matchup-extract + Opus dialogue + per-match predicts + Pexels (~$0.9)
 } as const;
 export type Chargeable = keyof typeof ACTION_COSTS;
 
@@ -98,6 +104,10 @@ export const RATE_LIMITS: Record<string, [number, number]> = {
   // Voice fires per line; a generous cap that normal beat-by-beat playback never
   // hits, but which bounds a burst of tiny concurrent calls (vendor overhead).
   tts: [120, 60],
+  // Edge (Pro/Max sports predictions + videos)
+  edge_analyze: [20, 60],
+  edge_video_plan: [6, 60], // Opus-heavy planner
+  edge_tts: [120, 60], // premium ElevenLabs per line — matches the shared tts cap
 };
 
 /** Hard input caps so a single request can't be oversized. */

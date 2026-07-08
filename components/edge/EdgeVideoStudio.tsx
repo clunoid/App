@@ -2,15 +2,17 @@
 
 /**
  * Edge Video Studio — prompt one or more matchups, and two premium AI voices
- * (Isaac asks, Matilda answers) deliver the predictions in a short, media-rich
+ * (Isaac asks, Cluno answers) deliver the predictions in a short, media-rich
  * video. Both a vertical (9:16) and a wide (16:9) cut are encoded from ONE set of
  * voiced audio, so the premium voices are used once. Saved to history.
  */
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Loader2, Clapperboard, Download, Sparkles, Film, Trash2, Play, Palette, Globe, X } from "lucide-react";
 import { renderEdgeVideos } from "@/lib/edge/video";
 import { saveEdgeVideo, listEdgeVideos, loadEdgeVideoBlobs, deleteEdgeVideo, type SavedEdgeVideo } from "@/lib/edge/video-store";
 import { loadBranding, saveBranding, DEFAULT_BRANDING } from "@/lib/edge/brand-settings";
+import { edgeGate } from "@/lib/edge/gate";
 import type { Branding, VideoPlan } from "@/lib/edge/video-types";
 
 const C = { line: "rgba(255,255,255,0.09)", panel: "rgba(255,255,255,0.026)", panelHi: "rgba(255,255,255,0.05)", text: "#f3f6f4", muted: "#9aa5a0", faint: "#626d68", accent: "#34d399", blue: "#7dd3fc", amber: "#fbbf24", red: "#f87171" };
@@ -41,6 +43,7 @@ export function EdgeVideoStudio({ onStatus }: { onStatus?: (s: { busy: boolean; 
   const [plan, setPlan] = useState<VideoPlan | null>(null);
   const [vids, setVids] = useState<Vids>({});
   const [err, setErr] = useState<string | null>(null);
+  const [upsell, setUpsell] = useState(false);
   const [history, setHistory] = useState<SavedEdgeVideo[]>([]);
   const [brand, setBrand] = useState<Branding>(DEFAULT_BRANDING);
   const [logoBusy, setLogoBusy] = useState(false);
@@ -98,14 +101,21 @@ export function EdgeVideoStudio({ onStatus }: { onStatus?: (s: { busy: boolean; 
     if (!q || phase === "planning" || phase === "rendering") return;
     setPrompt(q);
     setErr(null);
+    setUpsell(false);
     setVids({});
     setPlan(null);
     setPhase("planning");
     setProgress({ pct: 0, label: "Predicting the matches…" });
     try {
       const res = await fetch("/api/edge/video/plan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: q }) });
-      const d = await res.json();
-      if (!res.ok) { setErr(d.error || "Couldn't plan the video."); setPhase("error"); return; }
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const g = edgeGate(res.status, (d as { error?: string }).error);
+        setErr(g?.message || (d as { error?: string }).error || "Couldn't plan the video.");
+        setUpsell(!!g?.upgrade);
+        setPhase("error");
+        return;
+      }
       const pl = d.plan as VideoPlan;
       setPlan(pl);
       setPhase("rendering");
@@ -115,8 +125,9 @@ export function EdgeVideoStudio({ onStatus }: { onStatus?: (s: { busy: boolean; 
       const id = await saveEdgeVideo({ prompt: q, plan: pl }, { portrait: out.portrait, landscape: out.landscape });
       if (id) void listEdgeVideos().then(setHistory);
     } catch (e) {
-      const msg = (e as Error)?.name === "FriendlyError" ? (e as Error).message : "Video generation failed — try again.";
-      setErr(msg);
+      const fe = (e as Error)?.name === "FriendlyError";
+      setErr(fe ? (e as Error).message : "Video generation failed — try again.");
+      setUpsell(!!(e as { upgrade?: boolean })?.upgrade);
       setPhase("error");
     }
   }, [phase, brand]);
@@ -142,7 +153,7 @@ export function EdgeVideoStudio({ onStatus }: { onStatus?: (s: { busy: boolean; 
           <Clapperboard size={26} style={{ color: C.accent }} /> Prediction videos
         </h1>
         <p className="mt-2 max-w-2xl text-[14px]" style={{ color: C.muted }}>
-          Name the matches. Two premium AI voices — Isaac asks, Matilda calls it — deliver the predictions over live sport media. You get a <b style={{ color: C.text }}>vertical</b> and a <b style={{ color: C.text }}>wide</b> cut, both from one voiced take.
+          Name the matches. Two premium AI voices — Isaac asks, Cluno calls it — deliver the predictions over live sport media. You get a <b style={{ color: C.text }}>vertical</b> and a <b style={{ color: C.text }}>wide</b> cut, both from one voiced take.
         </p>
         <div className="mt-4 flex items-stretch gap-2.5">
           <div className="flex flex-1 items-center rounded-full border px-4" style={{ borderColor: C.line, background: C.panelHi }}>
@@ -218,7 +229,12 @@ export function EdgeVideoStudio({ onStatus }: { onStatus?: (s: { busy: boolean; 
         )}
       </div>
 
-      {err && <p className="rounded-xl border px-4 py-2.5 text-[12.5px]" style={{ borderColor: "rgba(248,113,113,0.3)", background: "rgba(248,113,113,0.06)", color: C.red }}>{err}</p>}
+      {err && (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border px-4 py-2.5 text-[12.5px]" style={{ borderColor: upsell ? "rgba(52,211,153,0.35)" : "rgba(248,113,113,0.3)", background: upsell ? "rgba(52,211,153,0.07)" : "rgba(248,113,113,0.06)", color: upsell ? C.text : C.red }}>
+          <span>{err}</span>
+          {upsell && <Link href="/pricing" className="ml-auto rounded-full px-3 py-1 text-[12px] font-bold" style={{ background: C.accent, color: "#0a0c0d" }}>See plans →</Link>}
+        </div>
+      )}
 
       {/* progress */}
       {busy && (

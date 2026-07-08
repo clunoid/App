@@ -11,6 +11,7 @@
 import { aspectSize, type ReelAspect } from "@/lib/share/reel";
 import { encodeCanvasToMp4Web, hasWebCodecs } from "@/lib/share/webcodecs-mp4";
 import { toMp4Audio } from "@/lib/graphics/audio";
+import { edgeGate } from "./gate";
 import type { Branding, VideoPlan } from "./video-types";
 
 const ACCENT = "#34d399";
@@ -85,7 +86,16 @@ async function fetchAudio(plan: VideoPlan, ac: AudioContext, onProgress?: (d: nu
     try {
       const res = await fetch("/api/edge/tts", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: s.line, speaker: s.speaker }), signal });
       if (res.ok) { const d = (await res.json()) as { audio?: string; chars?: string[] | null; times?: number[] | null }; if (d.audio) { buf = await decodeB64(ac, d.audio); chars = d.chars ?? null; times = d.times ?? null; } }
-    } catch (e) { if ((e as Error)?.name === "AbortError") throw e; }
+      else if (res.status === 401 || res.status === 402 || res.status === 429) {
+        // access/credits/rate — stop the render and surface a friendly message
+        const ed = (await res.json().catch(() => ({}))) as { error?: string };
+        const g = edgeGate(res.status, ed.error);
+        const fe = new Error(g?.message || "Voice is unavailable right now.");
+        fe.name = "FriendlyError";
+        (fe as { upgrade?: boolean }).upgrade = !!g?.upgrade;
+        throw fe;
+      }
+    } catch (e) { if ((e as Error)?.name === "AbortError" || (e as Error)?.name === "FriendlyError") throw e; }
     bufs.push(buf);
     words.push(wordsFrom(s.line, buf, chars, times));
     onProgress?.(i + 1, plan.scenes.length);
@@ -437,7 +447,7 @@ function drawCaption(ctx: CanvasRenderingContext2D, W: number, H: number, st: Sc
   let ly = y - ((lines.length - 1) * lineH) / 2;
   // speaker label — a fixed gap ABOVE the first caption line, so it never overlaps
   // the text no matter how many lines the caption wraps to
-  const who = speaker === "a" ? "ISAAC" : "MATILDA";
+  const who = speaker === "a" ? "ISAAC" : "CLUNO";
   const wc = speaker === "a" ? ACCENT : BLUE;
   ctx.fillStyle = wc;
   ctx.font = `700 ${S * 0.024}px "Space Grotesk", system-ui, sans-serif`;

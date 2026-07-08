@@ -8,10 +8,12 @@ import type { Accent, FeatureDef } from "@/lib/features";
 const PRIMARY: Record<Accent, string> = {
   clay: "bg-clay text-[#1F1E1C] hover:bg-clay-soft focus-visible:ring-clay/50",
   spark: "bg-spark text-[#1F1E1C] hover:bg-spark-soft focus-visible:ring-spark/50",
+  mint: "bg-emerald-400 text-[#0a0c0d] hover:bg-emerald-300 focus-visible:ring-emerald-400/50",
 };
 const CHIP: Record<Accent, string> = {
   clay: "bg-clay/15 text-clay",
   spark: "bg-spark/15 text-spark",
+  mint: "bg-emerald-400/15 text-emerald-300",
 };
 
 /**

@@ -1,4 +1,4 @@
-import { BarChart3, Clapperboard, Gamepad2, type LucideIcon } from "lucide-react";
+import { BarChart3, Clapperboard, Gamepad2, Target, type LucideIcon } from "lucide-react";
 
 /**
  * Single source of truth for Clunoid's "features" — the things that live
@@ -9,8 +9,8 @@ import { BarChart3, Clapperboard, Gamepad2, type LucideIcon } from "lucide-react
  * automatically gets a card AND the "open it, or just search?" prompt.
  */
 
-export type FeatureId = "games" | "stats" | "graphics";
-export type Accent = "clay" | "spark";
+export type FeatureId = "games" | "stats" | "graphics" | "edge";
+export type Accent = "clay" | "spark" | "mint";
 
 export type FeatureDef = {
   id: FeatureId;
@@ -28,6 +28,9 @@ export type FeatureDef = {
   open: (q?: string) => string;
   /** Does this query relate to the feature (by name, or a strong request)? */
   relates: (q: string) => boolean;
+  /** Minimum paid plan to USE this feature (server-enforced). Shown as a badge;
+   *  the card is still visible to everyone (it's a funnel). Omit = free. */
+  plan?: "pro" | "max";
 };
 
 // ── Strong-intent matchers (a query that clearly IS a feature request) ───────
@@ -72,6 +75,7 @@ const WRAP = String.raw`(?:please\s+)?(?:(?:can|could)\s+you\s+)?(?:i\s+(?:want|
 const GAME_NAME = new RegExp(`^${WRAP}(?:flag\\s+)?(?:games?|arcade)\\s*[?!.]*$`);
 const STAT_NAME = new RegExp(`^${WRAP}(?:stat\\s*battles?|stats?)\\s*[?!.]*$`);
 const GFX_NAME = new RegExp(`^${WRAP}(?:motion\\s*)?graphics(?:\\s+(?:studio|videos?))?\\s*[?!.]*$`);
+const EDGE_NAME = new RegExp(`^${WRAP}(?:edge|sports?\\s*predictions?)\\s*[?!.]*$`);
 
 /** A motion-graphics / explainer-video request, e.g. "make an explainer video about AI". */
 export function isGraphicsRequest(t: string): boolean {
@@ -128,6 +132,19 @@ export const FEATURES: FeatureDef[] = [
         ? `/graphics?q=${encodeURIComponent(q)}`
         : "/graphics",
     relates: (q) => GFX_NAME.test(q.toLowerCase().trim()) || isGraphicsRequest(q),
+  },
+  {
+    id: "edge",
+    label: "Edge",
+    note: "AI sports predictions & prediction videos.",
+    accent: "mint",
+    Icon: Target,
+    hub: "/edge",
+    plan: "pro",
+    // Edge takes a full natural-language question inside the console — the home
+    // chooser just opens it (only triggers on the name so it never hijacks a search).
+    open: () => "/edge",
+    relates: (q) => EDGE_NAME.test(q.toLowerCase().trim()),
   },
 ];
 

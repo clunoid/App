@@ -1,18 +1,20 @@
 "use client";
 
 /**
- * EDGE — Sports Intelligence & Betting Analysis (admin-only). A clean, modern,
- * full-bleed console: ask any sports-betting question in natural language and get
- * an evidence-based, uncertainty-honest report (model probabilities, market value,
- * confidence, evidence, reasoning, risks) — or browse real fixtures and analyse
- * one in a click. Full width edge-to-edge like the Trading Desk. Security is
- * server-side (/api/edge/* verify admin); this renders a Restricted screen on 403.
+ * EDGE — Sports Intelligence & Betting Analysis (a Pro/Max feature). A clean,
+ * modern, full-bleed console: ask any sports-betting question in natural language
+ * and get an evidence-based, uncertainty-honest report (model probabilities, market
+ * value, confidence, evidence, reasoning, risks) — or browse real fixtures and
+ * analyse one in a click. Full width edge-to-edge like the Trading Desk. Security is
+ * server-side (/api/edge/* verify the session + plan + charge credits); signed-out
+ * users get a sign-in screen, free users an upgrade prompt.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Sparkles, Loader2, ShieldAlert, TrendingUp, CalendarDays, ArrowRight, Info, Trophy, CircleDollarSign, AlertTriangle, Activity, LineChart, Clapperboard } from "lucide-react";
 import { EdgeBackground } from "./EdgeBackground";
 import { EdgeVideoStudio } from "./EdgeVideoStudio";
+import { edgeGate } from "@/lib/edge/gate";
 import type { PredictionReport, Fixture, LeagueDef, MarketOdds } from "@/lib/edge/types";
 
 /* palette — deep ink + the Edge emerald (matches the home chip), cool blue for
@@ -258,13 +260,14 @@ export function EdgeConsole() {
   const [report, setReport] = useState<PredictionReport | null>(null);
   const [reports, setReports] = useState<PredictionReport[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [upsell, setUpsell] = useState(false);
   const reportRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     void (async () => {
       try {
         const res = await fetch("/api/edge/fixtures", { cache: "no-store" });
-        if (res.status === 403) { setDenied(true); return; }
+        if (res.status === 401) { setDenied(true); return; } // signed out → sign-in screen
         if (res.ok) setFx((await res.json()) as FixturesResponse);
       } catch { /* transient */ }
     })();
@@ -276,13 +279,19 @@ export function EdgeConsole() {
     setQuestion(query);
     setLoading(true);
     setErr(null);
+    setUpsell(false);
     setReport(null);
     setReports(null);
     try {
       const res = await fetch("/api/edge/predict", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question: query }) });
-      if (res.status === 403) { setDenied(true); return; }
-      const d = await res.json();
-      if (!res.ok) { setErr(d.error || "Analysis failed."); return; }
+      if (res.status === 401) { setDenied(true); return; }
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const g = edgeGate(res.status, (d as { error?: string }).error);
+        setErr(g?.message || (d as { error?: string }).error || "Analysis failed.");
+        setUpsell(!!g?.upgrade);
+        return;
+      }
       if (Array.isArray(d.reports)) setReports(d.reports as PredictionReport[]); // bulk (a whole slate/competition)
       else setReport(d.report as PredictionReport);
       setTimeout(() => reportRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 60);
@@ -299,9 +308,9 @@ export function EdgeConsole() {
         <div className="pointer-events-none fixed inset-0 z-0"><EdgeBackground /></div>
         <div className="relative z-10">
           <ShieldAlert size={38} className="mx-auto" style={{ color: C.faint }} />
-          <h1 className="mt-3 text-2xl font-bold tracking-tight">Restricted</h1>
-          <p className="mt-1 text-sm" style={{ color: C.muted }}>Edge is limited to the Clunoid administrator account.</p>
-          <Link href="/home" className="mt-5 inline-block rounded-full px-4 py-2 text-[13px] font-semibold" style={{ color: "#0a0c0d", background: C.accent }}>← back home</Link>
+          <h1 className="mt-3 text-2xl font-bold tracking-tight">Sign in to use Edge</h1>
+          <p className="mt-1 text-sm" style={{ color: C.muted }}>Edge is a Pro feature — sign in to run AI match predictions and prediction videos.</p>
+          <Link href="/home" className="mt-5 inline-block rounded-full px-4 py-2 text-[13px] font-semibold" style={{ color: "#0a0c0d", background: C.accent }}>Sign in →</Link>
         </div>
       </div>
     );
@@ -375,7 +384,12 @@ export function EdgeConsole() {
           </div>
         </div>
 
-        {err && <p className="mt-4 rounded-xl border px-4 py-2.5 text-[12.5px]" style={{ borderColor: "rgba(248,113,113,0.3)", background: "rgba(248,113,113,0.06)", color: C.red }}>{err}</p>}
+        {err && (
+          <div className="mt-4 flex flex-wrap items-center gap-2 rounded-xl border px-4 py-2.5 text-[12.5px]" style={{ borderColor: upsell ? "rgba(52,211,153,0.35)" : "rgba(248,113,113,0.3)", background: upsell ? "rgba(52,211,153,0.07)" : "rgba(248,113,113,0.06)", color: upsell ? C.text : C.red }}>
+            <span>{err}</span>
+            {upsell && <Link href="/pricing" className="ml-auto rounded-full px-3 py-1 text-[12px] font-bold" style={{ background: C.accent, color: "#0a0c0d" }}>See plans →</Link>}
+          </div>
+        )}
 
         {(loading || report || reports) && (
           <div ref={reportRef} className="mt-6">
