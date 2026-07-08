@@ -17,6 +17,15 @@ const ACCENT = "#34d399";
 const BLUE = "#7dd3fc";
 const INK = "#0a0c0d";
 
+// friendlier on-screen tags (avoid raw betting jargon like "Draw no bet")
+const MARKET_TAG: Record<string, string> = {
+  "Match result": "RESULT",
+  "Double chance": "SAFER PICK",
+  "Draw no bet": "TO WIN",
+  "Total goals": "GOALS",
+  "Both teams to score": "BOTH TO SCORE",
+};
+
 type Word = { text: string; start: number; end: number };
 type SceneTiming = { start: number; lineAt: number; dur: number; words: Word[] };
 type Timing = { scenes: SceneTiming[]; total: number };
@@ -173,6 +182,13 @@ function drawFrame(ctx: CanvasRenderingContext2D, W: number, H: number, plan: Vi
   const portrait = H > W;
   const m = scene.matchIndex >= 0 ? plan.matches[scene.matchIndex] : undefined;
 
+  // start of the MATCH block this scene belongs to → team art, league chip and the
+  // prediction banner animate in ONCE per match and stay steady when the speaker
+  // changes (stops the logos "blinking" on every new line)
+  let matchStartIdx = si;
+  if (m) for (let k = 0; k < plan.scenes.length; k++) if (plan.scenes[k].matchIndex === scene.matchIndex) { matchStartIdx = k; break; }
+  const matchLocal = m ? t - timing.scenes[matchStartIdx].start : local;
+
   // background
   ctx.fillStyle = INK;
   ctx.fillRect(0, 0, W, H);
@@ -195,6 +211,7 @@ function drawFrame(ctx: CanvasRenderingContext2D, W: number, H: number, plan: Vi
   const cx = W / 2;
   const S = Math.min(W, H); // scale unit
   const fadeIn = Math.min(1, local / 0.4);
+  const appear = m ? Math.min(1, matchLocal / 0.4) : fadeIn; // per-match fade, steady across speaker changes
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
 
@@ -215,22 +232,27 @@ function drawFrame(ctx: CanvasRenderingContext2D, W: number, H: number, plan: Vi
   } else {
     // league chip
     ctx.save();
-    ctx.globalAlpha = fadeIn;
+    ctx.globalAlpha = appear;
     ctx.font = `600 ${S * 0.03}px "Space Grotesk", system-ui, sans-serif`;
     ctx.fillStyle = "rgba(255,255,255,0.75)";
     ctx.fillText(`${m.leagueEmoji || "🏆"}  ${m.league || m.sport}`.toUpperCase(), cx, H * (portrait ? 0.12 : 0.1));
     ctx.restore();
 
     // teams
-    const logoSize = S * (portrait ? 0.26 : 0.24);
-    const enter = easeIO(Math.min(1, local / 0.5));
+    const logoSize = S * (portrait ? 0.23 : 0.24);
+    const enter = easeIO(Math.min(1, matchLocal / 0.5));
     const homeIsWinner = m.winner === m.home;
     if (portrait) {
-      const y1 = H * 0.3, y2 = H * 0.52;
+      const y1 = H * 0.28, y2 = H * 0.55;
       drawTeam(ctx, assets.images.get(m.homeLogo || ""), m.home, cx, y1, logoSize, enter, homeIsWinner ? ACCENT : "#f3f6f4", homeIsWinner);
+      // VS sits in the clear gap between the top team's name and the bottom logo
+      const vsY = (y1 + logoSize * 0.86 + (y2 - logoSize * 0.5)) / 2;
+      ctx.save();
+      ctx.globalAlpha = enter;
       ctx.fillStyle = "rgba(255,255,255,0.5)";
-      ctx.font = `800 ${S * 0.05}px "Space Grotesk", system-ui, sans-serif`;
-      ctx.fillText("VS", cx, (y1 + y2) / 2);
+      ctx.font = `800 ${S * 0.045}px "Space Grotesk", system-ui, sans-serif`;
+      ctx.fillText("VS", cx, vsY);
+      ctx.restore();
       drawTeam(ctx, assets.images.get(m.awayLogo || ""), m.away, cx, y2, logoSize, enter, !homeIsWinner ? BLUE : "#f3f6f4", !homeIsWinner);
     } else {
       const xl = W * 0.28, xr = W * 0.72, y = H * 0.42;
@@ -241,10 +263,10 @@ function drawFrame(ctx: CanvasRenderingContext2D, W: number, H: number, plan: Vi
       drawTeam(ctx, assets.images.get(m.awayLogo || ""), m.away, xr, y, logoSize, enter, !homeIsWinner ? BLUE : "#f3f6f4", !homeIsWinner);
     }
 
-    // pick banner (appears a beat in)
-    const showPick = local > 0.5;
+    // pick banner (appears a beat in, then holds steady for the whole match)
+    const showPick = matchLocal > 0.5;
     if (showPick) {
-      const pa = Math.min(1, (local - 0.5) / 0.4);
+      const pa = Math.min(1, (matchLocal - 0.5) / 0.4);
       ctx.save();
       ctx.globalAlpha = pa;
       const by = H * (portrait ? 0.72 : 0.72);
@@ -257,7 +279,8 @@ function drawFrame(ctx: CanvasRenderingContext2D, W: number, H: number, plan: Vi
       ctx.stroke();
       ctx.fillStyle = ACCENT;
       ctx.font = `700 ${S * 0.023}px "Space Grotesk", system-ui, sans-serif`;
-      ctx.fillText(`BEST PLAY${m.pickMarket ? "  ·  " + m.pickMarket.toUpperCase() : ""}`, cx, by - bh * 0.28);
+      const tag = m.pickMarket ? (MARKET_TAG[m.pickMarket] || m.pickMarket.toUpperCase()) : "";
+      ctx.fillText(`PREDICTION${tag ? "  ·  " + tag : ""}`, cx, by - bh * 0.28);
       ctx.fillStyle = "#f3f6f4";
       const pickText = `${m.pick}  ·  ${(m.pickProb * 100).toFixed(0)}%`;
       let fs = S * 0.05;
@@ -301,20 +324,21 @@ function drawCaption(ctx: CanvasRenderingContext2D, W: number, H: number, st: Sc
   if (!words.length) return;
   const y = H * (portrait ? 0.88 : 0.9);
   ctx.textAlign = "center";
+  // measure the caption block first so the speaker label can sit safely above it
   ctx.font = `700 ${S * 0.036}px "Space Grotesk", system-ui, sans-serif`;
-  // speaker label
-  const who = speaker === "a" ? "ISAAC" : "SARAH";
-  const wc = speaker === "a" ? ACCENT : BLUE;
-  ctx.fillStyle = wc;
-  ctx.font = `700 ${S * 0.024}px "Space Grotesk", system-ui, sans-serif`;
-  ctx.fillText(who, W / 2, y - S * 0.06);
-  // words with karaoke highlight
-  ctx.font = `700 ${S * 0.036}px "Space Grotesk", system-ui, sans-serif`;
-  const text = words.map((w) => w.text).join(" ");
   const maxW = W * 0.88;
   const lines = wrapWords(ctx, words, maxW);
   const lineH = S * 0.05;
   let ly = y - ((lines.length - 1) * lineH) / 2;
+  // speaker label — a fixed gap ABOVE the first caption line, so it never overlaps
+  // the text no matter how many lines the caption wraps to
+  const who = speaker === "a" ? "ISAAC" : "MATILDA";
+  const wc = speaker === "a" ? ACCENT : BLUE;
+  ctx.fillStyle = wc;
+  ctx.font = `700 ${S * 0.024}px "Space Grotesk", system-ui, sans-serif`;
+  ctx.fillText(who, W / 2, ly - lineH * 0.7);
+  // words with karaoke highlight
+  ctx.font = `700 ${S * 0.036}px "Space Grotesk", system-ui, sans-serif`;
   for (const line of lines) {
     let lw = 0;
     for (const w of line) lw += ctx.measureText(w.text + " ").width;
@@ -328,7 +352,6 @@ function drawCaption(ctx: CanvasRenderingContext2D, W: number, H: number, st: Sc
     }
     ly += lineH;
   }
-  void text;
 }
 
 function wrapWords(ctx: CanvasRenderingContext2D, words: Word[], maxW: number): Word[][] {

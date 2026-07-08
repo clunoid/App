@@ -21,11 +21,13 @@ export type VideoMatch = {
   pick: string;
   pickProb: number; // 0..1
   pickMarket?: string; // e.g. "Double chance", "Total goals"
-  edgeLine?: string;
+  /** Natural, number-free spoken call ("there's a good chance France take this one") —
+   *  entertainment phrasing that avoids odds/percentages/betting language. */
+  callText: string;
   bgImage?: string; // canvas-safe Pexels sport background
 };
 
-/** One spoken beat. speaker "a" = Isaac (asks), "b" = Sarah (the analyst, answers). */
+/** One spoken beat. speaker "a" = Isaac (asks), "b" = Matilda (the analyst, answers). */
 export type VideoScene = {
   speaker: "a" | "b";
   line: string;

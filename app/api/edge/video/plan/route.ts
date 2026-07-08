@@ -6,7 +6,7 @@ import { isAdmin } from "@/lib/billing/meter";
 import { MODELS, hasAnthropic } from "@/lib/models";
 import { pexelsPhotos, hasPexels } from "@/lib/data/pexels";
 import { predict, predictMany, isBulkPrompt } from "@/lib/edge/engine";
-import type { PredictionReport } from "@/lib/edge/types";
+import type { PredictionReport, Selection } from "@/lib/edge/types";
 import type { VideoMatch, VideoPlan, VideoScene } from "@/lib/edge/video-types";
 
 export const runtime = "nodejs";
@@ -22,15 +22,38 @@ const SPORT_BG: Record<string, string> = {
   tennis: "tennis stadium court night",
 };
 
+/** Turn a betting selection into a natural, number-free spoken line — a likelihood,
+ *  not a bet. No odds, no percentages, no betting words, so the video reads as
+ *  entertainment and won't trip social-platform gambling filters. The exact pick +
+ *  % still show on screen for viewers who want them. */
+function naturalCall(best: Selection | undefined, home: string, away: string, fav: string): string {
+  if (!best) return "this one looks like a close call";
+  const pick = best.pick;
+  const team = pick.includes(home) ? home : pick.includes(away) ? away : fav;
+  switch (best.category) {
+    case "totals":
+      return /over/i.test(pick) ? "there's a good chance we see goals in this one" : "this one could stay tight and low-scoring";
+    case "btts":
+      return /yes/i.test(pick) ? "both teams look likely to score" : "one side looks capable of keeping a clean sheet";
+    case "double-chance":
+      return /draw/i.test(pick) ? `it's hard to see ${team} losing here` : "expect a winner here — a draw looks unlikely";
+    case "dnb":
+      return `${team} look the likelier side to win`;
+    default: // result
+      return /draw/i.test(pick) ? "this one has the makings of a draw" : `there's a good chance ${team} take this one`;
+  }
+}
+
 /** Best PLAY for the video: the highest-chance sensible market (double chance,
  *  DNB, over/under, or the outright) — never "no bet". Plus the outright fav for
- *  the on-screen highlight. */
+ *  the on-screen highlight and a natural, number-free line for the voice. */
 function buildMatch(rep: PredictionReport, sport: string, bg?: string): VideoMatch | null {
   const f = rep.fixture;
   const p = rep.probabilities;
   // a video needs a real prediction — skip TBD placeholders / dataless fixtures
   if (!f || !p) return null;
   const homeFav = p ? p.home >= p.away : true;
+  const fav = homeFav ? f.home.name : f.away.name;
   const best = rep.verdict.bestChance;
   return {
     home: f.home.name,
@@ -40,13 +63,13 @@ function buildMatch(rep: PredictionReport, sport: string, bg?: string): VideoMat
     sport,
     league: rep.league?.name || "",
     leagueEmoji: rep.league?.emoji,
-    winner: homeFav ? f.home.name : f.away.name,
+    winner: fav,
     winnerProb: p ? Math.max(p.home, p.away) : 0.5,
     drawProb: p?.draw,
-    pick: best?.pick || (homeFav ? f.home.name : f.away.name),
+    pick: best?.pick || fav,
     pickProb: best?.modelProb ?? (p ? Math.max(p.home, p.away) : 0.5),
     pickMarket: best?.market,
-    edgeLine: rep.verdict.stance === "bet" ? "value at the price" : rep.verdict.stance === "lean" ? "a slight lean" : "the safest call",
+    callText: naturalCall(best, f.home.name, f.away.name, fav),
     bgImage: bg,
   };
 }
@@ -93,26 +116,41 @@ export async function POST(req: NextRequest) {
     }
     if (!matches.length) return NextResponse.json({ error: "couldn't resolve any of those to real fixtures — try a competition (e.g. 'World Cup') or two named teams." }, { status: 422 });
 
-    // BRIEF two-voice dialogue — NO intro/outro, straight to the calls (keeps the
-    // premium voices to only what matters). Per match: one 'a' question, one 'b' pick.
-    const summary = matches.map((m, i) => `#${i}: ${m.home} vs ${m.away} (${m.league || m.sport}) — best play: ${m.pick} ${(m.pickProb * 100).toFixed(0)}% (${m.pickMarket || "result"}); outright fav ${m.winner}.`).join("\n");
+    // BRIEF two-voice dialogue — straight to the matches, NO intro/outro, NO
+    // explanations, and NO numbers/odds/betting language (entertainment, not
+    // gambling promo). Per match: one 'a' question, one 'b' natural prediction.
+    const summary = matches.map((m, i) => `#${i}: ${m.home} vs ${m.away} — call: ${m.callText}`).join("\n");
     const { object: dlg } = await generateObject({
       model: MODELS.max(),
       schema: z.object({ scenes: z.array(z.object({ speaker: z.enum(["a", "b"]), line: z.string(), matchIndex: z.number() })) }),
       system:
-        "Write a SHORT two-host sports-prediction dialogue. Speaker 'a' ASKS about the match in ONE tight line; speaker 'b' gives the BEST PLAY with a crisp reason and the probability in ONE line. RULES: NO intro, NO outro, NO sign-off, NO disclaimers — go STRAIGHT to the first match and STOP after the last. ElevenLabs bills per character, so every line is one short sentence (~6-14 words). Per match: exactly one 'a' then one 'b', matchIndex = that match. ALWAYS give a definitive pick (the provided 'best play') — never 'no bet'. Use the exact names and numbers given.",
-      prompt: `Matches (use these picks & numbers exactly):\n${summary}`,
+        "You script a SHORT, upbeat two-host preview for a sports highlights video. Speaker 'a' (Isaac) NAMES the match and asks how the other sees it — ONE short line. Speaker 'b' (Matilda) replies with ONE short, natural prediction: exactly the 'call' given for that match, in her own conversational words. HARD RULES: dive STRAIGHT into the matches — no intro, no outro, no greetings, no sign-off. One short sentence per line (5–11 words). NO reasons or explanations — just the likelihood, phrased naturally ('good chance…', 'likely…', 'expect…'). NEVER say any number, scoreline, percentage, odds, or the words bet/betting/odds/stake/wager/value/money — this is entertainment, not betting advice. Per match: exactly one 'a' then one 'b', matchIndex = that match. Use the exact team names.",
+      prompt: `Matches — for each, 'b' conveys this call in natural words:\n${summary}`,
       maxRetries: 1,
-      maxTokens: 600,
+      maxTokens: 500,
       abortSignal: AbortSignal.timeout(30_000),
     });
 
-    let scenes: VideoScene[] = dlg.scenes.filter((s) => s.line.trim() && s.matchIndex >= 0 && s.matchIndex < matches.length).map((s) => ({ speaker: s.speaker, line: s.line.trim().slice(0, 200), matchIndex: Math.floor(s.matchIndex) }));
-    if (scenes.length < matches.length) {
+    // safety net: any line that slips in a digit, % or betting word is replaced by
+    // the clean deterministic version — the voice never promotes gambling
+    const BAD = /\b(bet|bets|betting|bookie|bookies|odds|stake|stakes|wager|wagers|gamble|gambling|money|cash|profit|payout|units?|value|edge|percent|percentage|per cent|nil|even money|fifty-?fifty)\b/i;
+    const dirty = (line: string) => /\d/.test(line) || line.includes("%") || BAD.test(line);
+    const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1) + (/[.!?]$/.test(s) ? "" : ".");
+    let scenes: VideoScene[] = dlg.scenes
+      .filter((s) => s.line.trim() && s.matchIndex >= 0 && s.matchIndex < matches.length)
+      .map((s) => {
+        const m = matches[Math.floor(s.matchIndex)];
+        const raw = s.line.trim();
+        const line = dirty(raw) ? (s.speaker === "a" ? `What about ${m.home} against ${m.away}?` : cap(m.callText)) : raw.slice(0, 160);
+        return { speaker: s.speaker, line, matchIndex: Math.floor(s.matchIndex) };
+      });
+    // ensure every match gets both a question and a spoken prediction
+    const complete = matches.every((_, i) => scenes.some((s) => s.matchIndex === i && s.speaker === "b"));
+    if (!complete || scenes.length < matches.length) {
       scenes = [];
       matches.forEach((m, i) => {
-        scenes.push({ speaker: "a", line: `${m.home} or ${m.away} — what's the play?`, matchIndex: i });
-        scenes.push({ speaker: "b", line: `${m.pick}, ${(m.pickProb * 100).toFixed(0)} percent — ${m.edgeLine}.`, matchIndex: i });
+        scenes.push({ speaker: "a", line: `What about ${m.home} against ${m.away}?`, matchIndex: i });
+        scenes.push({ speaker: "b", line: cap(m.callText), matchIndex: i });
       });
     }
 
