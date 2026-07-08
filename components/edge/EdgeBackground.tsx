@@ -1,46 +1,37 @@
 "use client";
 
 /**
- * Edge's material — the same premium "engineered surface" language as the Trading
- * Desk's TerminalBackground, re-cut in an emerald key so the two admin platforms
- * read as siblings but distinct: near-black ground, a precision grid (fine minor
- * cells + brighter major rules), phosphor grain, an emerald screen-glow vignette
- * and a bezel double-rule. Pure CSS/SVG, no animation — crisp on every screen.
+ * Edge's material — a clean, modern, minimal dark canvas (never white): a deep
+ * ink ground, a soft lime glow bleeding from the top, a cool teal glow at the
+ * corner, a fine dot-matrix that fades out downward, and a whisper of grain.
+ * No heavy borders or bezels — quiet and premium so the data does the talking.
+ * Pure CSS/SVG, no animation.
  */
 export function EdgeBackground() {
   return (
-    <div className="absolute inset-0 overflow-hidden" style={{ background: "#07090b" }}>
-      <div
-        className="absolute inset-0"
-        style={{
-          backgroundImage: [
-            "repeating-linear-gradient(0deg, rgba(140,170,150,0.06) 0 1px, transparent 1px 30px)",
-            "repeating-linear-gradient(90deg, rgba(140,170,150,0.06) 0 1px, transparent 1px 30px)",
-            "repeating-linear-gradient(0deg, rgba(52,211,153,0.05) 0 1px, transparent 1px 150px)",
-            "repeating-linear-gradient(90deg, rgba(52,211,153,0.05) 0 1px, transparent 1px 150px)",
-          ].join(","),
-        }}
-      />
-      <svg className="absolute inset-0 h-full w-full opacity-[0.05] mix-blend-screen" aria-hidden>
-        <filter id="edgeGrain">
-          <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" stitchTiles="stitch" />
-        </filter>
-        <rect width="100%" height="100%" filter="url(#edgeGrain)" />
-      </svg>
+    <div className="absolute inset-0 overflow-hidden" style={{ background: "#0a0c0d" }}>
       <div
         className="absolute inset-0"
         style={{
           background:
-            "radial-gradient(120% 75% at 50% 0%, rgba(52,211,153,0.07), rgba(52,211,153,0) 42%, rgba(0,0,0,0.44) 96%)",
+            "radial-gradient(85% 55% at 50% -10%, rgba(190,242,100,0.10), transparent 60%), radial-gradient(55% 45% at 102% 2%, rgba(94,234,212,0.06), transparent 55%), radial-gradient(60% 50% at 0% 100%, rgba(125,211,252,0.04), transparent 55%)",
         }}
       />
       <div
-        className="pointer-events-none absolute inset-2 rounded-lg sm:inset-3"
+        className="absolute inset-0"
         style={{
-          border: "1px solid rgba(140,170,150,0.14)",
-          boxShadow: "inset 0 0 0 3px rgba(7,9,11,0.9), inset 0 0 0 4px rgba(52,211,153,0.08)",
+          backgroundImage: "radial-gradient(rgba(255,255,255,0.055) 1px, transparent 1.2px)",
+          backgroundSize: "22px 22px",
+          WebkitMaskImage: "radial-gradient(130% 90% at 50% 0%, black, transparent 82%)",
+          maskImage: "radial-gradient(130% 90% at 50% 0%, black, transparent 82%)",
         }}
       />
+      <svg className="absolute inset-0 h-full w-full opacity-[0.035] mix-blend-screen" aria-hidden>
+        <filter id="edgeGrain">
+          <feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="2" stitchTiles="stitch" />
+        </filter>
+        <rect width="100%" height="100%" filter="url(#edgeGrain)" />
+      </svg>
     </div>
   );
 }
