@@ -115,6 +115,15 @@ function ReportView({ r }: { r: PredictionReport }) {
             </span>
           </span>
         </div>
+        {r.verdict.bestChance && (
+          <div className="flex flex-wrap items-center gap-2 border-t px-5 py-2.5 text-[12.5px]" style={{ borderColor: C.line }}>
+            <Trophy size={14} style={{ color: C.accent }} />
+            <span style={{ color: C.muted }}>Best chance to win:</span>
+            <b style={{ color: C.accent }}>{r.verdict.bestChance.pick}</b>
+            <span style={{ ...mono, color: C.text }}>{(r.verdict.bestChance.modelProb * 100).toFixed(0)}%</span>
+            <span className="text-[11px]" style={{ color: C.faint }}>· {r.verdict.bestChance.market} — the safest strong play</span>
+          </div>
+        )}
       </section>
 
       {/* wide grid fills the screen: analysis left, context right */}
@@ -210,15 +219,44 @@ function FixtureCard({ f, odds, onAnalyze }: { f: Fixture; odds?: MarketOdds; on
   );
 }
 
+function BulkCard({ r }: { r: PredictionReport }) {
+  const f = r.fixture;
+  const best = r.verdict.bestChance;
+  const val = r.verdict.topSelection;
+  const p = r.probabilities;
+  return (
+    <div className="rounded-xl border p-3" style={{ borderColor: C.line, background: C.panel }}>
+      <div className="flex items-center justify-between text-[10px]" style={{ ...mono, color: C.faint }}>
+        <span className="truncate">{r.league?.emoji} {r.league?.name}</span>
+        <span>{f ? new Date(f.startsAt).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : ""}</span>
+      </div>
+      {f && (
+        <div className="mt-2 space-y-1.5">
+          <div className="flex items-center gap-2"><Logo src={f.home.logo} alt={f.home.name} size={18} /><span className="min-w-0 flex-1 truncate text-[12.5px] font-semibold" style={{ color: C.text }}>{f.home.name}</span>{p && <span className="text-[10.5px]" style={{ ...mono, color: C.muted }}>{(p.home * 100).toFixed(0)}%</span>}</div>
+          <div className="flex items-center gap-2"><Logo src={f.away.logo} alt={f.away.name} size={18} /><span className="min-w-0 flex-1 truncate text-[12.5px] font-semibold" style={{ color: C.text }}>{f.away.name}</span>{p && <span className="text-[10.5px]" style={{ ...mono, color: C.muted }}>{(p.away * 100).toFixed(0)}%</span>}</div>
+        </div>
+      )}
+      {best ? (
+        <div className="mt-2.5 flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-[11.5px]" style={{ background: C.accentDim, color: C.accent }}>
+          <Trophy size={12} className="shrink-0" /> <b className="truncate">{best.pick}</b> <span style={mono}>{(best.modelProb * 100).toFixed(0)}%</span>
+          {val?.edgePct != null && val.edgePct >= 3 && <span className="ml-auto shrink-0 text-[10.5px]" style={{ color: C.text }}>+{val.edgePct}% val</span>}
+        </div>
+      ) : <p className="mt-2.5 text-[11px]" style={{ color: C.faint }}>{r.verdict.headline}</p>}
+    </div>
+  );
+}
+
 /* ── main ─────────────────────────────────────────────────────────────────── */
 export function EdgeConsole() {
   const [denied, setDenied] = useState(false);
   const [mode, setMode] = useState<"analyse" | "video">("analyse");
+  const [videoStatus, setVideoStatus] = useState({ busy: false, pct: 0, label: "" });
   const [fx, setFx] = useState<FixturesResponse | null>(null);
   const [league, setLeague] = useState("");
   const [question, setQuestion] = useState("");
   const [loading, setLoading] = useState(false);
   const [report, setReport] = useState<PredictionReport | null>(null);
+  const [reports, setReports] = useState<PredictionReport[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const reportRef = useRef<HTMLDivElement | null>(null);
 
@@ -239,12 +277,14 @@ export function EdgeConsole() {
     setLoading(true);
     setErr(null);
     setReport(null);
+    setReports(null);
     try {
       const res = await fetch("/api/edge/predict", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question: query }) });
       if (res.status === 403) { setDenied(true); return; }
       const d = await res.json();
       if (!res.ok) { setErr(d.error || "Analysis failed."); return; }
-      setReport(d.report as PredictionReport);
+      if (Array.isArray(d.reports)) setReports(d.reports as PredictionReport[]); // bulk (a whole slate/competition)
+      else setReport(d.report as PredictionReport);
       setTimeout(() => reportRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 60);
     } catch {
       setErr("Network error — try again.");
@@ -288,16 +328,23 @@ export function EdgeConsole() {
               </button>
             ))}
           </div>
+          {videoStatus.busy && mode === "analyse" && (
+            <button type="button" onClick={() => setMode("video")} className="flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10.5px] font-semibold" style={{ color: C.accent, background: C.accentDim }}>
+              <Loader2 size={11} className="animate-spin" /> video {videoStatus.pct}%
+            </button>
+          )}
           <span className="hidden items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold tracking-wide md:flex" style={{ ...mono, color: C.amber, background: "rgba(251,191,36,0.1)" }}><ShieldAlert size={11} /> 18+</span>
         </div>
       </header>
 
       {/* body — full width edge to edge (no centered max-width) */}
       <main className="relative z-10 w-full px-4 pt-6 sm:px-6 xl:px-10">
-        {mode === "video" ? (
-          <EdgeVideoStudio />
-        ) : (
-        <>
+        {/* video studio stays MOUNTED across mode switches so encoding continues
+            in the background while the user browses/analyses */}
+        <div className={mode === "video" ? "" : "hidden"}>
+          <EdgeVideoStudio onStatus={setVideoStatus} />
+        </div>
+        <div className={mode === "analyse" ? "" : "hidden"}>
         {/* hero ask */}
         <div>
           <h1 className="text-2xl font-bold leading-tight tracking-tight sm:text-4xl">
@@ -330,12 +377,19 @@ export function EdgeConsole() {
 
         {err && <p className="mt-4 rounded-xl border px-4 py-2.5 text-[12.5px]" style={{ borderColor: "rgba(248,113,113,0.3)", background: "rgba(248,113,113,0.06)", color: C.red }}>{err}</p>}
 
-        {(loading || report) && (
+        {(loading || report || reports) && (
           <div ref={reportRef} className="mt-6">
             {loading ? (
               <div className="grid place-items-center gap-3 rounded-2xl border py-16" style={{ borderColor: C.line, background: C.panel }}>
                 <Loader2 size={28} className="animate-spin" style={{ color: C.accent }} />
-                <span className="text-[13px]" style={{ color: C.muted }}>Resolving the fixture · gathering stats, odds & team news · modelling · reasoning…</span>
+                <span className="text-[13px]" style={{ color: C.muted }}>Resolving fixtures · gathering stats, odds & team news · modelling · reasoning…</span>
+              </div>
+            ) : reports ? (
+              <div>
+                <h3 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: C.faint }}>{reports.length} fixtures analysed</h3>
+                <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-3">
+                  {reports.map((r, i) => <BulkCard key={i} r={r} />)}
+                </div>
               </div>
             ) : report ? <ReportView r={report} /> : null}
           </div>
@@ -367,8 +421,7 @@ export function EdgeConsole() {
             </div>
           )}
         </div>
-        </>
-        )}
+        </div>
       </main>
     </div>
   );

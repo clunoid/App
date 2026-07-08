@@ -15,7 +15,7 @@ export const maxDuration = 30;
  * audio buffer client-side, each line is spoken (and billed to ElevenLabs) once.
  */
 const VOICE_A = process.env.ELEVENLABS_VOICE_ID || "bIHbv24MWmeRgasZH58o"; // Isaac
-const VOICE_B = process.env.ELEVENLABS_VOICE_ID_FEMALE || "EXAVITQu4vr4xnSDxMaL"; // Sarah
+const VOICE_B = process.env.ELEVENLABS_VOICE_ID_FEMALE || "XrExE9yKIg1WjnnlVkGX"; // Matilda — smooth, warm female analyst
 
 export async function POST(req: NextRequest) {
   const user = await requireUser();
@@ -35,7 +35,9 @@ export async function POST(req: NextRequest) {
       body: JSON.stringify({
         text,
         model_id: "eleven_turbo_v2_5",
-        voice_settings: { stability: 0.4, similarity_boost: 0.85, style: 0.45, use_speaker_boost: true, speed: 1.05 },
+        // smoother, steadier read (less style wobble) so the female analyst voice
+        // reads as clean and premium as Isaac
+        voice_settings: { stability: 0.55, similarity_boost: 0.85, style: 0.2, use_speaker_boost: true, speed: 1.0 },
       }),
     });
     if (!res.ok) return NextResponse.json({ error: `voice ${res.status}` }, { status: 502 });

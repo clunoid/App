@@ -12,11 +12,16 @@ export type VideoMatch = {
   sport: string;
   league: string;
   leagueEmoji?: string;
-  /** The predicted winner (always present — "no bet" is not an option in a video). */
+  /** Outright favourite — drives the on-screen VS highlight. */
   winner: string;
   winnerProb: number; // 0..1
   drawProb?: number;
-  edgeLine?: string; // e.g. "clear favourites", "narrow call", "coin-flip → slight lean"
+  /** The BEST play — often a safer market than the outright (double chance, DNB,
+   *  over/under…) giving the best chance to win. This is what the analyst says. */
+  pick: string;
+  pickProb: number; // 0..1
+  pickMarket?: string; // e.g. "Double chance", "Total goals"
+  edgeLine?: string;
   bgImage?: string; // canvas-safe Pexels sport background
 };
 

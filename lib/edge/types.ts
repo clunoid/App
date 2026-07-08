@@ -89,16 +89,19 @@ export type ModelProbabilities = {
   /** Expected goals/points per side where the model produces them. */
   expHome?: number;
   expAway?: number;
-  /** Extra markets when computable (soccer): P(over 2.5), P(BTTS). */
-  overProb?: number;
+  /** Extra markets when computable (soccer): totals at several lines + BTTS. */
+  over15?: number;
+  overProb?: number; // over 2.5 (kept name for compatibility)
+  over35?: number;
   bttsProb?: number;
   method: string; // "dixon-coles" | "market-blend" | "elo" …
 };
 
 /** A concrete recommendation on one betting selection. */
 export type Selection = {
-  market: string; // "Match result", "Over 2.5 goals", "BTTS"…
-  pick: string; // "Arsenal to win", "Over 2.5"…
+  market: string; // "Match result", "Double chance", "Over 2.5 goals", "BTTS"…
+  pick: string; // "Arsenal to win", "Arsenal or draw", "Over 2.5"…
+  category: "result" | "double-chance" | "dnb" | "totals" | "btts";
   modelProb: number; // 0..1
   impliedProb?: number; // 0..1 from de-vigged market
   fairOdds: number; // 1 / modelProb
@@ -117,7 +120,8 @@ export type PredictionReport = {
   verdict: {
     stance: "bet" | "lean" | "no-bet";
     headline: string; // one-line human summary
-    topSelection?: Selection;
+    topSelection?: Selection; // best VALUE (edge vs market)
+    bestChance?: Selection; // highest-probability sensible play — best CHANCE to win
     confidence: number; // 0..100 overall
   };
   probabilities?: ModelProbabilities;

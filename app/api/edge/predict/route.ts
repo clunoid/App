@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/requireUser";
 import { isAdmin } from "@/lib/billing/meter";
-import { predict } from "@/lib/edge/engine";
+import { predict, predictMany, isBulkPrompt } from "@/lib/edge/engine";
 
 export const runtime = "nodejs";
-export const maxDuration = 60; // provider fetches + web research + one Opus reasoning call
+export const maxDuration = 120; // provider fetches + web research + Opus (bulk analyses several)
 
 /**
  * EDGE — natural-language sports prediction. Admin-only while the platform
@@ -22,6 +22,14 @@ export async function POST(req: NextRequest) {
   if (question.length > 500) return NextResponse.json({ error: "question too long" }, { status: 400 });
 
   try {
+    // Broad prompts ("all remaining World Cup fixtures", "today's NBA games",
+    // or several matchups at once) return a LIST; a single named match returns
+    // one deep report.
+    if (isBulkPrompt(question)) {
+      const reports = await predictMany(question, new Date(), 10);
+      if (!reports.length) return NextResponse.json({ error: "couldn't resolve any fixtures for that — try naming the competition (e.g. 'World Cup') or two teams." }, { status: 422 });
+      return NextResponse.json({ reports });
+    }
     const report = await predict(question);
     return NextResponse.json({ report });
   } catch (e) {

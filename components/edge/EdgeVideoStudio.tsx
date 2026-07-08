@@ -2,7 +2,7 @@
 
 /**
  * Edge Video Studio — prompt one or more matchups, and two premium AI voices
- * (Isaac asks, Sarah answers) deliver the predictions in a short, media-rich
+ * (Isaac asks, Matilda answers) deliver the predictions in a short, media-rich
  * video. Both a vertical (9:16) and a wide (16:9) cut are encoded from ONE set of
  * voiced audio, so the premium voices are used once. Saved to history.
  */
@@ -20,7 +20,7 @@ const EXAMPLES = ["France vs Morocco", "Argentina vs Brazil, and Spain vs German
 type Phase = "idle" | "planning" | "rendering" | "done" | "error";
 type Vids = { portraitUrl?: string; landscapeUrl?: string };
 
-export function EdgeVideoStudio() {
+export function EdgeVideoStudio({ onStatus }: { onStatus?: (s: { busy: boolean; pct: number; label: string }) => void } = {}) {
   const [prompt, setPrompt] = useState("");
   const [phase, setPhase] = useState<Phase>("idle");
   const [progress, setProgress] = useState({ pct: 0, label: "" });
@@ -33,6 +33,12 @@ export function EdgeVideoStudio() {
   const revoke = () => { urlsRef.current.forEach((u) => URL.revokeObjectURL(u)); urlsRef.current = []; };
   useEffect(() => () => revoke(), []);
   useEffect(() => { void listEdgeVideos().then(setHistory); }, []);
+  // report progress up so the render can keep running (and show a chip) even when
+  // the user switches to Analyse mode — encoding continues in the background
+  useEffect(() => {
+    const busy = phase === "planning" || phase === "rendering";
+    onStatus?.({ busy, pct: phase === "planning" ? 8 : progress.pct, label: progress.label || (phase === "planning" ? "Predicting…" : "Rendering…") });
+  }, [phase, progress, onStatus]);
 
   const show = (portrait?: Blob, landscape?: Blob) => {
     revoke();
@@ -91,7 +97,7 @@ export function EdgeVideoStudio() {
           <Clapperboard size={26} style={{ color: C.accent }} /> Prediction videos
         </h1>
         <p className="mt-2 max-w-2xl text-[14px]" style={{ color: C.muted }}>
-          Name the matches. Two premium AI voices — Isaac asks, Sarah calls it — deliver the predictions over live sport media. You get a <b style={{ color: C.text }}>vertical</b> and a <b style={{ color: C.text }}>wide</b> cut, both from one voiced take.
+          Name the matches. Two premium AI voices — Isaac asks, Matilda calls it — deliver the predictions over live sport media. You get a <b style={{ color: C.text }}>vertical</b> and a <b style={{ color: C.text }}>wide</b> cut, both from one voiced take.
         </p>
         <div className="mt-4 flex items-stretch gap-2.5">
           <div className="flex flex-1 items-center rounded-full border px-4" style={{ borderColor: C.line, background: C.panelHi }}>

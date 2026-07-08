@@ -256,11 +256,14 @@ function drawFrame(ctx: CanvasRenderingContext2D, W: number, H: number, plan: Vi
       ctx.lineWidth = Math.max(1, S * 0.002);
       ctx.stroke();
       ctx.fillStyle = ACCENT;
-      ctx.font = `700 ${S * 0.026}px "Space Grotesk", system-ui, sans-serif`;
-      ctx.fillText("EDGE PICK", cx, by - bh * 0.26);
+      ctx.font = `700 ${S * 0.023}px "Space Grotesk", system-ui, sans-serif`;
+      ctx.fillText(`BEST PLAY${m.pickMarket ? "  ·  " + m.pickMarket.toUpperCase() : ""}`, cx, by - bh * 0.28);
       ctx.fillStyle = "#f3f6f4";
-      ctx.font = `800 ${S * 0.05}px "Space Grotesk", system-ui, sans-serif`;
-      ctx.fillText(`${m.winner}  ·  ${(m.winnerProb * 100).toFixed(0)}%`, cx, by + bh * 0.16);
+      const pickText = `${m.pick}  ·  ${(m.pickProb * 100).toFixed(0)}%`;
+      let fs = S * 0.05;
+      ctx.font = `800 ${fs}px "Space Grotesk", system-ui, sans-serif`;
+      while (ctx.measureText(pickText).width > bw * 0.9 && fs > S * 0.028) { fs -= S * 0.003; ctx.font = `800 ${fs}px "Space Grotesk", system-ui, sans-serif`; }
+      ctx.fillText(pickText, cx, by + bh * 0.18);
       ctx.restore();
     }
   }

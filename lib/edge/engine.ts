@@ -7,11 +7,11 @@
  * invents. "No bet" is a first-class outcome.
  */
 import { webSearch, hasSearch } from "@/lib/data/search";
-import type { Evidence, Fixture, LeagueDef, PredictionReport, Selection } from "./types";
+import type { Evidence, Fixture, LeagueDef, MarketOdds, PredictionReport, Selection } from "./types";
 import { RG_DISCLAIMER } from "./types";
 import { guessLeagues, LEAGUES, leagueById } from "./leagues";
 import { fetchFixtures, fetchStandings, fetchMatchDetail, type StandingRow, type MatchDetail } from "./data";
-import { poissonModel, blendWithMarket, buildSelections, decideStance } from "./model";
+import { poissonModel, blendWithMarket, buildSelections, decideStance, bestChancePick } from "./model";
 import { reasonOverPrediction } from "./ai";
 
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
@@ -77,45 +77,33 @@ function buildEvidence(f: Fixture, table: StandingRow[], detail: MatchDetail, re
   return ev;
 }
 
-export async function predict(question: string, now = new Date()): Promise<PredictionReport> {
-  const base = (): PredictionReport => ({ question, verdict: { stance: "no-bet", headline: "", confidence: 0 }, selections: [], availability: [], evidence: [], reasoning: "", risks: [], dataAsOf: now.toISOString(), disclaimer: RG_DISCLAIMER });
-
-  const resolved = await resolveFixture(question, now);
-  if (!resolved) {
-    // No specific fixture — still try to be useful with live research.
-    const r = hasSearch() ? await webSearch(`${question} sports betting analysis prediction`, { depth: "advanced", maxResults: 6 }) : null;
-    const rep = base();
-    rep.verdict.headline = "Couldn't pin this to a specific upcoming fixture in the covered leagues.";
-    rep.reasoning = r?.answer || "I couldn't identify a specific match in the leagues I currently cover (top soccer + NBA/NFL/MLB/NHL/UFC). Try naming both teams and the competition, e.g. \"Arsenal vs Chelsea in the Premier League\".";
-    if (r?.results?.length) rep.evidence = r.results.slice(0, 4).map((x) => ({ kind: "news" as const, text: `${x.title}: ${x.content.slice(0, 200)}`, source: x.url }));
-    rep.risks = ["No verified fixture/odds resolved — treat the above as general context only."];
-    return rep;
-  }
-
-  const { fixture: f, league, odds: sbOdds } = resolved;
+/** Analyse ONE resolved fixture into a full report. `light` (bulk mode) skips the
+ *  web research + AI overlay + match-detail fetch for speed/cost; `table` lets a
+ *  caller preload standings once per league. */
+export async function analyzeFixture(f: Fixture, league: LeagueDef, sbOdds: MarketOdds | undefined, question: string, now: Date, opts: { light?: boolean; table?: StandingRow[] } = {}): Promise<PredictionReport> {
+  const light = !!opts.light;
   const [table, detail, research] = await Promise.all([
-    fetchStandings(league.id).catch(() => [] as StandingRow[]),
-    fetchMatchDetail(league.id, f.id).catch(() => ({ h2h: [], injuries: [] } as MatchDetail)),
-    hasSearch() ? webSearch(`${f.home.name} vs ${f.away.name} ${league.name} team news injuries lineup preview`, { depth: "advanced", maxResults: 6 }).catch(() => null) : Promise.resolve(null),
+    opts.table ? Promise.resolve(opts.table) : fetchStandings(league.id).catch(() => [] as StandingRow[]),
+    light ? Promise.resolve({ h2h: [], injuries: [] } as MatchDetail) : fetchMatchDetail(league.id, f.id).catch(() => ({ h2h: [], injuries: [] } as MatchDetail)),
+    !light && hasSearch() ? webSearch(`${f.home.name} vs ${f.away.name} ${league.name} team news injuries lineup preview`, { depth: "advanced", maxResults: 6 }).catch(() => null) : Promise.resolve(null),
   ]);
   const odds = detail.odds ?? sbOdds; // /summary pickcenter preferred, else scoreboard
 
-  // model
   const hr = table.find((r) => r.team.id === f.home.id);
   const ar = table.find((r) => r.team.id === f.away.id);
   const model = league.sport === "soccer" && hr && ar ? poissonModel({ home: hr, away: ar, table }) : null;
   const prob = blendWithMarket(model, odds?.implied, odds?.implied ? 0.5 : 0);
   const selections: Selection[] = prob ? buildSelections(prob, odds, league.threeWay, f.home.name, f.away.name) : [];
   const stance = decideStance(selections, !!odds?.implied, model?.minGamesPlayed);
+  const bestChance = bestChancePick(selections);
 
   const evidence = buildEvidence(f, table, detail, research?.answer);
   const fixtureLine = `${f.home.name} vs ${f.away.name}, ${league.name}, ${f.startsAt.slice(0, 10)}${f.venue ? `, ${f.venue}` : ""}`;
   const researchDigest = research?.results?.slice(0, 4).map((x) => `• ${x.title}: ${x.content.slice(0, 180)}`).join("\n");
 
-  const ai = await reasonOverPrediction({ question, fixtureLine, prob: prob ?? null, selections, evidence, research: researchDigest, stanceReason: stance.reason });
+  const ai = light ? null : await reasonOverPrediction({ question, fixtureLine, prob: prob ?? null, selections, evidence, research: researchDigest, stanceReason: stance.reason });
 
-  // final verdict — AI can only WIDEN caution (endorseNoBet) or nudge confidence
-  let overallConf = Math.round((stance.top?.confidence ?? (prob ? 50 : 30)) + (ai?.confidenceDelta ?? 0));
+  let overallConf = Math.round((stance.top?.confidence ?? bestChance?.confidence ?? (prob ? 50 : 30)) + (ai?.confidenceDelta ?? 0));
   overallConf = Math.max(0, Math.min(100, overallConf));
   let finalStance = stance.stance;
   if (ai?.endorseNoBet && finalStance === "bet") finalStance = "lean";
@@ -123,24 +111,80 @@ export async function predict(question: string, now = new Date()): Promise<Predi
 
   const headline =
     finalStance === "no-bet"
-      ? `No bet — ${stance.reason}`
+      ? bestChance
+        ? `No value at the price — best chance: ${bestChance.pick} (${(bestChance.modelProb * 100).toFixed(0)}%)`
+        : `No bet — ${stance.reason}`
       : `${finalStance === "bet" ? "Value" : "Lean"}: ${stance.top?.pick}${stance.top?.bookOdds ? ` @ ${stance.top.bookOdds.toFixed(2)}` : ""}${stance.top?.edgePct != null ? ` (${stance.top.edgePct}% edge)` : ""}`;
 
   return {
     question,
     fixture: f,
     league,
-    verdict: { stance: finalStance, headline, topSelection: finalStance !== "no-bet" ? stance.top : undefined, confidence: overallConf },
+    verdict: { stance: finalStance, headline, topSelection: finalStance !== "no-bet" ? stance.top : undefined, bestChance, confidence: overallConf },
     probabilities: prob ?? undefined,
     market: odds,
     selections,
     availability: detail.injuries,
     evidence,
-    reasoning: ai?.reasoning || (model ? `Model estimate: ${f.home.name} ${(prob!.home * 100).toFixed(0)}%${prob!.draw != null ? `, draw ${(prob!.draw * 100).toFixed(0)}%` : ""}, ${f.away.name} ${(prob!.away * 100).toFixed(0)}%. ${stance.reason}` : `Insufficient reliable data to model this fixture. ${stance.reason}`),
+    reasoning: ai?.reasoning || (model ? `Model: ${f.home.name} ${(prob!.home * 100).toFixed(0)}%${prob!.draw != null ? `, draw ${(prob!.draw * 100).toFixed(0)}%` : ""}, ${f.away.name} ${(prob!.away * 100).toFixed(0)}%.${bestChance ? ` Best chance to win: ${bestChance.pick} at ${(bestChance.modelProb * 100).toFixed(0)}%.` : ""} ${stance.reason}` : `Insufficient reliable data to model this fixture. ${stance.reason}`),
     risks: ai?.risks?.length ? ai.risks : ["Lineups and late team news can move these numbers — re-check near kickoff.", ...(model && model.minGamesPlayed < 6 ? ["Small season sample — strengths are still stabilising."] : [])],
     dataAsOf: now.toISOString(),
     disclaimer: RG_DISCLAIMER,
   };
+}
+
+export async function predict(question: string, now = new Date()): Promise<PredictionReport> {
+  const resolved = await resolveFixture(question, now);
+  if (!resolved) {
+    const r = hasSearch() ? await webSearch(`${question} sports betting analysis prediction`, { depth: "advanced", maxResults: 6 }) : null;
+    const rep: PredictionReport = { question, verdict: { stance: "no-bet", headline: "Couldn't pin this to a specific upcoming fixture in the covered leagues.", confidence: 0 }, selections: [], availability: [], evidence: [], reasoning: r?.answer || "I couldn't identify a specific match. Name both teams (e.g. \"Arsenal vs Chelsea\"), or ask for a whole competition (e.g. \"all remaining World Cup fixtures\").", risks: ["No verified fixture/odds resolved — general context only."], dataAsOf: now.toISOString(), disclaimer: RG_DISCLAIMER };
+    if (r?.results?.length) rep.evidence = r.results.slice(0, 4).map((x) => ({ kind: "news" as const, text: `${x.title}: ${x.content.slice(0, 200)}`, source: x.url }));
+    return rep;
+  }
+  return analyzeFixture(resolved.fixture, resolved.league, resolved.odds, question, now);
+}
+
+/** A broad request for MANY fixtures (a whole competition, "all remaining", a
+ *  slate, or several explicit matchups) rather than one named match. */
+export function isBulkPrompt(q: string): boolean {
+  const s = q.toLowerCase();
+  const scope = /\b(all|every|each|remaining|rest of|today'?s?|tonight'?s?|this (?:week|weekend)|upcoming|full|entire|whole|slate|card|matchday|game ?week|round of|fixtures|matches|games|schedule)\b/;
+  const vsCount = (s.match(/\bvs\.?\b|\bversus\b/g) || []).length;
+  return scope.test(s) || vsCount >= 2;
+}
+
+/** Resolve a broad prompt to a set of real upcoming fixtures (capped). */
+export async function resolveBulkFixtures(prompt: string, now: Date, limit = 8): Promise<{ fixture: Fixture; league: LeagueDef; odds?: MarketOdds }[]> {
+  const guessed = guessLeagues(prompt);
+  const use = guessed.length ? guessed : LEAGUES.slice(0, 6);
+  const from = new Date(now.getTime() - 1 * 864e5);
+  const to = new Date(now.getTime() + 14 * 864e5);
+  const range = `${yyyymmdd(from)}-${yyyymmdd(to)}`;
+  const out: { fixture: Fixture; league: LeagueDef; odds?: MarketOdds }[] = [];
+  for (const league of use) {
+    try {
+      const { fixtures, oddsById } = await fetchFixtures(league.id, range);
+      for (const f of fixtures.filter((x) => x.status !== "final")) out.push({ fixture: f, league, odds: oddsById[f.id] });
+    } catch {
+      /* skip */
+    }
+    if (out.length >= limit) break;
+  }
+  out.sort((a, b) => Date.parse(a.fixture.startsAt) - Date.parse(b.fixture.startsAt));
+  return out.slice(0, limit);
+}
+
+/** Analyse many fixtures for a broad prompt (fast/light per match). */
+export async function predictMany(prompt: string, now = new Date(), limit = 8): Promise<PredictionReport[]> {
+  const resolved = await resolveBulkFixtures(prompt, now, limit);
+  const tables = new Map<string, StandingRow[]>();
+  const reports: PredictionReport[] = [];
+  for (const r of resolved) {
+    let table = tables.get(r.league.id);
+    if (!table) { table = await fetchStandings(r.league.id).catch(() => [] as StandingRow[]); tables.set(r.league.id, table); }
+    reports.push(await analyzeFixture(r.fixture, r.league, r.odds, `${r.fixture.home.name} vs ${r.fixture.away.name}`, now, { light: true, table }));
+  }
+  return reports;
 }
 
 /** Upcoming fixtures across leagues for the browser (real scoreboard data). */

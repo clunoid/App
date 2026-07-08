@@ -57,7 +57,7 @@ export function poissonModel(inp: PoissonInput): (ModelProbabilities & { minGame
   const lambdaAway = leagueAvgGpg * a.attack * h.defence / HOME_ADV;
 
   // joint scoreline grid
-  let pHome = 0, pDraw = 0, pAway = 0, pOver = 0, pBtts = 0;
+  let pHome = 0, pDraw = 0, pAway = 0, pO15 = 0, pO25 = 0, pO35 = 0, pBtts = 0;
   const homePmf = Array.from({ length: MAX_GOALS + 1 }, (_, i) => poissonPmf(i, lambdaHome));
   const awayPmf = Array.from({ length: MAX_GOALS + 1 }, (_, i) => poissonPmf(i, lambdaAway));
   for (let i = 0; i <= MAX_GOALS; i++) {
@@ -66,7 +66,9 @@ export function poissonModel(inp: PoissonInput): (ModelProbabilities & { minGame
       if (i > j) pHome += p;
       else if (i === j) pDraw += p;
       else pAway += p;
-      if (i + j > 2.5) pOver += p;
+      if (i + j > 1.5) pO15 += p;
+      if (i + j > 2.5) pO25 += p;
+      if (i + j > 3.5) pO35 += p;
       if (i >= 1 && j >= 1) pBtts += p;
     }
   }
@@ -77,7 +79,9 @@ export function poissonModel(inp: PoissonInput): (ModelProbabilities & { minGame
     away: pAway / norm,
     expHome: Number(lambdaHome.toFixed(2)),
     expAway: Number(lambdaAway.toFixed(2)),
-    overProb: pOver / norm,
+    over15: pO15 / norm,
+    overProb: pO25 / norm,
+    over35: pO35 / norm,
     bttsProb: pBtts / norm,
     method: "double-poisson (attack/defence from season goals)",
     minGamesPlayed: Math.min(h.gp, a.gp),
@@ -101,13 +105,16 @@ export function blendWithMarket(model: ModelProbabilities | null, implied: Marke
 const KELLY_FRACTION = 0.25; // quarter-Kelly — deliberately conservative
 const EDGE_THRESHOLD = 0.04; // model must beat fair line by ≥4 pts to flag value
 
-/** Build ranked selections for the standard markets, flagging only real edges. */
+/** Build ranked selections across ALL the everyday markets (not just who-wins:
+ *  double chance, draw-no-bet, totals at 1.5/2.5/3.5, BTTS), flagging real edges
+ *  where a market price exists. Giving the full menu is what lets the desk offer
+ *  the *best chance to win*, which is often a safer market than the outright. */
 export function buildSelections(prob: ModelProbabilities, odds: MarketOdds | undefined, threeWay: boolean, homeName: string, awayName: string): Selection[] {
   const out: Selection[] = [];
-  const consider = (market: string, pick: string, modelProb: number, bookOdds?: number, impliedProb?: number) => {
-    if (!(modelProb > 0)) return;
+  const consider = (market: string, pick: string, category: Selection["category"], modelProb: number, bookOdds?: number, impliedProb?: number) => {
+    if (!(modelProb > 0.02) || modelProb > 0.995) return;
     const fairOdds = 1 / modelProb;
-    const sel: Selection = { market, pick, modelProb, impliedProb, fairOdds: Number(fairOdds.toFixed(2)), bookOdds, confidence: 0 };
+    const sel: Selection = { market, pick, category, modelProb, impliedProb, fairOdds: Number(fairOdds.toFixed(2)), bookOdds, confidence: 0 };
     if (bookOdds && bookOdds > 1) {
       const edge = modelProb * bookOdds - 1; // EV per unit
       sel.edgePct = Number((edge * 100).toFixed(1));
@@ -115,19 +122,43 @@ export function buildSelections(prob: ModelProbabilities, odds: MarketOdds | und
       const kelly = (b * modelProb - (1 - modelProb)) / b;
       sel.kellyFraction = kelly > 0 ? Number((kelly * KELLY_FRACTION).toFixed(3)) : 0;
     }
-    // confidence: how far model clears the fair line + sample credibility proxy
     const edgeVsFair = impliedProb != null ? modelProb - impliedProb : 0;
     sel.confidence = Math.max(0, Math.min(100, Math.round(45 + modelProb * 45 + edgeVsFair * 120)));
     out.push(sel);
   };
-  consider("Match result", `${homeName} win`, prob.home, odds?.homeWin, odds?.implied?.home);
-  if (threeWay) consider("Match result", "Draw", prob.draw ?? 0, odds?.draw, odds?.implied?.draw);
-  consider("Match result", `${awayName} win`, prob.away, odds?.awayWin, odds?.implied?.away);
-  if (prob.overProb != null) consider("Total goals", "Over 2.5", prob.overProb);
-  if (prob.bttsProb != null) consider("Both teams to score", "Yes", prob.bttsProb);
+  const h = prob.home, d = prob.draw ?? 0, a = prob.away;
+  // 1) outright
+  consider("Match result", `${homeName} win`, "result", h, odds?.homeWin, odds?.implied?.home);
+  if (threeWay) consider("Match result", "Draw", "result", d, odds?.draw, odds?.implied?.draw);
+  consider("Match result", `${awayName} win`, "result", a, odds?.awayWin, odds?.implied?.away);
+  // 2) double chance + draw-no-bet (the safer ways to back a side) — soccer
+  if (threeWay) {
+    consider("Double chance", `${homeName} or draw`, "double-chance", h + d);
+    consider("Double chance", `${awayName} or draw`, "double-chance", a + d);
+    consider("Double chance", `${homeName} or ${awayName}`, "double-chance", h + a);
+    if (h + a > 0) {
+      consider("Draw no bet", `${homeName} (DNB)`, "dnb", h / (h + a));
+      consider("Draw no bet", `${awayName} (DNB)`, "dnb", a / (h + a));
+    }
+  }
+  // 3) totals
+  if (prob.over15 != null) { consider("Total goals", "Over 1.5", "totals", prob.over15); consider("Total goals", "Under 1.5", "totals", 1 - prob.over15); }
+  if (prob.overProb != null) { consider("Total goals", "Over 2.5", "totals", prob.overProb, undefined, odds?.overUnder != null ? undefined : undefined); consider("Total goals", "Under 2.5", "totals", 1 - prob.overProb); }
+  if (prob.over35 != null) consider("Total goals", "Over 3.5", "totals", prob.over35);
+  // 4) BTTS
+  if (prob.bttsProb != null) { consider("Both teams to score", "Yes", "btts", prob.bttsProb); consider("Both teams to score", "No", "btts", 1 - prob.bttsProb); }
   // rank by edge (value) when odds exist, else by model probability
   out.sort((x, y) => (y.edgePct ?? -999) - (x.edgePct ?? -999) || y.modelProb - x.modelProb);
   return out;
+}
+
+/** The highest-probability SENSIBLE selection — the best CHANCE to win (often a
+ *  double chance / DNB / over-1.5, not the outright). Trivial near-certainties
+ *  (>90%) are excluded so the pick stays a real bet. */
+export function bestChancePick(selections: Selection[]): Selection | undefined {
+  const eligible = selections.filter((s) => s.modelProb >= 0.5 && s.modelProb <= 0.9);
+  const pool = eligible.length ? eligible : selections;
+  return [...pool].sort((x, y) => y.modelProb - x.modelProb)[0];
 }
 
 /** Decide the overall stance. No-bet is a first-class outcome. */
