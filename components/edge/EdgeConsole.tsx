@@ -10,8 +10,9 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Sparkles, Loader2, ShieldAlert, TrendingUp, CalendarDays, ArrowRight, Info, Trophy, CircleDollarSign, AlertTriangle, Activity } from "lucide-react";
+import { ArrowLeft, Sparkles, Loader2, ShieldAlert, TrendingUp, CalendarDays, ArrowRight, Info, Trophy, CircleDollarSign, AlertTriangle, Activity, LineChart, Clapperboard } from "lucide-react";
 import { EdgeBackground } from "./EdgeBackground";
+import { EdgeVideoStudio } from "./EdgeVideoStudio";
 import type { PredictionReport, Fixture, LeagueDef, MarketOdds } from "@/lib/edge/types";
 
 /* palette — deep ink + the Edge emerald (matches the home chip), cool blue for
@@ -212,6 +213,7 @@ function FixtureCard({ f, odds, onAnalyze }: { f: Fixture; odds?: MarketOdds; on
 /* ── main ─────────────────────────────────────────────────────────────────── */
 export function EdgeConsole() {
   const [denied, setDenied] = useState(false);
+  const [mode, setMode] = useState<"analyse" | "video">("analyse");
   const [fx, setFx] = useState<FixturesResponse | null>(null);
   const [league, setLeague] = useState("");
   const [question, setQuestion] = useState("");
@@ -278,12 +280,24 @@ export function EdgeConsole() {
             <span className="text-[19px] font-bold tracking-[0.14em]" style={{ color: C.accent }}>EDGE</span>
             <span className="hidden text-[12px] sm:inline" style={{ color: C.faint }}>Sports Intelligence</span>
           </div>
-          <span className="ml-auto flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold tracking-wide" style={{ ...mono, color: C.amber, background: "rgba(251,191,36,0.1)" }}><ShieldAlert size={11} /> 18+ · ANALYSIS ONLY</span>
+          {/* mode toggle */}
+          <div className="ml-auto flex items-center gap-1 rounded-full border p-0.5" style={{ borderColor: C.line, background: "rgba(255,255,255,0.03)" }}>
+            {([["analyse", "Analyse", LineChart], ["video", "Videos", Clapperboard]] as const).map(([id, label, Icon]) => (
+              <button key={id} type="button" onClick={() => setMode(id)} className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-semibold transition" style={mode === id ? { color: "#0a0c0d", background: C.accent } : { color: C.muted }}>
+                <Icon size={14} /> <span className="hidden sm:inline">{label}</span>
+              </button>
+            ))}
+          </div>
+          <span className="hidden items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold tracking-wide md:flex" style={{ ...mono, color: C.amber, background: "rgba(251,191,36,0.1)" }}><ShieldAlert size={11} /> 18+</span>
         </div>
       </header>
 
       {/* body — full width edge to edge (no centered max-width) */}
       <main className="relative z-10 w-full px-4 pt-6 sm:px-6 xl:px-10">
+        {mode === "video" ? (
+          <EdgeVideoStudio />
+        ) : (
+        <>
         {/* hero ask */}
         <div>
           <h1 className="text-2xl font-bold leading-tight tracking-tight sm:text-4xl">
@@ -353,6 +367,8 @@ export function EdgeConsole() {
             </div>
           )}
         </div>
+        </>
+        )}
       </main>
     </div>
   );
