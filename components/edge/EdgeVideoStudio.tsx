@@ -12,6 +12,7 @@ import { Loader2, Clapperboard, Download, Sparkles, Film, Trash2, Play, Palette,
 import { renderEdgeVideos } from "@/lib/edge/video";
 import { saveEdgeVideo, listEdgeVideos, loadEdgeVideoBlobs, deleteEdgeVideo, type SavedEdgeVideo } from "@/lib/edge/video-store";
 import { loadBranding, saveBranding, DEFAULT_BRANDING } from "@/lib/edge/brand-settings";
+import { EdgeGateBanner } from "./EdgeGate";
 import { edgeGate } from "@/lib/edge/gate";
 import type { Branding, VideoPlan } from "@/lib/edge/video-types";
 
@@ -36,7 +37,10 @@ function Seg<T extends string>({ label, value, onChange, options }: { label: str
 type Phase = "idle" | "planning" | "rendering" | "done" | "error";
 type Vids = { portraitUrl?: string; landscapeUrl?: string };
 
-export function EdgeVideoStudio({ onStatus }: { onStatus?: (s: { busy: boolean; pct: number; label: string }) => void } = {}) {
+export function EdgeVideoStudio({ onStatus, entitled = null }: { onStatus?: (s: { busy: boolean; pct: number; label: string }) => void; entitled?: boolean | null } = {}) {
+  // disable tools until we KNOW the user is entitled (null = still verifying → disabled),
+  // matching the analyse side; the subscribe banner shows only once we know they're not.
+  const gated = entitled !== true;
   const [prompt, setPrompt] = useState("");
   const [phase, setPhase] = useState<Phase>("idle");
   const [progress, setProgress] = useState({ pct: 0, label: "" });
@@ -58,7 +62,7 @@ export function EdgeVideoStudio({ onStatus }: { onStatus?: (s: { busy: boolean; 
   const setB = useCallback((patch: Partial<Branding>) => setBrand((b) => ({ ...b, ...patch })), []);
   const fetchLogo = useCallback(async (site?: string) => {
     const w = (site || "").trim();
-    if (!w || logoBusy) return;
+    if (!w || logoBusy || gated) return; // logo fetch is plan-gated too
     setLogoBusy(true);
     try {
       const res = await fetch("/api/edge/brand-logo", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ website: w }) });
@@ -80,7 +84,7 @@ export function EdgeVideoStudio({ onStatus }: { onStatus?: (s: { busy: boolean; 
     } finally {
       setLogoBusy(false);
     }
-  }, [logoBusy]);
+  }, [logoBusy, gated]);
   // report progress up so the render can keep running (and show a chip) even when
   // the user switches to Analyse mode — encoding continues in the background
   useEffect(() => {
@@ -98,7 +102,7 @@ export function EdgeVideoStudio({ onStatus }: { onStatus?: (s: { busy: boolean; 
 
   const generate = useCallback(async (p: string) => {
     const q = p.trim();
-    if (!q || phase === "planning" || phase === "rendering") return;
+    if (!q || phase === "planning" || phase === "rendering" || gated) return; // gated → nothing fires
     setPrompt(q);
     setErr(null);
     setUpsell(false);
@@ -130,7 +134,7 @@ export function EdgeVideoStudio({ onStatus }: { onStatus?: (s: { busy: boolean; 
       setUpsell(!!(e as { upgrade?: boolean })?.upgrade);
       setPhase("error");
     }
-  }, [phase, brand]);
+  }, [phase, brand, gated]);
 
   const openHistory = useCallback(async (v: SavedEdgeVideo) => {
     setPlan(v.data.plan);
@@ -155,18 +159,20 @@ export function EdgeVideoStudio({ onStatus }: { onStatus?: (s: { busy: boolean; 
         <p className="mt-2 max-w-2xl text-[14px]" style={{ color: C.muted }}>
           Name the matches. Two premium AI voices — Isaac asks, Cluno calls it — deliver the predictions over live sport media. You get a <b style={{ color: C.text }}>vertical</b> and a <b style={{ color: C.text }}>wide</b> cut, both from one voiced take.
         </p>
+        {entitled === false && <div className="mt-4"><EdgeGateBanner compact /></div>}
         <div className="mt-4 flex items-stretch gap-2.5">
-          <div className="flex flex-1 items-center rounded-full border px-4" style={{ borderColor: C.line, background: C.panelHi }}>
+          <div className="flex flex-1 items-center rounded-full border px-4" style={{ borderColor: C.line, background: C.panelHi, opacity: gated ? 0.55 : 1 }}>
             <Film size={17} className="shrink-0" style={{ color: C.accent }} />
-            <input value={prompt} onChange={(e) => setPrompt(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void generate(prompt); } }} placeholder="France vs Morocco, and Brazil vs Argentina…" disabled={busy} className="w-full bg-transparent px-3 py-3.5 text-[15px] outline-none placeholder:text-white/25 disabled:opacity-60" style={{ color: C.text }} />
+            <input value={prompt} onChange={(e) => setPrompt(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void generate(prompt); } }} placeholder={entitled === false ? "Subscribe or add credits to generate…" : "France vs Morocco, and Brazil vs Argentina…"} disabled={busy || gated} className="w-full bg-transparent px-3 py-3.5 text-[15px] outline-none placeholder:text-white/25 disabled:cursor-not-allowed disabled:opacity-60" style={{ color: C.text }} />
           </div>
-          <button type="button" onClick={() => void generate(prompt)} disabled={busy || !prompt.trim()} className="flex shrink-0 items-center gap-2 rounded-full px-5 text-[14px] font-bold transition hover:brightness-110 disabled:opacity-40" style={{ background: C.accent, color: "#0a0c0d" }}>
+          <button type="button" onClick={() => void generate(prompt)} disabled={busy || !prompt.trim() || gated} className="flex shrink-0 items-center gap-2 rounded-full px-5 text-[14px] font-bold transition hover:brightness-110 disabled:opacity-40" style={{ background: C.accent, color: "#0a0c0d" }}>
             {busy ? <Loader2 size={18} className="animate-spin" /> : <Sparkles size={18} />}<span className="hidden sm:inline">Generate</span>
           </button>
         </div>
         <div className="mt-3 flex flex-wrap gap-2">
-          {EXAMPLES.map((ex) => <button key={ex} type="button" onClick={() => void generate(ex)} disabled={busy} className="rounded-full border px-3 py-1.5 text-[12px] transition hover:border-white/25 hover:text-white disabled:opacity-50" style={{ borderColor: C.line, color: C.muted }}>{ex}</button>)}
+          {EXAMPLES.map((ex) => <button key={ex} type="button" onClick={() => void generate(ex)} disabled={busy || gated} className="rounded-full border px-3 py-1.5 text-[12px] transition hover:border-white/25 hover:text-white disabled:opacity-50" style={{ borderColor: C.line, color: C.muted }}>{ex}</button>)}
         </div>
+        {entitled === null && <p className="mt-2 text-[11.5px]" style={{ color: C.faint }}>Verifying your access…</p>}
       </div>
 
       {/* branding — auto-saved, no save button */}
@@ -190,7 +196,7 @@ export function EdgeVideoStudio({ onStatus }: { onStatus?: (s: { busy: boolean; 
                   <Globe size={14} className="shrink-0" style={{ color: C.faint }} />
                   <input value={brand.website || ""} onChange={(e) => setB({ website: e.target.value })} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void fetchLogo(brand.website); } }} placeholder="yourbrand.com" className="w-full bg-transparent px-2 py-2 text-[13px] outline-none placeholder:text-white/25" style={{ color: C.text }} />
                 </div>
-                <button type="button" onClick={() => void fetchLogo(brand.website)} disabled={logoBusy || !brand.website?.trim()} className="flex shrink-0 items-center gap-1.5 rounded-lg border px-3 text-[12px] font-semibold transition hover:border-white/25 disabled:opacity-40" style={{ borderColor: C.line, color: C.accent }}>
+                <button type="button" onClick={() => void fetchLogo(brand.website)} disabled={logoBusy || !brand.website?.trim() || gated} className="flex shrink-0 items-center gap-1.5 rounded-lg border px-3 text-[12px] font-semibold transition hover:border-white/25 disabled:opacity-40" style={{ borderColor: C.line, color: C.accent }}>
                   {logoBusy ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />} Fetch logo
                 </button>
               </div>

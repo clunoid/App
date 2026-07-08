@@ -14,6 +14,7 @@ import Link from "next/link";
 import { ArrowLeft, Sparkles, Loader2, ShieldAlert, TrendingUp, CalendarDays, ArrowRight, Info, Trophy, CircleDollarSign, AlertTriangle, Activity, LineChart, Clapperboard } from "lucide-react";
 import { EdgeBackground } from "./EdgeBackground";
 import { EdgeVideoStudio } from "./EdgeVideoStudio";
+import { EdgeGateBanner } from "./EdgeGate";
 import { edgeGate } from "@/lib/edge/gate";
 import type { PredictionReport, Fixture, LeagueDef, MarketOdds } from "@/lib/edge/types";
 
@@ -261,13 +262,28 @@ export function EdgeConsole() {
   const [reports, setReports] = useState<PredictionReport[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [upsell, setUpsell] = useState(false);
+  const [entitled, setEntitled] = useState<boolean | null>(null); // null = verifying access
   const reportRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
+    // verify entitlement on open (Pro/Max sub or purchased credits; admins always).
+    // Drives whether the inputs + AI/voice tools are enabled — the server still
+    // atomically gates + charges every action, so this is UX, not the security.
+    void (async () => {
+      try {
+        const res = await fetch("/api/edge/access", { cache: "no-store" });
+        const d = (await res.json().catch(() => ({}))) as { authed?: boolean; entitled?: boolean };
+        if (!d.authed) { setDenied(true); return; } // signed out → sign-in screen
+        setEntitled(!!d.entitled);
+      } catch {
+        setEntitled(true); // transient — server route still blocks a non-entitled action
+      }
+    })();
+    // browsing fixtures is free for any signed-in user (view-only teaser)
     void (async () => {
       try {
         const res = await fetch("/api/edge/fixtures", { cache: "no-store" });
-        if (res.status === 401) { setDenied(true); return; } // signed out → sign-in screen
+        if (res.status === 401) { setDenied(true); return; }
         if (res.ok) setFx((await res.json()) as FixturesResponse);
       } catch { /* transient */ }
     })();
@@ -275,7 +291,7 @@ export function EdgeConsole() {
 
   const ask = useCallback(async (q: string) => {
     const query = q.trim();
-    if (!query || loading) return;
+    if (!query || loading || entitled === false) return; // gated → no request fires
     setQuestion(query);
     setLoading(true);
     setErr(null);
@@ -300,7 +316,7 @@ export function EdgeConsole() {
     } finally {
       setLoading(false);
     }
-  }, [loading]);
+  }, [loading, entitled]);
 
   if (denied)
     return (
@@ -351,7 +367,7 @@ export function EdgeConsole() {
         {/* video studio stays MOUNTED across mode switches so encoding continues
             in the background while the user browses/analyses */}
         <div className={mode === "video" ? "" : "hidden"}>
-          <EdgeVideoStudio onStatus={setVideoStatus} />
+          <EdgeVideoStudio onStatus={setVideoStatus} entitled={entitled} />
         </div>
         <div className={mode === "analyse" ? "" : "hidden"}>
         {/* hero ask */}
@@ -362,25 +378,28 @@ export function EdgeConsole() {
           <p className="mt-2 max-w-2xl text-[14px]" style={{ color: C.muted }}>
             Real fixtures, live market odds, injuries, form and head-to-head — modelled, researched by top-tier AI, and explained. When there is no edge, it says so.
           </p>
+          {entitled === false && <div className="mt-5"><EdgeGateBanner /></div>}
           <div className="mt-5 flex items-stretch gap-2.5">
-            <div className="flex flex-1 items-center rounded-full border px-4" style={{ borderColor: C.line, background: C.panelHi }}>
+            <div className="flex flex-1 items-center rounded-full border px-4" style={{ borderColor: C.line, background: C.panelHi, opacity: entitled === true ? 1 : 0.55 }}>
               <Sparkles size={17} className="shrink-0" style={{ color: C.accent }} />
               <input
                 value={question}
                 onChange={(e) => setQuestion(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void ask(question); } }}
-                placeholder="Is there value on Arsenal to beat Chelsea?"
-                className="w-full bg-transparent px-3 py-3.5 text-[15px] outline-none placeholder:text-white/25"
+                placeholder={entitled === false ? "Subscribe or add credits to analyse…" : "Is there value on Arsenal to beat Chelsea?"}
+                disabled={entitled !== true}
+                className="w-full bg-transparent px-3 py-3.5 text-[15px] outline-none placeholder:text-white/25 disabled:cursor-not-allowed"
                 style={{ color: C.text }}
               />
             </div>
-            <button type="button" onClick={() => void ask(question)} disabled={loading || !question.trim()} className="flex shrink-0 items-center gap-2 rounded-full px-5 text-[14px] font-bold transition hover:brightness-110 disabled:opacity-40" style={{ background: C.accent, color: "#0a0c0d" }}>
-              {loading ? <Loader2 size={18} className="animate-spin" /> : <ArrowRight size={18} />}
+            <button type="button" onClick={() => void ask(question)} disabled={loading || !question.trim() || entitled !== true} className="flex shrink-0 items-center gap-2 rounded-full px-5 text-[14px] font-bold transition hover:brightness-110 disabled:opacity-40" style={{ background: C.accent, color: "#0a0c0d" }}>
+              {loading || entitled === null ? <Loader2 size={18} className="animate-spin" /> : <ArrowRight size={18} />}
               <span className="hidden sm:inline">Analyse</span>
             </button>
           </div>
+          {entitled === null && <p className="mt-2 text-[11.5px]" style={{ color: C.faint }}>Verifying your access…</p>}
           <div className="mt-3 flex flex-wrap gap-2">
-            {EXAMPLES.map((ex) => <button key={ex} type="button" onClick={() => void ask(ex)} className="rounded-full border px-3 py-1.5 text-[12px] transition hover:border-white/25 hover:text-white" style={{ borderColor: C.line, color: C.muted }}>{ex}</button>)}
+            {EXAMPLES.map((ex) => <button key={ex} type="button" onClick={() => void ask(ex)} disabled={entitled !== true} className="rounded-full border px-3 py-1.5 text-[12px] transition hover:border-white/25 hover:text-white disabled:opacity-40 disabled:hover:border-white/10" style={{ borderColor: C.line, color: C.muted }}>{ex}</button>)}
           </div>
         </div>
 

@@ -43,10 +43,11 @@ export async function POST(req: NextRequest) {
       }
       return NextResponse.json({ reports });
     }
+    // NB: do NOT refund the single "no fixture resolved" case — that path still runs
+    // a paid Tavily advanced web search (real vendor spend), so a full refund would
+    // let an entitled user pull free paid searches at net-zero credits. It's charged.
+    // (The bulk path IS refunded above because its no-resolve path does no web search.)
     const report = await predict(question);
-    // couldn't pin the query to a real fixture → don't charge for a "not found"
-    // (still return the guidance report so the user knows how to rephrase)
-    if (!report.fixture) await refundSplit(user.id, charge.fromBalance, charge.fromPurchased, "edge_analyze");
     return NextResponse.json({ report });
   } catch (e) {
     await refundSplit(user.id, charge.fromBalance, charge.fromPurchased, "edge_analyze");
