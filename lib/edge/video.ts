@@ -11,7 +11,7 @@
 import { aspectSize, type ReelAspect } from "@/lib/share/reel";
 import { encodeCanvasToMp4Web, hasWebCodecs } from "@/lib/share/webcodecs-mp4";
 import { toMp4Audio } from "@/lib/graphics/audio";
-import type { VideoPlan } from "./video-types";
+import type { Branding, VideoPlan } from "./video-types";
 
 const ACCENT = "#34d399";
 const BLUE = "#7dd3fc";
@@ -32,7 +32,9 @@ type Timing = { scenes: SceneTiming[]; total: number };
 type Assets = { images: Map<string, HTMLImageElement> };
 
 export type EdgeRenderResult = { portrait: Blob; landscape: Blob; hadVoice: boolean };
-export type EdgeRenderOpts = { onProgress?: (pct: number, label: string) => void; signal?: AbortSignal };
+export type EdgeRenderOpts = { onProgress?: (pct: number, label: string) => void; signal?: AbortSignal; branding?: Branding };
+
+const OUTRO_DUR = 2.6; // end-card seconds appended when branding is on
 
 const LEAD = 0.18;
 const TAIL = 0.45;
@@ -105,23 +107,85 @@ function buildTiming(plan: VideoPlan, bufs: (AudioBuffer | null)[], words: Word[
   return { scenes, total: Math.max(1, cursor) };
 }
 
-async function mixAudio(plan: VideoPlan, bufs: (AudioBuffer | null)[], timing: Timing): Promise<AudioBuffer | null> {
+/* A smooth, cool music bed: a warm detuned pad over an A-minor progression, a soft
+ * sub-bass pulse and a mellow kick — cinematic but understated, fitting for hype
+ * sports-prediction clips. Fully synthesised (royalty-free). */
+function buildBed(off: OfflineAudioContext, dest: AudioNode, total: number) {
+  const BPM = 84, beat = 60 / BPM, bar = beat * 4;
+  // Am – F – C – G, one bar each
+  const chords = [
+    { root: 55.0, tones: [220.0, 261.63, 329.63] },
+    { root: 43.65, tones: [174.61, 220.0, 261.63] },
+    { root: 65.41, tones: [261.63, 329.63, 392.0] },
+    { root: 49.0, tones: [196.0, 246.94, 293.66] },
+  ];
+  const pad = off.createGain(); pad.gain.value = 0.05; pad.connect(dest);
+  const bass = off.createGain(); bass.gain.value = 0.16; bass.connect(dest);
+  const kick = off.createGain(); kick.gain.value = 0.55; kick.connect(dest);
+  let bi = 0;
+  for (let t0 = 0; t0 < total; t0 += bar, bi++) {
+    const ch = chords[bi % chords.length];
+    const dur = Math.min(bar, total - t0) + 0.4;
+    // pad — soft detuned sines that swell in and out
+    for (const f of ch.tones) for (const det of [-5, 5]) {
+      const o = off.createOscillator(); o.type = "sine"; o.frequency.value = f; o.detune.value = det;
+      const g = off.createGain();
+      g.gain.setValueAtTime(0, t0);
+      g.gain.linearRampToValueAtTime(1, t0 + 0.6);
+      g.gain.setValueAtTime(1, t0 + dur - 0.6);
+      g.gain.linearRampToValueAtTime(0, t0 + dur);
+      o.connect(g).connect(pad); o.start(t0); o.stop(t0 + dur + 0.05);
+    }
+    // sub-bass + soft kick on beats 1 & 3
+    for (const b of [0, 2]) {
+      const ts = t0 + b * beat; if (ts >= total) break;
+      const bo = off.createOscillator(); bo.type = "sine"; bo.frequency.value = ch.root;
+      const bg = off.createGain();
+      bg.gain.setValueAtTime(0.0001, ts);
+      bg.gain.linearRampToValueAtTime(1, ts + 0.03);
+      bg.gain.exponentialRampToValueAtTime(0.001, ts + beat * 0.95);
+      bo.connect(bg).connect(bass); bo.start(ts); bo.stop(ts + beat);
+      const ko = off.createOscillator(); ko.type = "sine";
+      ko.frequency.setValueAtTime(115, ts);
+      ko.frequency.exponentialRampToValueAtTime(45, ts + 0.13);
+      const kg = off.createGain();
+      kg.gain.setValueAtTime(0.0001, ts);
+      kg.gain.exponentialRampToValueAtTime(1, ts + 0.006);
+      kg.gain.exponentialRampToValueAtTime(0.001, ts + 0.2);
+      ko.connect(kg).connect(kick); ko.start(ts); ko.stop(ts + 0.28);
+    }
+  }
+}
+
+async function mixAudio(plan: VideoPlan, bufs: (AudioBuffer | null)[], timing: Timing, total: number): Promise<AudioBuffer | null> {
   try {
     const SR = 48000;
     const OfflineCtor = window.OfflineAudioContext || (window as unknown as { webkitOfflineAudioContext: typeof OfflineAudioContext }).webkitOfflineAudioContext;
-    const off = new OfflineCtor(2, Math.ceil(timing.total * SR), SR);
+    const off = new OfflineCtor(2, Math.ceil(total * SR), SR);
     const master = off.createGain();
     master.gain.value = 1;
-    master.connect(off.destination);
-    // subtle ambient pad, ducked under speech
+    // gentle limiter so bed + voice never clip
+    const limiter = off.createDynamicsCompressor();
+    limiter.threshold.value = -2; limiter.knee.value = 6; limiter.ratio.value = 8; limiter.attack.value = 0.004; limiter.release.value = 0.2;
+    master.connect(limiter).connect(off.destination);
+
+    // music bed → warm lowpass → master, with a level envelope that ducks under speech
     const bed = off.createGain();
-    bed.gain.value = 0.03;
-    const lp = off.createBiquadFilter();
-    lp.type = "lowpass";
-    lp.frequency.value = 1400;
-    bed.connect(lp).connect(master);
-    const notes = [220, 277.18, 329.63]; // A minor-ish pad
-    for (const f of notes) { const o = off.createOscillator(); o.type = "triangle"; o.frequency.value = f; const g = off.createGain(); g.gain.value = 0.5; o.connect(g).connect(bed); o.start(0); o.stop(timing.total); }
+    const BASE = 0.1, DUCK = 0.055;
+    bed.gain.setValueAtTime(BASE, 0);
+    const warm = off.createBiquadFilter(); warm.type = "lowpass"; warm.frequency.value = 1900; warm.Q.value = 0.5;
+    bed.connect(warm).connect(master);
+    buildBed(off, bed, total);
+    for (let i = 0; i < bufs.length; i++) {
+      const b = bufs[i]; if (!b) continue;
+      const s = timing.scenes[i].lineAt, e = s + b.duration;
+      bed.gain.setValueAtTime(BASE, Math.max(0, s - 0.22));
+      bed.gain.linearRampToValueAtTime(DUCK, Math.max(0.001, s - 0.05));
+      bed.gain.setValueAtTime(DUCK, e + 0.04);
+      bed.gain.linearRampToValueAtTime(BASE, e + 0.3);
+    }
+
+    // voices sit on top of the bed, unducked
     for (let i = 0; i < bufs.length; i++) {
       const buf = bufs[i];
       if (!buf) continue;
@@ -140,9 +204,10 @@ async function mixAudio(plan: VideoPlan, bufs: (AudioBuffer | null)[], timing: T
 function loadImage(url: string): Promise<HTMLImageElement | null> {
   return new Promise((resolve) => { const img = new Image(); img.crossOrigin = "anonymous"; img.onload = () => resolve(img); img.onerror = () => resolve(null); img.src = url; });
 }
-async function loadAssets(plan: VideoPlan): Promise<Assets> {
+async function loadAssets(plan: VideoPlan, branding?: Branding): Promise<Assets> {
   const urls = new Set<string>();
   for (const m of plan.matches) { if (m.bgImage) urls.add(m.bgImage); if (m.homeLogo) urls.add(m.homeLogo); if (m.awayLogo) urls.add(m.awayLogo); }
+  if (branding?.enabled && branding.logo) urls.add(branding.logo);
   const images = new Map<string, HTMLImageElement>();
   await Promise.all([...urls].map(async (u) => { const img = await loadImage(u); if (img) images.set(u, img); }));
   return { images };
@@ -172,14 +237,16 @@ const ir = (img: HTMLImageElement) => (img.width && img.height ? img.width / img
 
 function easeIO(x: number) { return x < 0.5 ? 2 * x * x : 1 - Math.pow(-2 * x + 2, 2) / 2; }
 
-function drawFrame(ctx: CanvasRenderingContext2D, W: number, H: number, plan: VideoPlan, timing: Timing, assets: Assets, t: number, branded: boolean) {
+function drawFrame(ctx: CanvasRenderingContext2D, W: number, H: number, plan: VideoPlan, timing: Timing, assets: Assets, t: number, branding: Branding | undefined, outroStart: number) {
+  const portrait = H > W;
+  // branded end card on the tail
+  if (branding?.enabled && t >= outroStart) { drawOutro(ctx, W, H, branding, branding.logo ? assets.images.get(branding.logo) : undefined, t - outroStart); return; }
   // scene at t
   let si = 0;
   for (let i = 0; i < timing.scenes.length; i++) if (t >= timing.scenes[i].start - 1e-6) si = i;
   const st = timing.scenes[si];
   const scene = plan.scenes[si];
   const local = t - st.start;
-  const portrait = H > W;
   const m = scene.matchIndex >= 0 ? plan.matches[scene.matchIndex] : undefined;
 
   // start of the MATCH block this scene belongs to → team art, league chip and the
@@ -294,15 +361,53 @@ function drawFrame(ctx: CanvasRenderingContext2D, W: number, H: number, plan: Vi
   // caption (karaoke) + speaker label
   drawCaption(ctx, W, H, st, local, scene.speaker, S, portrait);
 
-  if (branded) {
-    ctx.save();
-    ctx.globalAlpha = 0.6;
-    ctx.textAlign = "right";
-    ctx.fillStyle = "rgba(255,255,255,0.55)";
-    ctx.font = `600 ${S * 0.022}px "Space Grotesk", system-ui, sans-serif`;
-    ctx.fillText("clunoid.com/edge", W - S * 0.05, H - S * 0.045);
-    ctx.restore();
-  }
+  // brand watermark throughout (a small corner tag)
+  if (branding?.enabled && branding.placement === "throughout") drawWatermark(ctx, W, H, branding, branding.logo ? assets.images.get(branding.logo) : undefined);
+}
+
+/* ── branding ─────────────────────────────────────────────────────────────── */
+function drawOutro(ctx: CanvasRenderingContext2D, W: number, H: number, branding: Branding, logo: HTMLImageElement | undefined, local: number) {
+  const S = Math.min(W, H), cx = W / 2;
+  ctx.fillStyle = INK;
+  ctx.fillRect(0, 0, W, H);
+  const gg = ctx.createRadialGradient(cx, H * 0.44, 0, cx, H * 0.44, S * 0.95);
+  gg.addColorStop(0, "rgba(52,211,153,0.18)");
+  gg.addColorStop(1, "rgba(52,211,153,0)");
+  ctx.fillStyle = gg;
+  ctx.fillRect(0, 0, W, H);
+  ctx.save();
+  ctx.globalAlpha = Math.min(1, local / 0.4);
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  let cy = H * (logo ? 0.4 : 0.47);
+  if (logo) { drawLogo(ctx, logo, cx, cy, S * 0.2); cy += S * 0.19; }
+  ctx.fillStyle = "#f3f6f4";
+  ctx.font = `800 ${S * 0.058}px "Space Grotesk", system-ui, sans-serif`;
+  wrapText(ctx, branding.tagline || branding.name || "clunoid.com", cx, cy, W * 0.84, S * 0.072);
+  ctx.strokeStyle = "rgba(52,211,153,0.85)";
+  ctx.lineWidth = Math.max(2, S * 0.006);
+  ctx.beginPath();
+  ctx.moveTo(cx - S * 0.055, cy + S * 0.075);
+  ctx.lineTo(cx + S * 0.055, cy + S * 0.075);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawWatermark(ctx: CanvasRenderingContext2D, W: number, H: number, branding: Branding, logo: HTMLImageElement | undefined) {
+  const S = Math.min(W, H), pad = S * 0.05;
+  const text = (branding.name || branding.tagline || "").trim();
+  if (!text && !logo) return;
+  const y = branding.corner === "top" ? pad : H - pad;
+  ctx.save();
+  ctx.globalAlpha = 0.66;
+  ctx.textBaseline = "middle";
+  ctx.textAlign = "right";
+  ctx.font = `600 ${S * 0.022}px "Space Grotesk", system-ui, sans-serif`;
+  const rx = W - pad;
+  ctx.fillStyle = "rgba(255,255,255,0.9)";
+  if (text) ctx.fillText(text, rx, y);
+  if (logo) { const ls = S * 0.05; const tw = text ? ctx.measureText(text).width + S * 0.02 : 0; drawLogo(ctx, logo, rx - tw - ls / 2, y, ls); }
+  ctx.restore();
 }
 
 function drawTeam(ctx: CanvasRenderingContext2D, logo: HTMLImageElement | undefined, name: string, cx: number, cy: number, size: number, enter: number, color: string, isWinner: boolean) {
@@ -379,13 +484,13 @@ function wrapText(ctx: CanvasRenderingContext2D, text: string, cx: number, cy: n
 
 /* ── orchestration: one audio, two encodes ────────────────────────────────── */
 export async function renderEdgeVideos(plan: VideoPlan, opts: EdgeRenderOpts = {}): Promise<EdgeRenderResult> {
-  const { onProgress, signal } = opts;
+  const { onProgress, signal, branding } = opts;
   const prog = (p: number, l: string) => onProgress?.(p, l);
   const abort = () => { if (signal?.aborted) throw new DOMException("aborted", "AbortError"); };
   if (!hasWebCodecs()) { const e = new Error("Video creation needs Chrome or Edge on a computer."); e.name = "FriendlyError"; throw e; }
 
   prog(3, "Loading media…");
-  const assets = await loadAssets(plan);
+  const assets = await loadAssets(plan, branding);
   abort();
 
   prog(8, "Voicing the hosts…");
@@ -398,17 +503,19 @@ export async function renderEdgeVideos(plan: VideoPlan, opts: EdgeRenderOpts = {
   abort();
   const hadVoice = bufs.some(Boolean);
   const timing = buildTiming(plan, bufs, words);
+  const outroStart = timing.total;
+  const fullDur = timing.total + (branding?.enabled ? OUTRO_DUR : 0);
 
   prog(32, "Mixing audio…");
-  const mixed = await mixAudio(plan, bufs, timing);
+  const mixed = await mixAudio(plan, bufs, timing, fullDur);
   abort();
 
   const bitrate = 9_000_000;
   const encodeOne = async (aspect: ReelAspect, band: [number, number]): Promise<Blob> => {
     const { w: W, h: H } = aspectSize(aspect);
     const res = await encodeCanvasToMp4Web({
-      W, H, fps: 30, durationSec: timing.total,
-      drawFrame: (ctx, t) => drawFrame(ctx as CanvasRenderingContext2D, W, H, plan, timing, assets, t, true),
+      W, H, fps: 30, durationSec: fullDur,
+      drawFrame: (ctx, t) => drawFrame(ctx as CanvasRenderingContext2D, W, H, plan, timing, assets, t, branding, outroStart),
       audio: toMp4Audio(mixed),
       onProgress: (p) => prog(Math.round(band[0] + (p / 100) * (band[1] - band[0])), aspect === "9:16" ? "Encoding vertical…" : "Encoding wide…"),
       signal, bitrate,

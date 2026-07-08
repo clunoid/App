@@ -7,15 +7,29 @@
  * voiced audio, so the premium voices are used once. Saved to history.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Loader2, Clapperboard, Download, Sparkles, Film, Trash2, Play } from "lucide-react";
+import { Loader2, Clapperboard, Download, Sparkles, Film, Trash2, Play, Palette, Globe, X } from "lucide-react";
 import { renderEdgeVideos } from "@/lib/edge/video";
 import { saveEdgeVideo, listEdgeVideos, loadEdgeVideoBlobs, deleteEdgeVideo, type SavedEdgeVideo } from "@/lib/edge/video-store";
-import type { VideoPlan } from "@/lib/edge/video-types";
+import { loadBranding, saveBranding, DEFAULT_BRANDING } from "@/lib/edge/brand-settings";
+import type { Branding, VideoPlan } from "@/lib/edge/video-types";
 
 const C = { line: "rgba(255,255,255,0.09)", panel: "rgba(255,255,255,0.026)", panelHi: "rgba(255,255,255,0.05)", text: "#f3f6f4", muted: "#9aa5a0", faint: "#626d68", accent: "#34d399", blue: "#7dd3fc", amber: "#fbbf24", red: "#f87171" };
 const mono = { fontFamily: "var(--edge-mono), ui-monospace, monospace" } as const;
 
 const EXAMPLES = ["France vs Morocco", "Argentina vs Brazil, and Spain vs Germany", "Who wins Lakers vs Celtics tonight", "Man City vs Arsenal + Real Madrid vs Barcelona"];
+
+function Seg<T extends string>({ label, value, onChange, options }: { label: string; value: T; onChange: (v: T) => void; options: [T, string][] }) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: C.faint }}>{label}</span>
+      <div className="flex rounded-lg border p-0.5" style={{ borderColor: C.line }}>
+        {options.map(([v, lbl]) => (
+          <button key={v} type="button" onClick={() => onChange(v)} className="rounded-md px-2.5 py-1 text-[12px] font-semibold transition" style={value === v ? { background: C.accent, color: "#0a0c0d" } : { color: C.muted }}>{lbl}</button>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 type Phase = "idle" | "planning" | "rendering" | "done" | "error";
 type Vids = { portraitUrl?: string; landscapeUrl?: string };
@@ -28,11 +42,42 @@ export function EdgeVideoStudio({ onStatus }: { onStatus?: (s: { busy: boolean; 
   const [vids, setVids] = useState<Vids>({});
   const [err, setErr] = useState<string | null>(null);
   const [history, setHistory] = useState<SavedEdgeVideo[]>([]);
+  const [brand, setBrand] = useState<Branding>(DEFAULT_BRANDING);
+  const [logoBusy, setLogoBusy] = useState(false);
   const urlsRef = useRef<string[]>([]);
 
   const revoke = () => { urlsRef.current.forEach((u) => URL.revokeObjectURL(u)); urlsRef.current = []; };
   useEffect(() => () => revoke(), []);
   useEffect(() => { void listEdgeVideos().then(setHistory); }, []);
+  // branding is auto-saved (no save button) — load once, persist on every change
+  useEffect(() => { setBrand(loadBranding()); }, []);
+  useEffect(() => { saveBranding(brand); }, [brand]);
+  const setB = useCallback((patch: Partial<Branding>) => setBrand((b) => ({ ...b, ...patch })), []);
+  const fetchLogo = useCallback(async (site?: string) => {
+    const w = (site || "").trim();
+    if (!w || logoBusy) return;
+    setLogoBusy(true);
+    try {
+      const res = await fetch("/api/edge/brand-logo", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ website: w }) });
+      const d = await res.json();
+      if (res.ok) {
+        setBrand((b) => {
+          const custom = (cur: string, def: string) => !!cur && cur.trim().length > 0 && cur !== def;
+          return {
+            ...b,
+            website: d.website || w,
+            logo: d.logo || b.logo,
+            name: custom(b.name, DEFAULT_BRANDING.name) ? b.name : d.name || b.name,
+            tagline: custom(b.tagline, DEFAULT_BRANDING.tagline) ? b.tagline : d.name ? `Play on ${d.name}` : b.tagline,
+          };
+        });
+      }
+    } catch {
+      /* ignore — brand can still use text-only branding */
+    } finally {
+      setLogoBusy(false);
+    }
+  }, [logoBusy]);
   // report progress up so the render can keep running (and show a chip) even when
   // the user switches to Analyse mode — encoding continues in the background
   useEffect(() => {
@@ -64,7 +109,7 @@ export function EdgeVideoStudio({ onStatus }: { onStatus?: (s: { busy: boolean; 
       const pl = d.plan as VideoPlan;
       setPlan(pl);
       setPhase("rendering");
-      const out = await renderEdgeVideos(pl, { onProgress: (pct, label) => setProgress({ pct, label }) });
+      const out = await renderEdgeVideos(pl, { branding: brand, onProgress: (pct, label) => setProgress({ pct, label }) });
       show(out.portrait, out.landscape);
       setPhase("done");
       const id = await saveEdgeVideo({ prompt: q, plan: pl }, { portrait: out.portrait, landscape: out.landscape });
@@ -74,7 +119,7 @@ export function EdgeVideoStudio({ onStatus }: { onStatus?: (s: { busy: boolean; 
       setErr(msg);
       setPhase("error");
     }
-  }, [phase]);
+  }, [phase, brand]);
 
   const openHistory = useCallback(async (v: SavedEdgeVideo) => {
     setPlan(v.data.plan);
@@ -111,6 +156,66 @@ export function EdgeVideoStudio({ onStatus }: { onStatus?: (s: { busy: boolean; 
         <div className="mt-3 flex flex-wrap gap-2">
           {EXAMPLES.map((ex) => <button key={ex} type="button" onClick={() => void generate(ex)} disabled={busy} className="rounded-full border px-3 py-1.5 text-[12px] transition hover:border-white/25 hover:text-white disabled:opacity-50" style={{ borderColor: C.line, color: C.muted }}>{ex}</button>)}
         </div>
+      </div>
+
+      {/* branding — auto-saved, no save button */}
+      <div className="rounded-2xl border p-4" style={{ borderColor: C.line, background: C.panel }}>
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 text-[13px] font-semibold" style={{ color: C.text }}>
+            <Palette size={16} style={{ color: C.accent }} /> Branding
+            <span className="text-[11px] font-normal" style={{ color: C.faint }}>· saved automatically</span>
+          </div>
+          <button type="button" role="switch" aria-checked={brand.enabled} aria-label="Toggle branding" onClick={() => setB({ enabled: !brand.enabled })} className="relative h-6 w-11 shrink-0 rounded-full transition" style={{ background: brand.enabled ? C.accent : "rgba(255,255,255,0.14)" }}>
+            <span className="absolute top-0.5 h-5 w-5 rounded-full bg-white transition-all" style={{ left: brand.enabled ? "22px" : "2px" }} />
+          </button>
+        </div>
+
+        {brand.enabled ? (
+          <div className="mt-4 space-y-3">
+            <div>
+              <label className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: C.faint }}>Your website — we&apos;ll fetch your logo (optional)</label>
+              <div className="mt-1.5 flex gap-2">
+                <div className="flex flex-1 items-center rounded-lg border px-3" style={{ borderColor: C.line, background: C.panelHi }}>
+                  <Globe size={14} className="shrink-0" style={{ color: C.faint }} />
+                  <input value={brand.website || ""} onChange={(e) => setB({ website: e.target.value })} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void fetchLogo(brand.website); } }} placeholder="yourbrand.com" className="w-full bg-transparent px-2 py-2 text-[13px] outline-none placeholder:text-white/25" style={{ color: C.text }} />
+                </div>
+                <button type="button" onClick={() => void fetchLogo(brand.website)} disabled={logoBusy || !brand.website?.trim()} className="flex shrink-0 items-center gap-1.5 rounded-lg border px-3 text-[12px] font-semibold transition hover:border-white/25 disabled:opacity-40" style={{ borderColor: C.line, color: C.accent }}>
+                  {logoBusy ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />} Fetch logo
+                </button>
+              </div>
+            </div>
+
+            {brand.logo && (
+              <div className="flex items-center gap-2.5 rounded-lg border p-2" style={{ borderColor: C.line, background: C.panelHi }}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={brand.logo} alt="brand logo" className="h-8 w-8 rounded object-contain" style={{ background: "rgba(255,255,255,0.06)" }} />
+                <span className="text-[12px]" style={{ color: C.muted }}>Logo added — shown on the end card{brand.placement === "throughout" ? " and watermark" : ""}.</span>
+                <button type="button" onClick={() => setB({ logo: undefined })} className="ml-auto shrink-0 transition hover:text-red-400" style={{ color: C.faint }} aria-label="Remove logo"><X size={15} /></button>
+              </div>
+            )}
+
+            <div className="grid gap-2 sm:grid-cols-2">
+              <div>
+                <label className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: C.faint }}>Watermark name</label>
+                <input value={brand.name} onChange={(e) => setB({ name: e.target.value })} placeholder="clunoid.com" className="mt-1.5 w-full rounded-lg border px-3 py-2 text-[13px] outline-none placeholder:text-white/25" style={{ borderColor: C.line, background: C.panelHi, color: C.text }} />
+              </div>
+              <div>
+                <label className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: C.faint }}>End-card message</label>
+                <input value={brand.tagline} onChange={(e) => setB({ tagline: e.target.value })} placeholder="Made on clunoid.com" className="mt-1.5 w-full rounded-lg border px-3 py-2 text-[13px] outline-none placeholder:text-white/25" style={{ borderColor: C.line, background: C.panelHi, color: C.text }} />
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-2 pt-0.5">
+              <Seg label="Show" value={brand.placement} onChange={(v) => setB({ placement: v })} options={[["end", "End only"], ["throughout", "Throughout"]]} />
+              {brand.placement === "throughout" && <Seg label="Corner" value={brand.corner} onChange={(v) => setB({ corner: v })} options={[["bottom", "Bottom"], ["top", "Top"]]} />}
+            </div>
+            <p className="text-[11px]" style={{ color: C.faint }}>
+              {brand.placement === "throughout" ? `“${brand.name || "your brand"}” sits in the ${brand.corner} corner throughout, and ` : "An "}end card closes every video. Turn the toggle off to render with no branding at all.
+            </p>
+          </div>
+        ) : (
+          <p className="mt-2 text-[12px]" style={{ color: C.faint }}>Branding is off — videos render clean, with no watermark or end card.</p>
+        )}
       </div>
 
       {err && <p className="rounded-xl border px-4 py-2.5 text-[12.5px]" style={{ borderColor: "rgba(248,113,113,0.3)", background: "rgba(248,113,113,0.06)", color: C.red }}>{err}</p>}

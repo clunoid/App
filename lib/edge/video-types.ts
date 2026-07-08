@@ -43,3 +43,18 @@ export type VideoPlan = {
 
 /** What a saved history row stores (re-openable). */
 export type EdgeVideoSnapshot = { prompt: string; plan: VideoPlan };
+
+/**
+ * Per-user video branding. Defaults to Clunoid; a brand can point it at their own
+ * site + logo + call-to-action. "throughout" adds a small corner watermark on every
+ * frame plus the end card; "end" shows only the end card. Auto-saved (no save button).
+ */
+export type Branding = {
+  enabled: boolean;
+  placement: "end" | "throughout";
+  corner: "top" | "bottom"; // watermark corner when placement is "throughout"
+  name: string; // watermark text, e.g. "clunoid.com"
+  tagline: string; // end-card line, e.g. "Made on clunoid.com" / "Play on yourbrand.com"
+  website?: string; // the brand's site (for logo re-fetch / reference)
+  logo?: string; // canvas-safe data URL (optional brand logo)
+};
