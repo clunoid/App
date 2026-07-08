@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { Mic, MicOff, Send, Loader2, Search, History, Sparkles, CandlestickChart } from "lucide-react";
+import { Mic, MicOff, Send, Loader2, Search, History, Sparkles, CandlestickChart, Target } from "lucide-react";
 import { useClunoid } from "@/lib/store/useClunoid";
 import { useSpeechInput } from "@/lib/voice/useSpeechInput";
 import { useMicLevel } from "@/lib/voice/useMicLevel";
@@ -230,6 +230,15 @@ export default function Home() {
                 className="inline-flex items-center gap-1.5 rounded-full border border-clay/40 bg-clay/10 px-3 py-1 text-sm text-clay-soft transition hover:border-clay hover:text-clay"
               >
                 <CandlestickChart size={15} /> Trading
+              </Link>
+            )}
+            {isAdminUser && (
+              <Link
+                href="/edge"
+                className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm transition hover:brightness-125"
+                style={{ borderColor: "rgba(52,211,153,0.4)", background: "rgba(52,211,153,0.1)", color: "#5eead4" }}
+              >
+                <Target size={15} /> Edge
               </Link>
             )}
           </div>
