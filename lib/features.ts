@@ -28,9 +28,6 @@ export type FeatureDef = {
   open: (q?: string) => string;
   /** Does this query relate to the feature (by name, or a strong request)? */
   relates: (q: string) => boolean;
-  /** Minimum paid plan to USE this feature (server-enforced). Shown as a badge;
-   *  the card is still visible to everyone (it's a funnel). Omit = free. */
-  plan?: "pro" | "max";
 };
 
 // ── Strong-intent matchers (a query that clearly IS a feature request) ───────
@@ -140,7 +137,6 @@ export const FEATURES: FeatureDef[] = [
     accent: "mint",
     Icon: Target,
     hub: "/edge",
-    plan: "pro",
     // Edge takes a full natural-language question inside the console — the home
     // chooser just opens it (only triggers on the name so it never hijacks a search).
     open: () => "/edge",

@@ -57,9 +57,6 @@ export function FeatureNotes() {
                 aria-hidden
                 className={`absolute -top-2 left-1/2 h-3.5 w-14 -translate-x-1/2 -rotate-1 rounded-[3px] ${a.tape} shadow-sm transition-transform duration-200 group-hover:rotate-0`}
               />
-              {f.plan && (
-                <span className={`absolute right-2.5 top-2.5 rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ${a.chip}`}>{f.plan}</span>
-              )}
               <span className={`grid h-9 w-9 place-items-center rounded-xl ${a.chip}`}>
                 <f.Icon size={18} />
               </span>
