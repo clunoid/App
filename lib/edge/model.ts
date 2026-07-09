@@ -101,6 +101,27 @@ export function blendWithMarket(model: ModelProbabilities | null, implied: Marke
   return { ...model, home: home / s, draw: draw != null ? draw / s : undefined, away: away / s, method: `${model.method} + market blend` };
 }
 
+/** A light record-based prior for fixtures with no goals model AND no market — e.g.
+ *  an NBA/NFL/MLB game whose book line isn't posted yet. Uses the two teams' real
+ *  season W–L records + a small home edge. Real data, explainable, honestly labelled;
+ *  only a last-resort so every real fixture still gets a prediction (never fabricated
+ *  — returns null when the records aren't parseable). */
+export function recordProbabilities(homeRecord?: string, awayRecord?: string): ModelProbabilities | null {
+  const winRate = (rec?: string): number | null => {
+    if (!rec) return null;
+    const p = rec.split("-").map((n) => parseInt(n.trim(), 10));
+    if (p.length < 2 || p.some((n) => Number.isNaN(n))) return null;
+    const w = p[0], l = p[p.length - 1]; // "W-L" or "W-D-L" (draws ignored)
+    return w + l > 0 ? w / (w + l) : null;
+  };
+  const hw = winRate(homeRecord), aw = winRate(awayRecord);
+  if (hw == null || aw == null) return null;
+  const HOME_EDGE = 0.06;
+  const hs = Math.min(0.95, hw + HOME_EDGE), as = Math.max(0.05, aw);
+  const home = Math.max(0.12, Math.min(0.88, hs / (hs + as)));
+  return { home, away: 1 - home, method: "record-based (season W–L + home edge)" };
+}
+
 /* ── value / edge / staking ───────────────────────────────────────────────── */
 const KELLY_FRACTION = 0.25; // quarter-Kelly — deliberately conservative
 const EDGE_THRESHOLD = 0.04; // model must beat fair line by ≥4 pts to flag value

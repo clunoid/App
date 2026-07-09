@@ -11,7 +11,7 @@ import type { Evidence, Fixture, LeagueDef, MarketOdds, PredictionReport, Select
 import { RG_DISCLAIMER } from "./types";
 import { guessLeagues, LEAGUES, leagueById } from "./leagues";
 import { fetchFixtures, fetchStandings, fetchMatchDetail, type StandingRow, type MatchDetail } from "./data";
-import { poissonModel, blendWithMarket, buildSelections, decideStance, bestChancePick } from "./model";
+import { poissonModel, blendWithMarket, buildSelections, decideStance, bestChancePick, recordProbabilities } from "./model";
 import { reasonOverPrediction } from "./ai";
 
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
@@ -92,7 +92,9 @@ export async function analyzeFixture(f: Fixture, league: LeagueDef, sbOdds: Mark
   const hr = table.find((r) => r.team.id === f.home.id);
   const ar = table.find((r) => r.team.id === f.away.id);
   const model = league.sport === "soccer" && hr && ar ? poissonModel({ home: hr, away: ar, table }) : null;
-  const prob = blendWithMarket(model, odds?.implied, odds?.implied ? 0.5 : 0);
+  // soccer Poisson > de-vigged market > season-record prior (so non-soccer games
+  // without a posted book line still get a real, data-based pick — never fabricated)
+  const prob = blendWithMarket(model, odds?.implied, odds?.implied ? 0.5 : 0) ?? recordProbabilities(f.home.record, f.away.record);
   const selections: Selection[] = prob ? buildSelections(prob, odds, league.threeWay, f.home.name, f.away.name) : [];
   const stance = decideStance(selections, !!odds?.implied, model?.minGamesPlayed);
   const bestChance = bestChancePick(selections);
@@ -109,11 +111,13 @@ export async function analyzeFixture(f: Fixture, league: LeagueDef, sbOdds: Mark
   if (ai?.endorseNoBet && finalStance === "bet") finalStance = "lean";
   if (ai?.endorseNoBet && finalStance === "lean") finalStance = "no-bet";
 
+  // lead with the PREDICTION, not "no bet / no value at the price" (misleading — we
+  // always give a pick). Value/lean cases still show the actual bet + price + edge.
   const headline =
     finalStance === "no-bet"
       ? bestChance
-        ? `No value at the price — best chance: ${bestChance.pick} (${(bestChance.modelProb * 100).toFixed(0)}%)`
-        : `No bet — ${stance.reason}`
+        ? `Best chance: ${bestChance.pick} (${(bestChance.modelProb * 100).toFixed(0)}%)`
+        : "Prediction based on the model — see the read below."
       : `${finalStance === "bet" ? "Value" : "Lean"}: ${stance.top?.pick}${stance.top?.bookOdds ? ` @ ${stance.top.bookOdds.toFixed(2)}` : ""}${stance.top?.edgePct != null ? ` (${stance.top.edgePct}% edge)` : ""}`;
 
   return {
@@ -185,6 +189,48 @@ export async function predictMany(prompt: string, now = new Date(), limit = 8): 
     reports.push(await analyzeFixture(r.fixture, r.league, r.odds, `${r.fixture.home.name} vs ${r.fixture.away.name}`, now, { light: true, table }));
   }
   return reports;
+}
+
+/** Today's slate — the top N upcoming predictions, prioritising the most-watched
+ *  competitions. LEAGUES is already ordered by profile (World Cup → Premier League →
+ *  La Liga → … → US majors → other), and Promise.all preserves that order, so we fill
+ *  from the biggest competitions first and only fall back to lesser ones to reach the
+ *  count. Real matches only (no TBD/placeholder). Light per-match (ESPN only — no Opus
+ *  /Tavily) so a 10-match slate stays affordable. */
+export async function dailyPredictions(now = new Date(), limit = 10): Promise<PredictionReport[]> {
+  const from = new Date(now.getTime() - 0.5 * 864e5);
+  const to = new Date(now.getTime() + 10 * 864e5);
+  const range = `${yyyymmdd(from)}-${yyyymmdd(to)}`;
+  const perLeague = await Promise.all(
+    LEAGUES.map((league) =>
+      fetchFixtures(league.id, range)
+        .then(({ fixtures, oddsById }) => ({ league, fixtures, oddsById }))
+        .catch(() => ({ league, fixtures: [] as Fixture[], oddsById: {} as Record<string, MarketOdds> })),
+    ),
+  );
+  // exclude bracket placeholders (no real teams yet) — "Semifinal 1 Loser",
+  // "Quarterfinal 3 Winner", "Round of 16 Winner", "TBD", …
+  const PLACEHOLDER = /\b(winners?|losers?|tbd|bye|runner|semi[\s-]?finals?|quarter[\s-]?finals?|round of|third[\s-]?place|play[\s-]?offs?|to be determined)\b/i;
+  const real = (f: Fixture) => !!f.home?.name && !!f.away?.name && f.status !== "final" && !PLACEHOLDER.test(`${f.home.name} ${f.away.name}`);
+  const cand = Math.min(24, Math.ceil(limit * 1.8)); // over-pick, then keep the ones that actually model
+  const picked: { fixture: Fixture; league: LeagueDef; odds?: MarketOdds }[] = [];
+  for (const { league, fixtures, oddsById } of perLeague) {
+    if (picked.length >= cand) break;
+    const upcoming = fixtures.filter(real).sort((a, b) => Date.parse(a.startsAt) - Date.parse(b.startsAt));
+    for (const f of upcoming) {
+      picked.push({ fixture: f, league, odds: oddsById[f.id] });
+      if (picked.length >= cand) break;
+    }
+  }
+  const tables = new Map<string, StandingRow[]>();
+  const reports: PredictionReport[] = [];
+  for (const r of picked) {
+    let table = tables.get(r.league.id);
+    if (!table) { table = await fetchStandings(r.league.id).catch(() => [] as StandingRow[]); tables.set(r.league.id, table); }
+    reports.push(await analyzeFixture(r.fixture, r.league, r.odds, `${r.fixture.home.name} vs ${r.fixture.away.name}`, now, { light: true, table }));
+  }
+  // keep only fixtures that produced a real prediction (a best-chance pick or model probs)
+  return reports.filter((r) => !!r.verdict.bestChance || !!r.probabilities).slice(0, limit);
 }
 
 /** Upcoming fixtures across leagues for the browser (real scoreboard data). */

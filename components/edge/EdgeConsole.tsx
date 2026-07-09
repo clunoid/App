@@ -11,7 +11,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Sparkles, Loader2, ShieldAlert, TrendingUp, CalendarDays, ArrowRight, Info, Trophy, CircleDollarSign, AlertTriangle, Activity, LineChart, Clapperboard } from "lucide-react";
+import { ArrowLeft, Sparkles, Loader2, ShieldAlert, TrendingUp, CalendarDays, ArrowRight, Info, Trophy, CircleDollarSign, AlertTriangle, Activity, LineChart, Clapperboard, Download } from "lucide-react";
 import { EdgeBackground } from "./EdgeBackground";
 import { EdgeVideoStudio } from "./EdgeVideoStudio";
 import { EdgeGateBanner } from "./EdgeGate";
@@ -54,7 +54,7 @@ function Stance({ stance }: { stance: PredictionReport["verdict"]["stance"] }) {
   const m = {
     bet: { label: "VALUE", color: "#0a0c0d", bg: C.accent },
     lean: { label: "LEAN", color: C.amber, bg: "rgba(251,191,36,0.15)" },
-    "no-bet": { label: "NO BET", color: C.muted, bg: "rgba(255,255,255,0.06)" },
+    "no-bet": { label: "PICK", color: C.accent, bg: C.accentDim },
   }[stance];
   return <span className="rounded-full px-3 py-1 text-[11px] font-bold tracking-[0.12em]" style={{ ...mono, color: m.color, background: m.bg }}>{m.label}</span>;
 }
@@ -140,27 +140,6 @@ function ReportView({ r }: { r: PredictionReport }) {
                 {r.probabilities.expHome != null ? ` · expected goals ${r.probabilities.expHome}–${r.probabilities.expAway}` : ""}
                 {r.probabilities.overProb != null ? ` · over 2.5 ${(r.probabilities.overProb * 100).toFixed(0)}% · BTTS ${((r.probabilities.bttsProb ?? 0) * 100).toFixed(0)}%` : ""}
               </p>
-            </Card>
-          )}
-          {r.selections.length > 0 && (
-            <Card title="Selections & value" icon={CircleDollarSign}>
-              <div className="overflow-x-auto">
-                <table className="w-full text-[12.5px]" style={mono}>
-                  <thead><tr style={{ color: C.faint }}>{["Market", "Pick", "Model", "Book", "Edge", "¼-Kelly"].map((h) => <th key={h} className="px-2 py-1.5 text-left font-medium">{h}</th>)}</tr></thead>
-                  <tbody>
-                    {r.selections.map((s, i) => (
-                      <tr key={i} style={{ color: C.text, borderTop: `1px solid ${C.line}` }}>
-                        <td className="px-2 py-2" style={{ color: C.muted }}>{s.market}</td>
-                        <td className="px-2 py-2 font-semibold">{s.pick}</td>
-                        <td className="px-2 py-2">{(s.modelProb * 100).toFixed(0)}%</td>
-                        <td className="px-2 py-2">{s.bookOdds ? s.bookOdds.toFixed(2) : "—"}</td>
-                        <td className="px-2 py-2 font-semibold" style={{ color: s.edgePct != null ? (s.edgePct >= 4 ? C.accent : s.edgePct >= 0 ? C.amber : C.red) : C.faint }}>{s.edgePct != null ? `${s.edgePct > 0 ? "+" : ""}${s.edgePct}%` : "—"}</td>
-                        <td className="px-2 py-2" style={{ color: C.faint }}>{s.kellyFraction ? `${(s.kellyFraction * 100).toFixed(1)}%` : "—"}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
             </Card>
           )}
           <Card title="The read" icon={Sparkles}>
@@ -249,6 +228,56 @@ function BulkCard({ r }: { r: PredictionReport }) {
   );
 }
 
+/** The single headline PREDICTION for a report — the best-chance pick, or the model
+ *  favourite if no market/pick. Never "no bet". */
+function predictionOf(r: PredictionReport): { pick: string; prob: number; market?: string } | null {
+  const b = r.verdict.bestChance;
+  if (b) return { pick: b.pick, prob: b.modelProb, market: b.market };
+  const p = r.probabilities;
+  if (p && r.fixture) {
+    const homeFav = p.home >= p.away;
+    return { pick: `${homeFav ? r.fixture.home.name : r.fixture.away.name} to win`, prob: Math.max(p.home, p.away) };
+  }
+  return null;
+}
+
+/** Today's slate as a clean table: match · competition · kickoff · prediction. */
+function DailyTable({ reports }: { reports: PredictionReport[] }) {
+  return (
+    <div className="mt-4 overflow-x-auto">
+      <table className="w-full text-[12.5px]">
+        <thead><tr style={{ color: C.faint }}>{["#", "Match", "Competition", "Kickoff", "Prediction", ""].map((h, i) => <th key={i} className="whitespace-nowrap px-2 py-1.5 text-left font-medium">{h}</th>)}</tr></thead>
+        <tbody>
+          {reports.map((r, i) => {
+            const f = r.fixture;
+            const pr = predictionOf(r);
+            return (
+              <tr key={i} style={{ color: C.text, borderTop: `1px solid ${C.line}` }}>
+                <td className="px-2 py-2.5" style={{ ...mono, color: C.faint }}>{i + 1}</td>
+                <td className="px-2 py-2.5">
+                  <div className="flex items-center gap-2 whitespace-nowrap">
+                    {f && <Logo src={f.home.logo} alt={f.home.name} size={18} />}
+                    <span className="font-semibold">{f ? f.home.name : "—"}</span>
+                    <span style={{ color: C.faint }}>v</span>
+                    <span className="font-semibold">{f ? f.away.name : "—"}</span>
+                    {f && <Logo src={f.away.logo} alt={f.away.name} size={18} />}
+                  </div>
+                </td>
+                <td className="whitespace-nowrap px-2 py-2.5" style={{ color: C.muted }}>{r.league?.emoji} {r.league?.name}</td>
+                <td className="whitespace-nowrap px-2 py-2.5" style={{ ...mono, color: C.muted }}>{f ? new Date(f.startsAt).toLocaleString(undefined, { weekday: "short", hour: "2-digit", minute: "2-digit" }) : "—"}</td>
+                <td className="px-2 py-2.5">
+                  {pr ? <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg px-2 py-1 font-semibold" style={{ background: C.accentDim, color: C.accent }}>{pr.pick} <span style={mono}>{Math.round(pr.prob * 100)}%</span></span> : <span style={{ color: C.faint }}>—</span>}
+                </td>
+                <td className="whitespace-nowrap px-2 py-2.5" style={{ color: C.faint }}>{pr?.market || ""}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 /* ── main ─────────────────────────────────────────────────────────────────── */
 export function EdgeConsole() {
   const [denied, setDenied] = useState(false);
@@ -263,6 +292,11 @@ export function EdgeConsole() {
   const [err, setErr] = useState<string | null>(null);
   const [upsell, setUpsell] = useState(false);
   const [entitled, setEntitled] = useState<boolean | null>(null); // null = verifying access
+  const [daily, setDaily] = useState<PredictionReport[] | null>(null);
+  const [dailyLoading, setDailyLoading] = useState(false);
+  const [dailyErr, setDailyErr] = useState<string | null>(null);
+  const [dailyUpsell, setDailyUpsell] = useState(false);
+  const [videoSeed, setVideoSeed] = useState({ text: "", n: 0 });
   const reportRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -318,6 +352,54 @@ export function EdgeConsole() {
     }
   }, [loading, entitled]);
 
+  const runDaily = useCallback(async () => {
+    if (dailyLoading || entitled === false) return; // gated → no request fires
+    setDailyLoading(true);
+    setDailyErr(null);
+    setDailyUpsell(false);
+    try {
+      const res = await fetch("/api/edge/daily", { method: "POST" });
+      if (res.status === 401) { setDenied(true); return; }
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const g = edgeGate(res.status, (d as { error?: string }).error);
+        setDailyErr(g?.message || (d as { error?: string }).error || "Couldn't load today's predictions.");
+        setDailyUpsell(!!g?.upgrade);
+        return;
+      }
+      setDaily((d.reports as PredictionReport[]) || []);
+    } catch {
+      setDailyErr("Network error — try again.");
+    } finally {
+      setDailyLoading(false);
+    }
+  }, [dailyLoading, entitled]);
+
+  const downloadDaily = useCallback(() => {
+    if (!daily?.length) return;
+    const rows: string[][] = [["#", "Match", "Competition", "Kickoff", "Prediction", "Confidence"]];
+    daily.forEach((r, i) => {
+      const pr = predictionOf(r);
+      const f = r.fixture;
+      const kickoff = f ? new Date(f.startsAt).toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
+      rows.push([String(i + 1), f ? `${f.home.name} vs ${f.away.name}` : r.question, r.league?.name || "", kickoff, pr ? pr.pick : "—", pr ? `${Math.round(pr.prob * 100)}%` : ""]);
+    });
+    const csv = rows.map((row) => row.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\r\n");
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "edge-todays-predictions.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [daily]);
+
+  const dailyToVideo = useCallback(() => {
+    const matchups = (daily || []).filter((r) => r.fixture).slice(0, 6).map((r) => `${r.fixture!.home.name} vs ${r.fixture!.away.name}`).join(", ");
+    if (!matchups) return;
+    setVideoSeed((s) => ({ text: matchups, n: s.n + 1 }));
+    setMode("video");
+  }, [daily]);
+
   if (denied)
     return (
       <div className="relative grid min-h-[100dvh] place-items-center px-6 text-center" style={{ background: C.bg, color: C.text }}>
@@ -367,7 +449,7 @@ export function EdgeConsole() {
         {/* video studio stays MOUNTED across mode switches so encoding continues
             in the background while the user browses/analyses */}
         <div className={mode === "video" ? "" : "hidden"}>
-          <EdgeVideoStudio onStatus={setVideoStatus} entitled={entitled} />
+          <EdgeVideoStudio onStatus={setVideoStatus} entitled={entitled} seed={videoSeed.text} seedNonce={videoSeed.n} />
         </div>
         <div className={mode === "analyse" ? "" : "hidden"}>
         {/* hero ask */}
@@ -409,6 +491,37 @@ export function EdgeConsole() {
             {upsell && <Link href="/pricing" className="ml-auto rounded-full px-3 py-1 text-[12px] font-bold" style={{ background: C.accent, color: "#0a0c0d" }}>See plans →</Link>}
           </div>
         )}
+
+        {/* Today's Top 10 Predictions — the daily slate (Pro/Max) */}
+        <div className="mt-8 rounded-2xl border p-4 sm:p-5" style={{ borderColor: C.line, background: C.panel }}>
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="min-w-0">
+              <h2 className="flex items-center gap-2 text-[16px] font-bold" style={{ color: C.text }}><Trophy size={17} style={{ color: C.accent }} /> Today&apos;s Top 10 Predictions</h2>
+              <p className="mt-0.5 text-[12.5px]" style={{ color: C.muted }}>The day&apos;s biggest matches — Premier League, World Cup, La Liga &amp; more — each with our prediction. Download it, or turn it into a video.</p>
+            </div>
+            <div className="ml-auto flex flex-wrap items-center gap-2">
+              {daily && daily.length > 0 && (
+                <>
+                  <button type="button" onClick={downloadDaily} className="flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12px] font-semibold transition hover:border-white/25" style={{ borderColor: C.line, color: C.text }}><Download size={13} /> Download</button>
+                  <button type="button" onClick={dailyToVideo} className="flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12px] font-semibold transition hover:border-white/25" style={{ borderColor: C.line, color: C.accent }}><Clapperboard size={13} /> Make a video</button>
+                </>
+              )}
+              <button type="button" onClick={() => void runDaily()} disabled={dailyLoading || entitled !== true} className="flex items-center gap-1.5 rounded-full px-4 py-1.5 text-[12.5px] font-bold transition hover:brightness-110 disabled:opacity-40" style={{ background: C.accent, color: "#0a0c0d" }}>
+                {dailyLoading ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />} {daily ? "Refresh" : "Generate"}
+              </button>
+            </div>
+          </div>
+          {dailyErr && (
+            <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl border px-3.5 py-2 text-[12.5px]" style={{ borderColor: dailyUpsell ? "rgba(52,211,153,0.35)" : "rgba(248,113,113,0.3)", background: dailyUpsell ? "rgba(52,211,153,0.07)" : "rgba(248,113,113,0.06)", color: dailyUpsell ? C.text : C.red }}>
+              <span>{dailyErr}</span>{dailyUpsell && <Link href="/pricing" className="ml-auto rounded-full px-3 py-1 text-[12px] font-bold" style={{ background: C.accent, color: "#0a0c0d" }}>See plans →</Link>}
+            </div>
+          )}
+          {dailyLoading && !daily && (
+            <div className="mt-4 grid place-items-center gap-2 py-10"><Loader2 size={22} className="animate-spin" style={{ color: C.accent }} /><span className="text-[12.5px]" style={{ color: C.muted }}>Building today&apos;s slate across the top competitions…</span></div>
+          )}
+          {daily && daily.length > 0 && <DailyTable reports={daily} />}
+          {daily && daily.length === 0 && <p className="mt-4 text-[12.5px]" style={{ color: C.faint }}>No upcoming fixtures to predict right now — check back closer to matchday.</p>}
+        </div>
 
         {(loading || report || reports) && (
           <div ref={reportRef} className="mt-6">

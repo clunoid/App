@@ -47,6 +47,7 @@ export const ACTION_COSTS = {
   // (action "edge_tts", variable via ttsCost) during the client-side render.
   edge_analyze: 40, //  /api/edge/predict     — Opus interpret + Tavily research (~$0.2)
   edge_video_plan: 180, // /api/edge/video/plan — Opus matchup-extract + Opus dialogue + per-match predicts + Pexels (~$0.9)
+  edge_daily: 60, //     /api/edge/daily       — a 10-match slate, light per match (ESPN data only, no Opus)
 } as const;
 export type Chargeable = keyof typeof ACTION_COSTS;
 
@@ -108,6 +109,7 @@ export const RATE_LIMITS: Record<string, [number, number]> = {
   edge_analyze: [20, 60],
   edge_video_plan: [6, 60], // Opus-heavy planner
   edge_tts: [120, 60], // premium ElevenLabs per line — matches the shared tts cap
+  edge_daily: [6, 60], // the 10-match slate — fans out across many leagues
 };
 
 /** Hard input caps so a single request can't be oversized. */

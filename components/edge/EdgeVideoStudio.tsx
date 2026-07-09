@@ -37,7 +37,7 @@ function Seg<T extends string>({ label, value, onChange, options }: { label: str
 type Phase = "idle" | "planning" | "rendering" | "done" | "error";
 type Vids = { portraitUrl?: string; landscapeUrl?: string };
 
-export function EdgeVideoStudio({ onStatus, entitled = null }: { onStatus?: (s: { busy: boolean; pct: number; label: string }) => void; entitled?: boolean | null } = {}) {
+export function EdgeVideoStudio({ onStatus, entitled = null, seed = "", seedNonce = 0 }: { onStatus?: (s: { busy: boolean; pct: number; label: string }) => void; entitled?: boolean | null; seed?: string; seedNonce?: number } = {}) {
   // disable tools until we KNOW the user is entitled (null = still verifying → disabled),
   // matching the analyse side; the subscribe banner shows only once we know they're not.
   const gated = entitled !== true;
@@ -56,6 +56,9 @@ export function EdgeVideoStudio({ onStatus, entitled = null }: { onStatus?: (s: 
   const revoke = () => { urlsRef.current.forEach((u) => URL.revokeObjectURL(u)); urlsRef.current = []; };
   useEffect(() => () => revoke(), []);
   useEffect(() => { void listEdgeVideos().then(setHistory); }, []);
+  // "Make a video" from the daily slate seeds the prompt (fire on nonce, not text)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { if (seed) setPrompt(seed); }, [seedNonce]);
   // branding is auto-saved (no save button) — load once, persist on every change
   useEffect(() => { setBrand(loadBranding()); }, []);
   useEffect(() => { saveBranding(brand); }, [brand]);
