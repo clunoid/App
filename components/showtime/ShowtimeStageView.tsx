@@ -17,9 +17,12 @@ export function ShowtimeStageView() {
   const [noKey, setNoKey] = useState(false);
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const k = params.get("k") || "";
-    const initBg = params.get("bg");
+    // key travels in the URL FRAGMENT (#k=) — never sent to servers, logs or
+    // analytics beacons; bg is non-secret so it stays in the query string.
+    const search = new URLSearchParams(window.location.search);
+    const hash = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+    const k = hash.get("k") || search.get("k") || "";
+    const initBg = search.get("bg");
     if (initBg === "cosmos" || initBg === "aurora" || initBg === "grid") setBg(initBg);
     if (!k) { setNoKey(true); return; }
     const b = createBus(k);

@@ -81,7 +81,8 @@ export function ShowtimeConsole() {
   const toggleFs = useCallback(async () => { try { if (!document.fullscreenElement) await rootRef.current?.requestFullscreen(); else await document.exitFullscreen(); } catch { /* ignore */ } }, []);
   const copyObs = useCallback(async () => {
     if (!key) return;
-    try { await navigator.clipboard.writeText(`${window.location.origin}/showtime/stage?k=${key}&bg=${bg}`); setCopied(true); setTimeout(() => setCopied(false), 1800); } catch { /* ignore */ }
+    // key in the fragment (#k=) so it never reaches servers/analytics/logs
+    try { await navigator.clipboard.writeText(`${window.location.origin}/showtime/stage?bg=${bg}#k=${key}`); setCopied(true); setTimeout(() => setCopied(false), 1800); } catch { /* ignore */ }
   }, [key, bg]);
 
   const tiers = useMemo(() => [1, 2, 3, 4].map((t) => ({ tier: t as Tier, gifts: GIFTS.filter((g) => g.tier === t) })), []);
