@@ -17,14 +17,12 @@ import { StageCanvas } from "./StageCanvas";
 import { createBus, stageKey, type ShowtimeBus } from "@/lib/showtime/bus";
 import { createEulerFeed, type EulerStatus } from "@/lib/showtime/euler";
 import { GIFTS, giftEvent } from "@/lib/showtime/gifts";
-import type { BackgroundId } from "@/lib/showtime/engine";
 import type { GiftEvent, Tier } from "@/lib/showtime/types";
 
 const HANDLES = ["nova_x", "jaydee", "miko.wav", "lunar", "kingpin", "sofia_r", "z3ro", "amara", "toshi", "vibecheck", "runtz", "aria.b"];
 const rnd = <T,>(a: T[]): T => a[(Math.random() * a.length) | 0];
 const TIER_LABEL: Record<Tier, string> = { 1: "Everyday", 2: "Rare", 3: "Epic", 4: "Legendary" };
 const TIER_COLOR: Record<Tier, string> = { 1: "#7dd3fc", 2: "#34d399", 3: "#a855f7", 4: "#fbbf24" };
-const BGS: { id: BackgroundId; label: string }[] = [{ id: "cosmos", label: "Cosmos" }, { id: "aurora", label: "Aurora" }, { id: "grid", label: "Neon Grid" }];
 const STATUS: Record<EulerStatus, { label: string; color: string }> = {
   idle: { label: "Offline", color: "#9aa5a0" },
   connecting: { label: "Connecting…", color: "#fbbf24" },
@@ -41,7 +39,6 @@ export function ShowtimeConsole() {
   const [key, setKey] = useState("");
   const [present, setPresent] = useState(false);
   const [fs, setFs] = useState(false);
-  const [bg, setBg] = useState<BackgroundId>("cosmos");
   const [sender, setSender] = useState("");
   const [room, setRoom] = useState("");
   const [euler, setEuler] = useState<{ status: EulerStatus; msg?: string }>({ status: "idle" });
@@ -76,15 +73,14 @@ export function ShowtimeConsole() {
     let i = 0; const t = setInterval(() => { const ev = giftEvent(giftId, who, i + 1); if (ev) busRef.current?.publishGift(ev); if (++i >= 8) clearInterval(t); }, 240);
   }, [sender]);
   const storm = useCallback(() => { let i = 0; const t = setInterval(() => { fire(rnd(GIFTS).id); if (++i >= 10) clearInterval(t); }, 420); }, [fire]);
-  const changeBg = useCallback((id: BackgroundId) => { setBg(id); busRef.current?.publishConfig({ background: id }); }, []);
   const connect = useCallback(() => { const r = room.trim(); if (!r) return; try { localStorage.setItem("showtime_room", r); } catch { /* ignore */ } eulerRef.current?.start(r); }, [room]);
   const disconnect = useCallback(() => eulerRef.current?.stop(), []);
   const toggleFs = useCallback(async () => { try { if (!document.fullscreenElement) await rootRef.current?.requestFullscreen(); else await document.exitFullscreen(); } catch { /* ignore */ } }, []);
   const copyObs = useCallback(async () => {
     if (!key) return;
     // key in the fragment (#k=) so it never reaches servers/analytics/logs
-    try { await navigator.clipboard.writeText(`${window.location.origin}/showtime/stage?bg=${bg}#k=${key}`); setCopied(true); setTimeout(() => setCopied(false), 1800); } catch { /* ignore */ }
-  }, [key, bg]);
+    try { await navigator.clipboard.writeText(`${window.location.origin}/showtime/stage#k=${key}`); setCopied(true); setTimeout(() => setCopied(false), 1800); } catch { /* ignore */ }
+  }, [key]);
 
   const tiers = useMemo(() => [1, 2, 3, 4].map((t) => ({ tier: t as Tier, gifts: GIFTS.filter((g) => g.tier === t) })), []);
   const leaders = useMemo(() => Object.entries(board).sort((a, b) => b[1] - a[1]).slice(0, 5), [board]);
@@ -94,7 +90,7 @@ export function ShowtimeConsole() {
 
   return (
     <div ref={rootRef} className="relative h-[100dvh] w-full overflow-hidden bg-black text-white" style={{ fontFamily: "system-ui, sans-serif" }}>
-      <StageCanvas bus={bus} background={bg} showIdle />
+      <StageCanvas bus={bus} showIdle />
 
       {/* top bar */}
       {!present && (
@@ -103,9 +99,6 @@ export function ShowtimeConsole() {
           <span className="text-[17px] font-black tracking-[0.2em]" style={{ background: "linear-gradient(90deg,#a855f7,#34d399,#fbbf24)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>SHOWTIME</span>
           {eulerLive && <span className="flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-bold" style={{ background: "rgba(52,211,153,0.15)", color: "#34d399" }}><span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" /> LIVE @{room}</span>}
           <div className="ml-auto flex items-center gap-1.5">
-            <div className="flex overflow-hidden rounded-full border border-white/12">
-              {BGS.map((b) => <button key={b.id} onClick={() => changeBg(b.id)} className="px-2.5 py-1 text-[11px] font-semibold transition" style={bg === b.id ? { background: "rgba(255,255,255,0.14)", color: "#fff" } : { color: "rgba(255,255,255,0.5)" }}>{b.label}</button>)}
-            </div>
             <button onClick={() => setPresent(true)} title="Present (hide controls)" className="rounded-full border border-white/12 p-1.5 text-white/70 transition hover:text-white"><PanelRightClose size={16} /></button>
             <button onClick={toggleFs} title="Fullscreen" className="rounded-full border border-white/12 p-1.5 text-white/70 transition hover:text-white">{fs ? <Minimize2 size={16} /> : <Maximize2 size={16} />}</button>
           </div>

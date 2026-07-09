@@ -7,14 +7,14 @@
  * Realtime `bus`; simulate and real TikTok gifts both flow through it.
  */
 import { useEffect, useRef, useState } from "react";
-import { ShowtimeEngine, type BackgroundId } from "@/lib/showtime/engine";
+import { ShowtimeEngine } from "@/lib/showtime/engine";
 import type { ShowtimeBus } from "@/lib/showtime/bus";
 import type { Tier } from "@/lib/showtime/types";
 
 const TIER_COLOR: Record<number, string> = { 1: "#7dd3fc", 2: "#34d399", 3: "#a855f7", 4: "#fbbf24" };
 type BannerState = { sender: string; emoji: string; name: string; count: number; tier: Tier; key: number } | null;
 
-export function StageCanvas({ bus, background = "cosmos", showIdle = true }: { bus: ShowtimeBus | null; background?: BackgroundId; showIdle?: boolean }) {
+export function StageCanvas({ bus, showIdle = true }: { bus: ShowtimeBus | null; showIdle?: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const engineRef = useRef<ShowtimeEngine | null>(null);
   const [idle, setIdle] = useState(true);
@@ -41,7 +41,6 @@ export function StageCanvas({ bus, background = "cosmos", showIdle = true }: { b
     };
   }, []);
 
-  useEffect(() => { engineRef.current?.setBackground(background); }, [background]);
   useEffect(() => {
     if (!bus) return;
     return bus.onGift((ev) => engineRef.current?.trigger(ev));

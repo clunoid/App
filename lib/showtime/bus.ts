@@ -11,12 +11,9 @@
 import { getSupabaseBrowser } from "@/lib/supabase/client";
 import type { GiftEvent } from "./types";
 
-export type StageConfig = { background?: string };
 export type ShowtimeBus = {
   publishGift: (ev: GiftEvent) => void;
-  publishConfig: (c: StageConfig) => void;
   onGift: (cb: (ev: GiftEvent) => void) => () => void;
-  onConfig: (cb: (c: StageConfig) => void) => () => void;
   close: () => void;
 };
 
@@ -24,16 +21,11 @@ export function createBus(key: string): ShowtimeBus {
   const sb = getSupabaseBrowser();
   const ch = sb.channel(`st:${key}`, { config: { broadcast: { self: true } } });
   const giftCbs: ((ev: GiftEvent) => void)[] = [];
-  const cfgCbs: ((c: StageConfig) => void)[] = [];
   ch.on("broadcast", { event: "gift" }, (m) => { for (const f of giftCbs) f(m.payload as GiftEvent); });
-  ch.on("broadcast", { event: "config" }, (m) => { for (const f of cfgCbs) f(m.payload as StageConfig); });
   ch.subscribe();
-  const off = <T>(arr: T[], cb: T) => () => { const i = arr.indexOf(cb); if (i >= 0) arr.splice(i, 1); };
   return {
     publishGift: (ev) => { void ch.send({ type: "broadcast", event: "gift", payload: ev }); },
-    publishConfig: (c) => { void ch.send({ type: "broadcast", event: "config", payload: c }); },
-    onGift: (cb) => { giftCbs.push(cb); return off(giftCbs, cb); },
-    onConfig: (cb) => { cfgCbs.push(cb); return off(cfgCbs, cb); },
+    onGift: (cb) => { giftCbs.push(cb); return () => { const i = giftCbs.indexOf(cb); if (i >= 0) giftCbs.splice(i, 1); }; },
     close: () => { void sb.removeChannel(ch); },
   };
 }
