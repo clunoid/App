@@ -1,13 +1,15 @@
 /**
  * Showtime — Clunoid's live, gift-reactive animation stage (admin-only for now).
- * Shared, engine-agnostic types. The renderer (lib/showtime/engine.ts) implements
- * EngineAPI; the choreographed shows (lib/showtime/shows.ts) drive it through that
- * interface, so the orchestration never depends on the concrete renderer and we can
- * upgrade to a WebGL/3D layer later without touching the show library.
+ * Shared types. The renderer is a real WebGL/Three.js engine (lib/showtime/engine.ts,
+ * HDR bloom + 3D particles + camera choreography); the choreographed shows
+ * (lib/showtime/shows.ts) drive it through the Stage3D interface, so the show library
+ * builds its own 3D objects while the engine owns the renderer, particles and post-FX.
  */
+import type * as THREE from "three";
 
 export type Tier = 1 | 2 | 3 | 4;
 export type ShowArchetype = "bloom" | "portal" | "cosmic" | "beast";
+export type RGB = [number, number, number];
 
 /** A TikTok gift mapped to a choreographed show. `theme` are hex colors the show
  *  tints itself with, so one archetype yields infinite on-brand variations. */
@@ -18,54 +20,53 @@ export type Gift = {
   coins: number; // TikTok coin value — drives the tier
   tier: Tier;
   archetype: ShowArchetype;
-  theme: string[]; // 2–3 hex colors
+  theme: string[]; // 2–4 hex colors
 };
 
 /** One received gift (or a simulated one) ready to be staged. */
 export type GiftEvent = { gift: Gift; sender: string; count: number; ts: number };
 
-/** A soft-particle the engine pools and draws. */
-export type Particle = {
-  x: number; y: number; vx: number; vy: number;
-  life: number; max: number;
-  size: number; r: number; g: number; b: number; a: number;
-  rot: number; vr: number;
-  grav: number; drag: number;
-  shape: "dot" | "spark" | "petal" | "star" | "ring";
-  add: boolean; // additive (glow) vs normal
-};
-
-export type EmitOpts = Partial<Omit<Particle, "x" | "y">> & {
-  color?: [number, number, number];
-  spread?: number; // velocity cone half-angle (rad)
-  angle?: number; // base direction (rad)
-  speed?: number; // base speed
+/** Particle emission options (world-space). */
+export type EmitOpts = {
+  color?: RGB;
+  dir?: [number, number, number]; // base direction (normalised-ish)
+  spread?: number; // cone half-angle (rad) around dir
+  speed?: number;
   speedVar?: number;
+  size?: number;
+  sizeVar?: number;
+  life?: number;
+  lifeVar?: number;
+  grav?: number; // world units/s² on -y
+  drag?: number; // per-second velocity damping
+  spin?: boolean; // slight swirl
 };
 
-/** What a choreographed show can ask of the renderer. Kept small + renderer-agnostic. */
-export interface EngineAPI {
-  readonly W: number; // logical width (1080)
-  readonly H: number; // logical height (1920)
-  readonly ctx: CanvasRenderingContext2D;
-  readonly time: number; // seconds since engine start
-  emit(x: number, y: number, count: number, opts?: EmitOpts): void;
-  ring(x: number, y: number, count: number, radius: number, opts?: EmitOpts): void;
+/** What a choreographed 3D show can ask of the engine. The engine implements this;
+ *  shows also build their own THREE objects into the group the engine gives them. */
+export interface Stage3D {
+  readonly time: number;
+  readonly scene: THREE.Scene;
+  readonly camera: THREE.PerspectiveCamera;
+  readonly soft: THREE.Texture; // soft round additive sprite
+  emit(x: number, y: number, z: number, count: number, opts?: EmitOpts): void;
+  flash(rgb: RGB, strength: number): void;
   shake(amount: number): void;
-  flash(color: [number, number, number], alpha: number): void;
-  /** convert a 0..1 hex theme color to rgb triplet */
+  dolly(z: number, ease?: number): void; // push/pull the camera toward a target z
+  emojiSprite(emoji: string, color: RGB): THREE.Sprite; // a glowing billboard of the gift
 }
 
-/** A running show instance the orchestrator ticks each frame. */
+/** A running show the orchestrator ticks each frame. Its 3D objects live in `group`. */
 export type Show = {
   ev: GiftEvent;
   arch: ShowArchetype;
   tier: Tier;
-  theme: [number, number, number][]; // parsed rgb
+  theme: RGB[];
   t: number; // elapsed seconds
   dur: number; // total seconds (extended by combos)
-  intensity: number; // 1..N, grows with combos
-  stage: number; // multi-stage cursor (cosmic)
+  intensity: number; // grows with combos
   seed: number;
-  s: Record<string, number>; // scratch state per show
+  s: Record<string, number>; // scratch scalars
+  o: Record<string, THREE.Object3D>; // the show's meshes/sprites
+  group: THREE.Group;
 };
