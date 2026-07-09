@@ -232,6 +232,15 @@ export default function Home() {
                 <CandlestickChart size={15} /> Trading
               </Link>
             )}
+            {isAdminUser && (
+              <Link
+                href="/showtime"
+                className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm transition hover:brightness-125"
+                style={{ borderColor: "rgba(168,85,247,0.4)", background: "rgba(168,85,247,0.1)", color: "#c4b5fd" }}
+              >
+                <Sparkles size={15} /> Showtime
+              </Link>
+            )}
           </div>
           {isaac === "thinking" ? (
             <div className="inline-flex shrink-0 items-center gap-2 rounded-full border border-border bg-surface/90 px-3 py-1 backdrop-blur">
