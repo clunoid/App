@@ -1,4 +1,4 @@
-import type { Gift, GiftEvent, Tier } from "./types";
+import type { Gift, GiftEvent, ShowArchetype, Tier } from "./types";
 
 /** Tier by TikTok coin value. Tier only scales duration/stages/particle budget —
  *  NOT fidelity: every gift gets a fully polished show. */
@@ -36,4 +36,29 @@ export function giftEvent(giftId: string, sender = "guest", count = 1): GiftEven
   const gift = GIFT_BY_ID[giftId];
   if (!gift) return null;
   return { gift, sender, count: Math.max(1, count), ts: Date.now() };
+}
+
+const SYNTH_ARCH: Record<Tier, ShowArchetype> = { 1: "bloom", 2: "portal", 3: "cosmic", 4: "cosmic" };
+const SYNTH_THEME: Record<Tier, string[]> = {
+  1: ["#ff6b9d", "#ffc1d9", "#c4b5fd"],
+  2: ["#fbbf24", "#fde68a", "#34d399"],
+  3: ["#6366f1", "#22d3ee", "#a855f7"],
+  4: ["#a855f7", "#22d3ee", "#f472b6", "#facc15"],
+};
+const SYNTH_EMOJI: Record<Tier, string> = { 1: "✨", 2: "💫", 3: "🌟", 4: "🌠" };
+
+/** A show for ANY TikTok gift we don't have a curated entry for — themed + scaled by
+ *  its coin value so every one of TikTok's hundreds of gifts still gets a polished,
+ *  tier-appropriate spectacle (never a fallback "nothing"). */
+export function synthesizeGift(name: string, coins: number, emoji?: string): Gift {
+  const tier = tierForCoins(coins);
+  return { id: `synth:${name.toLowerCase().replace(/\s+/g, "-")}`, name: name || "Gift", emoji: emoji || SYNTH_EMOJI[tier], coins, tier, archetype: SYNTH_ARCH[tier], theme: SYNTH_THEME[tier] };
+}
+
+/** Turn a raw (real or simulated) gift into a ready-to-stage event: match our curated
+ *  catalogue by id/name, else synthesize one from the coin value. */
+export function normalizeGift(name: string, coins: number, sender: string, count: number, emoji?: string): GiftEvent {
+  const key = (name || "").toLowerCase().trim();
+  const gift = GIFTS.find((g) => g.id === key || g.name.toLowerCase() === key) || synthesizeGift(name, coins, emoji);
+  return { gift, sender: (sender || "guest").replace(/^@/, "").slice(0, 40), count: Math.max(1, count || 1), ts: Date.now() };
 }
