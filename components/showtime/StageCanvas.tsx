@@ -19,6 +19,7 @@ export function StageCanvas({ bus, showIdle = true }: { bus: ShowtimeBus | null;
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const engineRef = useRef<ShowtimeEngine | null>(null);
   const [idle, setIdle] = useState(true);
+  const [busy, setBusy] = useState(false);
   const [banner, setBanner] = useState<BannerState>(null);
   const bannerTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -50,8 +51,8 @@ export function StageCanvas({ bus, showIdle = true }: { bus: ShowtimeBus | null;
   return (
     <>
       <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" />
-      <AssetLayer bus={bus} />
-      {showIdle && idle && (
+      <AssetLayer bus={bus} onBusyChange={setBusy} />
+      {showIdle && idle && !busy && (
         <div className="pointer-events-none absolute inset-x-0 top-[16%] flex flex-col items-center px-6 text-center">
           <div className="rounded-full border border-white/15 bg-black/30 px-5 py-2 text-[13px] font-semibold uppercase tracking-[0.25em] text-white/80 backdrop-blur-sm">🎁 send a gift to light up the show</div>
           <p className="mt-3 max-w-xs text-[12px] leading-relaxed text-white/45">Every gift triggers a full-screen animation. The bigger the gift, the bigger the spectacle.</p>
