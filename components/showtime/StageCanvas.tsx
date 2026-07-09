@@ -8,6 +8,7 @@
  */
 import { useEffect, useRef, useState } from "react";
 import { ShowtimeEngine } from "@/lib/showtime/engine";
+import { AssetLayer } from "./AssetLayer";
 import type { ShowtimeBus } from "@/lib/showtime/bus";
 import type { Tier } from "@/lib/showtime/types";
 
@@ -49,6 +50,7 @@ export function StageCanvas({ bus, showIdle = true }: { bus: ShowtimeBus | null;
   return (
     <>
       <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" />
+      <AssetLayer bus={bus} />
       {showIdle && idle && (
         <div className="pointer-events-none absolute inset-x-0 top-[16%] flex flex-col items-center px-6 text-center">
           <div className="rounded-full border border-white/15 bg-black/30 px-5 py-2 text-[13px] font-semibold uppercase tracking-[0.25em] text-white/80 backdrop-blur-sm">🎁 send a gift to light up the show</div>

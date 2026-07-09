@@ -13,7 +13,7 @@ type Banner = { sender: string; emoji: string; name: string; count: number; tier
 export class ShowtimeEngine {
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
-  private raf = 0;
+  private timer = 0;
   private dpr = 1;
   private lastGift = -1e9;
 
@@ -27,31 +27,36 @@ export class ShowtimeEngine {
   }
 
   start() {
-    if (this.raf) return;
-    const loop = () => {
-      this.render();
+    if (this.timer) return;
+    this.paint();
+    // The backdrop is static — no per-frame redraw (that would burn GPU 24/7 in OBS
+    // and never let the page settle). A light timer just tracks the idle state so the
+    // "send a gift" prompt reappears between shows; the Lottie asset layer does the
+    // animating on top.
+    this.timer = window.setInterval(() => {
       this.onIdle(performance.now() - this.lastGift > 3500);
-      this.raf = requestAnimationFrame(loop);
-    };
-    this.raf = requestAnimationFrame(loop);
+    }, 500);
   }
   stop() {
-    if (this.raf) cancelAnimationFrame(this.raf);
-    this.raf = 0;
+    if (this.timer) window.clearInterval(this.timer);
+    this.timer = 0;
   }
   resize() {
     const r = this.canvas.getBoundingClientRect();
     this.dpr = Math.min(2, window.devicePixelRatio || 1);
     this.canvas.width = Math.round((r.width || 360) * this.dpr);
     this.canvas.height = Math.round((r.height || 640) * this.dpr);
+    this.paint();
   }
 
   trigger(ev: GiftEvent) {
     this.lastGift = performance.now();
+    this.onIdle(false);
     this.onBanner({ sender: ev.sender, emoji: ev.gift.emoji, name: ev.gift.name, count: ev.count, tier: ev.gift.tier });
   }
 
-  private render() {
+  /** Clean, minimal backdrop — a subtle vertical fade so the animations are the star. */
+  private paint() {
     const { ctx, canvas } = this;
     const g = ctx.createLinearGradient(0, 0, 0, canvas.height);
     g.addColorStop(0, "#0a0b12");
