@@ -53,6 +53,7 @@ export function ShowtimeConsole() {
   useEffect(() => {
     const k = stageKey();
     setKey(k);
+    try { const saved = localStorage.getItem("showtime_room"); if (saved) setRoom(saved); } catch { /* ignore */ }
     const b = createBus(k);
     busRef.current = b;
     setBus(b);
@@ -76,7 +77,7 @@ export function ShowtimeConsole() {
   }, [sender]);
   const storm = useCallback(() => { let i = 0; const t = setInterval(() => { fire(rnd(GIFTS).id); if (++i >= 10) clearInterval(t); }, 420); }, [fire]);
   const changeBg = useCallback((id: BackgroundId) => { setBg(id); busRef.current?.publishConfig({ background: id }); }, []);
-  const connect = useCallback(() => { if (room.trim()) eulerRef.current?.start(room); }, [room]);
+  const connect = useCallback(() => { const r = room.trim(); if (!r) return; try { localStorage.setItem("showtime_room", r); } catch { /* ignore */ } eulerRef.current?.start(r); }, [room]);
   const disconnect = useCallback(() => eulerRef.current?.stop(), []);
   const toggleFs = useCallback(async () => { try { if (!document.fullscreenElement) await rootRef.current?.requestFullscreen(); else await document.exitFullscreen(); } catch { /* ignore */ } }, []);
   const copyObs = useCallback(async () => {

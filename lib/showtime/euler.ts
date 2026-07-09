@@ -29,6 +29,7 @@ export function createEulerFeed(onGift: (ev: GiftEvent) => void, onStatus: (s: E
   let room = "";
   let stopped = true;
   let retry = 0;
+  let wasLive = false;
   let timer: ReturnType<typeof setTimeout> | null = null;
 
   async function token(uniqueId: string): Promise<{ token?: string; status: number; error?: string }> {
@@ -50,16 +51,23 @@ export function createEulerFeed(onGift: (ev: GiftEvent) => void, onStatus: (s: E
 
   async function connect() {
     if (stopped) return;
-    onStatus("connecting");
     const t = await token(room);
+    if (stopped) return;
     if (t.status === 501 || t.error === "unconfigured") { onStatus("unconfigured", "Add EULER_API_KEY + EULER_ACCOUNT_ID to go live."); return; }
-    if (!t.token) { onStatus("error", t.error || "couldn't authorise"); scheduleRetry(); return; }
+    if (!t.token) { scheduleRetry(); return; } // transient auth hiccup — stay in the calm "connecting" state and keep waiting
     try {
       ws = new WebSocket(`wss://ws.eulerstream.com?uniqueId=${encodeURIComponent(room)}&jwtKey=${encodeURIComponent(t.token)}`);
-    } catch { onStatus("error", "connection failed"); scheduleRetry(); return; }
-    ws.onopen = () => { retry = 0; onStatus("live"); };
+    } catch { scheduleRetry(); return; }
+    ws.onopen = () => { retry = 0; wasLive = true; onStatus("live"); };
     ws.onmessage = (e) => handle(e.data);
-    ws.onclose = () => { if (!stopped) { onStatus("connecting", "reconnecting…"); scheduleRetry(); } };
+    ws.onclose = () => {
+      ws = null;
+      if (stopped) return;
+      // don't flap the label: while the room simply isn't live yet we STAY "connecting";
+      // only note a reconnect if we had actually been live and dropped.
+      if (wasLive) { wasLive = false; onStatus("connecting", "Reconnecting…"); }
+      scheduleRetry();
+    };
     ws.onerror = () => { /* onclose handles the retry */ };
   }
 
@@ -81,7 +89,7 @@ export function createEulerFeed(onGift: (ev: GiftEvent) => void, onStatus: (s: E
   }
 
   return {
-    start(uniqueId: string) { stopped = false; retry = 0; room = uniqueId.replace(/^@/, "").trim().toLowerCase(); if (!room) { onStatus("error", "enter a @username"); return; } connect(); },
+    start(uniqueId: string) { stopped = false; retry = 0; wasLive = false; room = uniqueId.replace(/^@/, "").trim().toLowerCase(); if (!room) { onStatus("error", "enter a @username"); return; } onStatus("connecting", `Waiting for @${room} to go live — this connects automatically the moment your live starts.`); connect(); },
     stop() { stopped = true; if (timer) clearTimeout(timer); try { ws?.close(); } catch { /* ignore */ } ws = null; onStatus("idle"); },
   };
 }
