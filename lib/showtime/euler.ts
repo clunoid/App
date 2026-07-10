@@ -6,7 +6,18 @@
  * JWT our server mints from the Euler API key (never exposed to the client). Gift
  * messages are parsed tolerantly (Euler mirrors the TikTok webcast schema, which can
  * shift) and normalised into GiftEvents, then published to the Realtime bus so the
- * OBS Stage plays them. Auto-reconnects with backoff (JWTs are short-lived).
+ * OBS Stage plays them.
+ *
+ * STABILITY: Euler closes the socket with application close codes (4000–4999). We
+ * interpret them so the connection stays visibly stable:
+ *   4404 NOT_LIVE           → room offline: wait calmly and re-poll on a steady cadence.
+ *   4401 INVALID_AUTH       → token expired/invalid: mint a fresh one and reconnect fast.
+ *   4429 TOO_MANY_CONNS     → rate-limited: back off longer so old sockets expire.
+ *   4555 MAX_LIFETIME_EXCEEDED → the JWT lifetime ended: reconnect SEAMLESSLY (we hold the
+ *                             "live" label through a short grace window so the periodic
+ *                             token refresh is invisible).
+ * We only report "live" once a real message arrives (room info is Euler's first message),
+ * never merely on socket-open — so a non-live room can't flap the status.
  */
 import type { GiftEvent } from "./types";
 import { normalizeGift } from "./gifts";
@@ -29,8 +40,9 @@ export function createEulerFeed(onGift: (ev: GiftEvent) => void, onStatus: (s: E
   let room = "";
   let stopped = true;
   let retry = 0;
-  let wasLive = false;
+  let live = false; // true only once a real message has arrived (not just socket-open)
   let timer: ReturnType<typeof setTimeout> | null = null;
+  let grace: ReturnType<typeof setTimeout> | null = null;
 
   async function token(uniqueId: string): Promise<{ token?: string; status: number; error?: string }> {
     try {
@@ -42,33 +54,82 @@ export function createEulerFeed(onGift: (ev: GiftEvent) => void, onStatus: (s: E
     }
   }
 
-  function scheduleRetry() {
+  function clearTimers() {
+    if (timer) { clearTimeout(timer); timer = null; }
+    if (grace) { clearTimeout(grace); grace = null; }
+  }
+
+  function reconnectIn(ms: number) {
     if (stopped) return;
-    retry = Math.min(retry + 1, 6);
     if (timer) clearTimeout(timer);
-    timer = setTimeout(connect, Math.round(700 * Math.pow(1.7, retry)));
+    timer = setTimeout(connect, ms);
+  }
+
+  // On a drop while live, keep the "live" label for a short grace window so a seamless
+  // token-refresh reconnect never flickers the UI. Only downgrade if we don't recover.
+  function holdLiveThenDowngrade() {
+    if (!live) { onStatus("connecting", "Reconnecting…"); return; }
+    if (grace) clearTimeout(grace);
+    grace = setTimeout(() => { live = false; onStatus("connecting", "Reconnecting…"); }, 6000);
+  }
+
+  function markConnected() {
+    if (grace) { clearTimeout(grace); grace = null; }
+    if (!live) { live = true; retry = 0; onStatus("live"); }
   }
 
   async function connect() {
     if (stopped) return;
+    // never keep two sockets — close any prior one first
+    try { ws?.close(); } catch { /* ignore */ }
+    ws = null;
+
     const t = await token(room);
     if (stopped) return;
     if (t.status === 501 || t.error === "unconfigured") { onStatus("unconfigured", "Add EULER_API_KEY + EULER_ACCOUNT_ID to go live."); return; }
-    if (!t.token) { scheduleRetry(); return; } // transient auth hiccup — stay in the calm "connecting" state and keep waiting
+    if (!t.token) { retry = Math.min(retry + 1, 6); reconnectIn(Math.round(600 * Math.pow(1.6, retry))); return; }
+
+    let sock: WebSocket;
     try {
-      ws = new WebSocket(`wss://ws.eulerstream.com?uniqueId=${encodeURIComponent(room)}&jwtKey=${encodeURIComponent(t.token)}`);
-    } catch { scheduleRetry(); return; }
-    ws.onopen = () => { retry = 0; wasLive = true; onStatus("live"); };
-    ws.onmessage = (e) => handle(e.data);
-    ws.onclose = () => {
-      ws = null;
+      sock = new WebSocket(`wss://ws.eulerstream.com?uniqueId=${encodeURIComponent(room)}&jwtKey=${encodeURIComponent(t.token)}`);
+    } catch { reconnectIn(1500); return; }
+    ws = sock;
+
+    // socket-open only means Euler accepted us; the room may still not be live, so we
+    // stay "connecting" until an actual message proves the feed is flowing.
+    sock.onopen = () => { if (!live) onStatus("connecting", `Connected — waiting for @${room}'s live…`); };
+    sock.onmessage = (e) => { markConnected(); handle(e.data); };
+    sock.onclose = (ev) => {
+      if (ws === sock) ws = null;
       if (stopped) return;
-      // don't flap the label: while the room simply isn't live yet we STAY "connecting";
-      // only note a reconnect if we had actually been live and dropped.
-      if (wasLive) { wasLive = false; onStatus("connecting", "Reconnecting…"); }
-      scheduleRetry();
+      const code = ev?.code ?? 0;
+
+      if (code === 4404) {
+        // streamer offline — calm, steady re-poll; never flap
+        live = false; retry = 0;
+        onStatus("connecting", `Waiting for @${room} to go live — connects automatically the moment your live starts.`);
+        reconnectIn(8000);
+        return;
+      }
+      if (code === 4429) {
+        // rate-limited — let old sockets expire before retrying
+        holdLiveThenDowngrade();
+        retry = Math.min(retry + 1, 6);
+        reconnectIn(12000);
+        return;
+      }
+      if (code === 4555 || code === 4401) {
+        // expected: JWT lifetime ended / token refresh — reconnect fast & seamlessly
+        holdLiveThenDowngrade();
+        reconnectIn(500);
+        return;
+      }
+      // anything else (network blip, 1006, …) — gentle backoff
+      holdLiveThenDowngrade();
+      retry = Math.min(retry + 1, 6);
+      reconnectIn(Math.round(600 * Math.pow(1.6, retry)));
     };
-    ws.onerror = () => { /* onclose handles the retry */ };
+    sock.onerror = () => { /* onclose handles the retry */ };
   }
 
   function handle(raw: any) {
@@ -89,7 +150,20 @@ export function createEulerFeed(onGift: (ev: GiftEvent) => void, onStatus: (s: E
   }
 
   return {
-    start(uniqueId: string) { stopped = false; retry = 0; wasLive = false; room = uniqueId.replace(/^@/, "").trim().toLowerCase(); if (!room) { onStatus("error", "enter a @username"); return; } onStatus("connecting", `Waiting for @${room} to go live — this connects automatically the moment your live starts.`); connect(); },
-    stop() { stopped = true; if (timer) clearTimeout(timer); try { ws?.close(); } catch { /* ignore */ } ws = null; onStatus("idle"); },
+    start(uniqueId: string) {
+      stopped = false; retry = 0; live = false;
+      clearTimers();
+      room = uniqueId.replace(/^@/, "").trim().toLowerCase();
+      if (!room) { onStatus("error", "enter a @username"); return; }
+      onStatus("connecting", `Connecting to @${room}…`);
+      connect();
+    },
+    stop() {
+      stopped = true; live = false;
+      clearTimers();
+      try { ws?.close(); } catch { /* ignore */ }
+      ws = null;
+      onStatus("idle");
+    },
   };
 }

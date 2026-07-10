@@ -27,7 +27,11 @@ export async function POST(req: NextRequest) {
     const EulerStreamApiClient = (mod as { default?: unknown }).default ?? mod;
     const client = new (EulerStreamApiClient as new (o: { apiKey: string }) => { authentication: { createJWT: (acct: string, opts: unknown) => Promise<{ data?: { token?: string } }> } })({ apiKey });
     const resp = await client.authentication.createJWT(accountId, {
-      expireAfter: 120, // seconds — short-lived; the WS stays open once handshaked
+      // The JWT lifetime bounds the WebSocket's max lifetime (Euler closes it with
+      // 4555 MAX_LIFETIME_EXCEEDED at expiry). 120s forced a reconnect every ~2 min;
+      // 1 hour keeps the live connection stable. The client also reconnects seamlessly
+      // when it does expire, so a long-running stream never sees a visible drop.
+      expireAfter: 3600, // seconds (1 hour)
       websockets: { allowedCreators: [room], maxWebSockets: 2 },
     });
     const token = resp?.data?.token;
