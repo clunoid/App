@@ -1,25 +1,35 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/requireUser";
 import { isAdmin } from "@/lib/billing/meter";
+import { verifyStageKey } from "@/lib/showtime/server/sign";
 
 export const runtime = "nodejs";
 export const maxDuration = 20;
 
 /**
- * Mints a SHORT-LIVED Euler Stream JWT so the admin's browser can open the managed
- * TikTok LIVE WebSocket (wss://ws.eulerstream.com) WITHOUT ever seeing the API key.
- * Admin-only. Returns 501 {error:"unconfigured"} until EULER_API_KEY + EULER_ACCOUNT_ID
- * are set (so the rest of Showtime — Simulate, the OBS stage — still ships and works).
+ * Mints a SHORT-LIVED Euler Stream JWT so the STAGE (the page captured into TikTok
+ * LIVE Studio) can open the managed TikTok LIVE WebSocket without ever seeing the
+ * API key. Authorized by EITHER an admin session (console) OR signed stage
+ * credentials (the sessionless stage presents {k, s} from its URL fragment).
+ * Returns 501 {error:"unconfigured"} until EULER_API_KEY + EULER_ACCOUNT_ID are set
+ * (so the simulator and the OBS stage still ship and work with no TikTok wiring).
  */
 export async function POST(req: NextRequest) {
-  const user = await requireUser();
-  if (!user || !isAdmin(user)) return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  const body = (await req.json().catch(() => ({}))) as { room?: string; k?: string; s?: string };
+
+  let authorized = false;
+  if (body.k && body.s && verifyStageKey(body.k, body.s)) authorized = true;
+  if (!authorized) {
+    const user = await requireUser();
+    if (user && isAdmin(user)) authorized = true;
+  }
+  if (!authorized) return NextResponse.json({ error: "forbidden" }, { status: 403 });
 
   const apiKey = process.env.EULER_API_KEY;
   const accountId = process.env.EULER_ACCOUNT_ID;
   if (!apiKey || !accountId) return NextResponse.json({ error: "unconfigured" }, { status: 501 });
 
-  const room = (((await req.json().catch(() => ({}))) as { room?: string }).room || "").replace(/^@/, "").trim().toLowerCase().slice(0, 80);
+  const room = (body.room || "").replace(/^@/, "").trim().toLowerCase().slice(0, 80);
   if (!room) return NextResponse.json({ error: "room required" }, { status: 400 });
 
   try {
@@ -28,9 +38,8 @@ export async function POST(req: NextRequest) {
     const client = new (EulerStreamApiClient as new (o: { apiKey: string }) => { authentication: { createJWT: (acct: string, opts: unknown) => Promise<{ data?: { token?: string } }> } })({ apiKey });
     const resp = await client.authentication.createJWT(accountId, {
       // The JWT lifetime bounds the WebSocket's max lifetime (Euler closes it with
-      // 4555 MAX_LIFETIME_EXCEEDED at expiry). 120s forced a reconnect every ~2 min;
-      // 1 hour keeps the live connection stable. The client also reconnects seamlessly
-      // when it does expire, so a long-running stream never sees a visible drop.
+      // 4555 MAX_LIFETIME_EXCEEDED at expiry). 1h keeps the live connection stable;
+      // the feed reconnects seamlessly when it does expire.
       expireAfter: 3600, // seconds (1 hour)
       websockets: { allowedCreators: [room], maxWebSockets: 2 },
     });
