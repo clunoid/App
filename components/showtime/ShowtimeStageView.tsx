@@ -1,18 +1,22 @@
 "use client";
 
 /**
- * The standalone Showtime STAGE — add this page as an OBS Browser Source (1080×1920).
- * It's a pure renderer: it reads the unguessable stage key from the URL FRAGMENT
- * (#k=…), subscribes to the Realtime bus, and plays every gift the Console publishes
- * (simulated or a real TikTok gift). No controls, no chrome.
+ * The standalone Showtime STAGE — OBS Browser Source target (1080×1920). MINIMAL SHELL.
+ *
+ * The animation layer was removed; the visual design is being rebuilt. For now this is a
+ * bare stage: it reads the unguessable key from the URL FRAGMENT (#k=), subscribes to the
+ * Realtime bus, and shows the latest gift as plain text so the pipe can be confirmed. No
+ * controls, no chrome — the new design plugs in here.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createBus, type ShowtimeBus } from "@/lib/showtime/bus";
-import { StageCanvas } from "./StageCanvas";
+import type { GiftEvent } from "@/lib/showtime/types";
 
 export function ShowtimeStageView() {
-  const [bus, setBus] = useState<ShowtimeBus | null>(null);
   const [noKey, setNoKey] = useState(false);
+  const [last, setLast] = useState<GiftEvent | null>(null);
+  const busRef = useRef<ShowtimeBus | null>(null);
+  const hideRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     // key travels in the URL FRAGMENT (#k=) — never sent to servers, logs or analytics
@@ -21,17 +25,29 @@ export function ShowtimeStageView() {
     const k = hash.get("k") || search.get("k") || "";
     if (!k) { setNoKey(true); return; }
     const b = createBus(k);
-    setBus(b);
-    return () => { b.close(); };
+    busRef.current = b;
+    const off = b.onGift((ev) => {
+      setLast(ev);
+      if (hideRef.current) clearTimeout(hideRef.current);
+      hideRef.current = setTimeout(() => setLast(null), 4000);
+    });
+    return () => { off(); b.close(); if (hideRef.current) clearTimeout(hideRef.current); };
   }, []);
 
   return (
-    <div className="relative h-[100dvh] w-full overflow-hidden bg-black">
-      <StageCanvas bus={bus} showIdle />
-      {noKey && (
-        <div className="absolute inset-0 grid place-items-center px-8 text-center">
-          <p className="max-w-sm text-[13px] text-white/50">This stage needs its link from the Showtime console. Open <b className="text-white/80">Showtime → Copy OBS URL</b> and use that as your OBS Browser Source.</p>
+    <div className="grid h-[100dvh] w-full place-items-center overflow-hidden bg-black px-8 text-center">
+      {noKey ? (
+        <p className="max-w-sm text-[13px] text-white/50">
+          This stage needs its link from the Showtime console. Open <b className="text-white/80">Showtime → Copy OBS URL</b> and use that as your OBS Browser Source.
+        </p>
+      ) : last ? (
+        <div className="text-white">
+          <div className="text-5xl">{last.gift.emoji}</div>
+          <div className="mt-4 text-lg font-semibold">@{last.sender}</div>
+          <div className="mt-1 text-sm text-white/60">sent {last.gift.name}{last.count > 1 ? ` ×${last.count}` : ""}</div>
         </div>
+      ) : (
+        <p className="text-[13px] text-white/25">Showtime stage — waiting for gifts…</p>
       )}
     </div>
   );
