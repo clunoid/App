@@ -4,9 +4,9 @@
  * The SHOWTIME STAGE — the fully-automated performer. This page runs inside TikTok
  * LIVE Studio (browser/window capture at 1080×1920) and needs ZERO operator input:
  * it owns the Euler Stream socket (signed stage creds from the URL fragment), runs
- * the deterministic Clash simulation, renders at 60fps, speaks through Isaac + Cluno,
- * snapshots to Supabase every 5s, and resumes the war in ~2s after any reload —
- * auto-reconnecting to the last room. The console only monitors and simulates.
+ * the deterministic Beach Race simulation, renders at 60fps, speaks through Isaac +
+ * Cluno, snapshots to Supabase every 5s, and resumes the race in ~2s after any
+ * reload — auto-reconnecting to the last room. The console only monitors + simulates.
  *
  * Modes: LIVE (default — socket + persistence + audio) vs PREVIEW (#preview=1, used
  * by the console iframe: render-only mirror fed by the Realtime bus, no socket, no
@@ -17,9 +17,9 @@ import { createBus, type ShowtimeBus } from "@/lib/showtime/bus";
 import { chatEvent, giftEvent, likeEvent, makeUser, socialEvent } from "@/lib/showtime/gifts";
 import { fragmentCreds, stageApi, type StageCreds } from "@/lib/showtime/stagecreds";
 import { createEulerFeed, type EulerStatus } from "@/lib/showtime/euler";
-import { ClashSim } from "@/lib/showtime/games/clash/sim";
-import { ClashRenderer } from "@/lib/showtime/games/clash/render";
-import { HOST_LINES } from "@/lib/showtime/games/clash/strings";
+import { SprintSim } from "@/lib/showtime/games/sprint/sim";
+import { SprintRenderer } from "@/lib/showtime/games/sprint/render";
+import { HOST_LINES } from "@/lib/showtime/games/sprint/strings";
 import { StageAudio } from "@/lib/showtime/audio";
 import { HostVoice, fillTemplate, type Speaker } from "@/lib/showtime/voice";
 import type { GameSnapshot, GifterRow, MonumentRow, ShowEvent, SimEvent } from "@/lib/showtime/types";
@@ -44,8 +44,8 @@ export function ShowtimeStageView() {
     const canvas = canvasRef.current!;
 
     /* ── core pieces ── */
-    const sim = new ClashSim(7);
-    const renderer = new ClashRenderer(canvas);
+    const sim = new SprintSim(7);
+    const renderer = new SprintRenderer(canvas);
     const bus: ShowtimeBus = createBus(frag.k);
     const audio = new StageAudio(frag.muted || !live);
     const voice = live && !frag.muted ? new HostVoice(creds, { onSpeaking: (on) => audio.duck(on) }) : null;
@@ -66,62 +66,65 @@ export function ShowtimeStageView() {
       lineN++;
       switch (e.kind) {
         case "takeover":
-          voice.say(0, speaker(), fillTemplate(pick(HOST_LINES.takeover, lineN), { name: e.user.name, team: e.team }));
+          voice.say(0, speaker(), fillTemplate(pick(HOST_LINES.takeover, lineN), { name: e.user.name }));
           break;
-        case "campaignEnd":
-          voice.say(0, speaker(), fillTemplate(pick(HOST_LINES.campaignEnd, lineN), { team: e.winner, name: e.mvp?.user.name }));
+        case "raceEnd": {
+          const winner = e.podium[0];
+          const name = winner?.user?.name || (winner?.bot ? "a sunny bot" : "");
+          if (name) voice.say(1, speaker(), fillTemplate(pick(HOST_LINES.winner, lineN), { name }));
           break;
-        case "warEnd":
-          voice.say(1, speaker(), e.winner ? fillTemplate(pick(HOST_LINES.warEndWin, lineN), { team: e.winner, name: e.mvp?.user.name }) : pick(HOST_LINES.warDraw, lineN));
+        }
+        case "photoFinish":
+          voice.say(1, speaker(), pick(HOST_LINES.photoFinish, lineN));
           break;
-        case "suddenDeath":
-          voice.say(1, speaker(), pick(HOST_LINES.suddenDeath, lineN));
-          break;
-        case "strike":
-          if (e.tier >= 2) voice.say(2, speaker(), fillTemplate(pick(HOST_LINES.strikeBig, lineN), { name: e.user.name, team: e.team }));
+        case "boost":
+          if (e.tier >= 2) voice.say(2, speaker(), fillTemplate(pick(HOST_LINES.boostBig, lineN), { name: e.user.name }));
           break;
         case "firstHuman":
           voice.say(2, speaker(), fillTemplate(pick(HOST_LINES.firstHuman, lineN), { name: e.user.name }));
           break;
         case "welcome":
-          voice.say(3, speaker(), fillTemplate(pick(HOST_LINES.welcome, lineN), { name: e.user.name, team: e.team }));
+          voice.say(3, speaker(), fillTemplate(pick(HOST_LINES.welcome, lineN), { name: e.user.name }));
           break;
-        case "comeback":
-          voice.say(3, speaker(), fillTemplate(pick(HOST_LINES.comeback, lineN), { team: e.team }));
-          break;
-        case "warStart":
-          if (e.warNumber % 2 === 1) voice.say(3, speaker(), pick(HOST_LINES.warStart, lineN));
+        case "raceStart":
+          if (e.raceNumber % 2 === 1) voice.say(3, speaker(), pick(HOST_LINES.raceStart, lineN));
           break;
       }
     };
 
     /* ── SFX from discrete sim moments ── */
-    let lastSpawnSfx = 0;
+    let lastSmallSfx = 0;
     const sfxFor = (e: SimEvent, now: number) => {
       switch (e.kind) {
-        case "spawn":
-          if (now - lastSpawnSfx > 220) {
+        case "join":
+        case "beachball":
+          if (now - lastSmallSfx > 220) {
             audio.spawn();
-            lastSpawnSfx = now;
+            lastSmallSfx = now;
           }
           break;
-        case "strike":
+        case "cheer":
+          if (now - lastSmallSfx > 400) {
+            audio.tick();
+            lastSmallSfx = now;
+          }
+          break;
+        case "boost":
           audio.strike(e.tier);
           break;
-        case "surge":
+        case "wave":
           audio.surge();
           break;
-        case "warStart":
+        case "raceStart":
           audio.horn();
           break;
-        case "suddenDeath":
+        case "finish":
+          audio.tick();
+          break;
+        case "photoFinish":
           audio.suddenDeath();
           break;
-        case "coreBreak":
-          audio.coreBreak();
-          break;
-        case "warEnd":
-        case "campaignEnd":
+        case "raceEnd":
           audio.fanfare();
           break;
       }
@@ -130,10 +133,10 @@ export function ShowtimeStageView() {
     /* ── persistence (live stage only, real users only) ── */
     const persistFor = (e: SimEvent) => {
       if (!live) return;
-      if (e.kind === "warEnd" || e.kind === "campaignEnd") {
-        const rows = sim.state.warMvps
-          .filter((r) => humanIds.has(r.user.id))
-          .map((r, i) => ({ id: r.user.id, name: r.user.name, avatarUrl: r.user.avatarUrl, rank: i + 1 }));
+      if (e.kind === "raceEnd") {
+        const humans = sim.state.racers.filter((r) => !r.bot && r.user && humanIds.has(r.user.id));
+        const ranked = [...humans].sort((a, b) => (a.place ?? 99) - (b.place ?? 99) || b.progress - a.progress);
+        const rows = ranked.map((r, i) => ({ id: r.user!.id, name: r.user!.name, avatarUrl: r.user!.avatarUrl, rank: r.place ?? i + 1 }));
         if (rows.length) void stageApi("/api/showtime/persist", creds, { op: "war", rows });
       }
     };
@@ -160,21 +163,21 @@ export function ShowtimeStageView() {
     const offEv = bus.onEvent(intake);
 
     // Rehearsal hook (browser console): __showtimeInject("gift", 29999) / ("combo", 50) /
-    // ("chat","red") / ("like",50) / ("follow") — ALWAYS sim:true, never persisted.
+    // ("chat","lets race") / ("like",50) / ("follow") — ALWAYS sim:true, never persisted.
     const inject = (kind: string, a?: number | string, name?: string) => {
       const u = makeUser(String(name || "rehearsal" + ((Math.random() * 90) | 0)));
       if (kind === "gift") intake({ ...giftEvent(u, Number(a) || 1, 1), sim: true });
       else if (kind === "combo") intake({ ...giftEvent(u, 1, Number(a) || 10), sim: true });
-      else if (kind === "chat") intake(chatEvent(u, String(a ?? "hello"), true));
+      else if (kind === "chat") intake(chatEvent(u, String(a ?? "lets race"), true));
       else if (kind === "like") intake(likeEvent(u, Number(a) || 10, true));
       else if (kind === "follow" || kind === "share" || kind === "join") intake(socialEvent(kind, u, true));
     };
     (window as unknown as Record<string, unknown>).__showtimeInject = inject;
     (window as unknown as Record<string, unknown>).__showtimeProbe = () => ({
       fps,
-      units: sim.state.units.length,
+      racers: sim.state.racers.length,
       phase: sim.state.phase,
-      p: sim.state.p,
+      raceNumber: sim.state.raceNumber,
       idle: sim.state.idle,
       ticker: sim.state.ticker.length,
       simClock: sim.state.simClock,
@@ -237,7 +240,7 @@ export function ShowtimeStageView() {
     /* ── voice warm-up: pre-render the template-free stock lines ── */
     if (voice) {
       const warm: { speaker: Speaker; text: string }[] = [];
-      for (const t of [...HOST_LINES.warStart, ...HOST_LINES.warDraw, ...HOST_LINES.suddenDeath, ...HOST_LINES.ambient]) {
+      for (const t of [...HOST_LINES.raceStart, ...HOST_LINES.photoFinish, ...HOST_LINES.ambient]) {
         if (!t.includes("{")) warm.push({ speaker: warm.length % 2 === 0 ? "isaac" : "cluno", text: t });
       }
       voice.warm(warm.slice(0, 16));
@@ -251,7 +254,7 @@ export function ShowtimeStageView() {
     /* ── the engine loop: fixed-step sim, 60fps render ──
      * rAF drives it when the tab is visible; a timer PUMP takes over whenever rAF
      * is starved (hidden/backgrounded capture browsers throttle rAF to zero — the
-     * war must keep running and stay capturable regardless). */
+     * race must keep running and stay capturable regardless). */
     let raf = 0;
     let last = performance.now();
     let acc = 0;
@@ -309,15 +312,20 @@ export function ShowtimeStageView() {
     const statusTimer = live
       ? window.setInterval(() => {
           const st = sim.state;
+          const leadRacer =
+            st.phase === "race"
+              ? [...st.racers].sort((a, b) => (a.place ?? 99) - (b.place ?? 99) || b.progress - a.progress)[0]
+              : undefined;
+          const leader = leadRacer ? (leadRacer.user?.name ?? "Sunny Bot") : (st.lastPodium[0]?.user?.name ?? "");
           bus.publishStatus({
             ts: Date.now(),
             feed: feedStatus,
             feedMsg: statusMsg,
             room,
             phase: st.phase,
-            warNumber: st.warNumber,
-            wins: { crimson: st.wins.crimson, cobalt: st.wins.cobalt },
-            p: st.p,
+            raceNumber: st.raceNumber,
+            racers: st.racers.length,
+            leader,
             viewers: st.viewers,
             fps,
             events1m: evCount,
@@ -361,12 +369,12 @@ export function ShowtimeStageView() {
   }, []);
 
   return (
-    <div className="relative h-[100dvh] w-full overflow-hidden bg-black">
+    <div className="relative h-[100dvh] w-full overflow-hidden bg-[#5BC8F2]">
       <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" />
       {noKey && (
         <div className="absolute inset-0 grid place-items-center px-8 text-center">
-          <p className="max-w-sm text-[13px] text-white/50">
-            This stage needs its link from the Showtime console. Open <b className="text-white/80">Showtime → Copy OBS URL</b> and use that as your browser/window source.
+          <p className="max-w-sm rounded-xl bg-white/90 p-4 text-[13px] text-[#1F2933]">
+            This stage needs its link from the Showtime console. Open <b>Showtime → Copy OBS URL</b> and use that as your browser/window source.
           </p>
         </div>
       )}

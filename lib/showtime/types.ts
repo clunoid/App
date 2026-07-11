@@ -4,14 +4,17 @@
  * The stage is a fully-automated, gift-interactive game for TikTok LIVE, rendered by
  * the browser page at /showtime/stage (captured into TikTok LIVE Studio) and fed by
  * Euler Stream events + the Supabase Realtime bus. These types are the shared contract
- * between the Euler feed, the Realtime bus, the game simulations, the renderers, the
+ * between the Euler feed, the Realtime bus, the game simulation, the renderer, the
  * voice hosts, and the director console. Everything downstream imports from here.
+ *
+ * CURRENT GAME: BEACH RACE (id "sprint") — a bright, summery, instantly-legible race:
+ * comment to join, likes fill a shared Wave, gifts boost YOUR racer, podium + points.
  *
  * COMPLIANCE INVARIANTS (encoded in the design, do not weaken):
  *  - Gifts map ONLY to deterministic effects — never chance, prizes, or anything of value.
  *  - Gift effects key off COIN VALUE buckets (GiftTier), never gift names (catalog rotates).
  *  - Idle/attract entities are always clearly labeled as house bots, never fake users.
- *  - On-screen copy lives in each game's strings file so it can be reviewed in one place.
+ *  - On-screen copy lives in the game's strings file so it can be reviewed in one place.
  */
 
 /* ── Events ─────────────────────────────────────────────────────────────── */
@@ -49,11 +52,11 @@ export type ShowEvent = {
 export type GiftTier = 0 | 1 | 2 | 3 | 4;
 
 export const TIER_LABEL: Record<GiftTier, string> = {
-  0: "Arrow",
-  1: "Champion",
-  2: "Siege",
-  3: "Hero",
-  4: "Legend",
+  0: "Dash",
+  1: "Turbo",
+  2: "Jet ski",
+  3: "Airlift",
+  4: "Parade",
 };
 
 /* ── Bus messages (Supabase Realtime, channel st:<key>) ─────────────────── */
@@ -73,9 +76,9 @@ export type StageStatus = {
   feedMsg?: string;
   room: string;
   phase: string;
-  warNumber: number;
-  wins: { crimson: number; cobalt: number };
-  p: number; // territory % held by crimson
+  raceNumber: number;
+  racers: number;
+  leader: string; // current leader (or last winner) display name, '' when none
   viewers: number;
   fps: number;
   events1m: number; // events processed in the last minute
@@ -87,52 +90,44 @@ export type BusMessage =
   | { kind: "cmd"; c: StageCommand }
   | { kind: "status"; s: StageStatus };
 
-/* ── Clash game state (sim ⇄ renderer contract) ─────────────────────────── */
+/* ── Beach Race game state (sim ⇄ renderer contract) ────────────────────── */
 
-export type TeamId = "crimson" | "cobalt";
+export type SprintPhase = "lobby" | "race" | "podium";
 
-export type UnitKind = "trooper" | "recruit" | "squad" | "champion" | "hero";
-
-export type Unit = {
-  id: number;
-  team: TeamId;
-  kind: UnitKind;
+export type Racer = {
+  id: string; // user id, or "bot:N"
   user?: EvUser; // absent for house bots
   bot?: boolean; // house bot — renderer MUST label these visibly
-  x: number; // 0..1 horizontal lane position
-  y: number; // 0..1 vertical position (0 = crimson keep, 1 = cobalt keep)
-  speed: number; // base units of y per second (sign encodes direction)
-  power: number; // push points delivered on reaching the front line
-  bornAt: number; // sim ms
+  lane: number; // 0-based grid lane
+  progress: number; // 0..1 down the track (1 = finish line)
+  place?: number; // 1-based, set when finished
+  boostUntil: number; // sim ms
+  boostMult: number; // active multiplier while boosted (1 when none)
+  boostTier: GiftTier | -1; // tier of the active/most recent boost (drives trail art)
+  hat?: boolean; // follow cosmetic (sun hat)
+  cheerUntil: number; // sim ms (comment cheer micro-boost)
+  points: number; // session championship points
+  joinedAt: number; // sim ms
 };
 
-export type ClashPhase = "war" | "suddenDeath" | "intermission" | "ceremony";
+export type ScoreRow = { user: EvUser; points: number; wins: number };
 
-export type MvpRow = { user: EvUser; team: TeamId; coins: number; pushes: number };
+export type PodiumRow = { user?: EvUser; bot?: boolean; place: number; points: number };
 
-export type TickerItem = { id: number; text: string; team?: TeamId; tier?: GiftTier; at: number };
+export type TickerItem = { id: number; text: string; tier?: GiftTier; at: number };
 
-export type SurgeState = { charge: number; activeUntil: number }; // charge 0..100, sim ms
-
-export type ClashState = {
+export type SprintState = {
   simClock: number; // sim ms since boot
-  phase: ClashPhase;
+  phase: SprintPhase;
   phaseEndsAt: number; // sim ms
-  warNumber: number; // 1-based within the campaign
-  wins: Record<TeamId, number>;
-  /** Territory: % of the field held by crimson (0..100). Front line renders at p. */
-  p: number;
-  /** Push scaling constant for this war (frozen at war start). */
-  k: number;
-  units: Unit[];
-  surge: Record<TeamId, SurgeState>;
-  teamLikes: Record<TeamId, number>;
-  comeback: TeamId | null; // team currently holding the comeback multiplier
-  warMvps: MvpRow[]; // top 5 this war
-  sessionMvps: MvpRow[]; // top 5 this session
+  raceNumber: number;
+  racers: Racer[];
+  /** Shared Wave meter charged by room likes: 0..100; wave active while simClock < waveUntil. */
+  waveCharge: number;
+  waveUntil: number;
+  board: ScoreRow[]; // session championship top 5 (humans only)
+  lastPodium: PodiumRow[]; // podium of the most recent race
   ticker: TickerItem[]; // newest first, capped
-  lastWarWinner: TeamId | null;
-  campaignWinner: TeamId | null; // set during ceremony phase
   idle: boolean; // attract mode (no human events recently)
   viewers: number;
   room: string; // connected TikTok room ('' when none)
@@ -141,20 +136,18 @@ export type ClashState = {
 /* ── Sim events (discrete moments → choreography + voice) ───────────────── */
 
 export type SimEvent =
-  | { kind: "spawn"; unit: Unit }
-  | { kind: "strike"; team: TeamId; tier: GiftTier; user: EvUser; coins: number; combo: number }
-  | { kind: "surge"; team: TeamId }
-  | { kind: "welcome"; user: EvUser; team: TeamId } // follow
-  | { kind: "reinforce"; user: EvUser; team: TeamId } // share
-  | { kind: "lineShift"; team: TeamId; amount: number } // % moved (render pulse)
-  | { kind: "suddenDeath" }
-  | { kind: "coreBreak"; team: TeamId } // team whose core broke (they lost)
-  | { kind: "warEnd"; winner: TeamId | null; mvp: MvpRow | null }
-  | { kind: "campaignEnd"; winner: TeamId; mvp: MvpRow | null }
-  | { kind: "warStart"; warNumber: number }
-  | { kind: "firstHuman"; user: EvUser }
-  | { kind: "takeover"; user: EvUser; team: TeamId; coins: number } // tier-4 moment
-  | { kind: "comeback"; team: TeamId };
+  | { kind: "join"; user: EvUser; lane: number; midRace: boolean }
+  | { kind: "cheer"; user: EvUser }
+  | { kind: "boost"; user: EvUser; tier: GiftTier; coins: number; combo: number }
+  | { kind: "wave" } // likes meter filled — everyone surfs
+  | { kind: "welcome"; user: EvUser } // follow → sun hat
+  | { kind: "beachball"; user: EvUser } // share → beach ball drop
+  | { kind: "raceStart"; raceNumber: number }
+  | { kind: "finish"; racer: Racer; place: number }
+  | { kind: "photoFinish" } // 1st and 2nd within a whisker
+  | { kind: "raceEnd"; podium: PodiumRow[] }
+  | { kind: "takeover"; user: EvUser; coins: number } // tier-4 parade moment
+  | { kind: "firstHuman"; user: EvUser };
 
 /* ── Game module interface (games plug into the stage shell) ────────────── */
 
@@ -178,7 +171,7 @@ export type GifterRow = {
   name: string;
   avatar_url: string | null;
   total_coins: number;
-  wars: number;
+  wars: number; // races participated (column name is historical)
   best_rank: number | null;
   last_seen: string;
 };

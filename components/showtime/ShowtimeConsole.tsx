@@ -71,7 +71,7 @@ const FEED_PILL: Record<FeedStatus, { label: string; color: string }> = {
 /** Rotating fake senders for simulator events with no handle typed in. */
 const FAKE_HANDLES = ["nova_x", "jaydee", "miko.wav", "kairo.fm", "zetsu", "pixel.pri", "lu_na", "dash.void"];
 
-const RUSH_CHATS = ["lets go team!", "red", "blue", "this is wild", "PUSH PUSH PUSH", "who's winning??", "crimson sweep incoming", "cobalt holds the line"];
+const RUSH_CHATS = ["lets race!", "im in!!", "GO GO GO", "this is wild", "who's winning??", "catch me if you can", "beach day!!", "photo finish incoming"];
 
 /* ── tiny formatters ────────────────────────────────────────────────────── */
 const pad2 = (n: number) => String(n).padStart(2, "0");
@@ -331,7 +331,6 @@ export function ShowtimeConsole() {
   const feedBusy = status?.feed === "connecting";
 
   const phaseElapsed = status ? fmtDur((now - phaseRef.current.since) / 1000) : "0:00";
-  const p = Math.min(100, Math.max(0, status?.p ?? 50));
 
   const btn = "flex items-center gap-1.5 rounded-lg border px-3 py-2 text-[12px] font-medium transition hover:brightness-125 disabled:opacity-40";
 
@@ -422,31 +421,20 @@ export function ShowtimeConsole() {
             )}
           </Card>
 
-          <Card title="War monitor" icon={<Activity size={13} style={{ color: C.green }} />}>
+          <Card title="Race monitor" icon={<Activity size={13} style={{ color: C.green }} />}>
             {status ? (
               <>
                 <div className="flex items-baseline justify-between">
                   <span className="text-[12px] font-semibold uppercase tracking-wider" style={{ color: C.muted }}>
-                    {status.phase || "—"} · war {status.warNumber}
+                    {status.phase || "—"} · race {status.raceNumber}
                   </span>
                   <span className="text-[30px] font-bold leading-none tabular-nums">{phaseElapsed}</span>
                 </div>
-                <div className="mt-3 flex items-center justify-center gap-3 text-[18px] font-bold tabular-nums">
-                  <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: C.crimson }}>Crimson</span>
-                  <span style={{ color: C.crimson }}>{status.wins.crimson}</span>
-                  <span style={{ color: C.faint }}>—</span>
-                  <span style={{ color: C.cobalt }}>{status.wins.cobalt}</span>
-                  <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: C.cobalt }}>Cobalt</span>
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <Stat k="racers on the grid" v={fmtInt(status.racers)} />
+                  <Stat k="leader" v={status.leader || "—"} />
                 </div>
-                <div className="mt-3 flex h-2.5 overflow-hidden rounded-full" title={`Crimson holds ${p.toFixed(1)}%`}>
-                  <div className="transition-all duration-700" style={{ width: `${p}%`, background: C.crimson }} />
-                  <div className="flex-1" style={{ background: C.cobalt }} />
-                </div>
-                <div className="mt-1 flex justify-between text-[10px] tabular-nums" style={{ color: C.faint }}>
-                  <span>{p.toFixed(1)}%</span>
-                  <span>{(100 - p).toFixed(1)}%</span>
-                </div>
-                <div className="mt-3 grid grid-cols-3 gap-2">
+                <div className="mt-2 grid grid-cols-3 gap-2">
                   <Stat k="events/min" v={fmtInt(status.events1m)} />
                   <Stat k="uptime" v={fmtDur(status.uptimeS)} />
                   <Stat k="fps" v={String(status.fps)} />
@@ -567,8 +555,8 @@ export function ShowtimeConsole() {
 
             <div className="mt-3 flex flex-wrap gap-1.5">
               <button onClick={() => sendChat("lets go team!")} className={btn} style={{ borderColor: C.line, color: C.muted }}>Comment</button>
-              <button onClick={() => sendChat("red")} className={btn} style={{ borderColor: C.crimson, color: C.crimson }}>“red”</button>
-              <button onClick={() => sendChat("blue")} className={btn} style={{ borderColor: C.cobalt, color: C.cobalt }}>“blue”</button>
+              <button onClick={() => sendChat("lets race!")} className={btn} style={{ borderColor: C.green, color: C.green }}>Join race</button>
+              <button onClick={() => sendChat("GO GO GO")} className={btn} style={{ borderColor: C.amber, color: C.amber }}>Cheer</button>
               <button onClick={() => busRef.current?.publishEvent(likeEvent(simUser(), 50, true))} className={btn} style={{ borderColor: C.line, color: C.muted }}>Like ×50</button>
               <button onClick={() => busRef.current?.publishEvent(socialEvent("follow", simUser(), true))} className={btn} style={{ borderColor: C.line, color: C.muted }}>Follow</button>
               <button onClick={() => busRef.current?.publishEvent(socialEvent("share", simUser(), true))} className={btn} style={{ borderColor: C.line, color: C.muted }}>Share</button>
