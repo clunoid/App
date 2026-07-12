@@ -48,6 +48,11 @@ export const ACTION_COSTS = {
   edge_analyze: 40, //  /api/edge/predict     — Opus interpret + Tavily research (~$0.2)
   edge_video_plan: 180, // /api/edge/video/plan — Opus matchup-extract + Opus dialogue + per-match predicts + Pexels (~$0.9)
   edge_daily: 60, //     /api/edge/daily       — a 10-match slate, light per match (ESPN data only, no Opus)
+  // Career Desk — AI job-application platform (admin-only at launch; the charges are
+  // wired now so opening it up later is just the access switch in lib/career/access.ts).
+  career_parse: 15, //    /api/career/profile           — Haiku structured resume parse (~$0.03)
+  career_analyze: 25, //  /api/career/applications POST — Haiku JD extraction + deterministic match (~$0.05)
+  career_generate: 60, // /api/career/.../generate      — Sonnet docs; the tailored resume runs Opus (~$0.3)
 } as const;
 export type Chargeable = keyof typeof ACTION_COSTS;
 
@@ -110,6 +115,10 @@ export const RATE_LIMITS: Record<string, [number, number]> = {
   edge_video_plan: [6, 60], // Opus-heavy planner
   edge_tts: [120, 60], // premium ElevenLabs per line — matches the shared tts cap
   edge_daily: [6, 60], // the 10-match slate — fans out across many leagues
+  // Career Desk
+  career_parse: [6, 60],
+  career_analyze: [10, 60],
+  career_generate: [10, 60], // per-document generation (the resume one runs Opus)
 };
 
 /** Hard input caps so a single request can't be oversized. */
