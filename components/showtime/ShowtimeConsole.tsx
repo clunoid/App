@@ -52,8 +52,21 @@ export function ShowtimeConsole() {
   const [feed, setFeed] = useState<{ e: StageEvent; k: number }[]>([]);
   const [sender, setSender] = useState("");
   const [customText, setCustomText] = useState("");
+  const [previewSound, setPreviewSound] = useState(false);
+  const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const seq = useRef(0);
   const fakeI = useRef(0);
+
+  const pushPreviewSound = useCallback((on: boolean) => {
+    iframeRef.current?.contentWindow?.postMessage({ type: "showtime-audio", muted: !on }, window.location.origin);
+  }, []);
+  const toggleSound = useCallback(() => {
+    setPreviewSound((cur) => {
+      const next = !cur;
+      pushPreviewSound(next);
+      return next;
+    });
+  }, [pushPreviewSound]);
 
   useEffect(() => {
     const k = stageKey();
@@ -191,7 +204,18 @@ export function ShowtimeConsole() {
 
             {/* Simulator */}
             <section className="rounded-xl border border-border bg-surface p-5">
-              <h2 className="text-[12px] font-semibold uppercase tracking-wider text-ink-faint">Match simulator</h2>
+              <div className="flex items-center justify-between">
+                <h2 className="text-[12px] font-semibold uppercase tracking-wider text-ink-faint">Match simulator</h2>
+                <button
+                  onClick={toggleSound}
+                  className={`rounded-lg border px-3 py-1.5 text-[12px] font-semibold transition ${
+                    previewSound ? "border-clay bg-clay/15 text-clay" : "border-border text-ink-muted hover:border-ink-faint hover:text-ink"
+                  }`}
+                  title="Toggle sound on the live preview"
+                >
+                  {previewSound ? "🔊 Sound on" : "🔇 Sound off"}
+                </button>
+              </div>
               <input
                 value={sender}
                 onChange={(e) => setSender(e.target.value)}
@@ -257,7 +281,14 @@ export function ShowtimeConsole() {
             <div className="flex min-h-0 flex-1 items-center justify-center p-4">
               {key ? (
                 <div className="h-full max-h-full overflow-hidden rounded-lg border border-border bg-black" style={{ aspectRatio: "9 / 16" }}>
-                  <iframe src={`/showtime/stage#k=${key}&muted=1`} title="Stage preview" className="h-full w-full" style={{ border: 0 }} />
+                  <iframe
+                    ref={iframeRef}
+                    src={`/showtime/stage#k=${key}&muted=1`}
+                    title="Stage preview"
+                    className="h-full w-full"
+                    style={{ border: 0 }}
+                    onLoad={() => pushPreviewSound(previewSound)}
+                  />
                 </div>
               ) : (
                 <p className="text-[12px] text-ink-faint">Preparing stage key…</p>

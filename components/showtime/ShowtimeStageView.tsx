@@ -30,12 +30,15 @@ const SIM_STEP_MS = 1000 / 30;
 
 type Catalog = Map<string, CatalogGift>;
 
+type Banner = { text: string; sub: string; tone: "goal" | "save" | "info"; seq: number; ms: number };
+
 type Ui = {
   state: PenaltyState;
   remainingS: number;
-  banner: { text: string; tone: "goal" | "save" | "info" } | null;
+  banner: Banner | null;
   ticker: string | null;
   anchors: ZoneAnchor[];
+  audioSuspended: boolean;
 };
 
 const ZONE_WORD: Record<Zone, string> = { left: "LEFT", center: "CENTER", right: "RIGHT" };
@@ -85,10 +88,26 @@ export function ShowtimeStageView() {
     const pendingChats: ChatEvent[] = [];
     let ticker: string | null = null;
     let tickerUntil = 0;
-    let banner: Ui["banner"] = null;
+    let banner: Banner | null = null;
     let bannerUntil = 0;
+    let bannerSeq = 0;
     let lastTickSec = -1;
     const timeouts: ReturnType<typeof setTimeout>[] = [];
+    const showBanner = (text: string, sub: string, tone: Banner["tone"], ms: number, now: number) => {
+      banner = { text, sub, tone, seq: ++bannerSeq, ms };
+      bannerUntil = now + ms;
+    };
+
+    // audio unlock is retried continuously (capture browsers rarely receive clicks),
+    // and the console preview controls mute via same-origin postMessage
+    const armTimer = window.setInterval(() => {
+      if (!audio.isRunning()) audio.arm();
+    }, 2000);
+    const onMsg = (e: MessageEvent) => {
+      const d = e.data as { type?: string; muted?: boolean } | null;
+      if (d?.type === "showtime-audio") audio.setMuted(!!d.muted);
+    };
+    window.addEventListener("message", onMsg);
 
     const offBus = bus.onEvent((e) => {
       if (e.kind === "gift") pendingGifts.push(e.ev);
@@ -156,23 +175,22 @@ export function ShowtimeStageView() {
             );
             break;
           }
-          case "result":
-            banner = e.rec.goal ? { text: "GOAL!", tone: "goal" } : { text: "SAVED!", tone: "save" };
-            bannerUntil = now + 2400;
+          case "result": {
+            const sName = PLAYERS[e.rec.shooter].name;
+            const kName = PLAYERS[e.rec.shooter === "ronaldo" ? "messi" : "ronaldo"].name;
+            if (e.rec.goal) showBanner("GOAL!", `${sName} beats ${kName}`, "goal", 2600, now);
+            else showBanner("SAVED!", `${kName} denies ${sName}`, "save", 2600, now);
             audio.setIntensity(e.rec.goal ? 0.85 : 0.6);
             break;
+          }
           case "phase":
             if (e.phase === "vote") {
               audio.setIntensity(0.3);
-              if (game.state.suddenDeath) {
-                banner = { text: "SUDDEN DEATH", tone: "info" };
-                bannerUntil = now + 2200;
-              }
+              if (game.state.suddenDeath) showBanner("SUDDEN DEATH", "next goal decides it", "info", 2400, now);
             }
             break;
           case "matchEnd":
-            banner = { text: `${PLAYERS[e.winner].name} WINS!`, tone: "goal" };
-            bannerUntil = now + 4200;
+            showBanner(`${PLAYERS[e.winner].name} WINS!`, `final score ${e.score.ronaldo}–${e.score.messi}`, "goal", 4200, now);
             audio.matchEndFanfare();
             break;
         }
@@ -228,6 +246,7 @@ export function ShowtimeStageView() {
         banner,
         ticker,
         anchors: scene.zoneAnchors(),
+        audioSuspended: audio.isSuspended(),
       });
     }, 100);
 
@@ -241,9 +260,11 @@ export function ShowtimeStageView() {
       cancelAnimationFrame(raf);
       window.clearInterval(pump);
       window.clearInterval(uiTimer);
+      window.clearInterval(armTimer);
       timeouts.forEach(clearTimeout);
       window.removeEventListener("pointerdown", arm);
       window.removeEventListener("resize", onResize);
+      window.removeEventListener("message", onMsg);
       offBus();
       bus.close();
       scene.dispose();
@@ -375,16 +396,32 @@ export function ShowtimeStageView() {
               );
             })}
 
-          {/* ── result banner ── */}
+          {/* ── broadcast lower-third banner ── */}
           {ui?.banner && (
-            <div className="pointer-events-none absolute inset-x-0 top-[27%] flex justify-center">
-              <div
-                className={`rounded-2xl px-8 py-2.5 text-[44px] font-black tracking-wide text-white shadow-2xl ${
-                  ui.banner.tone === "goal" ? "bg-emerald-500/95" : ui.banner.tone === "save" ? "bg-amber-500/95" : "bg-[#E5484D]/95"
-                }`}
-              >
-                {ui.banner.text}
+            <div key={ui.banner.seq} className="pointer-events-none absolute inset-x-0 top-[57%] overflow-hidden">
+              <div className="st-banner" style={{ animationDuration: `${ui.banner.ms}ms` }}>
+                <div
+                  className="st-banner-main"
+                  style={{
+                    background:
+                      ui.banner.tone === "goal"
+                        ? "linear-gradient(100deg, #0C8F52 0%, #12B76A 55%, #0C8F52 100%)"
+                        : ui.banner.tone === "save"
+                          ? "linear-gradient(100deg, #B45309 0%, #F59E0B 55%, #B45309 100%)"
+                          : "linear-gradient(100deg, #9F1239 0%, #E5484D 55%, #9F1239 100%)",
+                  }}
+                >
+                  <span className="st-banner-text">{ui.banner.text}</span>
+                </div>
+                <div className="st-banner-sub">{ui.banner.sub}</div>
               </div>
+              <style>{`
+                .st-banner{display:flex;flex-direction:column;align-items:flex-start;padding-left:7%;animation-name:stSweep;animation-timing-function:linear;animation-fill-mode:both}
+                .st-banner-main{clip-path:polygon(0 0,100% 0,94% 100%,0 100%);padding:6px 54px 8px 26px;box-shadow:0 10px 30px rgba(0,0,0,.45)}
+                .st-banner-text{font-size:42px;font-weight:900;font-style:italic;letter-spacing:.04em;color:#fff;text-shadow:0 2px 0 rgba(0,0,0,.25)}
+                .st-banner-sub{margin-top:4px;margin-left:8px;clip-path:polygon(0 0,100% 0,96% 100%,0 100%);background:rgba(10,16,28,.88);color:rgba(255,255,255,.92);font-size:14px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;padding:4px 34px 4px 18px}
+                @keyframes stSweep{0%{transform:translateX(-115%);opacity:0}9%{transform:translateX(1.5%);opacity:1}13%{transform:translateX(0)}86%{transform:translateX(0);opacity:1}100%{transform:translateX(115%);opacity:0}}
+              `}</style>
             </div>
           )}
 
@@ -454,6 +491,13 @@ export function ShowtimeStageView() {
               </div>
             )}
           </div>
+
+          {/* sound is blocked until a click reaches this window */}
+          {ui!.audioSuspended && (
+            <div className="pointer-events-none absolute right-2.5 top-2.5 rounded-full bg-black/55 px-2.5 py-1 text-[10px] font-bold text-white/85 backdrop-blur-sm">
+              🔊 click for sound
+            </div>
+          )}
         </>
       )}
     </div>

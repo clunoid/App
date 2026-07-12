@@ -47,7 +47,17 @@ export class MatchAudio {
 
   setMuted(m: boolean): void {
     this.muted = m;
+    if (!m) this.arm();
     if (this.master && this.ctx) this.master.gain.setTargetAtTime(m ? 0 : 0.9, this.ctx.currentTime, 0.05);
+  }
+
+  /** True when audio is actually flowing (context created and running). */
+  isRunning(): boolean {
+    return !!this.ctx && this.ctx.state === "running" && !this.muted;
+  }
+
+  isSuspended(): boolean {
+    return !this.muted && (!this.ctx || this.ctx.state !== "running");
   }
 
   dispose(): void {
