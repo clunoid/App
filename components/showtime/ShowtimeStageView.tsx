@@ -155,10 +155,15 @@ export function ShowtimeStageView() {
           case "jumbotron":
             say(`⭐ ${e.sender} lights up the jumbotron!`, 5000);
             break;
-          case "kickoff":
-            // the ONLY sound: the referee's whistle a beat before the strike
+          case "kickoff": {
+            // referee whistle a beat before the strike, then the crowd reacts the
+            // instant the ball arrives (goal → roar, save/miss → groan)
             timeouts.push(setTimeout(() => audio.whistle(), 150));
+            const flight = 0.62 - 0.24 * e.rec.power01;
+            const arriveMs = Math.round((2.7 + flight) * 1000);
+            timeouts.push(setTimeout(() => (e.rec.goal ? audio.roar() : audio.groan()), arriveMs));
             break;
+          }
           case "result": {
             const sName = PLAYERS[e.rec.shooter].name;
             const kName = PLAYERS[e.rec.shooter === "ronaldo" ? "messi" : "ronaldo"].name;
@@ -171,6 +176,7 @@ export function ShowtimeStageView() {
             break;
           case "matchEnd":
             showBanner(`${PLAYERS[e.winner].name} WINS!`, `final score ${e.score.ronaldo}–${e.score.messi}`, "goal", 4200, now);
+            timeouts.push(setTimeout(() => audio.bigRoar(), 400));
             break;
         }
       }
