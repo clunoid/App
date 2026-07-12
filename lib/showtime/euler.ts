@@ -1,47 +1,27 @@
 "use client";
 
 /**
- * Euler feed v2 — live TikTok webcast events via Euler Stream's managed WebSocket,
- * normalized into ShowEvents (gift/chat/like/follow/share/join/room).
+ * Live TikTok gift feed via Euler Stream's managed WebSocket. The connection lives
+ * in the admin's Console browser (open during the stream), authorised by a SHORT-LIVED
+ * JWT our server mints from the Euler API key (never exposed to the client). Gift
+ * messages are parsed tolerantly (Euler mirrors the TikTok webcast schema, which can
+ * shift) and normalised into GiftEvents, then published to the Realtime bus so the
+ * OBS Stage plays them.
  *
- * The connection lives in ONE browser: the admin Console (session-cookie path) or
- * the sessionless OBS Stage (pass `getAuth` returning the {k,s} stage creds — the
- * token route then authorizes via signature instead of session). Either way it is
- * authorised by a SHORT-LIVED JWT our server mints from the Euler API key (never
- * exposed to the client). Messages are parsed tolerantly (Euler mirrors the TikTok
- * webcast schema, which shifts) and emitted through the shared factories in
- * gifts.ts, so games downstream see one clean event shape, real or simulated.
- *
- * PARSING NOTES:
- *  - A frame is a single message OR a bundled { messages: [...] } array — both
- *    shapes are iterated.
- *  - Gift streaks: streakable gifts (giftType 1) stream repeatedly with repeatEnd
- *    false and finish once with repeatEnd true carrying the final repeatCount. We
- *    emit ONLY on repeatEnd !== false and dedupe by groupId (60s window), so a
- *    combo lands as one event with the full count.
- *  - Social displayType strings shift — always substring-match ("follow"/"share"),
- *    never equality-match.
- *  - Joins flood on big rooms → deduped per user per 5 minutes. Per-user like
- *    messages are sampled by TikTok on busy streams — fine, games treat likes as
- *    deltas.
- *  - Rate hygiene: at most 30 emissions per 100ms window; excess JOIN events are
- *    shed. Gifts/chat/follow/share are NEVER dropped.
- *
- * STABILITY (proven — do not weaken): Euler closes the socket with application
- * close codes (4000–4999). We interpret them so the connection stays visibly stable:
+ * STABILITY: Euler closes the socket with application close codes (4000–4999). We
+ * interpret them so the connection stays visibly stable:
  *   4404 NOT_LIVE           → room offline: wait calmly and re-poll on a steady cadence.
  *   4401 INVALID_AUTH       → token expired/invalid: mint a fresh one and reconnect fast.
  *   4429 TOO_MANY_CONNS     → rate-limited: back off longer so old sockets expire.
- *   4555 MAX_LIFETIME_EXCEEDED → the JWT lifetime ended: reconnect SEAMLESSLY (we hold
- *                             the "live" label through a short grace window so the
- *                             periodic token refresh is invisible).
- * We only report "live" once a real message arrives (room info is Euler's first
- * message), never merely on socket-open — so a non-live room can't flap the status.
+ *   4555 MAX_LIFETIME_EXCEEDED → the JWT lifetime ended: reconnect SEAMLESSLY (we hold the
+ *                             "live" label through a short grace window so the periodic
+ *                             token refresh is invisible).
+ * We only report "live" once a real message arrives (room info is Euler's first message),
+ * never merely on socket-open — so a non-live room can't flap the status.
  */
-import type { ShowEvent } from "@/lib/showtime/types";
-import { chatEvent, giftEvent, likeEvent, makeUser, roomEvent, socialEvent } from "@/lib/showtime/gifts";
+import type { GiftEvent } from "./types";
+import { normalizeGift } from "./gifts";
 
-/** String-compatible with FeedStatus in types.ts (kept as a local alias on purpose). */
 export type EulerStatus = "idle" | "connecting" | "live" | "error" | "unconfigured";
 
 // (the no-explicit-any rule isn't enabled in this repo — `any` is fine here for the
@@ -55,16 +35,7 @@ function pick(obj: any, ...paths: string[]): any {
   return undefined;
 }
 
-const GROUP_DEDUPE_MS = 60_000; // gift streak groupIds
-const JOIN_DEDUPE_MS = 300_000; // per-user join spam
-const RATE_WINDOW_MS = 100;
-const RATE_WINDOW_CAP = 30;
-
-export function createEulerFeed(
-  onEvent: (ev: ShowEvent) => void,
-  onStatus: (s: EulerStatus, msg?: string) => void,
-  getAuth?: () => { k: string; s: string } | null,
-) {
+export function createEulerFeed(onGift: (ev: GiftEvent) => void, onStatus: (s: EulerStatus, msg?: string) => void) {
   let ws: WebSocket | null = null;
   let room = "";
   let stopped = true;
@@ -73,17 +44,9 @@ export function createEulerFeed(
   let timer: ReturnType<typeof setTimeout> | null = null;
   let grace: ReturnType<typeof setTimeout> | null = null;
 
-  // parse-layer state
-  const seenGroups = new Map<string, number>(); // gift groupId → last seen ts
-  const seenJoins = new Map<string, number>(); // uniqueId → last join ts
-  let winStart = 0;
-  let winCount = 0;
-
   async function token(uniqueId: string): Promise<{ token?: string; status: number; error?: string }> {
     try {
-      const auth = getAuth ? getAuth() : null;
-      const body = auth ? { room: uniqueId, k: auth.k, s: auth.s } : { room: uniqueId };
-      const res = await fetch("/api/showtime/euler-token", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const res = await fetch("/api/showtime/euler-token", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ room: uniqueId }) });
       const d = await res.json().catch(() => ({}));
       return { token: d.token, status: res.status, error: d.error };
     } catch {
@@ -169,117 +132,27 @@ export function createEulerFeed(
     sock.onerror = () => { /* onclose handles the retry */ };
   }
 
-  /* ── Emission (rate hygiene) ──────────────────────────────────────────── */
-
-  function emit(ev: ShowEvent) {
-    const now = Date.now();
-    if (now - winStart >= RATE_WINDOW_MS) { winStart = now; winCount = 0; }
-    // over cap: shed JOINs only — never gifts/chat/follow/share (or likes/room)
-    if (winCount >= RATE_WINDOW_CAP && ev.type === "join") return;
-    winCount++;
-    onEvent(ev);
-  }
-
-  /* ── Normalization ────────────────────────────────────────────────────── */
-
   function handle(raw: any) {
     let msg: any;
     try { msg = typeof raw === "string" ? JSON.parse(raw) : raw; } catch { return; }
-    if (!msg || typeof msg !== "object") return;
-    // frames are a single message OR a bundle of them — iterate both shapes
-    const bundle = pick(msg, "messages", "data.messages");
-    if (Array.isArray(bundle)) { for (const m of bundle) handleOne(m); return; }
-    handleOne(msg);
-  }
-
-  function handleOne(m: any) {
-    if (!m || typeof m !== "object") return;
-    const type = String(pick(m, "type", "event", "method", "eventType") ?? "").toLowerCase();
-    const d = m.data ?? m;
-    const now = Date.now();
-
-    const avatar = pick(d, "user.profilePictureUrl", "user.profilePicture.url.0", "user.avatarThumb.urlList.0", "user.avatar_thumb.url_list.0");
-    const uid = pick(d, "user.uniqueId", "user.unique_id", "uniqueId");
-    const nick = pick(d, "user.nickname", "nickname");
-    const user = makeUser(String(uid ?? nick ?? "guest"), nick != null ? String(nick) : undefined, typeof avatar === "string" ? avatar : undefined);
-    const label = String(pick(d, "displayType", "label") ?? "").toLowerCase();
-
-    // GIFT
-    const giftName = pick(d, "giftName", "gift.name", "giftDetails.giftName", "gift.giftName");
-    const diamonds = pick(d, "diamondCount", "gift.diamond_count", "gift.diamondCount", "giftDetails.diamondCount");
-    if (type.includes("gift") || giftName != null || diamonds != null) {
-      // streakable gifts (giftType 1) fire repeatedly mid-combo with repeatEnd false,
-      // then once with repeatEnd true carrying the final repeatCount — emit only then
-      const repeatEnd = pick(d, "repeatEnd", "repeat_end") ?? pick(m, "repeatEnd");
-      if (repeatEnd === false) return;
-      const groupId = String(pick(d, "groupId", "group_id") ?? pick(m, "groupId") ?? "");
-      if (groupId) {
-        const last = seenGroups.get(groupId);
-        if (last != null && now - last < GROUP_DEDUPE_MS) return;
-        seenGroups.set(groupId, now);
-        if (seenGroups.size > 1000) {
-          for (const [g, t] of seenGroups) if (now - t >= GROUP_DEDUPE_MS) seenGroups.delete(g);
-        }
-      }
-      const unitCoins = Number(pick(d, "diamondCount", "gift.diamond_count", "gift.diamondCount", "giftDetails.diamondCount", "coins") ?? 0) || 0;
-      const count = Number(pick(d, "repeatCount", "comboCount", "count") ?? 1) || 1;
-      const name = String(giftName ?? "Gift");
-      emit(giftEvent(user, unitCoins, count, name));
-      return;
-    }
-
-    // MEMBER / JOIN (before SOCIAL: member frames can carry a "joined" displayType)
-    const actionId = Number(pick(d, "actionId", "action") ?? 0) || 0;
-    if (type.includes("member") || (actionId === 1 && label.includes("join"))) {
-      if (actionId > 1) return; // member envelope that isn't a join (subscribe etc.)
-      const last = seenJoins.get(user.id);
-      if (last != null && now - last < JOIN_DEDUPE_MS) return; // joins flood on big rooms
-      seenJoins.set(user.id, now);
-      if (seenJoins.size > 2000) {
-        for (const [id, t] of seenJoins) if (now - t >= JOIN_DEDUPE_MS) seenJoins.delete(id);
-      }
-      emit(socialEvent("join", user));
-      return;
-    }
-
-    // SOCIAL (follow / share) — display strings shift, so substring-match, never equality
-    if (type.includes("social") || pick(d, "displayType") != null) {
-      if (label.includes("follow")) emit(socialEvent("follow", user));
-      else if (label.includes("share")) emit(socialEvent("share", user));
-      return;
-    }
-
-    // LIKE — per-user like messages are sampled by TikTok on busy streams; that is
-    // fine, the game treats them as deltas
-    if (type.includes("like") || pick(d, "likeCount") != null) {
-      const delta = Number(pick(d, "likeCount", "count") ?? 1) || 1;
-      emit(likeEvent(user, delta));
-      return;
-    }
-
-    // CHAT
-    const textRaw = pick(d, "comment", "content");
-    if (type.includes("chat") || textRaw != null) {
-      const text = String(textRaw ?? "").trim();
-      if (text) emit(chatEvent(user, text));
-      return;
-    }
-
-    // ROOM STATS (viewer count)
-    const viewersRaw = pick(d, "viewerCount", "total");
-    if (type.includes("roomuser") || viewersRaw != null) {
-      emit(roomEvent(Number(viewersRaw ?? 0) || 0));
-      return;
-    }
+    const type = String(pick(msg, "type", "event", "method", "eventType") ?? "").toLowerCase();
+    const d = msg.data ?? msg;
+    const isGift = type.includes("gift") || d?.giftName != null || d?.gift != null || d?.diamondCount != null;
+    if (!isGift) return;
+    // combo streaks stream repeatedly; only fire once, at the end, with the full count
+    const repeatEnd = pick(d, "repeatEnd") ?? pick(msg, "repeatEnd");
+    if (repeatEnd === false) return;
+    const name = String(pick(d, "giftName", "gift.name", "giftDetails.giftName", "gift.giftName") ?? "Gift");
+    const coins = Number(pick(d, "diamondCount", "gift.diamond_count", "gift.diamondCount", "coins") ?? 0) || 0;
+    const count = Number(pick(d, "repeatCount", "comboCount", "count") ?? 1) || 1;
+    const sender = String(pick(d, "user.uniqueId", "user.unique_id", "user.nickname", "uniqueId", "nickname") ?? "guest");
+    onGift(normalizeGift(name, coins, sender, count));
   }
 
   return {
     start(uniqueId: string) {
       stopped = false; retry = 0; live = false;
       clearTimers();
-      seenGroups.clear();
-      seenJoins.clear();
-      winStart = 0; winCount = 0;
       room = uniqueId.replace(/^@/, "").trim().toLowerCase();
       if (!room) { onStatus("error", "enter a @username"); return; }
       onStatus("connecting", `Connecting to @${room}…`);
