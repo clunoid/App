@@ -12,10 +12,10 @@
  *  · Boost rails: shooter power (bottom-left) vs keeper reach/instinct
  *    (bottom-right) — expensive gifts, bigger boosts, live meters.
  *  · Compact scoreboard with per-kick dots, kick counter, phase countdown.
- *  · Voting never closes: gifts and comments count at any moment and are
- *    consumed when the next kick launches.
- *  · Full procedural broadcast audio: crowd bed, whistle, contact, saves, roars.
- * Fully automated forever — zero votes means the stars play on their own.
+ *  · Voting is gift-gated: gifts and comments count at any moment; a kick is taken
+ *    once a gift arms it (10-min fallback so the score never freezes at 0–0).
+ *  · Sound: only the referee's whistle before each kick.
+ * Fully automated forever.
  */
 import { useEffect, useRef, useState } from "react";
 import { createBus, type ShowtimeBus } from "@/lib/showtime/bus";
@@ -155,15 +155,10 @@ export function ShowtimeStageView() {
           case "jumbotron":
             say(`⭐ ${e.sender} lights up the jumbotron!`, 5000);
             break;
-          case "kickoff": {
-            // referee whistle a beat before the strike, then the crowd reacts the
-            // instant the ball arrives (goal → roar, save/miss → groan)
+          case "kickoff":
+            // the only sound: the referee's whistle a beat before the strike
             timeouts.push(setTimeout(() => audio.whistle(), 150));
-            const flight = 0.62 - 0.24 * e.rec.power01;
-            const arriveMs = Math.round((2.7 + flight) * 1000);
-            timeouts.push(setTimeout(() => (e.rec.goal ? audio.roar() : audio.groan()), arriveMs));
             break;
-          }
           case "result": {
             const sName = PLAYERS[e.rec.shooter].name;
             const kName = PLAYERS[e.rec.shooter === "ronaldo" ? "messi" : "ronaldo"].name;
@@ -176,7 +171,6 @@ export function ShowtimeStageView() {
             break;
           case "matchEnd":
             showBanner(`${PLAYERS[e.winner].name} WINS!`, `final score ${e.score.ronaldo}–${e.score.messi}`, "goal", 4200, now);
-            timeouts.push(setTimeout(() => audio.bigRoar(), 400));
             break;
         }
       }
