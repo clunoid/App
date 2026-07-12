@@ -28,17 +28,15 @@ const STATUS: Record<EulerStatus, { label: string; color: string }> = {
 
 /** The mapped gifts (names + coins must match lib/showtime/game/config.ts). */
 const SIM_GIFTS: { name: string; coins: number; hint: string }[] = [
-  { name: "Rose", coins: 1, hint: "Ronaldo / shoot LEFT" },
-  { name: "TikTok", coins: 1, hint: "Messi / shoot CENTER" },
+  { name: "Rose", coins: 1, hint: "shoot LEFT" },
+  { name: "TikTok", coins: 1, hint: "shoot CENTER" },
   { name: "Ice Cream Cone", coins: 1, hint: "shoot RIGHT" },
-  { name: "Perfume", coins: 20, hint: "keeper LEFT" },
-  { name: "Doughnut", coins: 30, hint: "keeper CENTER" },
-  { name: "Hand Hearts", coins: 100, hint: "keeper RIGHT" },
-  { name: "Corgi", coins: 299, hint: "keeper reach" },
   { name: "Money Gun", coins: 500, hint: "shot power" },
   { name: "Galaxy", coins: 1000, hint: "rocket shot" },
-  { name: "Lion", coins: 29999, hint: "keeper reads it" },
-  { name: "TikTok Universe", coins: 44999, hint: "jumbotron" },
+  { name: "Corgi", coins: 299, hint: "keeper reach" },
+  { name: "Lion", coins: 29999, hint: "keeper reads the shot" },
+  { name: "TikTok Universe", coins: 44999, hint: "jumbotron showstopper" },
+  { name: "Doughnut", coins: 30, hint: "any other gift → shot power" },
 ];
 
 const SIM_COMMENTS = ["left", "center", "right", "ronaldo", "messi"];
@@ -259,7 +257,7 @@ export function ShowtimeConsole() {
             <div className="flex min-h-0 flex-1 items-center justify-center p-4">
               {key ? (
                 <div className="h-full max-h-full overflow-hidden rounded-lg border border-border bg-black" style={{ aspectRatio: "9 / 16" }}>
-                  <iframe src={`/showtime/stage#k=${key}`} title="Stage preview" className="h-full w-full" style={{ border: 0 }} />
+                  <iframe src={`/showtime/stage#k=${key}&muted=1`} title="Stage preview" className="h-full w-full" style={{ border: 0 }} />
                 </div>
               ) : (
                 <p className="text-[12px] text-ink-faint">Preparing stage key…</p>

@@ -2,19 +2,25 @@
  * PENALTY SHOOTOUT — configuration: the two stars, phase timings, outcome math
  * knobs, and the gift → action map. Every reviewable knob lives here.
  *
- * GIFT MAPPING PRINCIPLES (locked with the user):
- *  - The game GUIDES viewers: each vote option shows its real TikTok gift (icon,
- *    name, coin price) on screen during the phase where it applies.
- *  - Comments always vote for free (1 vote); gifts vote WITH POWER — vote weight =
- *    coin value, and the same coins also charge the side's boost meter (shot POWER
- *    or keeper REACH). The bigger the gift, the bigger the boost.
- *  - The keeper dives randomly when nobody guides him; keeper gifts vote his dive
- *    AND extend his reach; premium gifts add "instinct" (a chance he reads the shot).
- *  - Deterministic outcomes only — boosts shift probabilities, nothing is a prize.
+ * FLOW (v2 — continuous, no dead time): there is NO pre-match role vote. The first
+ * shooter alternates each match (announced on screen) and kicks alternate within
+ * the match. Voting is CONTINUOUS: votes and boosts accumulate at any moment and
+ * are consumed the instant a kick launches — so viewers can vote during the
+ * celebration of the previous kick, and the dedicated VOTE window is just the
+ * guaranteed quiet time between kicks.
  *
- * Gift names/values verified against the July 2026 TikTok catalog (research pass);
- * the live catalog is fetched at runtime for icons via /api/showtime/gifts, with
- * these names as the stable keys. Names are matched case-insensitively.
+ * GIFT MAPPING (v2 — simple, spatial, expensive = stronger):
+ *  - Direction (1-coin, mass participation): Rose→LEFT, TikTok→CENTER,
+ *    Ice Cream Cone→RIGHT. Comments "left/center/right" vote free.
+ *    Vote weight = coin value, and direction-gift coins also charge shot POWER.
+ *  - Shooter boosts: Money Gun (500) / Galaxy (1,000) → shot POWER (faster ball,
+ *    harder to save). Any unmapped gift also counts as POWER.
+ *  - Keeper boosts (the counterplay): Corgi (299) → REACH (longer dive),
+ *    Lion (29,999) → INSTINCT (he reads the shot).
+ *  - TikTok Universe (44,999) → JUMBOTRON: the sender's name on the stadium
+ *    screen for the rest of the match.
+ *  - The keeper otherwise dives on his own — nobody steers him directly.
+ *  - Deterministic outcomes only — boosts shift probabilities, nothing is a prize.
  */
 
 export type PlayerId = "ronaldo" | "messi";
@@ -22,18 +28,18 @@ export type Zone = "left" | "center" | "right"; // as the VIEWER sees the goal
 
 export type PlayerDef = {
   id: PlayerId;
-  name: string; // on-screen display name
-  shirt: string; // name printed on the back
+  name: string;
+  shirt: string;
   number: number;
-  jersey: string; // primary kit color
-  jersey2: string; // trim / stripe color
+  jersey: string;
+  jersey2: string;
   striped: boolean;
   shorts: string;
   socks: string;
   skin: string;
   hair: string;
-  height: number; // scale multiplier
-  accent: string; // UI accent for this player
+  height: number;
+  accent: string;
 };
 
 export const PLAYERS: Record<PlayerId, PlayerDef> = {
@@ -74,65 +80,50 @@ export const OTHER: Record<PlayerId, PlayerId> = { ronaldo: "messi", messi: "ron
 /* ── phase timings (ms) ─────────────────────────────────────────────────── */
 
 export const T = {
-  ROLE_MS: 18_000, // pre-match: who shoots first
-  VOTE_MS: 14_000, // per kick: shot + keeper voting window
-  KICK_MS: 5_200, // run-up + strike + ball flight + landing beat
-  RESULT_MS: 4_200, // celebration / dejection + scoreboard update
-  MATCH_END_MS: 12_000, // trophy + recap, then next match
-  KICKS_EACH: 5, // regulation kicks per player
-  SUDDEN_DEATH_MAX_PAIRS: 20, // hard cap; realistically decided long before
-  IDLE_AFTER_MS: 90_000, // no human events → attract copy (game keeps playing itself)
-  COMMENT_COOLDOWN_MS: 1_500, // per-user vote comment throttle
+  VOTE_MS: 10_000, // guaranteed voting window between kicks (votes also count earlier)
+  KICK_MS: 5_200, // run-up + strike + flight + landing beat
+  RESULT_MS: 3_200, // celebration / dejection (next kick's voting is ALREADY open)
+  MATCH_END_MS: 10_000, // trophy + MVP recap, then the next match
+  KICKS_EACH: 5,
+  SUDDEN_DEATH_MAX_PAIRS: 20,
+  IDLE_AFTER_MS: 90_000,
+  COMMENT_COOLDOWN_MS: 1_200,
 } as const;
 
-/* ── outcome math knobs (all probabilities, all deterministic from seeds) ── */
+/* ── outcome math knobs ─────────────────────────────────────────────────── */
 
 export const MATH = {
-  POWER_FULL_COINS: 2_000, // coins on the shot side for max power
-  REACH_FULL_COINS: 2_000, // coins on the keeper side for max reach
-  INSTINCT_FULL_COINS: 30_000, // Lion-scale coins for max instinct
-  SAVE_BASE: 0.72, // save chance when the keeper picks the right zone
-  SAVE_REACH_BONUS: 0.2, // + up to this from reach
-  SAVE_POWER_PENALTY: 0.3, // − up to this from shot power
+  POWER_FULL_COINS: 2_000,
+  REACH_FULL_COINS: 2_000,
+  INSTINCT_FULL_COINS: 30_000,
+  SAVE_BASE: 0.72,
+  SAVE_REACH_BONUS: 0.2,
+  SAVE_POWER_PENALTY: 0.3,
   SAVE_MIN: 0.15,
   SAVE_MAX: 0.95,
-  INSTINCT_READ_MAX: 0.5, // max chance the keeper reads the true zone
+  INSTINCT_READ_MAX: 0.5,
 } as const;
 
 /* ── gift → action mapping ──────────────────────────────────────────────── */
 
 export type GiftAction =
-  | { act: "role"; player: PlayerId }
   | { act: "shot"; zone: Zone }
-  | { act: "dive"; zone: Zone }
-  | { act: "power" } // shot speed boost (any phase, applies to current kick)
-  | { act: "reach" } // keeper reach boost
-  | { act: "instinct" } // keeper reads the shot
-  | { act: "jumbotron" }; // showstopper: sender's name on the stadium screen
+  | { act: "power" }
+  | { act: "reach" }
+  | { act: "instinct" }
+  | { act: "jumbotron" };
 
 export type MappedGift = {
   key: string; // lowercase gift name (stable matching key)
-  label: string; // display name
-  coins: number; // expected coin price (display; live catalog may override)
+  label: string;
+  coins: number;
   action: GiftAction;
-  roleAction?: GiftAction; // what this gift means during the pre-match ROLE vote
 };
 
-/**
- * The guide shown in-game is generated from this table, phase-scoped:
- *  ROLE PHASE: Rose→Ronaldo, TikTok→Messi (cheapest gifts, mass participation).
- *  KICK PHASE (shot): Rose→LEFT, TikTok→CENTER, Ice Cream Cone→RIGHT.
- *  KICK PHASE (keeper): Perfume→dive LEFT, Doughnut→stay CENTER, Hand Hearts→dive RIGHT.
- *  BOOSTS: Money Gun→POWER SHOT, Galaxy→THUNDER STRIKE (max power), Corgi→BIG REACH,
- *          Lion→WONDER KEEPER (instinct), TikTok Universe→JUMBOTRON showstopper.
- */
 export const GIFT_MAP: MappedGift[] = [
-  { key: "rose", label: "Rose", coins: 1, action: { act: "shot", zone: "left" }, roleAction: { act: "role", player: "ronaldo" } },
-  { key: "tiktok", label: "TikTok", coins: 1, action: { act: "shot", zone: "center" }, roleAction: { act: "role", player: "messi" } },
+  { key: "rose", label: "Rose", coins: 1, action: { act: "shot", zone: "left" } },
+  { key: "tiktok", label: "TikTok", coins: 1, action: { act: "shot", zone: "center" } },
   { key: "ice cream cone", label: "Ice Cream Cone", coins: 1, action: { act: "shot", zone: "right" } },
-  { key: "perfume", label: "Perfume", coins: 20, action: { act: "dive", zone: "left" } },
-  { key: "doughnut", label: "Doughnut", coins: 30, action: { act: "dive", zone: "center" } },
-  { key: "hand hearts", label: "Hand Hearts", coins: 100, action: { act: "dive", zone: "right" } },
   { key: "money gun", label: "Money Gun", coins: 500, action: { act: "power" } },
   { key: "galaxy", label: "Galaxy", coins: 1000, action: { act: "power" } },
   { key: "corgi", label: "Corgi", coins: 299, action: { act: "reach" } },
@@ -142,31 +133,25 @@ export const GIFT_MAP: MappedGift[] = [
 
 export const GIFT_BY_KEY = new Map(GIFT_MAP.map((g) => [g.key, g]));
 
-export function actionForGift(name: string, phase: "role" | "kick"): GiftAction | null {
+export function actionForGift(name: string): GiftAction {
   const g = GIFT_BY_KEY.get((name || "").trim().toLowerCase());
-  if (!g) return null;
-  if (phase === "role") return g.roleAction ?? g.action;
-  return g.action;
+  return g?.action ?? { act: "power" }; // every gift always does something visible
 }
+
+/** Which zone a mapped direction gift votes for (for UI placement). */
+export const ZONE_GIFT_KEY: Record<Zone, string> = {
+  left: "rose",
+  center: "tiktok",
+  right: "ice cream cone",
+};
 
 /* ── comment parsing (free votes, forgiving) ────────────────────────────── */
 
 const RE = {
-  ronaldo: /\b(ronaldo|cristiano|cr7|siu+|7)\b/i,
-  messi: /\b(messi|leo|lionel|goat|10)\b/i,
   left: /\b(left|l)\b/i,
   right: /\b(right|r)\b/i,
   center: /\b(center|centre|middle|mid|c|m)\b/i,
 };
-
-export function parseRoleComment(text: string): PlayerId | null {
-  const t = (text || "").toLowerCase();
-  const r = RE.ronaldo.test(t);
-  const m = RE.messi.test(t);
-  if (r && !m) return "ronaldo";
-  if (m && !r) return "messi";
-  return null;
-}
 
 export function parseZoneComment(text: string): Zone | null {
   const t = (text || "").toLowerCase();

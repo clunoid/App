@@ -1,33 +1,27 @@
 /**
  * PENALTY SHOOTOUT — the deterministic match engine (pure TS, no DOM/three).
  *
- * Runs a fully-automated loop forever:
- *   ROLE VOTE (18s, once per match): who shoots first — Ronaldo or Messi.
- *   Then alternating kicks, each: VOTE (14s: shot zone + keeper dive + boosts) →
- *   KICK (5.2s cinematic, resolved before it plays) → RESULT (4.2s) …
- *   Regulation = 5 kicks each with early termination (a side that can't be caught
- *   wins immediately, like a real shootout), then sudden-death pairs.
- *   MATCH END (12s trophy + MVP) → next match's role vote.
+ * CONTINUOUS FLOW (v2): no role vote, no dead time. The first shooter alternates
+ * each match; kicks alternate within it. Votes and boosts accumulate at ANY moment
+ * (during the previous kick's flight and celebration too) and are consumed the
+ * instant a kick launches — the VOTE phase is just the guaranteed window between
+ * kicks. Zero votes → seeded randomness, so the show never stalls.
  *
- * Votes: comments = 1 (per-user 1.5s throttle); gifts = coin value, and the same
- * coins charge the boost meters (shot POWER / keeper REACH / keeper INSTINCT).
- * The keeper dives randomly when unguided; keeper-gift votes steer him; instinct
- * gives him a chance to read the true shot zone. All randomness is a seeded
- * mulberry32 so a match is a pure function of its seed + event sequence.
+ *   VOTE (10s) → KICK (5.2s, resolved at launch) → RESULT (3.2s, next vote is
+ *   already open) → VOTE … · regulation 5 kicks each with real early-termination,
+ *   then sudden-death pairs · MATCH END (10s trophy + MVP) → next match.
+ *
+ * Votes: comments = 1 (per-user 1.2s throttle); gifts = coin value, and the same
+ * coins charge the meters (direction gifts + unmapped + Money Gun/Galaxy → shot
+ * POWER · Corgi → keeper REACH · Lion → keeper INSTINCT). The keeper dives on his
+ * own (seeded), stretched by REACH, and INSTINCT gives him a chance to read the
+ * true zone. All randomness is seeded mulberry32 — a match is a pure function of
+ * its seed + event sequence.
  */
 import type { ChatEvent, GiftEvent } from "@/lib/showtime/types";
-import {
-  actionForGift,
-  MATH,
-  OTHER,
-  parseRoleComment,
-  parseZoneComment,
-  T,
-  type PlayerId,
-  type Zone,
-} from "./config";
+import { actionForGift, MATH, OTHER, parseZoneComment, T, type PlayerId, type Zone } from "./config";
 
-export type Phase = "role" | "vote" | "kick" | "result" | "matchEnd";
+export type Phase = "vote" | "kick" | "result" | "matchEnd";
 
 export type VoteTally = Record<Zone, number>;
 
@@ -38,29 +32,27 @@ export type KickRecord = {
   goal: boolean;
   power01: number;
   reach01: number;
-  instinct: boolean; // the keeper "read" the shot
+  instinct: boolean;
 };
 
 export type PenaltyState = {
-  clock: number; // engine ms since boot
+  clock: number;
   phase: Phase;
   phaseEndsAt: number;
   matchNumber: number;
   shootsFirst: PlayerId;
-  kickIndex: number; // 0-based across the shootout
+  kickIndex: number;
   suddenDeath: boolean;
   score: Record<PlayerId, number>;
   taken: Record<PlayerId, number>;
   kicks: KickRecord[];
-  roleVotes: Record<PlayerId, number>;
   shotVotes: VoteTally;
-  keeperVotes: VoteTally;
   powerCoins: number;
   reachCoins: number;
   instinctCoins: number;
   lastKick: KickRecord | null;
   winner: PlayerId | null;
-  jumbotron: string | null; // Universe sender, immortalized for the match
+  jumbotron: string | null;
   idle: boolean;
   totalCoins: number;
   mvp: { name: string; coins: number } | null;
@@ -69,7 +61,7 @@ export type PenaltyState = {
 export type PenaltyEvent =
   | { kind: "matchStart"; matchNumber: number }
   | { kind: "phase"; phase: Phase }
-  | { kind: "vote"; side: "role" | "shot" | "keeper"; label: string; sender: string; coins: number }
+  | { kind: "vote"; zone: Zone; sender: string; coins: number }
   | { kind: "boost"; type: "power" | "reach" | "instinct"; sender: string; coins: number }
   | { kind: "jumbotron"; sender: string }
   | { kind: "kickoff"; rec: KickRecord; shooter: PlayerId; keeper: PlayerId }
@@ -87,7 +79,6 @@ function mulberry32(seed: number) {
 }
 
 const ZONES: Zone[] = ["left", "center", "right"];
-
 const zeroTally = (): VoteTally => ({ left: 0, center: 0, right: 0 });
 
 export class PenaltyGame {
@@ -102,18 +93,16 @@ export class PenaltyGame {
     this.rng = mulberry32(seed);
     this.st = {
       clock: 0,
-      phase: "role",
-      phaseEndsAt: T.ROLE_MS,
+      phase: "vote",
+      phaseEndsAt: T.VOTE_MS,
       matchNumber: 1,
-      shootsFirst: "ronaldo",
+      shootsFirst: "ronaldo", // alternates every match
       kickIndex: 0,
       suddenDeath: false,
       score: { ronaldo: 0, messi: 0 },
       taken: { ronaldo: 0, messi: 0 },
       kicks: [],
-      roleVotes: { ronaldo: 0, messi: 0 },
       shotVotes: zeroTally(),
-      keeperVotes: zeroTally(),
       powerCoins: 0,
       reachCoins: 0,
       instinctCoins: 0,
@@ -130,7 +119,7 @@ export class PenaltyGame {
     return this.st;
   }
 
-  /** Who takes the current kick. */
+  /** Who takes the current (upcoming) kick. */
   shooter(): PlayerId {
     return this.st.kickIndex % 2 === 0 ? this.st.shootsFirst : OTHER[this.st.shootsFirst];
   }
@@ -139,7 +128,7 @@ export class PenaltyGame {
     return OTHER[this.shooter()];
   }
 
-  /* ── events in ────────────────────────────────────────────────────────── */
+  /* ── events in (accepted at ANY time — consumed at each kick launch) ───── */
 
   onGift(ev: GiftEvent): PenaltyEvent[] {
     const out: PenaltyEvent[] = [];
@@ -150,58 +139,28 @@ export class PenaltyGame {
     this.coinsBySender.set(ev.sender, total);
     if (!this.st.mvp || total > this.st.mvp.coins) this.st.mvp = { name: ev.sender, coins: total };
 
-    const phase = this.st.phase === "role" ? "role" : "kick";
-    const action = actionForGift(ev.gift.name, phase);
-    if (!action) {
-      // unmapped gifts still count: they charge the shooter's power meter
-      if (this.st.phase === "vote") {
-        this.st.powerCoins += coins;
-        out.push({ kind: "boost", type: "power", sender: ev.sender, coins });
-      }
-      return out;
-    }
-
+    const action = actionForGift(ev.gift.name);
     switch (action.act) {
-      case "role":
-        if (this.st.phase === "role") {
-          this.st.roleVotes[action.player] += coins;
-          out.push({ kind: "vote", side: "role", label: action.player, sender: ev.sender, coins });
-        }
-        break;
       case "shot":
-        if (this.st.phase === "vote") {
-          this.st.shotVotes[action.zone] += coins;
-          this.st.powerCoins += coins;
-          out.push({ kind: "vote", side: "shot", label: action.zone, sender: ev.sender, coins });
-        }
-        break;
-      case "dive":
-        if (this.st.phase === "vote") {
-          this.st.keeperVotes[action.zone] += coins;
-          this.st.reachCoins += coins;
-          out.push({ kind: "vote", side: "keeper", label: action.zone, sender: ev.sender, coins });
-        }
+        this.st.shotVotes[action.zone] += coins;
+        this.st.powerCoins += coins;
+        out.push({ kind: "vote", zone: action.zone, sender: ev.sender, coins });
         break;
       case "power":
-        if (this.st.phase === "vote") {
-          this.st.powerCoins += coins;
-          out.push({ kind: "boost", type: "power", sender: ev.sender, coins });
-        }
+        this.st.powerCoins += coins;
+        out.push({ kind: "boost", type: "power", sender: ev.sender, coins });
         break;
       case "reach":
-        if (this.st.phase === "vote") {
-          this.st.reachCoins += coins;
-          out.push({ kind: "boost", type: "reach", sender: ev.sender, coins });
-        }
+        this.st.reachCoins += coins;
+        out.push({ kind: "boost", type: "reach", sender: ev.sender, coins });
         break;
       case "instinct":
-        if (this.st.phase === "vote") {
-          this.st.instinctCoins += coins;
-          out.push({ kind: "boost", type: "instinct", sender: ev.sender, coins });
-        }
+        this.st.instinctCoins += coins;
+        out.push({ kind: "boost", type: "instinct", sender: ev.sender, coins });
         break;
       case "jumbotron":
         this.st.jumbotron = ev.sender;
+        this.st.powerCoins += coins; // the showstopper also supercharges the moment
         out.push({ kind: "jumbotron", sender: ev.sender });
         break;
     }
@@ -213,21 +172,11 @@ export class PenaltyGame {
     this.markHuman();
     const last = this.commentAt.get(ev.sender) ?? -1e9;
     if (this.st.clock - last < T.COMMENT_COOLDOWN_MS) return out;
-
-    if (this.st.phase === "role") {
-      const p = parseRoleComment(ev.text);
-      if (p) {
-        this.commentAt.set(ev.sender, this.st.clock);
-        this.st.roleVotes[p] += 1;
-        out.push({ kind: "vote", side: "role", label: p, sender: ev.sender, coins: 0 });
-      }
-    } else if (this.st.phase === "vote") {
-      const z = parseZoneComment(ev.text);
-      if (z) {
-        this.commentAt.set(ev.sender, this.st.clock);
-        this.st.shotVotes[z] += 1;
-        out.push({ kind: "vote", side: "shot", label: z, sender: ev.sender, coins: 0 });
-      }
+    const z = parseZoneComment(ev.text);
+    if (z) {
+      this.commentAt.set(ev.sender, this.st.clock);
+      this.st.shotVotes[z] += 1;
+      out.push({ kind: "vote", zone: z, sender: ev.sender, coins: 0 });
     }
     return out;
   }
@@ -249,11 +198,8 @@ export class PenaltyGame {
     if (this.st.clock < this.st.phaseEndsAt) return out;
 
     switch (this.st.phase) {
-      case "role":
-        this.resolveRole(out);
-        break;
       case "vote":
-        this.resolveVoteAndKick(out);
+        this.launchKick(out);
         break;
       case "kick":
         this.enterResult(out);
@@ -276,21 +222,6 @@ export class PenaltyGame {
     out.push({ kind: "phase", phase });
   }
 
-  private resolveRole(out: PenaltyEvent[]) {
-    const { ronaldo, messi } = this.st.roleVotes;
-    this.st.shootsFirst = ronaldo === messi ? (this.rng() < 0.5 ? "ronaldo" : "messi") : ronaldo > messi ? "ronaldo" : "messi";
-    this.startVote(out);
-  }
-
-  private startVote(out: PenaltyEvent[]) {
-    this.st.shotVotes = zeroTally();
-    this.st.keeperVotes = zeroTally();
-    this.st.powerCoins = 0;
-    this.st.reachCoins = 0;
-    this.st.instinctCoins = 0;
-    this.setPhase("vote", T.VOTE_MS, out);
-  }
-
   private pickZone(t: VoteTally): Zone {
     const max = Math.max(t.left, t.center, t.right);
     if (max <= 0) return ZONES[Math.floor(this.rng() * 3)];
@@ -298,11 +229,11 @@ export class PenaltyGame {
     return top[Math.floor(this.rng() * top.length)];
   }
 
-  private resolveVoteAndKick(out: PenaltyEvent[]) {
+  private launchKick(out: PenaltyEvent[]) {
     const zone = this.pickZone(this.st.shotVotes);
 
-    // keeper: guided by keeper votes, else random; instinct may read the true zone
-    let dive = this.pickZone(this.st.keeperVotes);
+    // the keeper picks on his own; instinct may let him read the true zone
+    let dive = ZONES[Math.floor(this.rng() * 3)];
     const instinct01 = Math.min(1, this.st.instinctCoins / MATH.INSTINCT_FULL_COINS);
     const read = this.rng() < instinct01 * MATH.INSTINCT_READ_MAX;
     if (read) dive = zone;
@@ -320,6 +251,13 @@ export class PenaltyGame {
 
     const rec: KickRecord = { shooter: this.shooter(), zone, dive, goal, power01, reach01, instinct: read };
     this.pendingKick = rec;
+
+    // consume the pool — everything arriving from now on builds the NEXT kick
+    this.st.shotVotes = zeroTally();
+    this.st.powerCoins = 0;
+    this.st.reachCoins = 0;
+    this.st.instinctCoins = 0;
+
     this.setPhase("kick", T.KICK_MS, out);
     out.push({ kind: "kickoff", rec, shooter: rec.shooter, keeper: OTHER[rec.shooter] });
   }
@@ -352,7 +290,6 @@ export class PenaltyGame {
       }
       return null;
     }
-    // sudden death: judge only after complete pairs
     if (taken[a] === taken[b] && score[a] !== score[b]) return score[a] > score[b] ? a : b;
     return null;
   }
@@ -366,11 +303,12 @@ export class PenaltyGame {
       return;
     }
     this.st.kickIndex += 1;
-    this.startVote(out);
+    this.setPhase("vote", T.VOTE_MS, out);
   }
 
   private startMatch(out: PenaltyEvent[]) {
     this.st.matchNumber += 1;
+    this.st.shootsFirst = OTHER[this.st.shootsFirst]; // fairness: alternate openers
     this.st.kickIndex = 0;
     this.st.suddenDeath = false;
     this.st.score = { ronaldo: 0, messi: 0 };
@@ -378,11 +316,11 @@ export class PenaltyGame {
     this.st.kicks = [];
     this.st.lastKick = null;
     this.st.winner = null;
-    this.st.roleVotes = { ronaldo: 0, messi: 0 };
     this.st.totalCoins = 0;
     this.st.mvp = null;
     this.coinsBySender.clear();
-    this.setPhase("role", T.ROLE_MS, out);
+    // votes already accumulating carry into kick 1 of the new match — continuous flow
+    this.setPhase("vote", T.VOTE_MS, out);
     out.push({ kind: "matchStart", matchNumber: this.st.matchNumber });
   }
 }
