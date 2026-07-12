@@ -88,13 +88,17 @@ export class PenaltyGame {
   private coinsBySender = new Map<string, number>();
   private lastHumanAt = 0;
   private pendingKick: KickRecord | null = null;
+  // gift-gating: a kick is armed only after a gift lands; the fallback prevents 0–0 forever
+  private triggerAt: number | null = null;
+  private giftsSinceLaunch = 0;
+  private lastGiftAt = 0;
 
   constructor(seed = 20260712) {
     this.rng = mulberry32(seed);
     this.st = {
       clock: 0,
       phase: "vote",
-      phaseEndsAt: T.VOTE_MS,
+      phaseEndsAt: 0, // vote is gift-gated, not time-gated
       matchNumber: 1,
       shootsFirst: "ronaldo", // alternates every match
       kickIndex: 0,
@@ -133,6 +137,10 @@ export class PenaltyGame {
   onGift(ev: GiftEvent): PenaltyEvent[] {
     const out: PenaltyEvent[] = [];
     this.markHuman();
+    // ANY gift — mapped or not — drives the game forward (never stalls waiting for a
+    // "recognized" gift); unmapped gifts fall through to a POWER boost below.
+    this.lastGiftAt = this.st.clock;
+    this.giftsSinceLaunch += 1;
     const coins = Math.max(1, ev.gift.coins * Math.max(1, ev.count));
     this.st.totalCoins += coins;
     const total = (this.coinsBySender.get(ev.sender) ?? 0) + coins;
@@ -195,12 +203,26 @@ export class PenaltyGame {
     this.st.clock += step;
 
     if (!this.st.idle && this.st.clock - this.lastHumanAt > T.IDLE_AFTER_MS) this.st.idle = true;
-    if (this.st.clock < this.st.phaseEndsAt) return out;
 
-    switch (this.st.phase) {
-      case "vote":
+    // VOTE is gift-gated: it never advances on a timer. A kick is taken only after a
+    // gift arms it (+ a short grace so votes can stack). With no gift at all, the
+    // 10-minute fallback plays one kick so the score can never stay frozen at 0–0.
+    if (this.st.phase === "vote") {
+      if (this.triggerAt !== null) {
+        if (this.st.clock >= this.triggerAt) this.launchKick(out);
+      } else if (this.giftsSinceLaunch > 0) {
+        this.triggerAt = this.st.clock + T.TRIGGER_GRACE_MS;
+      } else if (this.st.clock - this.lastGiftAt >= T.IDLE_FALLBACK_MS) {
+        this.lastGiftAt = this.st.clock; // restart the 10-minute window after each auto-kick
         this.launchKick(out);
-        break;
+      }
+      return out;
+    }
+
+    // kick / result / matchEnd are timed ANIMATION phases (the playing-out of a kick
+    // that was already triggered) — those still advance on their own clock.
+    if (this.st.clock < this.st.phaseEndsAt) return out;
+    switch (this.st.phase) {
       case "kick":
         this.enterResult(out);
         break;
@@ -257,6 +279,8 @@ export class PenaltyGame {
     this.st.powerCoins = 0;
     this.st.reachCoins = 0;
     this.st.instinctCoins = 0;
+    this.triggerAt = null;
+    this.giftsSinceLaunch = 0;
 
     this.setPhase("kick", T.KICK_MS, out);
     out.push({ kind: "kickoff", rec, shooter: rec.shooter, keeper: OTHER[rec.shooter] });
@@ -276,14 +300,13 @@ export class PenaltyGame {
   }
 
   private decided(): PlayerId | null {
+    // Full 12 kicks each are always played (no early "can't be caught" stoppage), so
+    // every match runs the distance before a new one kicks off at 0–0. If level after
+    // 12 each, sudden death decides it.
     const a = this.st.shootsFirst;
     const b = OTHER[a];
     const { score, taken, suddenDeath } = this.st;
     if (!suddenDeath) {
-      const remA = T.KICKS_EACH - taken[a];
-      const remB = T.KICKS_EACH - taken[b];
-      if (score[a] > score[b] + remB) return a;
-      if (score[b] > score[a] + remA) return b;
       if (taken[a] >= T.KICKS_EACH && taken[b] >= T.KICKS_EACH) {
         if (score[a] !== score[b]) return score[a] > score[b] ? a : b;
         this.st.suddenDeath = true;
@@ -303,7 +326,7 @@ export class PenaltyGame {
       return;
     }
     this.st.kickIndex += 1;
-    this.setPhase("vote", T.VOTE_MS, out);
+    this.setPhase("vote", 0, out); // gift-gated wait for the next kick
   }
 
   private startMatch(out: PenaltyEvent[]) {
@@ -319,8 +342,8 @@ export class PenaltyGame {
     this.st.totalCoins = 0;
     this.st.mvp = null;
     this.coinsBySender.clear();
-    // votes already accumulating carry into kick 1 of the new match — continuous flow
-    this.setPhase("vote", T.VOTE_MS, out);
+    // votes/gifts already accumulating carry into kick 1 of the new match
+    this.setPhase("vote", 0, out);
     out.push({ kind: "matchStart", matchNumber: this.st.matchNumber });
   }
 }

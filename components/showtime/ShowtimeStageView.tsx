@@ -34,7 +34,6 @@ type Banner = { text: string; sub: string; tone: "goal" | "save" | "info"; seq: 
 
 type Ui = {
   state: PenaltyState;
-  remainingS: number;
   banner: Banner | null;
   ticker: string | null;
   anchors: ZoneAnchor[];
@@ -91,7 +90,6 @@ export function ShowtimeStageView() {
     let banner: Banner | null = null;
     let bannerUntil = 0;
     let bannerSeq = 0;
-    let lastTickSec = -1;
     const timeouts: ReturnType<typeof setTimeout>[] = [];
     const showBanner = (text: string, sub: string, tone: Banner["tone"], ms: number, now: number) => {
       banner = { text, sub, tone, seq: ++bannerSeq, ms };
@@ -157,41 +155,22 @@ export function ShowtimeStageView() {
           case "jumbotron":
             say(`⭐ ${e.sender} lights up the jumbotron!`, 5000);
             break;
-          case "kickoff": {
-            audio.setIntensity(0.55);
+          case "kickoff":
+            // the ONLY sound: the referee's whistle a beat before the strike
             timeouts.push(setTimeout(() => audio.whistle(), 150));
-            const flight = 0.62 - 0.24 * e.rec.power01;
-            timeouts.push(setTimeout(() => audio.kick(e.rec.power01), 2700));
-            timeouts.push(
-              setTimeout(() => {
-                if (e.rec.goal) {
-                  audio.netSwish();
-                  audio.goalRoar();
-                } else {
-                  audio.saveThud();
-                  audio.disappointment();
-                }
-              }, Math.round((2.7 + flight) * 1000)),
-            );
             break;
-          }
           case "result": {
             const sName = PLAYERS[e.rec.shooter].name;
             const kName = PLAYERS[e.rec.shooter === "ronaldo" ? "messi" : "ronaldo"].name;
             if (e.rec.goal) showBanner("GOAL!", `${sName} beats ${kName}`, "goal", 2600, now);
             else showBanner("SAVED!", `${kName} denies ${sName}`, "save", 2600, now);
-            audio.setIntensity(e.rec.goal ? 0.85 : 0.6);
             break;
           }
           case "phase":
-            if (e.phase === "vote") {
-              audio.setIntensity(0.3);
-              if (game.state.suddenDeath) showBanner("SUDDEN DEATH", "next goal decides it", "info", 2400, now);
-            }
+            if (e.phase === "vote" && game.state.suddenDeath) showBanner("SUDDEN DEATH", "next goal decides it", "info", 2400, now);
             break;
           case "matchEnd":
             showBanner(`${PLAYERS[e.winner].name} WINS!`, `final score ${e.score.ronaldo}–${e.score.messi}`, "goal", 4200, now);
-            audio.matchEndFanfare();
             break;
         }
       }
@@ -224,25 +203,14 @@ export function ShowtimeStageView() {
       if (now - last > 200) advance(now);
     }, 100);
 
-    // UI snapshot at 10Hz + countdown ticks
+    // UI snapshot at 10Hz (no on-screen timer — the shootout is gift-gated)
     const uiTimer = window.setInterval(() => {
       const now = performance.now();
       if (banner && now > bannerUntil) banner = null;
       if (ticker && now > tickerUntil) ticker = null;
       const st = game.state;
-      const remainingS = Math.max(0, (st.phaseEndsAt - st.clock) / 1000);
-      if (st.phase === "vote") {
-        const sec = Math.ceil(remainingS);
-        if (sec <= 3 && sec >= 1 && sec !== lastTickSec) {
-          lastTickSec = sec;
-          audio.tick(sec === 1);
-        }
-      } else {
-        lastTickSec = -1;
-      }
       setUi({
         state: { ...st, score: { ...st.score }, shotVotes: { ...st.shotVotes } },
-        remainingS,
         banner,
         ticker,
         anchors: scene.zoneAnchors(),
@@ -301,7 +269,8 @@ export function ShowtimeStageView() {
     if (!st) return [] as ("goal" | "miss" | "pending")[];
     const rows: ("goal" | "miss" | "pending")[] = [];
     const taken = st.kicks.filter((kk) => kk.shooter === p);
-    const n = Math.max(5, taken.length);
+    // 12 kicks each — show up to 12 result dots (score number carries any sudden-death extras)
+    const n = Math.min(12, Math.max(6, taken.length));
     for (let i = 0; i < n; i++) rows.push(i < taken.length ? (taken[i].goal ? "goal" : "miss") : "pending");
     return rows;
   };
@@ -327,9 +296,9 @@ export function ShowtimeStageView() {
                 <div className="text-[14px] font-black leading-tight" style={{ color: PLAYERS.ronaldo.accent }}>
                   RONALDO
                 </div>
-                <div className="flex justify-end gap-1 pt-0.5">
+                <div className="flex justify-end gap-[3px] pt-0.5">
                   {dots("ronaldo").map((d, i) => (
-                    <span key={i} className={`h-1.5 w-1.5 rounded-full ${d === "goal" ? "bg-emerald-500" : d === "miss" ? "bg-red-400" : "bg-black/15"}`} />
+                    <span key={i} className={`h-1 w-1 rounded-full ${d === "goal" ? "bg-emerald-500" : d === "miss" ? "bg-red-400" : "bg-black/15"}`} />
                   ))}
                 </div>
               </div>
@@ -340,27 +309,24 @@ export function ShowtimeStageView() {
                 <div className="text-[14px] font-black leading-tight" style={{ color: PLAYERS.messi.accent }}>
                   MESSI
                 </div>
-                <div className="flex gap-1 pt-0.5">
+                <div className="flex gap-[3px] pt-0.5">
                   {dots("messi").map((d, i) => (
-                    <span key={i} className={`h-1.5 w-1.5 rounded-full ${d === "goal" ? "bg-emerald-500" : d === "miss" ? "bg-red-400" : "bg-black/15"}`} />
+                    <span key={i} className={`h-1 w-1 rounded-full ${d === "goal" ? "bg-emerald-500" : d === "miss" ? "bg-red-400" : "bg-black/15"}`} />
                   ))}
                 </div>
               </div>
             </div>
           </div>
 
-          {/* phase strip */}
+          {/* phase strip (no timer — the shootout is gift-gated) */}
           <div className="pointer-events-none absolute inset-x-0 top-[58px] flex justify-center">
             <div className="flex items-center gap-2 rounded-full bg-black/50 px-3 py-1 backdrop-blur-sm">
               <span className="whitespace-nowrap text-[11.5px] font-bold uppercase tracking-widest text-white/90">
-                {st.phase === "vote" && `Kick ${st.kicks.length + 1}${st.suddenDeath ? " · sudden death" : ""} · ${shooter.name} shoots`}
+                {st.phase === "vote" && `Kick ${st.kicks.length + 1}${st.suddenDeath ? " · sudden death" : ""} · ${shooter.name} — send a gift to shoot`}
                 {st.phase === "kick" && `${shooter.name} steps up…`}
                 {st.phase === "result" && (st.lastKick?.goal ? `${shooter.name} scores!` : `${keeperP.name} saves!`)}
                 {st.phase === "matchEnd" && `Match ${st.matchNumber} · final`}
               </span>
-              {st.phase === "vote" && (
-                <span className="rounded-full bg-white px-2 py-0.5 text-[12.5px] font-black tabular-nums text-[#101826]">{Math.ceil(ui!.remainingS)}s</span>
-              )}
             </div>
           </div>
 
@@ -482,7 +448,7 @@ export function ShowtimeStageView() {
               <div className="max-w-[520px] truncate rounded-full bg-black/55 px-3 py-1 text-center text-[12px] font-bold text-white/95 backdrop-blur-sm">{ui!.ticker}</div>
             ) : (
               <div className="rounded-full bg-black/40 px-3 py-1 text-center text-[11px] font-bold text-white/70 backdrop-blur-sm">
-                Comment LEFT · CENTER · RIGHT — gifts vote with power
+                Send a gift to take the kick · comment LEFT · CENTER · RIGHT to aim it
               </div>
             )}
             {st.jumbotron && (

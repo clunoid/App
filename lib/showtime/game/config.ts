@@ -80,12 +80,17 @@ export const OTHER: Record<PlayerId, PlayerId> = { ronaldo: "messi", messi: "ron
 /* ── phase timings (ms) ─────────────────────────────────────────────────── */
 
 export const T = {
-  VOTE_MS: 10_000, // guaranteed voting window between kicks (votes also count earlier)
+  // GIFT-GATED: a kick never fires on its own. The first gift after a kick arms a
+  // short (hidden) grace window so a few more votes/gifts can stack, then the kick
+  // is taken. No gifts → the shootout simply waits.
+  TRIGGER_GRACE_MS: 7_000,
+  // Safety net so the score never sits at 0–0 forever: after this long with NO gift,
+  // auto-play one kick, then wait again.
+  IDLE_FALLBACK_MS: 600_000, // 10 minutes
   KICK_MS: 5_200, // run-up + strike + flight + landing beat
   RESULT_MS: 3_200, // celebration / dejection (next kick's voting is ALREADY open)
   MATCH_END_MS: 10_000, // trophy + MVP recap, then the next match
-  KICKS_EACH: 5,
-  SUDDEN_DEATH_MAX_PAIRS: 20,
+  KICKS_EACH: 12, // 12 kicks each, then a new match kicks off at 0–0
   IDLE_AFTER_MS: 90_000,
   COMMENT_COOLDOWN_MS: 1_200,
 } as const;
