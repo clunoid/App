@@ -19,7 +19,7 @@
  * We only report "live" once a real message arrives (room info is Euler's first message),
  * never merely on socket-open — so a non-live room can't flap the status.
  */
-import type { GiftEvent } from "./types";
+import type { ChatEvent, GiftEvent } from "./types";
 import { normalizeGift } from "./gifts";
 
 export type EulerStatus = "idle" | "connecting" | "live" | "error" | "unconfigured";
@@ -35,7 +35,11 @@ function pick(obj: any, ...paths: string[]): any {
   return undefined;
 }
 
-export function createEulerFeed(onGift: (ev: GiftEvent) => void, onStatus: (s: EulerStatus, msg?: string) => void) {
+export function createEulerFeed(
+  onGift: (ev: GiftEvent) => void,
+  onStatus: (s: EulerStatus, msg?: string) => void,
+  onChat?: (ev: ChatEvent) => void,
+) {
   let ws: WebSocket | null = null;
   let room = "";
   let stopped = true;
@@ -135,18 +139,35 @@ export function createEulerFeed(onGift: (ev: GiftEvent) => void, onStatus: (s: E
   function handle(raw: any) {
     let msg: any;
     try { msg = typeof raw === "string" ? JSON.parse(raw) : raw; } catch { return; }
+    // frames can be a single message or a bundled { messages: [...] } array — handle both
+    const list: any[] = Array.isArray(msg?.messages) ? msg.messages : [msg];
+    for (const m of list) handleOne(m);
+  }
+
+  function handleOne(msg: any) {
     const type = String(pick(msg, "type", "event", "method", "eventType") ?? "").toLowerCase();
     const d = msg.data ?? msg;
+
     const isGift = type.includes("gift") || d?.giftName != null || d?.gift != null || d?.diamondCount != null;
-    if (!isGift) return;
-    // combo streaks stream repeatedly; only fire once, at the end, with the full count
-    const repeatEnd = pick(d, "repeatEnd") ?? pick(msg, "repeatEnd");
-    if (repeatEnd === false) return;
-    const name = String(pick(d, "giftName", "gift.name", "giftDetails.giftName", "gift.giftName") ?? "Gift");
-    const coins = Number(pick(d, "diamondCount", "gift.diamond_count", "gift.diamondCount", "coins") ?? 0) || 0;
-    const count = Number(pick(d, "repeatCount", "comboCount", "count") ?? 1) || 1;
-    const sender = String(pick(d, "user.uniqueId", "user.unique_id", "user.nickname", "uniqueId", "nickname") ?? "guest");
-    onGift(normalizeGift(name, coins, sender, count));
+    if (isGift) {
+      // combo streaks stream repeatedly; only fire once, at the end, with the full count
+      const repeatEnd = pick(d, "repeatEnd") ?? pick(msg, "repeatEnd");
+      if (repeatEnd === false) return;
+      const name = String(pick(d, "giftName", "gift.name", "giftDetails.giftName", "gift.giftName") ?? "Gift");
+      const coins = Number(pick(d, "diamondCount", "gift.diamond_count", "gift.diamondCount", "coins") ?? 0) || 0;
+      const count = Number(pick(d, "repeatCount", "comboCount", "count") ?? 1) || 1;
+      const sender = String(pick(d, "user.uniqueId", "user.unique_id", "user.nickname", "uniqueId", "nickname") ?? "guest");
+      onGift(normalizeGift(name, coins, sender, count));
+      return;
+    }
+
+    // chat comments — the free voting channel for the game
+    const text = pick(d, "comment", "content");
+    const isChat = onChat && (type.includes("chat") || typeof text === "string");
+    if (isChat && typeof text === "string" && text.trim()) {
+      const sender = String(pick(d, "user.uniqueId", "user.unique_id", "user.nickname", "uniqueId", "nickname") ?? "guest");
+      onChat({ sender: sender.replace(/^@/, "").slice(0, 40), text: String(text).slice(0, 200), ts: Date.now() });
+    }
   }
 
   return {
