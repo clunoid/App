@@ -46,6 +46,21 @@ const EXAMPLES = [
   "What would happen if you fell into a black hole",
 ];
 
+/** fal (and the whole genre) has a real transient-failure rate — one flaky clip
+ *  must not abandon a paid video. Retry each generation a couple of times. */
+async function withRetry<T>(fn: () => Promise<T>, tries = 3): Promise<T> {
+  let last: unknown;
+  for (let a = 0; a < tries; a++) {
+    try {
+      return await fn();
+    } catch (e) {
+      last = e;
+      if (a < tries - 1) await new Promise((r) => setTimeout(r, 2000 * (a + 1)));
+    }
+  }
+  throw last;
+}
+
 async function falRun(model: string, input: unknown, onTick?: () => void): Promise<Record<string, unknown>> {
   const sub = await fetch("/api/vlab/fal", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ model, input }) });
   const s = (await sub.json()) as { statusUrl?: string; responseUrl?: string; error?: string };
@@ -124,13 +139,13 @@ export function VlabConsole() {
         p.shots.map(async (shot, i) => {
           setShot(i, { imageBusy: true });
           try {
-            const out = await falRun(FAL_MODELS.image, {
+            const out = await withRetry(() => falRun(FAL_MODELS.image, {
               prompt: `${shot.imagePrompt}, ${STYLE_BLOCK}`,
               image_size: "portrait_16_9",
               seed,
               num_images: 1,
               output_format: "jpeg",
-            });
+            }));
             const url = (out.images as { url?: string }[] | undefined)?.[0]?.url;
             if (!url) throw new Error("no image returned");
             setShot(i, { imageBusy: false, imageUrl: url });
@@ -149,13 +164,13 @@ export function VlabConsole() {
         p.shots.map(async (shot, i) => {
           setShot(i, { clipBusy: true });
           try {
-            const out = await falRun(FAL_MODELS.video, {
+            const out = await withRetry(() => falRun(FAL_MODELS.video, {
               start_image_url: imageUrls[i],
               prompt: `${shot.motionPrompt}. Smooth, cinematic, stylized 3D animation.`,
               duration: String(Math.min(8, Math.max(5, Math.round(shot.seconds)))),
               generate_audio: false,
               negative_prompt: "blur, distortion, low quality, text, watermark, morphing, extra limbs",
-            });
+            }));
             const url = (out.video as { url?: string } | undefined)?.url;
             if (!url) throw new Error("no clip returned");
             setShot(i, { clipBusy: false, clipUrl: url });
@@ -187,12 +202,12 @@ export function VlabConsole() {
         t += durMs;
         return kf;
       });
-      const out = await falRun(FAL_MODELS.compose, {
+      const out = await withRetry(() => falRun(FAL_MODELS.compose, {
         tracks: [
           { id: "video", type: "video", keyframes: videoKeyframes },
           { id: "vo", type: "audio", keyframes: [{ timestamp: 0, duration: Math.round((nd.seconds || t / 1000) * 1000), url: nd.audioUrl }] },
         ],
-      });
+      }));
       const final = (out.video_url as string | undefined) || (out.video as { url?: string } | undefined)?.url;
       if (!final) throw new Error("compose returned no video");
       setFinalUrl(final);
