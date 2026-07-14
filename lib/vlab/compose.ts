@@ -163,6 +163,9 @@ export async function composeFinalCut(opts: {
         durationSec: total,
         drawFrame,
         audio,
+        // 7 Mbps: visually excellent for stylized 3D at 1080×1920, but ~25%
+        // smaller than the 9 Mbps default → faster to load and download.
+        bitrate: 7_000_000,
         onProgress: (p, l) => {
           if (p >= 90) releaseFootage(); // video frames done — free the decoders for the AAC encoder
           onProgress?.(8 + p * 0.9, l);

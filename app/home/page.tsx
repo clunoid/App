@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { Mic, MicOff, Send, Loader2, Search, History, Sparkles, CandlestickChart } from "lucide-react";
+import { Mic, MicOff, Send, Loader2, Search, History, Sparkles, CandlestickChart, Clapperboard } from "lucide-react";
 import { useClunoid } from "@/lib/store/useClunoid";
 import { useSpeechInput } from "@/lib/voice/useSpeechInput";
 import { useMicLevel } from "@/lib/voice/useMicLevel";
@@ -239,6 +239,15 @@ export default function Home() {
                 style={{ borderColor: "rgba(168,85,247,0.4)", background: "rgba(168,85,247,0.1)", color: "#c4b5fd" }}
               >
                 <Sparkles size={15} /> Showtime
+              </Link>
+            )}
+            {isAdminUser && (
+              <Link
+                href="/vlab"
+                className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm transition hover:brightness-125"
+                style={{ borderColor: "rgba(56,189,248,0.4)", background: "rgba(56,189,248,0.1)", color: "#7dd3fc" }}
+              >
+                <Clapperboard size={15} /> VLAB
               </Link>
             )}
           </div>

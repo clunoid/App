@@ -28,23 +28,32 @@ import {
 } from "lucide-react";
 import { STYLE_BLOCK, type VlabPlan } from "@/lib/vlab/plan";
 import { composeFinalCut } from "@/lib/vlab/compose";
+import { getSupabaseBrowser } from "@/lib/supabase/client";
 
-/* ── studio palette (director's amber on deep charcoal) ───────────────────── */
+/* ── studio palette (clean sky-blue on a cool near-black) ─────────────────── */
 const C = {
-  bg: "#0d0b08",
-  rail: "#100e0a",
+  bg: "#08111c",
+  rail: "#0a1522",
   panel: "rgba(255,255,255,0.03)",
   panelHi: "rgba(255,255,255,0.06)",
-  line: "rgba(255,255,255,0.1)",
-  text: "#f5f1ea",
-  muted: "#a89f92",
-  faint: "#6e675c",
-  accent: "#f2a341",
-  accentDim: "rgba(242,163,65,0.14)",
+  line: "rgba(148,197,255,0.12)",
+  text: "#eef4fb",
+  muted: "#9db0c6",
+  faint: "#5e708a",
+  accent: "#38bdf8",
+  accentDim: "rgba(56,189,248,0.14)",
   good: "#4ade80",
   bad: "#f87171",
+  ink: "#08111c",
 };
 const mono = { fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" } as const;
+
+/* a faint dotted grid that blends into the background — clean modern depth */
+const DOT_GRID = {
+  backgroundImage: "radial-gradient(rgba(125,211,252,0.09) 1px, transparent 1px)",
+  backgroundSize: "22px 22px",
+  backgroundPosition: "-1px -1px",
+} as const;
 
 const FAL_MODELS = {
   sheet: "fal-ai/nano-banana",
@@ -109,6 +118,115 @@ async function falRun(model: string, input: unknown): Promise<Record<string, unk
 }
 
 const clampDur = (sec: number) => Math.min(15, Math.max(3, Math.ceil(sec)));
+
+/** A clean, filesystem-safe filename from the video title (so downloads are
+ *  named "why-swallowed-gum-doesnt…​.mp4", never a random storage id). */
+function safeFilename(title: string): string {
+  const base = (title || "clunoid-video")
+    .normalize("NFKD")
+    .replace(/[^\w\s-]/g, "") // drop punctuation/emoji/…
+    .trim()
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .slice(0, 80)
+    .replace(/^-|-$/g, "");
+  return (base || "clunoid-video") + ".mp4";
+}
+
+/**
+ * The finished film. The MP4 lives on Supabase Storage, which serves it
+ * `Cache-Control: no-cache` — streaming it straight into a <video> made the
+ * browser re-request segments (the "hangs and reloads" the owner saw). So we
+ * fetch it ONCE into a local blob and play from that: instant seeking, zero
+ * re-buffering, and the download button reuses the same blob so it saves with
+ * the real title as the filename (cross-origin `download` names are ignored, a
+ * same-origin blob URL is not). Retried, and cleaned up on unmount.
+ */
+function FilmPlayer({ src, title }: { src: string; title: string }) {
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
+  const [pct, setPct] = useState(0);
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    let dead = false;
+    let objUrl: string | null = null;
+    setBlobUrl(null);
+    setErr(null);
+    setPct(0);
+    (async () => {
+      for (let attempt = 0; attempt < 3 && !dead; attempt++) {
+        try {
+          const res = await fetch(src);
+          if (!res.ok) throw new Error(`fetch ${res.status}`);
+          const total = Number(res.headers.get("content-length")) || 0;
+          const reader = res.body?.getReader();
+          if (reader && total > 0) {
+            const chunks: Uint8Array[] = [];
+            let got = 0;
+            for (;;) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              if (dead) return;
+              chunks.push(value);
+              got += value.length;
+              setPct(Math.min(99, Math.round((got / total) * 100)));
+            }
+            objUrl = URL.createObjectURL(new Blob(chunks as BlobPart[], { type: "video/mp4" }));
+          } else {
+            objUrl = URL.createObjectURL(await res.blob());
+          }
+          if (dead) { URL.revokeObjectURL(objUrl); return; }
+          setPct(100);
+          setBlobUrl(objUrl);
+          return;
+        } catch (e) {
+          if (attempt === 2) setErr(e instanceof Error ? e.message : "load failed");
+          else await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
+        }
+      }
+    })();
+    return () => {
+      dead = true;
+      if (objUrl) URL.revokeObjectURL(objUrl);
+    };
+  }, [src]);
+
+  return (
+    <section className="rounded-2xl border p-4 sm:p-5" style={{ borderColor: C.accent, background: C.panel }}>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <h3 className="flex items-center gap-2 text-[14px] font-bold" style={{ color: C.text }}><Play size={15} style={{ color: C.accent }} /> The film</h3>
+        <div className="flex items-center gap-2">
+          <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold" style={{ background: C.panelHi, color: C.good }}>saved permanently</span>
+          <a
+            href={blobUrl || src}
+            download={safeFilename(title)}
+            className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[12px] font-medium hover:bg-white/5"
+            style={{ borderColor: C.line, color: blobUrl ? C.accent : C.faint, pointerEvents: blobUrl ? "auto" : "none" }}
+            title={blobUrl ? `Download “${safeFilename(title)}”` : "Preparing download…"}
+          >
+            <Download size={13} /> Download MP4
+          </a>
+        </div>
+      </div>
+      <div className="relative mx-auto aspect-[9/16] w-full max-w-[340px] overflow-hidden rounded-xl border" style={{ borderColor: C.line, background: "#000" }}>
+        {blobUrl ? (
+          <video src={blobUrl} controls autoPlay playsInline className="h-full w-full" />
+        ) : (
+          <div className="grid h-full w-full place-items-center gap-2 text-center">
+            {err ? (
+              <span className="px-4 text-[12.5px]" style={{ color: C.bad }}>Couldn&apos;t load the video ({err}).</span>
+            ) : (
+              <div className="flex flex-col items-center gap-2">
+                <Loader2 size={20} className="animate-spin" style={{ color: C.accent }} />
+                <span className="text-[12px]" style={{ color: C.muted }}>Loading video… {pct}%</span>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
 
 function estimateCost(plan: VlabPlan): number {
   const clipSecs = plan.shots.reduce((s, x) => s + clampDur(x.seconds + 1), 0);
@@ -304,13 +422,16 @@ export function VlabConsole() {
         onProgress: (p, l) => setStageLabel(`Final cut: ${l} ${Math.round(p)}%`),
       });
 
-      /* f) save the film permanently (direct browser → storage upload) */
+      /* f) save the film permanently (direct browser → storage upload). Uploaded
+            with a long cache-control so repeat views load from the browser cache
+            instantly instead of re-downloading (Supabase otherwise serves
+            no-cache). */
       setStageLabel("Saving the film…");
       const uu = await fetch("/api/vlab/upload-url", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: video.id }) });
-      const ud = (await uu.json()) as { uploadUrl?: string; publicUrl?: string; error?: string };
-      if (!uu.ok || !ud.uploadUrl || !ud.publicUrl) throw new Error(ud.error || "upload url failed");
-      const put = await fetch(ud.uploadUrl, { method: "PUT", headers: { "content-type": "video/mp4" }, body: blob });
-      if (!put.ok) throw new Error(`upload failed (${put.status})`);
+      const ud = (await uu.json()) as { token?: string; path?: string; publicUrl?: string; error?: string };
+      if (!uu.ok || !ud.token || !ud.path || !ud.publicUrl) throw new Error(ud.error || "upload url failed");
+      const { error: upErr } = await getSupabaseBrowser().storage.from("vlab").uploadToSignedUrl(ud.path, ud.token, blob, { contentType: "video/mp4", cacheControl: "31536000", upsert: true });
+      if (upErr) throw new Error(`upload failed (${upErr.message})`);
       await save({ finalUrl: ud.publicUrl, storageUrl: ud.publicUrl, status: "done" });
       setStageLabel("");
     } catch (e) {
@@ -334,7 +455,7 @@ export function VlabConsole() {
 
   /* ── gate screens ── */
   if (gate === "loading") {
-    return <div className="grid min-h-dvh place-items-center" style={{ background: C.bg }}><span className="inline-flex items-center gap-2 text-[13px]" style={{ color: C.muted }}><Loader2 size={15} className="animate-spin" style={{ color: C.accent }} /> Opening the studio…</span></div>;
+    return <div className="grid min-h-dvh place-items-center" style={{ background: C.bg, ...DOT_GRID }}><span className="inline-flex items-center gap-2 text-[13px]" style={{ color: C.muted }}><Loader2 size={15} className="animate-spin" style={{ color: C.accent }} /> Opening the studio…</span></div>;
   }
   if (gate !== "ready") {
     const meta = {
@@ -344,12 +465,12 @@ export function VlabConsole() {
     }[gate];
     const I = meta.icon;
     return (
-      <div className="grid min-h-dvh place-items-center px-6" style={{ background: C.bg }}>
+      <div className="grid min-h-dvh place-items-center px-6" style={{ background: C.bg, ...DOT_GRID }}>
         <div className="max-w-md text-center">
           <I size={34} className="mx-auto mb-4" style={{ color: C.faint }} />
           <h1 className="text-[19px] font-semibold" style={{ color: C.text }}>{meta.title}</h1>
           <p className="mt-2 text-[13.5px]" style={{ color: C.muted }}>{meta.body}</p>
-          <Link href="/" className="mt-6 inline-flex items-center gap-2 rounded-xl px-4 py-2 text-[13.5px] font-semibold" style={{ background: C.accent, color: "#0d0b08" }}>
+          <Link href="/" className="mt-6 inline-flex items-center gap-2 rounded-xl px-4 py-2 text-[13.5px] font-semibold" style={{ background: C.accent, color: C.ink }}>
             <ArrowLeft size={15} /> Back to Clunoid
           </Link>
         </div>
@@ -358,9 +479,9 @@ export function VlabConsole() {
   }
 
   return (
-    <div className="flex min-h-dvh flex-col" style={{ background: C.bg }}>
+    <div className="flex min-h-dvh flex-col" style={{ background: C.bg, ...DOT_GRID }}>
       {/* header */}
-      <header className="sticky top-0 z-20 border-b backdrop-blur-md" style={{ borderColor: C.line, background: "rgba(13,11,8,0.85)" }}>
+      <header className="sticky top-0 z-20 border-b backdrop-blur-md" style={{ borderColor: C.line, background: "rgba(8,17,28,0.85)" }}>
         <div className="flex items-center gap-3 px-4 py-3 sm:px-6">
           <Link href="/" className="flex items-center gap-1.5 text-[13px] font-medium hover:opacity-80" style={{ color: C.muted }}>
             <ArrowLeft size={15} /> Clunoid
@@ -383,7 +504,7 @@ export function VlabConsole() {
           <button
             onClick={() => setSelectedId(null)}
             className="flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-[13.5px] font-semibold hover:opacity-90"
-            style={{ background: selectedId === null ? C.accent : C.accentDim, color: selectedId === null ? "#0d0b08" : C.accent }}
+            style={{ background: selectedId === null ? C.accent : C.accentDim, color: selectedId === null ? C.ink : C.accent }}
           >
             <Plus size={15} /> New video
           </button>
@@ -459,7 +580,7 @@ function NewVideo({ topic, setTopic, writing, error, onWrite }: { topic: string;
           {EXAMPLES.map((x) => (
             <button key={x} onClick={() => setTopic(x)} className="rounded-full border px-2.5 py-1 text-[11px] hover:bg-white/5" style={{ borderColor: C.line, color: C.faint }}>{x}</button>
           ))}
-          <button onClick={onWrite} disabled={writing || topic.trim().length < 8} className="ml-auto inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-[13.5px] font-semibold hover:opacity-90 disabled:opacity-50" style={{ background: C.accent, color: "#0d0b08" }}>
+          <button onClick={onWrite} disabled={writing || topic.trim().length < 8} className="ml-auto inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-[13.5px] font-semibold hover:opacity-90 disabled:opacity-50" style={{ background: C.accent, color: C.ink }}>
             {writing ? <Loader2 size={15} className="animate-spin" /> : <ScrollText size={15} />} {writing ? "Writing + reviewing the screenplay…" : "Write the screenplay"}
           </button>
         </div>
@@ -505,21 +626,8 @@ function VideoView({ video, producing, stageLabel, error, onProduce, onRewrite, 
         </div>
       </section>
 
-      {/* the finished film */}
-      {finalSrc && (
-        <section className="rounded-2xl border p-4 sm:p-5" style={{ borderColor: C.accent, background: C.panel }}>
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-            <h3 className="flex items-center gap-2 text-[14px] font-bold" style={{ color: C.text }}><Play size={15} style={{ color: C.accent }} /> The film</h3>
-            <div className="flex items-center gap-2">
-              {video.storage_url && <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold" style={{ background: C.panelHi, color: C.good }}>saved permanently</span>}
-              <a href={finalSrc} download target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[12px] font-medium hover:bg-white/5" style={{ borderColor: C.line, color: C.muted }}>
-                <Download size={13} /> Download MP4
-              </a>
-            </div>
-          </div>
-          <video src={finalSrc} controls playsInline className="mx-auto aspect-[9/16] w-full max-w-[340px] rounded-xl border" style={{ borderColor: C.line, background: "#000" }} />
-        </section>
-      )}
+      {/* the finished film — fetched to a local blob for smooth playback + titled download */}
+      {finalSrc && <FilmPlayer src={finalSrc} title={plan.title} />}
 
       {/* production CTA / progress */}
       {!finalSrc && (
@@ -546,7 +654,7 @@ function VideoView({ video, producing, stageLabel, error, onProduce, onRewrite, 
               <button onClick={onRewrite} disabled={writing} className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-[12.5px] font-medium hover:bg-white/5 disabled:opacity-50" style={{ borderColor: C.line, color: C.muted }}>
                 {writing ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />} New screenplay
               </button>
-              <button onClick={onProduce} className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-[13.5px] font-semibold hover:opacity-90" style={{ background: C.accent, color: "#0d0b08" }}>
+              <button onClick={onProduce} className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-[13.5px] font-semibold hover:opacity-90" style={{ background: C.accent, color: C.ink }}>
                 <Wand2 size={15} /> {video.status === "failed" ? "Resume production" : "Produce the video"}
               </button>
             </div>
