@@ -1,30 +1,45 @@
 "use client";
 
 /**
- * VLAB — the PILOT console for prompt → stylized-3D animated short (admin-only).
+ * VLAB STUDIO — prompt → story-complete, consistent, narration-timed 3D-animated
+ * short (admin-only). Full-bleed studio in the Showtime/Edge mold.
  *
- * Purpose: let the owner judge, on ~$5 of API spend per attempt, the real
- * quality ceiling of a fully-automated Zack-D-Films-STYLE pipeline (research
- * verdict on record: exact Zack quality = human Blender artists; this is the
- * closest honest approximation). The browser orchestrates the steps so no
- * serverless call runs long: Opus plan → Flux keyframes (style+seed locked) →
- * Kling 3 Pro image-to-video per shot → Isaac narration → ffmpeg compose.
- * All vendor calls go through /api/vlab/* (admin-gated; FAL_KEY stays server-side).
+ * The design center is FIRST-TRY QUALITY (videos cost real money; users can't
+ * afford retries), so everything cheap happens before anything expensive:
+ *  1. THINK (tokens): Opus writes the complete story screenplay — real-world
+ *     hook → true mechanism beat by beat → real-world payoff — with a reusable
+ *     character sheet + world/lighting note; a second adversarial Opus pass
+ *     corrects it. The user reviews the screenplay and sees the exact cost
+ *     BEFORE production.
+ *  2. PRODUCE (dollars): narration first (Isaac, character-timestamped) so
+ *     every clip is cut to its exact spoken line; character sheet image; then
+ *     each keyframe is EDITED from [sheet + previous frame] (nano-banana) so
+ *     identity/world/lighting never drift; Kling animates each frame with the
+ *     NEXT keyframe as end-frame when the camera should flow (hard cut only on
+ *     scene changes); ffmpeg composes clips trimmed to the narration timeline.
+ *  3. KEEP: every step persists to vlab_videos; the finished MP4 is copied to
+ *     permanent storage. A transient failure retries; a refresh loses nothing.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Clapperboard, Download, Film, Image as ImageIcon, Loader2, Mic, Play, ShieldAlert, Sparkles, Wand2, KeyRound } from "lucide-react";
+import {
+  ArrowLeft, Clapperboard, Download, Film, Loader2, Mic, Play, Plus, RefreshCw,
+  ShieldAlert, Sparkles, Trash2, Wand2, KeyRound, User, Globe2, ScrollText, CircleDollarSign, ChevronRight,
+} from "lucide-react";
 import { STYLE_BLOCK, type VlabPlan } from "@/lib/vlab/plan";
+import { composeFinalCut } from "@/lib/vlab/compose";
 
+/* ── studio palette (director's amber on deep charcoal) ───────────────────── */
 const C = {
   bg: "#0d0b08",
+  rail: "#100e0a",
   panel: "rgba(255,255,255,0.03)",
   panelHi: "rgba(255,255,255,0.06)",
   line: "rgba(255,255,255,0.1)",
   text: "#f5f1ea",
   muted: "#a89f92",
   faint: "#6e675c",
-  accent: "#f2a341", // director's amber
+  accent: "#f2a341",
   accentDim: "rgba(242,163,65,0.14)",
   good: "#4ade80",
   bad: "#f87171",
@@ -32,22 +47,36 @@ const C = {
 const mono = { fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" } as const;
 
 const FAL_MODELS = {
-  image: "fal-ai/flux/dev",
+  sheet: "fal-ai/nano-banana",
+  frame: "fal-ai/nano-banana/edit",
   video: "fal-ai/kling-video/v3/pro/image-to-video",
-  compose: "fal-ai/ffmpeg-api/compose",
 } as const;
 
-type ShotState = { imageUrl?: string; clipUrl?: string; imageBusy?: boolean; clipBusy?: boolean; error?: string };
-type Stage = "idle" | "planning" | "keyframes" | "clips" | "narration" | "compose" | "done" | "error";
+/* pricing knobs for the on-screen estimate (fal list prices, July 2026) */
+const PRICE = { image: 0.04, videoPerSec: 0.112, overhead: 0.15 };
+
+type ShotAsset = { imageUrl?: string; clipUrl?: string };
+type Narration = { audioUrl: string; seconds: number; lines: { start: number; end: number }[] };
+type VideoRow = {
+  id: string;
+  topic: string;
+  title: string;
+  plan: VlabPlan | null;
+  shots: ShotAsset[];
+  narration: Narration | null;
+  final_url: string;
+  storage_url: string;
+  status: "planned" | "producing" | "done" | "failed";
+  created_at: string;
+};
 
 const EXAMPLES = [
   "What happens inside your throat when you swallow gum",
   "Why airplane windows are always round",
-  "What would happen if you fell into a black hole",
+  "What happens to your body inside a falling elevator",
 ];
 
-/** fal (and the whole genre) has a real transient-failure rate — one flaky clip
- *  must not abandon a paid video. Retry each generation a couple of times. */
+/* ── fal plumbing (server proxy; per-step retry — one flake can't waste a video) ── */
 async function withRetry<T>(fn: () => Promise<T>, tries = 3): Promise<T> {
   let last: unknown;
   for (let a = 0; a < tries; a++) {
@@ -55,25 +84,23 @@ async function withRetry<T>(fn: () => Promise<T>, tries = 3): Promise<T> {
       return await fn();
     } catch (e) {
       last = e;
-      if (a < tries - 1) await new Promise((r) => setTimeout(r, 2000 * (a + 1)));
+      if (a < tries - 1) await new Promise((r) => setTimeout(r, 2500 * (a + 1)));
     }
   }
   throw last;
 }
 
-async function falRun(model: string, input: unknown, onTick?: () => void): Promise<Record<string, unknown>> {
+async function falRun(model: string, input: unknown): Promise<Record<string, unknown>> {
   const sub = await fetch("/api/vlab/fal", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ model, input }) });
   const s = (await sub.json()) as { statusUrl?: string; responseUrl?: string; error?: string };
   if (!sub.ok || !s.statusUrl || !s.responseUrl) throw new Error(s.error || `submit failed (${sub.status})`);
-  // poll until COMPLETED (Kling clips can take minutes)
   for (let i = 0; i < 240; i++) {
     await new Promise((r) => setTimeout(r, i < 10 ? 2500 : 5000));
-    onTick?.();
     const st = await fetch(`/api/vlab/fal?url=${encodeURIComponent(s.statusUrl)}`);
     const d = (await st.json()) as { status?: string; error?: string };
     if (d.status === "COMPLETED") break;
     if (d.status === "FAILED" || st.status >= 400) throw new Error(d.error || `generation ${d.status || st.status}`);
-    if (i === 239) throw new Error("timed out waiting for generation");
+    if (i === 239) throw new Error("generation timed out");
   }
   const res = await fetch(`/api/vlab/fal?url=${encodeURIComponent(s.responseUrl)}`);
   const out = (await res.json()) as Record<string, unknown> & { error?: string };
@@ -81,150 +108,258 @@ async function falRun(model: string, input: unknown, onTick?: () => void): Promi
   return out;
 }
 
+const clampDur = (sec: number) => Math.min(15, Math.max(3, Math.ceil(sec)));
+
+function estimateCost(plan: VlabPlan): number {
+  const clipSecs = plan.shots.reduce((s, x) => s + clampDur(x.seconds + 1), 0);
+  return Math.round(((plan.shots.length + 1) * PRICE.image + clipSecs * PRICE.videoPerSec + PRICE.overhead) * 100) / 100;
+}
+
+/* ── the studio ───────────────────────────────────────────────────────────── */
+type GateState = "loading" | "signin" | "restricted" | "unconfigured" | "ready";
+
 export function VlabConsole() {
+  const [gate, setGate] = useState<GateState>("loading");
+  const [videos, setVideos] = useState<VideoRow[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [topic, setTopic] = useState("");
-  const [stage, setStage] = useState<Stage>("idle");
-  const [gateMsg, setGateMsg] = useState<string | null>(null);
-  const [plan, setPlan] = useState<VlabPlan | null>(null);
-  const [shots, setShots] = useState<ShotState[]>([]);
-  const [audioUrl, setAudioUrl] = useState<string | null>(null);
-  const [finalUrl, setFinalUrl] = useState<string | null>(null);
+  const [writing, setWriting] = useState(false);
+  const [producingId, setProducingId] = useState<string | null>(null);
+  const [stageLabel, setStageLabel] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [log, setLog] = useState<string[]>([]);
   const running = useRef(false);
 
-  const say = useCallback((m: string) => setLog((l) => [...l.slice(-30), m]), []);
-  const setShot = useCallback((i: number, patch: ShotState) => setShots((prev) => prev.map((s, j) => (j === i ? { ...s, ...patch } : s))), []);
-
-  /* on-load gate probe so key/access state shows before any click */
+  /* load history + gate on mount */
   useEffect(() => {
     let dead = false;
-    void fetch("/api/vlab/plan").then((r) => {
-      if (dead || r.ok) return;
-      setGateMsg(r.status === 401 ? "signin" : r.status === 403 ? "restricted" : r.status === 501 ? "unconfigured" : null);
-    }).catch(() => {});
+    void fetch("/api/vlab/videos").then(async (r) => {
+      if (dead) return;
+      if (r.status === 401) return setGate("signin");
+      if (r.status === 403) return setGate("restricted");
+      if (r.status === 501) return setGate("unconfigured");
+      const d = (await r.json()) as { videos?: VideoRow[] };
+      setVideos(d.videos || []);
+      if (d.videos?.length) setSelectedId(d.videos[0].id);
+      setGate("ready");
+    }).catch(() => setGate("ready"));
     return () => { dead = true; };
   }, []);
 
-  const run = async () => {
-    if (running.current) return;
-    running.current = true;
+  const selected = useMemo(() => videos.find((v) => v.id === selectedId) ?? null, [videos, selectedId]);
+  const replaceVideo = useCallback((next: VideoRow) => setVideos((prev) => prev.map((v) => (v.id === next.id ? next : v))), []);
+
+  const patchVideo = useCallback(async (id: string, body: Record<string, unknown>): Promise<VideoRow | null> => {
+    const r = await fetch(`/api/vlab/videos/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    const d = (await r.json()) as { video?: VideoRow };
+    if (r.ok && d.video) { replaceVideo(d.video); return d.video; }
+    return null;
+  }, [replaceVideo]);
+
+  /* 1 — THINK: write (or rewrite) the screenplay */
+  const writeScreenplay = async (forTopic: string) => {
+    setWriting(true);
     setError(null);
-    setGateMsg(null);
-    setPlan(null);
-    setShots([]);
-    setAudioUrl(null);
-    setFinalUrl(null);
-    setLog([]);
     try {
-      /* 1 — the plan (Opus) */
-      setStage("planning");
-      say("Opus is writing the script and shot list…");
-      const pr = await fetch("/api/vlab/plan", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ topic }) });
-      if (pr.status === 401) { setGateMsg("signin"); setStage("idle"); return; }
-      if (pr.status === 403) { setGateMsg("restricted"); setStage("idle"); return; }
-      if (pr.status === 501) { setGateMsg("unconfigured"); setStage("idle"); return; }
-      const pd = (await pr.json()) as { plan?: VlabPlan; error?: string };
-      if (!pr.ok || !pd.plan) throw new Error(pd.error || "planning failed");
-      const p = pd.plan;
-      setPlan(p);
-      setShots(p.shots.map(() => ({})));
-      say(`Plan ready: “${p.title}” — ${p.shots.length} shots.`);
-
-      /* 2 — keyframes (Flux, style + seed locked, parallel) */
-      setStage("keyframes");
-      const seed = Math.floor(Math.random() * 1_000_000); // one seed for the whole video = consistent look
-      say(`Generating ${p.shots.length} style-locked keyframes (seed ${seed})…`);
-      const imageUrls = await Promise.all(
-        p.shots.map(async (shot, i) => {
-          setShot(i, { imageBusy: true });
-          try {
-            const out = await withRetry(() => falRun(FAL_MODELS.image, {
-              prompt: `${shot.imagePrompt}, ${STYLE_BLOCK}`,
-              image_size: "portrait_16_9",
-              seed,
-              num_images: 1,
-              output_format: "jpeg",
-            }));
-            const url = (out.images as { url?: string }[] | undefined)?.[0]?.url;
-            if (!url) throw new Error("no image returned");
-            setShot(i, { imageBusy: false, imageUrl: url });
-            return url;
-          } catch (e) {
-            setShot(i, { imageBusy: false, error: e instanceof Error ? e.message : "image failed" });
-            throw e;
-          }
-        })
-      );
-
-      /* 3 — clips (Kling 3 Pro image-to-video, parallel; the slow, costly step) */
-      setStage("clips");
-      say("Animating each keyframe with Kling 3 Pro (this takes a few minutes)…");
-      const clipUrls = await Promise.all(
-        p.shots.map(async (shot, i) => {
-          setShot(i, { clipBusy: true });
-          try {
-            const out = await withRetry(() => falRun(FAL_MODELS.video, {
-              start_image_url: imageUrls[i],
-              prompt: `${shot.motionPrompt}. Smooth, cinematic, stylized 3D animation.`,
-              duration: String(Math.min(8, Math.max(5, Math.round(shot.seconds)))),
-              generate_audio: false,
-              negative_prompt: "blur, distortion, low quality, text, watermark, morphing, extra limbs",
-            }));
-            const url = (out.video as { url?: string } | undefined)?.url;
-            if (!url) throw new Error("no clip returned");
-            setShot(i, { clipBusy: false, clipUrl: url });
-            return url;
-          } catch (e) {
-            setShot(i, { clipBusy: false, error: e instanceof Error ? e.message : "clip failed" });
-            throw e;
-          }
-        })
-      );
-
-      /* 4 — narration (Isaac) */
-      setStage("narration");
-      say("Isaac is recording the narration…");
-      const script = p.shots.map((s) => s.line).join(" ");
-      const nr = await fetch("/api/vlab/narrate", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: script }) });
-      const nd = (await nr.json()) as { audioUrl?: string; seconds?: number; error?: string };
-      if (!nr.ok || !nd.audioUrl) throw new Error(nd.error || "narration failed");
-      setAudioUrl(nd.audioUrl);
-      say(`Narration: ${nd.seconds}s of audio.`);
-
-      /* 5 — compose (ffmpeg: clips back-to-back + narration on top) */
-      setStage("compose");
-      say("Stitching the final video…");
-      let t = 0;
-      const videoKeyframes = p.shots.map((s, i) => {
-        const durMs = Math.min(8, Math.max(5, Math.round(s.seconds))) * 1000;
-        const kf = { timestamp: t, duration: durMs, url: clipUrls[i] };
-        t += durMs;
-        return kf;
-      });
-      const out = await withRetry(() => falRun(FAL_MODELS.compose, {
-        tracks: [
-          { id: "video", type: "video", keyframes: videoKeyframes },
-          { id: "vo", type: "audio", keyframes: [{ timestamp: 0, duration: Math.round((nd.seconds || t / 1000) * 1000), url: nd.audioUrl }] },
-        ],
-      }));
-      const final = (out.video_url as string | undefined) || (out.video as { url?: string } | undefined)?.url;
-      if (!final) throw new Error("compose returned no video");
-      setFinalUrl(final);
-      setStage("done");
-      say("Done. Judge it honestly — that's the point of the pilot.");
+      const r = await fetch("/api/vlab/videos", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ topic: forTopic }) });
+      const d = (await r.json()) as { video?: VideoRow; error?: string };
+      if (!r.ok || !d.video) throw new Error(d.error || "screenwriting failed");
+      setVideos((prev) => [d.video!, ...prev]);
+      setSelectedId(d.video.id);
+      setTopic("");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "pipeline failed");
-      setStage("error");
+      setError(e instanceof Error ? e.message : "screenwriting failed");
     } finally {
-      running.current = false;
+      setWriting(false);
     }
   };
 
-  const busy = stage !== "idle" && stage !== "done" && stage !== "error";
+  /* 2 — PRODUCE: the expensive run, persisted step by step */
+  const produce = async (video: VideoRow) => {
+    if (running.current || !video.plan) return;
+    running.current = true;
+    setProducingId(video.id);
+    setError(null);
+    const plan = video.plan;
+    const shots: ShotAsset[] = plan.shots.map((_, i) => video.shots?.[i] || {});
+    const save = (body: Record<string, unknown>) => patchVideo(video.id, body);
+    try {
+      await save({ status: "producing" });
+
+      /* a) narration FIRST — its measured timings cut every clip */
+      setStageLabel("Isaac is recording the narration…");
+      let narration = video.narration;
+      if (!narration) {
+        const nr = await fetch("/api/vlab/narrate", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ lines: plan.shots.map((s) => s.line) }) });
+        const nd = (await nr.json()) as Narration & { error?: string };
+        if (!nr.ok || !nd.audioUrl) throw new Error(nd.error || "narration failed");
+        narration = { audioUrl: nd.audioUrl, seconds: nd.seconds, lines: nd.lines };
+        await save({ narration });
+      }
+
+      /* b) the character sheet — the identity anchor for every frame. Skipped
+            entirely on resume when every keyframe already exists. */
+      let sheetUrl = "";
+      if (plan.shots.some((_, i) => !shots[i].imageUrl)) {
+        setStageLabel("Casting: generating the character sheet…");
+        const sheetOut = await withRetry(() => falRun(FAL_MODELS.sheet, {
+          prompt: `Full-body character reference of ${plan.characterSheet}, standing naturally, neutral background, ${STYLE_BLOCK}`,
+          aspect_ratio: "9:16",
+          num_images: 1,
+          output_format: "jpeg",
+        }));
+        sheetUrl = (sheetOut.images as { url?: string }[] | undefined)?.[0]?.url || "";
+        if (!sheetUrl) throw new Error("character sheet failed");
+      }
+
+      /* c) keyframes — SHOT-AWARE consistency chains. Character shots anchor to
+            [sheet + last character frame] and must never carry an anatomical
+            overlay; interior cutaways chain only from the last interior frame
+            (or start fresh) and must never show the person or the room. This
+            split is what keeps both worlds consistent WITHOUT bleeding into
+            each other (the v2.0 test run's one visual defect). */
+      let lastCharFrame: string | null = null;
+      let lastInteriorFrame: string | null = null;
+      for (let i = 0; i < plan.shots.length; i++) {
+        const shot = plan.shots[i];
+        const isChar = shot.showsCharacter !== false; // default true for older plans
+        if (shots[i].imageUrl) {
+          if (isChar) lastCharFrame = shots[i].imageUrl!;
+          else lastInteriorFrame = shots[i].imageUrl!;
+          continue; // resume support
+        }
+        setStageLabel(`Drawing keyframe ${i + 1}/${plan.shots.length}…`);
+        let url: string | undefined;
+        if (isChar) {
+          const refs: string[] = [sheetUrl, ...(lastCharFrame ? [lastCharFrame] : [])].filter(Boolean);
+          const out = await withRetry(() => falRun(FAL_MODELS.frame, {
+            prompt: `${shot.keyframePrompt} Continuity: ${plan.worldNote}. Same character as the reference, shown normally from the outside — absolutely no anatomical cutaway, x-ray or see-through overlay. ${STYLE_BLOCK}`,
+            image_urls: refs,
+            aspect_ratio: "9:16",
+            num_images: 1,
+            output_format: "jpeg",
+          }));
+          url = (out.images as { url?: string }[] | undefined)?.[0]?.url;
+        } else if (lastInteriorFrame) {
+          const out = await withRetry(() => falRun(FAL_MODELS.frame, {
+            prompt: `${shot.keyframePrompt} Full-frame stylized educational cutaway continuing the same interior style as the reference — no person visible, no room, no clothing. ${STYLE_BLOCK}`,
+            image_urls: [lastInteriorFrame],
+            aspect_ratio: "9:16",
+            num_images: 1,
+            output_format: "jpeg",
+          }));
+          url = (out.images as { url?: string }[] | undefined)?.[0]?.url;
+        } else {
+          // first interior shot — fresh text-to-image so it's a true full-frame cutaway
+          const out = await withRetry(() => falRun(FAL_MODELS.sheet, {
+            prompt: `${shot.keyframePrompt} Full-frame stylized educational cutaway illustration — no person visible, no room. ${STYLE_BLOCK}`,
+            aspect_ratio: "9:16",
+            num_images: 1,
+            output_format: "jpeg",
+          }));
+          url = (out.images as { url?: string }[] | undefined)?.[0]?.url;
+        }
+        if (!url) throw new Error(`keyframe ${i + 1} failed`);
+        if (isChar) lastCharFrame = url;
+        else lastInteriorFrame = url;
+        shots[i] = { ...shots[i], imageUrl: url };
+        await save({ shots });
+      }
+
+      /* d) clips — parallel; duration covers the narration window; flowing
+            shots get the NEXT keyframe as their end-frame */
+      setStageLabel("Animating every shot (the slow, expensive part)…");
+      const lineWindow = (i: number) => {
+        const L = narration!.lines;
+        const start = L[i]?.start ?? 0;
+        const end = i + 1 < L.length ? L[i + 1].start : narration!.seconds + 0.5;
+        return { start, end, dur: Math.max(0.8, end - start) };
+      };
+      await Promise.all(
+        plan.shots.map(async (shot, i) => {
+          if (shots[i].clipUrl) return;
+          const flowsIntoNext = i + 1 < plan.shots.length && !plan.shots[i + 1].sceneChange && !!shots[i + 1].imageUrl;
+          const out = await withRetry(() => falRun(FAL_MODELS.video, {
+            start_image_url: shots[i].imageUrl,
+            ...(flowsIntoNext ? { end_image_url: shots[i + 1].imageUrl } : {}),
+            prompt: `${shot.motionPrompt}. Smooth cinematic camera, premium 3D animation, no morphing.`,
+            duration: String(clampDur(lineWindow(i).dur + 1)),
+            generate_audio: false,
+            negative_prompt: "blur, distortion, low quality, text, watermark, morphing, extra limbs, flicker",
+          }));
+          const url = (out.video as { url?: string } | undefined)?.url;
+          if (!url) throw new Error(`shot ${i + 1} animation failed`);
+          shots[i] = { ...shots[i], clipUrl: url };
+          await save({ shots });
+        })
+      );
+
+      /* e) the FINAL CUT — rendered right here in the browser (WebCodecs), every
+            clip cut to its exact narration window. No third-party render queue
+            can stall the last step of a paid video. */
+      setStageLabel("Final cut: rendering…");
+      const blob = await composeFinalCut({
+        clipUrls: plan.shots.map((_, i) => shots[i].clipUrl!),
+        windows: plan.shots.map((_, i) => { const w = lineWindow(i); return { start: w.start, dur: w.dur }; }),
+        audioUrl: narration.audioUrl,
+        onProgress: (p, l) => setStageLabel(`Final cut: ${l} ${Math.round(p)}%`),
+      });
+
+      /* f) save the film permanently (direct browser → storage upload) */
+      setStageLabel("Saving the film…");
+      const uu = await fetch("/api/vlab/upload-url", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: video.id }) });
+      const ud = (await uu.json()) as { uploadUrl?: string; publicUrl?: string; error?: string };
+      if (!uu.ok || !ud.uploadUrl || !ud.publicUrl) throw new Error(ud.error || "upload url failed");
+      const put = await fetch(ud.uploadUrl, { method: "PUT", headers: { "content-type": "video/mp4" }, body: blob });
+      if (!put.ok) throw new Error(`upload failed (${put.status})`);
+      await save({ finalUrl: ud.publicUrl, storageUrl: ud.publicUrl, status: "done" });
+      setStageLabel("");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "production failed");
+      await save({ shots, status: "failed" }); // keep every paid asset
+      setStageLabel("");
+    } finally {
+      running.current = false;
+      setProducingId(null);
+    }
+  };
+
+  const removeVideo = async (id: string) => {
+    if (!confirm("Delete this video and its screenplay?")) return;
+    const r = await fetch(`/api/vlab/videos/${id}`, { method: "DELETE" });
+    if (r.ok) {
+      setVideos((prev) => prev.filter((v) => v.id !== id));
+      if (selectedId === id) setSelectedId(null);
+    }
+  };
+
+  /* ── gate screens ── */
+  if (gate === "loading") {
+    return <div className="grid min-h-dvh place-items-center" style={{ background: C.bg }}><span className="inline-flex items-center gap-2 text-[13px]" style={{ color: C.muted }}><Loader2 size={15} className="animate-spin" style={{ color: C.accent }} /> Opening the studio…</span></div>;
+  }
+  if (gate !== "ready") {
+    const meta = {
+      signin: { icon: ShieldAlert, title: "Sign in to use VLAB", body: "Sign in from the Clunoid home page, then come back." },
+      restricted: { icon: ShieldAlert, title: "VLAB is restricted", body: "This studio isn't available on your account." },
+      unconfigured: { icon: KeyRound, title: "Add the fal.ai key", body: "Set FAL_KEY in the environment to enable video production." },
+    }[gate];
+    const I = meta.icon;
+    return (
+      <div className="grid min-h-dvh place-items-center px-6" style={{ background: C.bg }}>
+        <div className="max-w-md text-center">
+          <I size={34} className="mx-auto mb-4" style={{ color: C.faint }} />
+          <h1 className="text-[19px] font-semibold" style={{ color: C.text }}>{meta.title}</h1>
+          <p className="mt-2 text-[13.5px]" style={{ color: C.muted }}>{meta.body}</p>
+          <Link href="/" className="mt-6 inline-flex items-center gap-2 rounded-xl px-4 py-2 text-[13.5px] font-semibold" style={{ background: C.accent, color: "#0d0b08" }}>
+            <ArrowLeft size={15} /> Back to Clunoid
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-dvh" style={{ background: C.bg }}>
+    <div className="flex min-h-dvh flex-col" style={{ background: C.bg }}>
+      {/* header */}
       <header className="sticky top-0 z-20 border-b backdrop-blur-md" style={{ borderColor: C.line, background: "rgba(13,11,8,0.85)" }}>
         <div className="flex items-center gap-3 px-4 py-3 sm:px-6">
           <Link href="/" className="flex items-center gap-1.5 text-[13px] font-medium hover:opacity-80" style={{ color: C.muted }}>
@@ -232,153 +367,237 @@ export function VlabConsole() {
           </Link>
           <span className="h-4 w-px" style={{ background: C.line }} />
           <span className="flex items-center gap-2 text-[13px] font-bold tracking-[0.22em]" style={{ color: C.text }}>
-            <Clapperboard size={15} style={{ color: C.accent }} /> VLAB <span className="rounded px-1.5 py-0.5 text-[9px] font-bold tracking-wider" style={{ background: C.accentDim, color: C.accent }}>PILOT</span>
+            <Clapperboard size={15} style={{ color: C.accent }} /> VLAB STUDIO
           </span>
+          {producingId && (
+            <span className="ml-auto inline-flex items-center gap-2 rounded-full px-3 py-1 text-[11.5px] font-semibold" style={{ background: C.accentDim, color: C.accent }}>
+              <Loader2 size={11} className="animate-spin" /> {stageLabel || "Producing…"}
+            </span>
+          )}
         </div>
       </header>
 
-      <div className="mx-auto max-w-3xl px-4 py-6 sm:px-6">
-        {/* gate states */}
-        {gateMsg === "signin" && <Gate icon={ShieldAlert} title="Sign in to use VLAB" body="Sign in from the Clunoid home page, then come back." />}
-        {gateMsg === "restricted" && <Gate icon={ShieldAlert} title="VLAB is restricted" body="This pilot isn't available on your account." />}
-        {gateMsg === "unconfigured" && (
-          <Gate icon={KeyRound} title="Add the fal.ai key to start" body="Create an account at fal.ai, add a small credit, create an API key, and set FAL_KEY in the environment (local .env and Vercel). Then generate your first test video here." />
-        )}
-
-        {/* intake */}
-        <section className="rounded-2xl border p-4 sm:p-5" style={{ borderColor: C.line, background: C.panel }}>
-          <h1 className="mb-1 text-[17px] font-bold" style={{ color: C.text }}>Prompt → 3D-animated short</h1>
-          <p className="mb-3 text-[12.5px] leading-relaxed" style={{ color: C.muted }}>
-            Quality pilot: Opus directs, Flux draws the keyframes, Kling 3 Pro animates, Isaac narrates. ~$4–6 per attempt.
-            The goal is an honest verdict on the ceiling — not a promise.
-          </p>
-          <textarea
-            value={topic}
-            onChange={(e) => setTopic(e.target.value)}
-            rows={2}
-            placeholder="e.g. What happens inside your throat when you swallow gum"
-            className="w-full resize-y rounded-xl border bg-transparent p-3 text-[13.5px] leading-relaxed outline-none focus:border-white/25"
-            style={{ borderColor: C.line, color: C.text }}
-          />
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            {EXAMPLES.map((x) => (
-              <button key={x} onClick={() => setTopic(x)} className="rounded-full border px-2.5 py-1 text-[11px] hover:bg-white/5" style={{ borderColor: C.line, color: C.faint }}>
-                {x}
-              </button>
-            ))}
-            <button
-              onClick={() => void run()}
-              disabled={busy || topic.trim().length < 8}
-              className="ml-auto inline-flex items-center gap-2 rounded-xl px-4 py-2 text-[13.5px] font-semibold hover:opacity-90 disabled:opacity-50"
-              style={{ background: C.accent, color: "#0d0b08" }}
-            >
-              {busy ? <Loader2 size={15} className="animate-spin" /> : <Wand2 size={15} />} {busy ? "Producing…" : "Generate test video"}
-            </button>
-          </div>
-        </section>
-
-        {/* pipeline progress */}
-        {stage !== "idle" && (
-          <section className="mt-4 rounded-2xl border p-4 sm:p-5" style={{ borderColor: C.line, background: C.panel }}>
-            <div className="mb-3 flex flex-wrap gap-2">
-              {([["planning", "Script", Sparkles], ["keyframes", "Keyframes", ImageIcon], ["clips", "Animation", Film], ["narration", "Narration", Mic], ["compose", "Final cut", Play]] as const).map(([key, label, I]) => {
-                const order = ["planning", "keyframes", "clips", "narration", "compose", "done"];
-                const active = stage === key;
-                const passed = order.indexOf(stage) > order.indexOf(key);
-                return (
-                  <span key={key} className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12px] font-medium" style={{ background: active ? C.accentDim : "transparent", color: passed ? C.good : active ? C.accent : C.faint }}>
-                    {active ? <Loader2 size={12} className="animate-spin" /> : <I size={12} />} {label}
-                  </span>
-                );
-              })}
-            </div>
-
-            {plan && (
-              <div className="mb-3 rounded-xl border p-3" style={{ borderColor: C.line }}>
-                <div className="text-[14px] font-bold" style={{ color: C.text }}>{plan.title}</div>
-                {plan.characterNote && <div className="mt-0.5 text-[11.5px]" style={{ color: C.faint }}>Recurring character: {plan.characterNote}</div>}
-              </div>
-            )}
-
-            {plan && (
-              <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-                {plan.shots.map((s, i) => {
-                  const st = shots[i] || {};
+      <div className="flex min-h-0 flex-1 flex-col gap-4 p-4 sm:p-6 lg:flex-row">
+        {/* left rail — history */}
+        <aside className="w-full shrink-0 space-y-3 lg:w-[300px]">
+          <button
+            onClick={() => setSelectedId(null)}
+            className="flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-[13.5px] font-semibold hover:opacity-90"
+            style={{ background: selectedId === null ? C.accent : C.accentDim, color: selectedId === null ? "#0d0b08" : C.accent }}
+          >
+            <Plus size={15} /> New video
+          </button>
+          <div className="rounded-2xl border p-3" style={{ borderColor: C.line, background: C.rail }}>
+            <h3 className="mb-2 px-1 text-[10px] font-semibold uppercase tracking-[0.18em]" style={{ color: C.faint }}>Your videos · {videos.length}</h3>
+            {videos.length === 0 ? (
+              <p className="px-1 pb-1 text-[12.5px]" style={{ color: C.faint }}>Write your first screenplay — production is a separate, priced step.</p>
+            ) : (
+              <div className="max-h-[30dvh] space-y-1 overflow-y-auto lg:max-h-[70dvh]">
+                {videos.map((v) => {
+                  const active = v.id === selectedId;
+                  const sc = v.status === "done" ? C.good : v.status === "failed" ? C.bad : v.status === "producing" ? C.accent : C.muted;
                   return (
-                    <div key={i} className="overflow-hidden rounded-xl border" style={{ borderColor: st.error ? C.bad : C.line, background: C.panelHi }}>
-                      <div className="relative aspect-[9/16] w-full" style={{ background: "rgba(255,255,255,0.03)" }}>
-                        {st.clipUrl ? (
-                          <video src={st.clipUrl} muted loop playsInline autoPlay className="h-full w-full object-cover" />
-                        ) : st.imageUrl ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={st.imageUrl} alt={`shot ${i + 1}`} className="h-full w-full object-cover" />
-                        ) : (
-                          <div className="grid h-full w-full place-items-center">
-                            {st.imageBusy || st.clipBusy ? <Loader2 size={16} className="animate-spin" style={{ color: C.accent }} /> : <span className="text-[11px]" style={{ color: C.faint }}>shot {i + 1}</span>}
-                          </div>
-                        )}
-                        {st.clipBusy && st.imageUrl && (
-                          <span className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-1 bg-black/60 py-1 text-[10px]" style={{ color: C.accent }}>
-                            <Loader2 size={10} className="animate-spin" /> animating
-                          </span>
-                        )}
-                      </div>
-                      <div className="px-2 py-1.5 text-[10.5px] leading-snug" style={{ color: C.muted }}>{s.line}</div>
-                    </div>
+                    <button key={v.id} onClick={() => setSelectedId(v.id)} className="block w-full rounded-xl border p-2.5 text-left" style={{ borderColor: active ? C.accent : "transparent", background: active ? C.panelHi : "transparent" }}>
+                      <span className="block truncate text-[13px] font-semibold" style={{ color: C.text }}>{v.title || v.topic}</span>
+                      <span className="mt-0.5 flex items-center gap-1.5 text-[11px]" style={{ color: C.faint }}>
+                        <span className="h-1.5 w-1.5 rounded-full" style={{ background: sc }} /> {v.status} · {String(v.created_at).slice(0, 10)}
+                      </span>
+                    </button>
                   );
                 })}
               </div>
             )}
+          </div>
+        </aside>
 
-            {audioUrl && (
-              <div className="mt-3 flex items-center gap-2 text-[12px]" style={{ color: C.muted }}>
-                <Mic size={13} style={{ color: C.accent }} /> Narration ready <audio src={audioUrl} controls className="h-8 max-w-[260px]" />
-              </div>
-            )}
-
-            {error && (
-              <div className="mt-3 rounded-xl border p-3 text-[12.5px]" style={{ borderColor: "rgba(248,113,113,0.4)", background: "rgba(248,113,113,0.08)", color: C.bad }}>
-                {error} — generations you already paid for stay visible above; run again to retry.
-              </div>
-            )}
-
-            <div className="mt-3 space-y-0.5">
-              {log.slice(-4).map((l, i) => (
-                <div key={i} className="text-[11px]" style={{ ...mono, color: C.faint }}>{l}</div>
-              ))}
-            </div>
-          </section>
-        )}
-
-        {/* the final video */}
-        {finalUrl && (
-          <section className="mt-4 rounded-2xl border p-4 sm:p-5" style={{ borderColor: C.accent, background: C.panel }}>
-            <div className="mb-3 flex items-center justify-between">
-              <h2 className="flex items-center gap-2 text-[14px] font-bold" style={{ color: C.text }}>
-                <Play size={15} style={{ color: C.accent }} /> The verdict video
-              </h2>
-              <a href={finalUrl} download target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[12px] font-medium hover:bg-white/5" style={{ borderColor: C.line, color: C.muted }}>
-                <Download size={13} /> Download MP4
-              </a>
-            </div>
-            <video src={finalUrl} controls playsInline className="mx-auto aspect-[9/16] w-full max-w-[320px] rounded-xl border" style={{ borderColor: C.line, background: "#000" }} />
-          </section>
-        )}
+        {/* main */}
+        <main className="min-w-0 flex-1">
+          {!selected ? (
+            <NewVideo topic={topic} setTopic={setTopic} writing={writing} error={error} onWrite={() => void writeScreenplay(topic.trim())} />
+          ) : (
+            <VideoView
+              video={selected}
+              producing={producingId === selected.id}
+              stageLabel={stageLabel}
+              error={producingId === selected.id || selected.status === "failed" ? error : null}
+              onProduce={() => void produce(selected)}
+              onRewrite={() => void writeScreenplay(selected.topic)}
+              writing={writing}
+              onDelete={() => void removeVideo(selected.id)}
+            />
+          )}
+        </main>
       </div>
     </div>
   );
 }
 
-function Gate({ icon: I, title, body }: { icon: typeof ShieldAlert; title: string; body: string }) {
+/* ── new-video hero ───────────────────────────────────────────────────────── */
+function NewVideo({ topic, setTopic, writing, error, onWrite }: { topic: string; setTopic: (t: string) => void; writing: boolean; error: string | null; onWrite: () => void }) {
   return (
-    <div className="mb-4 rounded-2xl border p-4" style={{ borderColor: "rgba(242,163,65,0.4)", background: "rgba(242,163,65,0.07)" }}>
-      <div className="flex items-start gap-3">
-        <I size={18} style={{ color: C.accent }} className="mt-0.5 shrink-0" />
-        <div>
-          <div className="text-[13.5px] font-semibold" style={{ color: C.text }}>{title}</div>
-          <p className="mt-1 text-[12.5px] leading-relaxed" style={{ color: C.muted }}>{body}</p>
-        </div>
+    <div className="mx-auto max-w-2xl pt-4 sm:pt-10">
+      <div className="mb-6 text-center">
+        <span className="mb-4 inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ borderColor: C.line, color: C.accent }}>
+          <Sparkles size={12} /> story-complete · consistent · narration-timed
+        </span>
+        <h1 className="text-[26px] font-bold leading-tight sm:text-[32px]" style={{ color: C.text }}>What should the video explain?</h1>
+        <p className="mx-auto mt-3 max-w-lg text-[14px] leading-relaxed" style={{ color: C.muted }}>
+          Opus writes the complete story first — real-world opening, the true mechanism beat by beat, and the payoff —
+          then a second pass corrects it. You review the screenplay and the exact price before a cent of video is generated.
+        </p>
       </div>
+      <div className="rounded-2xl border p-4 sm:p-5" style={{ borderColor: C.line, background: C.panel }}>
+        <textarea
+          value={topic}
+          onChange={(e) => setTopic(e.target.value)}
+          rows={2}
+          placeholder="e.g. What happens inside your throat when you swallow gum"
+          className="w-full resize-y rounded-xl border bg-transparent p-3.5 text-[14px] leading-relaxed outline-none focus:border-white/25"
+          style={{ borderColor: C.line, color: C.text }}
+        />
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          {EXAMPLES.map((x) => (
+            <button key={x} onClick={() => setTopic(x)} className="rounded-full border px-2.5 py-1 text-[11px] hover:bg-white/5" style={{ borderColor: C.line, color: C.faint }}>{x}</button>
+          ))}
+          <button onClick={onWrite} disabled={writing || topic.trim().length < 8} className="ml-auto inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-[13.5px] font-semibold hover:opacity-90 disabled:opacity-50" style={{ background: C.accent, color: "#0d0b08" }}>
+            {writing ? <Loader2 size={15} className="animate-spin" /> : <ScrollText size={15} />} {writing ? "Writing + reviewing the screenplay…" : "Write the screenplay"}
+          </button>
+        </div>
+        {error && <p className="mt-3 text-[12.5px]" style={{ color: C.bad }}>{error}</p>}
+      </div>
+    </div>
+  );
+}
+
+/* ── one video: screenplay review → production → final film ─────────────── */
+function VideoView({ video, producing, stageLabel, error, onProduce, onRewrite, writing, onDelete }: {
+  video: VideoRow; producing: boolean; stageLabel: string; error: string | null;
+  onProduce: () => void; onRewrite: () => void; writing: boolean; onDelete: () => void;
+}) {
+  const plan = video.plan;
+  if (!plan) return <p className="p-8 text-[13px]" style={{ color: C.faint }}>No screenplay on this video.</p>;
+  const cost = estimateCost(plan);
+  const shots: ShotAsset[] = Array.isArray(video.shots) ? video.shots : [];
+  const finalSrc = video.storage_url || video.final_url;
+
+  return (
+    <div className="space-y-4">
+      {/* headline */}
+      <section className="rounded-2xl border p-4 sm:p-5" style={{ borderColor: C.line, background: C.panelHi }}>
+        <div className="flex flex-wrap items-start gap-3">
+          <div className="min-w-0 flex-1">
+            <h2 className="text-[19px] font-bold leading-tight" style={{ color: C.text }}>{plan.title}</h2>
+            <p className="mt-1 text-[13px] leading-relaxed" style={{ color: C.muted }}>{plan.logline}</p>
+          </div>
+          <button onClick={onDelete} className="rounded-lg border p-2 hover:bg-white/5" style={{ borderColor: C.line, color: C.faint }} title="Delete video">
+            <Trash2 size={14} />
+          </button>
+        </div>
+        <div className="mt-3 grid gap-2.5 sm:grid-cols-2">
+          <div className="rounded-xl border p-3" style={{ borderColor: C.line }}>
+            <div className="mb-1 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.16em]" style={{ color: C.faint }}><User size={11} style={{ color: C.accent }} /> Character sheet</div>
+            <p className="text-[12.5px] leading-relaxed" style={{ color: C.muted }}>{plan.characterSheet}</p>
+          </div>
+          <div className="rounded-xl border p-3" style={{ borderColor: C.line }}>
+            <div className="mb-1 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.16em]" style={{ color: C.faint }}><Globe2 size={11} style={{ color: C.accent }} /> World &amp; light</div>
+            <p className="text-[12.5px] leading-relaxed" style={{ color: C.muted }}>{plan.worldNote}</p>
+          </div>
+        </div>
+      </section>
+
+      {/* the finished film */}
+      {finalSrc && (
+        <section className="rounded-2xl border p-4 sm:p-5" style={{ borderColor: C.accent, background: C.panel }}>
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <h3 className="flex items-center gap-2 text-[14px] font-bold" style={{ color: C.text }}><Play size={15} style={{ color: C.accent }} /> The film</h3>
+            <div className="flex items-center gap-2">
+              {video.storage_url && <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold" style={{ background: C.panelHi, color: C.good }}>saved permanently</span>}
+              <a href={finalSrc} download target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[12px] font-medium hover:bg-white/5" style={{ borderColor: C.line, color: C.muted }}>
+                <Download size={13} /> Download MP4
+              </a>
+            </div>
+          </div>
+          <video src={finalSrc} controls playsInline className="mx-auto aspect-[9/16] w-full max-w-[340px] rounded-xl border" style={{ borderColor: C.line, background: "#000" }} />
+        </section>
+      )}
+
+      {/* production CTA / progress */}
+      {!finalSrc && (
+        <section className="rounded-2xl border p-4 sm:p-5" style={{ borderColor: C.line, background: C.panel }}>
+          {producing ? (
+            <div className="flex items-center gap-3">
+              <Loader2 size={18} className="animate-spin" style={{ color: C.accent }} />
+              <div>
+                <div className="text-[13.5px] font-semibold" style={{ color: C.text }}>{stageLabel || "Producing…"}</div>
+                <div className="text-[12px]" style={{ color: C.faint }}>Everything is saved as it completes — a refresh loses nothing.</div>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 text-[13.5px] font-semibold" style={{ color: C.text }}>
+                  <CircleDollarSign size={15} style={{ color: C.accent }} /> Estimated production cost: ~${cost.toFixed(2)}
+                </div>
+                <p className="mt-1 text-[12px] leading-relaxed" style={{ color: C.faint }}>
+                  {plan.shots.length} shots · character sheet + consistency-chained keyframes · narration-timed clips · final cut.
+                  {video.status === "failed" && " Finished assets from the failed run are kept — producing again resumes, not restarts."}
+                </p>
+              </div>
+              <button onClick={onRewrite} disabled={writing} className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-[12.5px] font-medium hover:bg-white/5 disabled:opacity-50" style={{ borderColor: C.line, color: C.muted }}>
+                {writing ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />} New screenplay
+              </button>
+              <button onClick={onProduce} className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-[13.5px] font-semibold hover:opacity-90" style={{ background: C.accent, color: "#0d0b08" }}>
+                <Wand2 size={15} /> {video.status === "failed" ? "Resume production" : "Produce the video"}
+              </button>
+            </div>
+          )}
+          {error && <p className="mt-3 text-[12.5px]" style={{ color: C.bad }}>{error}</p>}
+        </section>
+      )}
+
+      {/* storyboard */}
+      <section className="rounded-2xl border p-4 sm:p-5" style={{ borderColor: C.line, background: C.panel }}>
+        <h3 className="mb-3 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.18em]" style={{ color: C.faint }}>
+          <Film size={12} style={{ color: C.accent }} /> Storyboard · {plan.shots.length} shots
+        </h3>
+        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 xl:grid-cols-4">
+          {plan.shots.map((s, i) => {
+            const a = shots[i] || {};
+            return (
+              <div key={i} className="overflow-hidden rounded-xl border" style={{ borderColor: C.line, background: C.panelHi }}>
+                <div className="relative aspect-[9/16] w-full" style={{ background: "rgba(255,255,255,0.03)" }}>
+                  {a.clipUrl ? (
+                    <video src={a.clipUrl} muted loop playsInline autoPlay className="h-full w-full object-cover" />
+                  ) : a.imageUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={a.imageUrl} alt={`shot ${i + 1}`} className="h-full w-full object-cover" />
+                  ) : (
+                    <div className="grid h-full w-full place-items-center text-[11px]" style={{ color: C.faint }}>shot {i + 1}</div>
+                  )}
+                  <span className="absolute left-1.5 top-1.5 rounded px-1.5 py-0.5 text-[9.5px] font-bold" style={{ ...mono, background: "rgba(0,0,0,0.65)", color: C.accent }}>{i + 1}</span>
+                  {!s.sceneChange && i > 0 && (
+                    <span className="absolute right-1.5 top-1.5 rounded px-1.5 py-0.5 text-[9px] font-semibold" style={{ background: "rgba(0,0,0,0.65)", color: C.faint }} title="flows from the previous shot">
+                      <ChevronRight size={9} className="inline" /> flow
+                    </span>
+                  )}
+                </div>
+                <div className="space-y-1 px-2 py-2">
+                  <div className="flex items-start gap-1 text-[11px] leading-snug" style={{ color: C.text }}>
+                    <Mic size={10} className="mt-0.5 shrink-0" style={{ color: C.accent }} /> {s.line}
+                  </div>
+                  <div className="text-[10px] leading-snug" style={{ color: C.faint }}>{s.motionPrompt}</div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        {video.narration?.audioUrl && (
+          <div className="mt-3 flex items-center gap-2 text-[12px]" style={{ color: C.muted }}>
+            <Mic size={13} style={{ color: C.accent }} /> Narration · {video.narration.seconds}s
+            <audio src={video.narration.audioUrl} controls className="h-8 max-w-[260px]" />
+          </div>
+        )}
+      </section>
     </div>
   );
 }

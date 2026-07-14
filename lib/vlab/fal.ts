@@ -9,9 +9,10 @@
  */
 
 export const FAL_MODELS = {
-  image: "fal-ai/flux/dev", // style-locked keyframes (~$0.03/image)
-  video: "fal-ai/kling-video/v3/pro/image-to-video", // 5-8s clips from keyframes (~$0.11/s)
-  compose: "fal-ai/ffmpeg-api/compose", // stitch clips + narration into the final mp4
+  sheet: "fal-ai/nano-banana", // the character sheet — the identity anchor (~$0.04/image)
+  frame: "fal-ai/nano-banana/edit", // each keyframe EDITED from [sheet + previous frame] → locked consistency
+  video: "fal-ai/kling-video/v3/pro/image-to-video", // 3-15s clips; end_image_url = flowing transitions (~$0.11/s)
+  compose: "fal-ai/ffmpeg-api/compose", // cut clips to narration timing + overlay the voice track
 } as const;
 
 const ALLOWED_MODELS = new Set<string>(Object.values(FAL_MODELS));

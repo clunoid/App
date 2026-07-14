@@ -10,7 +10,7 @@ import { VlabConsole } from "@/components/vlab/VlabConsole";
  * /api/vlab/* route (session + admin allow-list); absent from nav and sitemap.
  */
 export const metadata: Metadata = {
-  title: "VLAB Pilot · Clunoid",
+  title: "VLAB Studio · Clunoid",
   robots: { index: false, follow: false },
 };
 

@@ -68,6 +68,10 @@ export async function encodeCanvasToMp4Web(opts: {
    *  for long renders (a 15-min 1080p file is ~0.5-1 GB; one contiguous allocation
    *  of that size can OOM a tab where fragmented parts survive fine). */
   stream?: boolean;
+  /** Prefer the SOFTWARE H.264 encoder. Slower but immune to Chromium reclaiming
+   *  hardware encoder contexts from hidden/occluded tabs mid-render ("Flushing
+   *  error.") — callers that render in background tabs retry with this on. */
+  preferSoftware?: boolean;
 }): Promise<RenderResult> {
   const { W, H, fps, durationSec, drawFrame, audio } = opts;
   const bitrate = opts.bitrate ?? 9_000_000;
@@ -113,7 +117,7 @@ export async function encodeCanvasToMp4Web(opts: {
       encErr = e;
     },
   });
-  venc.configure({ codec: avc, width: W, height: H, bitrate, framerate: fps, latencyMode: "quality" });
+  venc.configure({ codec: avc, width: W, height: H, bitrate, framerate: fps, latencyMode: "quality", ...(opts.preferSoftware ? { hardwareAcceleration: "prefer-software" as HardwarePreference } : {}) });
 
   let aenc: AudioEncoder | null = null;
   if (wantAudio) {
@@ -169,8 +173,12 @@ export async function encodeCanvasToMp4Web(opts: {
     // ── AUDIO — the pre-mixed track, as f32-planar AudioData chunks, AAC-encoded. ──
     if (aenc && audio) {
       opts.onProgress?.(90, "Encoding in the background…");
-      const totalSamples = Math.ceil(total * sampleRate);
       const CHUNK = 4096;
+      // Align the track length UP to whole 4096-sample chunks (= whole 1024-sample
+      // AAC frames): the Windows platform AAC encoder can fail its FINAL drain with
+      // "Flushing error." when the stream ends on a partial frame. The ≤85ms of
+      // appended silence is imperceptible and the video track length is unchanged.
+      const totalSamples = Math.ceil((total * sampleRate) / CHUNK) * CHUNK;
       for (let off = 0; off < totalSamples; off += CHUNK) {
         checkAbort();
         const n = Math.min(CHUNK, totalSamples - off);
