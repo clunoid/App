@@ -31,5 +31,5 @@ const DERIV_OAUTH_BASE = "https://oauth.deriv.com/oauth2/authorize";
  * `acct1/token1/cur1…` query params on success.
  */
 export function derivAuthorizeUrl(): string {
-  return `${DERIV_OAUTH_BASE}?app_id=${encodeURIComponent(DERIV_APP_ID)}&l=EN&brand=deriv`;
+  return `${DERIV_OAUTH_BASE}?app_id=${encodeURIComponent(DERIV_APP_ID)}`;
 }

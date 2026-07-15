@@ -20,6 +20,17 @@ import { NextRequest, NextResponse } from "next/server";
  * governs page navigation.
  */
 export function middleware(req: NextRequest) {
+  // Deriv OAuth returns account tokens as ?acct1&token1&… to the app's REGISTERED
+  // redirect URL (which may be the root or any path). Funnel that return to the
+  // Command Center with the query intact — otherwise a trading-mode rewrite of
+  // "/" would strip the tokens and the connection would silently fail.
+  const sp = req.nextUrl.searchParams;
+  if (sp.has("acct1") && sp.has("token1") && req.nextUrl.pathname !== "/trading/command") {
+    const u = req.nextUrl.clone();
+    u.pathname = "/trading/command";
+    return NextResponse.redirect(u); // preserves the OAuth query params
+  }
+
   const mode = req.cookies.get("clunoid_mode")?.value;
   if (mode === "classic") return NextResponse.next(); // full classic app
 

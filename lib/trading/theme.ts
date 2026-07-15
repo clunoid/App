@@ -1,7 +1,7 @@
 /** Shared Clunoid Trading visual language — reused across the landing, Command
  *  Center and each platform page so the whole product reads as one system. */
 export const TC = {
-  bg: "#0B1730", // deep navy — matches the classic Showtime background
+  bg: "#1F1E1C", // matches the classic Showtime console background (bg-base)
   panel: "rgba(255,255,255,0.032)",
   panelHi: "rgba(255,255,255,0.06)",
   line: "rgba(125,211,252,0.14)",
