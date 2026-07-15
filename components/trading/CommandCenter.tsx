@@ -29,8 +29,13 @@ type Session = { kind: "oauth"; accessToken: string } | { kind: "token"; tokens:
 const SNAP_KEY = "clunoid_deriv_portfolio"; // cached snapshot for instant reconnect-free display
 
 /** The Deriv Trader's Hub section an account belongs to. */
-const sectionOf = (a: ConnectedAccount): "Trading" | "Wallet" =>
-  a.kind === "wallet" ? "Wallet" : "Trading";
+type Section = "Trading" | "CFD" | "Wallet" | "P2P";
+const sectionOf = (a: ConnectedAccount): Section => {
+  if (a.kind === "wallet") return "Wallet";
+  if (a.kind === "p2p") return "P2P";
+  if (a.kind === "mt5" || a.kind === "ctrader" || a.kind === "cfd") return "CFD";
+  return "Trading";
+};
 
 /** Sum balances, grouped by currency; returns the largest currency bucket as the
  *  headline (Deriv doesn't return a single converted grand total across accounts). */
@@ -192,7 +197,7 @@ export function CommandCenter() {
   const realAccounts = accounts.filter((a) => !a.isVirtual);
   const demoAccounts = accounts.filter((a) => a.isVirtual);
   // Real balance per Deriv Hub section (only sections that actually hold accounts).
-  const sections = (["Trading", "Wallet"] as const)
+  const sections = (["Trading", "CFD", "Wallet", "P2P"] as const)
     .map((name) => ({ name, ...sumBalance(realAccounts.filter((a) => sectionOf(a) === name)) }))
     .filter((s) => s.amount != null);
   const demoTotal = sumBalance(demoAccounts);

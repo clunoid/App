@@ -56,7 +56,9 @@ export function DerivPlatform() {
   const accounts: ConnectedAccount[] = portfolio?.accounts ?? [];
   const options = accounts.filter((a) => a.kind === "options");
   const mt5 = accounts.filter((a) => a.kind === "mt5");
+  const cfd = accounts.filter((a) => a.kind === "ctrader" || a.kind === "cfd"); // cTrader, Deriv X
   const wallets = accounts.filter((a) => a.kind === "wallet");
+  const p2p = accounts.filter((a) => a.kind === "p2p");
 
   return (
     <main className="relative min-h-[100dvh] w-full overflow-x-hidden" style={{ background: TC.bg, color: TC.text }}>
@@ -108,7 +110,9 @@ export function DerivPlatform() {
 
             <AccountGroup title="Deriv Options" icon={LineChart} accounts={options} emptyNote="No Options accounts on this login." />
             <AccountGroup title="Deriv MT5" icon={Layers} accounts={mt5} emptyNote="No MT5 accounts yet — create one in your Deriv account, then refresh." />
+            {cfd.length > 0 && <AccountGroup title="CFDs · cTrader / Deriv X" icon={Layers} accounts={cfd} emptyNote="" />}
             {wallets.length > 0 && <AccountGroup title="Wallets" icon={Wallet} accounts={wallets} emptyNote="" />}
+            {p2p.length > 0 && <AccountGroup title="P2P" icon={Wallet} accounts={p2p} emptyNote="" />}
 
             <section className="rounded-2xl border border-dashed p-5" style={{ borderColor: TC.line }}>
               <div className="flex items-center gap-2 text-[13px] font-semibold" style={{ color: TC.text }}><Bot size={16} style={{ color: TC.profit }} /> Automation</div>
