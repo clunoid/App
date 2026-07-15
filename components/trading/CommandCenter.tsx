@@ -18,8 +18,8 @@ import Link from "next/link";
 import { ArrowLeft, Wallet, Plug, RefreshCw, Loader2, LogOut, ArrowUpRight, KeyRound, ShieldCheck, Building2 } from "lucide-react";
 import { TC, DOT_GRID, monoFont, fmtBalance } from "@/lib/trading/theme";
 import type { ConnectedAccount } from "@/lib/trading/accounts";
-import { hasDerivApp, derivAuthorizeUrl } from "@/lib/deriv/config";
-import { parseDerivRedirect, isDerivRedirect, saveDerivTokens, loadDerivTokens, clearDerivTokens, type DerivToken } from "@/lib/deriv/oauth";
+import { hasDerivApp } from "@/lib/deriv/config";
+import { parseDerivRedirect, isDerivRedirect, isDerivCodeReturn, startDerivLogin, completeDerivLogin, saveDerivTokens, loadDerivTokens, clearDerivTokens, type DerivToken } from "@/lib/deriv/oauth";
 import { fetchDerivPortfolio, type DerivPortfolio } from "@/lib/deriv/client";
 
 const SNAP_KEY = "clunoid_deriv_portfolio"; // cached snapshot for instant reconnect-free display
@@ -59,9 +59,48 @@ export function CommandCenter() {
   useEffect(() => {
     if (started.current) return;
     started.current = true;
+    const search = window.location.search;
     let tks = loadDerivTokens();
-    if (isDerivRedirect(window.location.search)) {
-      const fresh = parseDerivRedirect(window.location.search);
+    const showSnapshot = () => {
+      if (tks.length) { try { const s = localStorage.getItem(SNAP_KEY); if (s) setPortfolio(JSON.parse(s) as DerivPortfolio); } catch { /* ignore */ } }
+    };
+
+    // Surface a Deriv OAuth error instead of failing silently (e.g. a redirect-URL
+    // mismatch or a declined consent comes back as ?error=…&error_description=…).
+    const qs = new URLSearchParams(search);
+    if (qs.get("error")) {
+      const desc = (qs.get("error_description") || qs.get("error") || "").replace(/\+/g, " ");
+      setError(`Deriv couldn't complete the connection: ${desc}. Check that your Deriv app's Redirect URL is exactly https://www.clunoid.com/trading/command.`);
+      window.history.replaceState({}, "", "/trading/command");
+    }
+
+    // NEW OIDC return (?code&state): exchange the code for account tokens (async),
+    // then load the live portfolio. Show any cached snapshot in the meantime.
+    if (isDerivCodeReturn(search)) {
+      window.history.replaceState({}, "", "/trading/command");
+      setLoading(true);
+      setTokens(tks);
+      showSnapshot();
+      void (async () => {
+        try {
+          const fresh = await completeDerivLogin(search);
+          const byId = new Map(tks.map((t) => [t.loginid, t]));
+          for (const f of fresh) byId.set(f.loginid, f);
+          const merged = [...byId.values()];
+          saveDerivTokens(merged);
+          setTokens(merged);
+          await refresh(merged);
+        } catch (e) {
+          setError(e instanceof Error ? e.message : "Deriv connection failed.");
+          setLoading(false);
+        }
+      })();
+      return;
+    }
+
+    // Legacy flat return (?acct1&token1&cur1) — kept for the paste path / old apps.
+    if (isDerivRedirect(search)) {
+      const fresh = parseDerivRedirect(search);
       if (fresh.length) {
         const byId = new Map(tks.map((t) => [t.loginid, t]));
         for (const f of fresh) byId.set(f.loginid, f);
@@ -71,14 +110,14 @@ export function CommandCenter() {
       window.history.replaceState({}, "", "/trading/command");
     }
     setTokens(tks);
-    // show the cached snapshot instantly (no reconnect feel), then refresh live
-    if (tks.length) { try { const s = localStorage.getItem(SNAP_KEY); if (s) setPortfolio(JSON.parse(s) as DerivPortfolio); } catch { /* ignore */ } }
+    showSnapshot(); // show the cached snapshot instantly, then refresh live
     void refresh(tks);
   }, [refresh]);
 
   const connectDeriv = () => {
     if (!hasDerivApp()) { setError("Deriv OAuth isn't configured yet — paste a Deriv API token below to connect in the meantime."); setPasteOpen(true); return; }
-    window.location.href = derivAuthorizeUrl();
+    setError(null);
+    void startDerivLogin();
   };
 
   const connectWithToken = async () => {

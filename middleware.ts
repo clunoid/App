@@ -25,10 +25,14 @@ export function middleware(req: NextRequest) {
   // Command Center with the query intact — otherwise a trading-mode rewrite of
   // "/" would strip the tokens and the connection would silently fail.
   const sp = req.nextUrl.searchParams;
-  if (sp.has("acct1") && sp.has("token1") && req.nextUrl.pathname !== "/trading/command") {
+  const isOAuthReturn =
+    (sp.has("acct1") && sp.has("token1")) || // legacy flat return
+    (sp.has("code") && sp.has("state")) || // new OIDC code return
+    sp.has("error"); // an OAuth error we want to surface
+  if (isOAuthReturn && req.nextUrl.pathname !== "/trading/command") {
     const u = req.nextUrl.clone();
     u.pathname = "/trading/command";
-    return NextResponse.redirect(u); // preserves the OAuth query params
+    return NextResponse.redirect(u); // preserves the OAuth query (tokens or error)
   }
 
   const mode = req.cookies.get("clunoid_mode")?.value;
