@@ -69,7 +69,7 @@ export function TradingLanding() {
 
       <div className="relative z-10">
         {/* ── top bar ── */}
-        <header className="mx-auto flex max-w-6xl items-center gap-3 px-5 py-4 sm:px-8">
+        <header className="flex w-full items-center gap-3 px-6 py-4 sm:px-10 lg:px-16">
           <span className="flex items-center gap-2 text-[15px] font-bold tracking-[0.2em]">
             <span className="grid h-7 w-7 place-items-center rounded-lg" style={{ background: "rgba(56,189,248,0.14)" }}><LineChart size={16} style={{ color: C.profit }} /></span>
             CLUNOID <span style={{ color: C.profit }}>TRADING</span>
@@ -88,7 +88,7 @@ export function TradingLanding() {
         </header>
 
         {/* ── hero ── */}
-        <section className="mx-auto grid max-w-6xl items-center gap-10 px-5 pb-8 pt-6 sm:px-8 lg:grid-cols-2 lg:pt-14">
+        <section className="grid w-full items-center gap-10 px-6 pb-8 pt-6 sm:px-10 lg:px-16 lg:grid-cols-2 lg:pt-14">
           <div>
             <span className="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ borderColor: C.line, color: C.profit }}>
               <Zap size={12} /> Automated · AI-driven · broker-agnostic
@@ -131,7 +131,7 @@ export function TradingLanding() {
         </div>
 
         {/* ── pillars ── */}
-        <section className="mx-auto max-w-6xl px-5 py-14 sm:px-8">
+        <section className="w-full px-6 py-14 sm:px-10 lg:px-16">
           <div className="grid gap-4 sm:grid-cols-3">
             {[
               { icon: BrainCircuit, t: "Intelligent by design", d: "Advanced AI reads the market and forms the strategy — not a rigid script. It thinks, then acts." },
@@ -148,7 +148,7 @@ export function TradingLanding() {
         </section>
 
         {/* ── platforms ── */}
-        <section id="platforms" className="mx-auto max-w-6xl px-5 pb-16 sm:px-8">
+        <section id="platforms" className="w-full px-6 pb-16 sm:px-10 lg:px-16">
           <div className="mb-5 flex items-end justify-between gap-4">
             <div>
               <h2 className="text-[22px] font-bold sm:text-[26px]">Built to run anywhere</h2>
