@@ -7,7 +7,7 @@
  * never knows broker specifics, only this shape. That's what keeps "one place
  * to control all your accounts" broker-agnostic.
  */
-export type AccountKind = "options" | "mt5" | "ctrader" | "cfd";
+export type AccountKind = "options" | "mt5" | "ctrader" | "cfd" | "wallet";
 
 export type ConnectedAccount = {
   platformId: string; // matches lib/trading/platforms id, e.g. "deriv-mt5"

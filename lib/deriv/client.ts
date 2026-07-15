@@ -2,66 +2,105 @@
 
 /**
  * DERIV WebSocket client (browser). Given a connected account's OAuth token, it
- * authorises, then reads the full picture the Command Center needs: every Deriv
- * (Options) account with its balance, plus every Deriv MT5 account with its
- * balance. One short-lived socket per refresh, closed when done. No token ever
- * leaves the browser.
+ * pulls the FULL picture so a user never wonders where their money is:
+ *  - the account holder's name,
+ *  - every account (Deriv Options/trading, Wallets, and MT5) with its balance,
+ *  - the aggregated TOTAL (real + demo), since Deriv spreads balances across
+ *    several places.
+ * One short-lived socket per refresh; the token never leaves the browser.
  */
 import { DERIV_WS_URL } from "./config";
 import type { ConnectedAccount } from "@/lib/trading/accounts";
 
-type Msg = Record<string, unknown> & { msg_type?: string; req_id?: number; error?: { message?: string } };
+type Msg = Record<string, unknown> & { msg_type?: string; error?: { message?: string } };
 
-/** Authorise `token` and return every Deriv Options + MT5 account with balances. */
-export async function fetchDerivPortfolio(token: string, timeoutMs = 15000): Promise<ConnectedAccount[]> {
+export type DerivPortfolio = {
+  name: string;
+  email: string;
+  accounts: ConnectedAccount[];
+  totalReal: number | null;
+  totalDemo: number | null;
+  totalCurrency: string;
+};
+
+const num = (v: unknown): number | null => (typeof v === "number" ? v : null);
+
+export async function fetchDerivPortfolio(token: string, timeoutMs = 18000): Promise<DerivPortfolio> {
   if (typeof window === "undefined" || !("WebSocket" in window)) throw new Error("no websocket");
 
-  return new Promise<ConnectedAccount[]>((resolve, reject) => {
+  return new Promise<DerivPortfolio>((resolve, reject) => {
     const ws = new WebSocket(DERIV_WS_URL);
+    let email = "";
+    let accountList: Msg[] = [];
     let authLoginid = "";
     let authBalance: number | null = null;
     let authCurrency = "";
-    let accountList: Msg[] = [];
-    let balancesAll: Record<string, { balance?: number; currency?: string }> = {};
+    let settings: Msg | null = null;
+    let balances: Record<string, { balance?: number; currency?: string; demo_account?: number }> = {};
+    let total: Record<string, { amount?: number; currency?: string }> = {};
     let mt5: Msg[] = [];
-    let gotBalance = false;
-    let gotMt5 = false;
+    let gotSettings = false, gotBalance = false, gotMt5 = false;
 
-    const done = () => {
+    const timer = setTimeout(() => { try { ws.close(); } catch { /* ignore */ } reject(new Error("Deriv timed out")); }, timeoutMs);
+
+    const finish = () => {
+      if (!(gotSettings && gotBalance && gotMt5)) return;
+      clearTimeout(timer);
       try { ws.close(); } catch { /* ignore */ }
-      const out: ConnectedAccount[] = [];
-      // Deriv (Options) accounts
+
+      const accounts: ConnectedAccount[] = [];
       for (const a of accountList) {
         const loginid = String(a.loginid || "");
         if (!loginid) continue;
-        const isVirtual = !!a.is_virtual;
-        const bal = balancesAll[loginid]?.balance ?? (loginid === authLoginid ? authBalance : null);
-        const currency = (balancesAll[loginid]?.currency as string) || (a.currency as string) || (loginid === authLoginid ? authCurrency : "");
-        out.push({ platformId: "deriv-options", broker: "Deriv", platform: "Options", loginid, currency, balance: bal ?? null, kind: "options", isVirtual });
+        const b = balances[loginid];
+        const isWallet = String(a.account_category || "") === "wallet";
+        accounts.push({
+          platformId: isWallet ? "deriv-wallet" : "deriv-options",
+          broker: "Deriv",
+          platform: isWallet ? "Wallet" : "Options",
+          loginid,
+          currency: (b?.currency as string) || (a.currency as string) || (loginid === authLoginid ? authCurrency : ""),
+          balance: num(b?.balance) ?? (loginid === authLoginid ? authBalance : null),
+          kind: isWallet ? "wallet" : "options",
+          isVirtual: !!a.is_virtual || b?.demo_account === 1,
+        });
       }
-      // Deriv MT5 accounts
       for (const m of mt5) {
         const login = String(m.login || m.display_login || "");
         if (!login) continue;
-        const group = String(m.group || "");
-        out.push({
+        accounts.push({
           platformId: "deriv-mt5",
           broker: "Deriv",
           platform: "MT5",
           loginid: login,
           currency: (m.currency as string) || "",
-          balance: typeof m.balance === "number" ? (m.balance as number) : null,
+          balance: num(m.balance),
           kind: "mt5",
-          isVirtual: /demo/i.test(group),
+          isVirtual: /demo/i.test(String(m.group || "")),
         });
       }
-      resolve(out);
-    };
 
-    const timer = setTimeout(() => { try { ws.close(); } catch { /* ignore */ } reject(new Error("Deriv timed out")); }, timeoutMs);
+      // aggregated totals from Deriv's own converted totals
+      let totalReal: number | null = null;
+      let totalDemo: number | null = null;
+      let totalCurrency = "";
+      for (const [k, v] of Object.entries(total)) {
+        const amt = num(v?.amount);
+        if (amt == null) continue;
+        if (/demo/i.test(k)) totalDemo = (totalDemo ?? 0) + amt;
+        else { totalReal = (totalReal ?? 0) + amt; totalCurrency = totalCurrency || (v?.currency as string) || ""; }
+      }
+      // fall back to summing displayed real balances if Deriv gave no totals
+      if (totalReal == null) {
+        const reals = accounts.filter((a) => !a.isVirtual && a.balance != null);
+        if (reals.length) { totalReal = reals.reduce((s, a) => s + (a.balance || 0), 0); totalCurrency = totalCurrency || reals[0].currency; }
+      }
 
-    const maybeFinish = () => {
-      if (gotBalance && gotMt5) { clearTimeout(timer); done(); }
+      const first = String(settings?.first_name || "");
+      const last = String(settings?.last_name || "");
+      const name = `${first} ${last}`.trim() || email || authLoginid;
+
+      resolve({ name, email, accounts, totalReal, totalDemo, totalCurrency });
     };
 
     ws.onopen = () => ws.send(JSON.stringify({ authorize: token, req_id: 1 }));
@@ -73,22 +112,25 @@ export async function fetchDerivPortfolio(token: string, timeoutMs = 15000): Pro
 
       if (d.msg_type === "authorize") {
         const a = d.authorize as Msg;
+        email = String(a.email || "");
         authLoginid = String(a.loginid || "");
-        authBalance = typeof a.balance === "number" ? (a.balance as number) : null;
+        authBalance = num(a.balance);
         authCurrency = String(a.currency || "");
         accountList = (a.account_list as Msg[]) || [];
-        ws.send(JSON.stringify({ balance: 1, account: "all", req_id: 2 }));
-        ws.send(JSON.stringify({ mt5_login_list: 1, req_id: 3 }));
+        ws.send(JSON.stringify({ get_settings: 1, req_id: 2 }));
+        ws.send(JSON.stringify({ balance: 1, account: "all", req_id: 3 }));
+        ws.send(JSON.stringify({ mt5_login_list: 1, req_id: 4 }));
+      } else if (d.msg_type === "get_settings") {
+        settings = (d.get_settings as Msg) || {};
+        gotSettings = true; finish();
       } else if (d.msg_type === "balance") {
         const b = d.balance as Msg;
-        const accts = (b.accounts as Record<string, { balance?: number; currency?: string }>) || {};
-        balancesAll = accts;
-        gotBalance = true;
-        maybeFinish();
+        balances = (b.accounts as typeof balances) || {};
+        total = (b.total as typeof total) || {};
+        gotBalance = true; finish();
       } else if (d.msg_type === "mt5_login_list") {
         mt5 = (d.mt5_login_list as Msg[]) || [];
-        gotMt5 = true;
-        maybeFinish();
+        gotMt5 = true; finish();
       }
     };
   });

@@ -34,6 +34,8 @@ export type TradingPlatform = {
   markets: MarketClass[];
   /** One honest line about how automation reaches this platform. */
   note: string;
+  /** Official brand logo (served from /public/logos), for real-logo UI. */
+  logo?: string;
 };
 
 /**
@@ -50,6 +52,7 @@ export const PLATFORMS: TradingPlatform[] = [
     execution: "terminal-ea",
     markets: ["synthetics", "forex", "indices", "commodities", "crypto"],
     note: "Automated via an Expert Advisor in your own MT5 terminal — you keep custody of your account.",
+    logo: "/logos/deriv.png",
   },
   {
     id: "deriv-options",
@@ -60,6 +63,7 @@ export const PLATFORMS: TradingPlatform[] = [
     execution: "api",
     markets: ["synthetics", "forex", "indices", "commodities", "crypto"],
     note: "Native API execution (Multipliers, Accumulators, Digital Options) — connect once, trade server-side.",
+    logo: "/logos/deriv.png",
   },
   {
     id: "deriv-ctrader",
@@ -70,6 +74,7 @@ export const PLATFORMS: TradingPlatform[] = [
     execution: "terminal-ea",
     markets: ["synthetics", "forex", "indices", "stocks", "crypto"],
     note: "Automated via cBots in the cTrader terminal.",
+    logo: "/logos/ctrader.svg",
   },
   {
     id: "other-brokers",
