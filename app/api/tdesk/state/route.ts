@@ -2,11 +2,11 @@ import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/requireUser";
 import { isAdmin } from "@/lib/billing/meter";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { PAIRS, PIP, type EconomicEvent } from "@/lib/trading/types";
-import { fetchBars } from "@/lib/trading/data";
-import { atr, percentileRank } from "@/lib/trading/indicators";
-import { isMarketOpen, sessionLabel } from "@/lib/trading/sessions";
-import { playbooks } from "@/lib/trading/engine";
+import { PAIRS, PIP, type EconomicEvent } from "@/lib/tdesk/types";
+import { fetchBars } from "@/lib/tdesk/data";
+import { atr, percentileRank } from "@/lib/tdesk/indicators";
+import { isMarketOpen, sessionLabel } from "@/lib/tdesk/sessions";
+import { playbooks } from "@/lib/tdesk/engine";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;

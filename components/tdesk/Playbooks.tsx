@@ -8,7 +8,7 @@
  * here, and nothing shown here is hidden marketing — it's the research output.
  */
 import { useEffect, useRef, useState } from "react";
-import type { ValidationReport } from "@/lib/trading/types";
+import type { ValidationReport } from "@/lib/tdesk/types";
 
 type ReportsFile = { generatedAt: string; reports: ValidationReport[] };
 
@@ -58,7 +58,7 @@ export function Playbooks() {
   const [pair, setPair] = useState<string>("EURUSD");
   useEffect(() => {
     // the dossier file is sizable — load it only when this tab opens
-    void import("@/lib/trading/research/reports.json").then((m) => setData(m.default as unknown as ReportsFile));
+    void import("@/lib/tdesk/research/reports.json").then((m) => setData(m.default as unknown as ReportsFile));
   }, []);
   if (!data) return <p className="py-10 text-center text-sm text-[#8b93a7]">Loading validation dossiers…</p>;
 

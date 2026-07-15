@@ -1,5 +1,5 @@
 /**
- * Sports data adapters — REAL DATA ONLY, mirroring lib/trading/data.ts discipline
+ * Sports data adapters — REAL DATA ONLY, mirroring lib/tdesk/data.ts discipline
  * (unofficial-but-verified primary + strict parsing + a clean provider seam).
  *
  * Backbone: ESPN hidden API (keyless, verified live) — fixtures & scores, embedded

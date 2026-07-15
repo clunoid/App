@@ -2,11 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/requireUser";
 import { isAdmin } from "@/lib/billing/meter";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { PAIRS, type EconomicEvent, type LiveSignal, type Pair, type Timeframe } from "@/lib/trading/types";
-import { runScan, resolveOpenSignals, CONFIDENCE_THRESHOLD, type ResolveInput } from "@/lib/trading/engine";
-import { fetchCalendar } from "@/lib/trading/data";
-import { annotateSignal } from "@/lib/trading/ai";
-import { sendPushToAll, signalPayload } from "@/lib/trading/push";
+import { PAIRS, type EconomicEvent, type LiveSignal, type Pair, type Timeframe } from "@/lib/tdesk/types";
+import { runScan, resolveOpenSignals, CONFIDENCE_THRESHOLD, type ResolveInput } from "@/lib/tdesk/engine";
+import { fetchCalendar } from "@/lib/tdesk/data";
+import { annotateSignal } from "@/lib/tdesk/ai";
+import { sendPushToAll, signalPayload } from "@/lib/tdesk/push";
 
 export const runtime = "nodejs";
 export const maxDuration = 300; // worst-case provider retries + per-signal annotation

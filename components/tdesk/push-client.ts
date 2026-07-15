@@ -70,11 +70,11 @@ export async function ensurePush(): Promise<boolean> {
     if (existing) return true; // already subscribed — the common reopen path
     if (!wantsAlerts()) return false; // user turned it off — stay off
     // intent is on but the subscription vanished → recreate silently
-    const cfg = await fetch("/api/trading/push/config", { cache: "no-store" });
+    const cfg = await fetch("/api/tdesk/push/config", { cache: "no-store" });
     if (!cfg.ok) return false;
     const { vapidPublicKey } = (await cfg.json()) as { vapidPublicKey: string };
     const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(vapidPublicKey) });
-    await fetch("/api/trading/push/subscribe", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ subscription: sub.toJSON(), silent: true }) });
+    await fetch("/api/tdesk/push/subscribe", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ subscription: sub.toJSON(), silent: true }) });
     return true;
   } catch {
     return false;
@@ -88,7 +88,7 @@ export async function enablePush(): Promise<{ ok: boolean; reason?: string }> {
   const perm = Notification.permission === "granted" ? "granted" : await Notification.requestPermission();
   if (perm !== "granted") return { ok: false, reason: "Notification permission was denied." };
 
-  const cfg = await fetch("/api/trading/push/config", { cache: "no-store" });
+  const cfg = await fetch("/api/tdesk/push/config", { cache: "no-store" });
   if (!cfg.ok) return { ok: false, reason: "Push isn't configured on the server." };
   const { vapidPublicKey } = (await cfg.json()) as { vapidPublicKey: string };
 
@@ -101,7 +101,7 @@ export async function enablePush(): Promise<{ ok: boolean; reason?: string }> {
       applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
     });
   }
-  const res = await fetch("/api/trading/push/subscribe", {
+  const res = await fetch("/api/tdesk/push/subscribe", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ subscription: sub.toJSON() }),
@@ -118,7 +118,7 @@ export async function disablePush(): Promise<void> {
   const reg = await navigator.serviceWorker.getRegistration(SW_SCOPE);
   const sub = reg && (await reg.pushManager.getSubscription());
   if (sub) {
-    await fetch("/api/trading/push/subscribe", {
+    await fetch("/api/tdesk/push/subscribe", {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ endpoint: sub.endpoint }),

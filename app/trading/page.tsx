@@ -1,21 +1,20 @@
-"use client";
+import type { Metadata } from "next";
+import { TradingLanding } from "@/components/trading/TradingLanding";
 
 /**
- * /trading — the Clunoid Trading Desk (admin-only).
+ * /trading — CLUNOID TRADING, the public landing / face of the platform.
  *
- * Access model: this page renders the terminal for anyone who reaches it, but
- * EVERY byte of data flows through /api/trading/* routes that verify the
- * server-side session against the immutable admin allow-list (403 otherwise) —
- * the terminal renders a "restricted" screen on 403. The route is deliberately
- * absent from all navigation, feature registries and sitemaps. Opening it to
- * more users later = widening the allow-list + the RLS predicate, nothing else.
+ * This is the new front door: when the app is in trading mode (the default),
+ * middleware rewrites `/` here and hides the classic Clunoid features from
+ * non-admins, so clunoid.com presents as a serious trading platform. Admins get
+ * a toggle back to classic Clunoid (which sets a cookie middleware reads).
+ * Broker-agnostic by design; live execution is wired in later steps.
  */
-import { Terminal } from "@/components/trading/Terminal";
+export const metadata: Metadata = {
+  title: "Clunoid Trading — intelligent automated trading",
+  description: "AI-driven automated trading that runs on your own broker account. Starting with Deriv MT5; broker-agnostic by design.",
+};
 
 export default function TradingPage() {
-  return (
-    <main>
-      <Terminal />
-    </main>
-  );
+  return <TradingLanding />;
 }

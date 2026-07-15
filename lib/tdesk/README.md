@@ -24,7 +24,7 @@ two allow-lists.
 └───────────┬──────────────────────────────────────────────────┘
             │
 ┌───────────▼─────────────┐    ┌─ AI (annotation only) ─┐
-│ /api/trading/scan       │───▶│ ai.ts → Sonnet         │
+│ /api/tdesk/scan       │───▶│ ai.ts → Sonnet         │
 │  cron (15min) + on-view │    │ explains; never decides│
 │  resolve → detect →     │    └────────────────────────┘
 │  filter → score → save  │
@@ -32,7 +32,7 @@ two allow-lists.
             │ service role                     ┌─ UI ────────────────┐
 ┌───────────▼─────────────┐  RLS (admin read)  │ /trading Terminal   │
 │ Supabase                │◀──────────────────▶│ watchlist · signals │
-│  trading_signals        │  /api/trading/state│ chart (lightweight- │
+│  trading_signals        │  /api/tdesk/state│ chart (lightweight- │
 │  trading_scans          │                    │ charts) · playbooks │
 └─────────────────────────┘                    │ history · calendar  │
                                                │ health · alerts     │
@@ -168,7 +168,7 @@ must fire on the newest CLOSED bar — so many scans legitimately produce none
 env; the browser only ever gets the public key.
 
 ## Security & rollout
-- Server: every `/api/trading/*` request verifies the session against the immutable
+- Server: every `/api/tdesk/*` request verifies the session against the immutable
   admin id allow-list (same mechanism as billing). Cron authorizes via `CRON_SECRET`
   (provisioned on Vercel). Writes go through the service role only.
 - DB: RLS `is_trading_admin()` on both tables; no client write policies at all.
@@ -203,7 +203,7 @@ env; the browser only ever gets the public key.
   and FX-only: futures never silently substitute a spot feed).
 - **Scan cadence — fully autonomous, zero cost:** the primary scheduler is
   **Supabase pg_cron + pg_net** (migration `20260706150000_trading_cron`): job
-  `trading-scan-15m` fires `POST /api/trading/scan` with the CRON_SECRET bearer
+  `trading-scan-15m` fires `POST /api/tdesk/scan` with the CRON_SECRET bearer
   every **5 minutes** (tightened from 15 for lower alert latency; the jobname is
   historical), 24/7, from inside the database — no browser, no Vercel Pro,
   no third-party service. Belt-and-braces layers on top: a daily Vercel Hobby

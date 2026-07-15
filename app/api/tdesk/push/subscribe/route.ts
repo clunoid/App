@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/requireUser";
 import { isAdmin } from "@/lib/billing/meter";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { sendPushToOne } from "@/lib/trading/push";
+import { sendPushToOne } from "@/lib/tdesk/push";
 
 export const runtime = "nodejs";
 

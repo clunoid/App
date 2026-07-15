@@ -5,9 +5,9 @@
  * both API routes; this component just renders what the state route returns).
  *
  * Behaviors:
- *  • loads /api/trading/state on mount, refreshes every 60s while visible
+ *  • loads /api/tdesk/state on mount, refreshes every 60s while visible
  *  • self-healing scans: if the newest heartbeat is stale (>12 min) it POSTs
- *    /api/trading/scan itself — the desk keeps analyzing even without cron
+ *    /api/tdesk/scan itself — the desk keeps analyzing even without cron
  *  • Web Push alerts (opt-in bell): a validated signal is pushed from the SERVER,
  *    so it lands even with this tab closed/refreshed; the bell reflects the REAL
  *    subscription state, so it stays on across reloads
@@ -20,7 +20,7 @@ import { PairChart, type Candle, type ChartLevels } from "./PairChart";
 import { Playbooks } from "./Playbooks";
 import { TerminalBackground } from "./TerminalBackground";
 import { ensurePush, enablePush, disablePush, pushSupported } from "./push-client";
-import { digitsFor, fmtPrice, pointLabel, type Pair } from "@/lib/trading/types";
+import { digitsFor, fmtPrice, pointLabel, type Pair } from "@/lib/tdesk/types";
 
 /* ── palette (desk-local, deliberately its own product surface) ──
  * Panels are slightly translucent so the grid material reads through them. */
@@ -147,7 +147,7 @@ export function Terminal() {
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch("/api/trading/state", { cache: "no-store" });
+      const res = await fetch("/api/tdesk/state", { cache: "no-store" });
       if (res.status === 403) { setDenied(true); return null; }
       if (!res.ok) return null;
       const s = (await res.json()) as State;
@@ -165,7 +165,7 @@ export function Terminal() {
     if (Date.now() - last < 12 * 60_000) return;
     setScanning(true);
     try {
-      await fetch("/api/trading/scan", { method: "POST" });
+      await fetch("/api/tdesk/scan", { method: "POST" });
       await load();
     } finally {
       setScanning(false);

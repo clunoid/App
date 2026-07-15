@@ -6,7 +6,7 @@
  * same code runs in three places with one source of truth:
  *   • the research runner (npx tsx lib/trading/research/run.ts) — multi-year
  *     walk-forward validation that SELECTS each pair's live configuration,
- *   • the production scanner (/api/trading/scan) — generates live signals with
+ *   • the production scanner (/api/tdesk/scan) — generates live signals with
  *     the validated configs only,
  *   • the terminal UI — renders the same evidence objects it was tested on.
  */

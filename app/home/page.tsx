@@ -37,10 +37,19 @@ export default function Home() {
   const isAuthed = useClunoid((s) => s.user.isAuthed);
   const userId = useClunoid((s) => s.user.id);
   const userEmail = useClunoid((s) => s.user.email);
-  // Admin-only entry point for the Trading Desk. Mirrors the server allow-list
-  // (lib/billing/meter ADMIN_USER_IDS + the clunoid@gmail.com owner); the real
-  // gate lives on every /api/trading route, so this only decides visibility.
+  // Admin-only entry point for Tdesk (the FX analysis desk). Mirrors the server
+  // allow-list (lib/billing/meter ADMIN_USER_IDS + the clunoid@gmail.com owner);
+  // the real gate lives on every /api/tdesk route, so this only decides visibility.
   const isAdminUser = userId === "5191f3cf-f0e5-4187-9c08-8921eb57a64c" || userEmail?.toLowerCase() === "clunoid@gmail.com";
+  // Return to the public Clunoid Trading platform (clears the classic-mode cookie).
+  const switchToTrading = async () => {
+    try {
+      await fetch("/api/mode", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ mode: "trading" }) });
+    } catch {
+      /* ignore — navigate anyway */
+    }
+    window.location.href = "/";
+  };
   const isaac = useClunoid((s) => s.isaac);
   const experience = useClunoid((s) => s.experience);
   const isaacSearchOn = useClunoid((s) => s.isaacSearchOn);
@@ -221,15 +230,26 @@ export default function Home() {
                 <f.Icon size={15} /> {f.label}
               </Link>
             ))}
-            {/* Admin-only: the Trading Desk isn't in the shared feature registry
-                (so it can't be typed/searched into) — it appears here for the
-                owner alone, on every screen size, as their private entry point. */}
+            {/* Admin-only: hop back to the public Clunoid Trading platform (the
+                current public face). Sets trading mode; middleware does the rest. */}
             {isAdminUser && (
-              <Link
-                href="/trading"
-                className="inline-flex items-center gap-1.5 rounded-full border border-clay/40 bg-clay/10 px-3 py-1 text-sm text-clay-soft transition hover:border-clay hover:text-clay"
+              <button
+                onClick={() => void switchToTrading()}
+                className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm transition hover:brightness-125"
+                style={{ borderColor: "rgba(56,189,248,0.4)", background: "rgba(56,189,248,0.1)", color: "#7dd3fc" }}
               >
                 <CandlestickChart size={15} /> Trading
+              </button>
+            )}
+            {/* Admin-only: Tdesk (the FX analysis desk) isn't in the shared feature
+                registry (so it can't be typed/searched into) — it appears here for
+                the owner alone, on every screen size, as their private entry point. */}
+            {isAdminUser && (
+              <Link
+                href="/tdesk"
+                className="inline-flex items-center gap-1.5 rounded-full border border-clay/40 bg-clay/10 px-3 py-1 text-sm text-clay-soft transition hover:border-clay hover:text-clay"
+              >
+                <CandlestickChart size={15} /> Tdesk
               </Link>
             )}
             {isAdminUser && (
