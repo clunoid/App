@@ -1,11 +1,6 @@
 "use client";
 
-import {
-  DERIV_AUTH_BASE,
-  DERIV_CLIENT_ID,
-  DERIV_OAUTH_BASE,
-  DERIV_REDIRECT_URI,
-} from "./config";
+import { DERIV_AUTH_BASE, DERIV_CLIENT_ID, DERIV_REDIRECT_URI } from "./config";
 
 /**
  * DERIV OAuth — the browser side.
@@ -24,6 +19,44 @@ export type DerivToken = { loginid: string; token: string; currency: string };
 
 const KEY = "clunoid_deriv_tokens";
 const PKCE_KEY = "clunoid_deriv_pkce";
+
+// The PKCE verifier is stashed in a cookie scoped to the registrable domain
+// (.clunoid.com) so it survives a www ↔ non-www hop between the start of login and
+// the callback (per-origin sessionStorage would not). sessionStorage is kept as a
+// same-origin fallback.
+function parentDomain(): string {
+  const h = window.location.hostname;
+  const parts = h.split(".");
+  return parts.length >= 2 ? "." + parts.slice(-2).join(".") : h;
+}
+
+function stashPkce(v: { verifier: string; state: string }): void {
+  const json = JSON.stringify(v);
+  try { sessionStorage.setItem(PKCE_KEY, json); } catch { /* ignore */ }
+  try {
+    const secure = window.location.protocol === "https:" ? "; Secure" : "";
+    document.cookie = `${PKCE_KEY}=${encodeURIComponent(json)}; domain=${parentDomain()}; path=/; max-age=600; SameSite=Lax${secure}`;
+  } catch { /* ignore */ }
+}
+
+function readPkce(): { verifier?: string; state?: string } {
+  try {
+    const m = document.cookie.match(new RegExp(`(?:^|; )${PKCE_KEY}=([^;]*)`));
+    if (m) return JSON.parse(decodeURIComponent(m[1]));
+  } catch { /* fall through */ }
+  try {
+    return JSON.parse(sessionStorage.getItem(PKCE_KEY) || "{}");
+  } catch {
+    return {};
+  }
+}
+
+function clearPkce(): void {
+  try { sessionStorage.removeItem(PKCE_KEY); } catch { /* ignore */ }
+  try {
+    document.cookie = `${PKCE_KEY}=; domain=${parentDomain()}; path=/; max-age=0; SameSite=Lax`;
+  } catch { /* ignore */ }
+}
 
 /** Pull acct/token/cur triples out of an OAuth redirect query string. */
 export function parseDerivRedirect(search: string): DerivToken[] {
@@ -104,11 +137,7 @@ export async function startDerivLogin(): Promise<void> {
   const verifier = randomString(48);
   const state = randomString(16);
   const challenge = await challengeFromVerifier(verifier);
-  try {
-    sessionStorage.setItem(PKCE_KEY, JSON.stringify({ verifier, state }));
-  } catch {
-    /* if sessionStorage is blocked the state check below will simply be skipped */
-  }
+  stashPkce({ verifier, state });
   const q = new URLSearchParams({
     client_id: DERIV_CLIENT_ID,
     response_type: "code",
@@ -121,43 +150,13 @@ export async function startDerivLogin(): Promise<void> {
   window.location.href = `${DERIV_AUTH_BASE}/oauth2/auth?${q.toString()}`;
 }
 
-type LegacyTokenShape = {
-  token?: string;
-  loginid?: string;
-  loginId?: string;
-  acct?: string;
-  currency?: string;
-  cur?: string;
-};
-
-/** Normalise whatever the legacy/tokens endpoint returns into DerivToken[]. */
-function parseLegacyTokens(data: unknown): DerivToken[] {
-  const out: DerivToken[] = [];
-  const push = (t: LegacyTokenShape) => {
-    const token = t.token;
-    const loginid = t.loginid || t.loginId || t.acct || "";
-    if (token) out.push({ token, loginid, currency: t.currency || t.cur || "" });
-  };
-  if (Array.isArray(data)) {
-    for (const t of data) push(t as LegacyTokenShape);
-  } else if (data && typeof data === "object") {
-    const obj = data as Record<string, unknown>;
-    if (Array.isArray(obj.tokens)) {
-      for (const t of obj.tokens) push(t as LegacyTokenShape);
-    } else {
-      // flat acct1/token1/cur1 shape
-      const flat = new URLSearchParams();
-      for (const [k, v] of Object.entries(obj)) if (typeof v === "string") flat.set(k, v);
-      out.push(...parseDerivRedirect(`?${flat.toString()}`));
-    }
-  }
-  return out;
-}
-
 /**
- * Finish the OIDC login from the ?code&state redirect: verify state, exchange the
- * code for an access token (PKCE, no secret), then swap that for the a1-… account
- * tokens the WebSocket uses. Throws with a readable message on any failure.
+ * Finish the OIDC login from the ?code&state redirect: verify state, then hand the
+ * code + PKCE verifier to our OWN server route, which does the Deriv token +
+ * legacy-token exchange (Deriv's legacy/tokens endpoint omits CORS headers on the
+ * real response, so a direct browser fetch fails — the server has no such limit).
+ * Nothing is stored server-side; we just get the account tokens back. Throws with
+ * a readable message on any failure.
  */
 export async function completeDerivLogin(search: string): Promise<DerivToken[]> {
   const p = new URLSearchParams(search.startsWith("?") ? search : `?${search}`);
@@ -165,65 +164,21 @@ export async function completeDerivLogin(search: string): Promise<DerivToken[]> 
   const returnedState = p.get("state");
   if (!code) throw new Error("No authorization code returned by Deriv.");
 
-  let verifier = "";
-  try {
-    const saved = JSON.parse(sessionStorage.getItem(PKCE_KEY) || "{}") as {
-      verifier?: string;
-      state?: string;
-    };
-    verifier = saved.verifier || "";
-    if (saved.state && returnedState && saved.state !== returnedState) {
-      throw new Error("State mismatch — the login may have been tampered with. Please try again.");
-    }
-  } catch (e) {
-    if (e instanceof Error && e.message.startsWith("State mismatch")) throw e;
-    /* no stored PKCE (e.g. different tab) — proceed; Deriv will reject if invalid */
+  const saved = readPkce();
+  const verifier = saved.verifier || "";
+  if (saved.state && returnedState && saved.state !== returnedState) {
+    throw new Error("State mismatch — the login may have been tampered with. Please try again.");
   }
 
-  // 1) code → access_token
-  const tokenRes = await fetch(`${DERIV_AUTH_BASE}/oauth2/token`, {
+  const res = await fetch("/api/deriv/oauth", {
     method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      grant_type: "authorization_code",
-      code,
-      redirect_uri: DERIV_REDIRECT_URI,
-      client_id: DERIV_CLIENT_ID,
-      code_verifier: verifier,
-    }).toString(),
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ code, code_verifier: verifier, redirect_uri: DERIV_REDIRECT_URI }),
   });
-  const tokenJson = (await tokenRes.json().catch(() => ({}))) as {
-    access_token?: string;
-    error?: string;
-    error_description?: string;
-  };
-  if (!tokenRes.ok || !tokenJson.access_token) {
-    throw new Error(
-      tokenJson.error_description || tokenJson.error || "Deriv token exchange failed.",
-    );
+  const data = (await res.json().catch(() => ({}))) as { tokens?: DerivToken[]; error?: string };
+  if (!res.ok || !data.tokens?.length) {
+    throw new Error(data.error || "Deriv connection failed.");
   }
-
-  // 2) access_token → a1-… account tokens (WebSocket-usable)
-  const legacyRes = await fetch(`${DERIV_OAUTH_BASE}/oauth2/legacy/tokens`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${tokenJson.access_token}`,
-      "Content-Type": "application/json",
-    },
-  });
-  const legacyJson = await legacyRes.json().catch(() => null);
-  if (!legacyRes.ok) {
-    const msg =
-      (legacyJson && (legacyJson.error_description || legacyJson.error || legacyJson.error_code)) ||
-      "Deriv account-token exchange failed.";
-    throw new Error(String(msg));
-  }
-  const tokens = parseLegacyTokens(legacyJson);
-  if (!tokens.length) throw new Error("Deriv returned no account tokens.");
-  try {
-    sessionStorage.removeItem(PKCE_KEY);
-  } catch {
-    /* ignore */
-  }
-  return tokens;
+  clearPkce();
+  return data.tokens;
 }
