@@ -101,9 +101,9 @@ export function TradingLanding() {
               analysing the market, deciding, and placing the trades, around the clock. You keep custody; the machine does the work.
             </p>
             <div className="mt-7 flex flex-wrap items-center gap-3">
-              <button className="inline-flex items-center gap-2 rounded-xl px-5 py-3 text-[14px] font-semibold transition hover:opacity-90" style={{ background: C.profit, color: "#04121f" }}>
+              <a href="/trading/command" className="inline-flex items-center gap-2 rounded-xl px-5 py-3 text-[14px] font-semibold transition hover:opacity-90" style={{ background: C.profit, color: "#04121f" }}>
                 Get started <ArrowUpRight size={16} />
-              </button>
+              </a>
               <a href="#platforms" className="inline-flex items-center gap-2 rounded-xl border px-5 py-3 text-[14px] font-medium transition hover:bg-white/5" style={{ borderColor: C.line, color: C.text }}>
                 See supported platforms
               </a>
