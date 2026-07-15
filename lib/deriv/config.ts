@@ -29,23 +29,36 @@
  *    match byte-for-byte between the authorize and token requests.
  */
 
-/** Public Deriv OAuth client id (OIDC). Not a secret — it identifies the app in
- *  the authorize URL. Register an app at api.deriv.com / developers.deriv.com,
- *  set its redirect URL to https://www.clunoid.com/trading/command, then set this
- *  as NEXT_PUBLIC_DERIV_APP_ID. Until then the connect button shows a setup
- *  state and offers the paste-a-token path (unconfigured-safe). */
+/** The Deriv app identifier, from NEXT_PUBLIC_DERIV_APP_ID. Deriv has TWO kinds:
+ *
+ *  - a NUMERIC classic app_id (e.g. 80111): uses the simple, single-host flow —
+ *    oauth.deriv.com/oauth2/authorize?app_id=<num> redirects straight back to the
+ *    app's registered URL with ?acct1&token1&cur1. No PKCE, no token exchange.
+ *    This is the standard way third-party apps connect a user's Deriv account.
+ *
+ *  - an OIDC client_id (a 21-char id like 33PP…): the newer Ory flow on
+ *    auth.deriv.com. It requires a cross-host hop to oauth.deriv.com/legacy/tokens
+ *    which only works if the client is registered on oauth.deriv.com — a purely
+ *    auth.deriv.com client (like 33PP…) is rejected there (UNAUTHORIZED), so a
+ *    numeric app_id is required for connection to actually succeed.
+ *
+ *  We auto-detect which and pick the matching flow. */
 export const DERIV_CLIENT_ID = process.env.NEXT_PUBLIC_DERIV_APP_ID || "";
 
 /** Kept as an alias so existing imports (hasDerivApp etc.) don't churn. */
 export const DERIV_APP_ID = DERIV_CLIENT_ID;
 
+/** True when the id is a classic numeric app_id → use the direct oauth.deriv.com flow. */
+export const DERIV_IS_NUMERIC_APP = /^\d+$/.test(DERIV_CLIENT_ID);
+
 export const hasDerivApp = (): boolean => !!DERIV_CLIENT_ID;
 
-/** NUMERIC app_id for the WebSocket connection. The OIDC client_id is NOT a valid
- *  WS app_id (Deriv rejects the upgrade), and OAuth account tokens authorise fine
- *  on the public app_id 1089. Override with NEXT_PUBLIC_DERIV_WS_APP_ID if the app
- *  has its own numeric app_id. */
-export const DERIV_WS_APP_ID = process.env.NEXT_PUBLIC_DERIV_WS_APP_ID || "1089";
+/** NUMERIC app_id for the WebSocket connection. A classic numeric app_id is used
+ *  directly (the a1- tokens are minted against it); an OIDC client_id is NOT a
+ *  valid WS app_id, so we fall back to the public app_id 1089 (OAuth account
+ *  tokens authorise fine on it). Override with NEXT_PUBLIC_DERIV_WS_APP_ID. */
+export const DERIV_WS_APP_ID =
+  process.env.NEXT_PUBLIC_DERIV_WS_APP_ID || (DERIV_IS_NUMERIC_APP ? DERIV_CLIENT_ID : "1089");
 
 /** WebSocket API endpoint (real-time: authorize, balance, mt5_login_list). */
 export const DERIV_WS_URL = `wss://ws.derivws.com/websockets/v3?app_id=${DERIV_WS_APP_ID}`;

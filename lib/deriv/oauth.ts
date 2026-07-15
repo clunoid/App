@@ -1,6 +1,12 @@
 "use client";
 
-import { DERIV_AUTH_BASE, DERIV_CLIENT_ID, DERIV_REDIRECT_URI } from "./config";
+import {
+  DERIV_AUTH_BASE,
+  DERIV_CLIENT_ID,
+  DERIV_IS_NUMERIC_APP,
+  DERIV_OAUTH_BASE,
+  DERIV_REDIRECT_URI,
+} from "./config";
 
 /**
  * DERIV OAuth — the browser side.
@@ -134,6 +140,16 @@ async function challengeFromVerifier(verifier: string): Promise<string> {
  * send NO scope param — this client isn't allowed to request one.
  */
 export async function startDerivLogin(): Promise<void> {
+  // Classic numeric app_id → the simple single-host flow. Deriv redirects straight
+  // back to the app's registered URL with ?acct1&token1&cur1 (parsed on return by
+  // isDerivRedirect/parseDerivRedirect). No PKCE, no server exchange, no cross-host.
+  if (DERIV_IS_NUMERIC_APP) {
+    const q = new URLSearchParams({ app_id: DERIV_CLIENT_ID, l: "EN", brand: "deriv" });
+    window.location.href = `${DERIV_OAUTH_BASE}/oauth2/authorize?${q.toString()}`;
+    return;
+  }
+
+  // OIDC client_id → the Ory PKCE flow on auth.deriv.com.
   const verifier = randomString(48);
   const state = randomString(16);
   const challenge = await challengeFromVerifier(verifier);
