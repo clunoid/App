@@ -158,27 +158,28 @@ export async function startDerivLogin(): Promise<void> {
     client_id: DERIV_CLIENT_ID,
     response_type: "code",
     redirect_uri: DERIV_REDIRECT_URI,
+    // The NEW Deriv API scopes this client allows — these are what the REST API
+    // (api.derivws.com) checks: trade→options accounts, payment→wallets,
+    // account_manage→profile. (This client rejects the old read/openid scopes.)
+    scope: "trade payment account_manage",
     state,
     code_challenge: challenge,
     code_challenge_method: "S256",
     brand: "deriv",
-    // Always show Deriv's consent screen so the user explicitly grants access and
-    // the minted tokens carry the app's scopes (a silently-remembered grant can
-    // otherwise skip it).
+    // Always show Deriv's consent screen so the user explicitly grants access.
     prompt: "consent",
   });
   window.location.href = `${DERIV_AUTH_BASE}/oauth2/auth?${q.toString()}`;
 }
 
 /**
- * Finish the OIDC login from the ?code&state redirect: verify state, then hand the
- * code + PKCE verifier to our OWN server route, which does the Deriv token +
- * legacy-token exchange (Deriv's legacy/tokens endpoint omits CORS headers on the
- * real response, so a direct browser fetch fails — the server has no such limit).
- * Nothing is stored server-side; we just get the account tokens back. Throws with
- * a readable message on any failure.
+ * Finish the OIDC login from the ?code&state redirect: verify state, then exchange
+ * the code for the NEW-API access token (PKCE, public client, no secret) directly
+ * against Deriv — auth.deriv.com/oauth2/token is CORS-open to us, and the resulting
+ * `ory_at_…` token is what the new REST API (api.derivws.com) accepts. Returns the
+ * access token; nothing is stored server-side. Throws with a readable message.
  */
-export async function completeDerivLogin(search: string): Promise<DerivToken[]> {
+export async function completeDerivLogin(search: string): Promise<string> {
   const p = new URLSearchParams(search.startsWith("?") ? search : `?${search}`);
   const code = p.get("code");
   const returnedState = p.get("state");
@@ -190,15 +191,41 @@ export async function completeDerivLogin(search: string): Promise<DerivToken[]> 
     throw new Error("State mismatch — the login may have been tampered with. Please try again.");
   }
 
-  const res = await fetch("/api/deriv/oauth", {
+  // application/x-www-form-urlencoded keeps this a simple CORS request (no preflight).
+  const res = await fetch(`${DERIV_AUTH_BASE}/oauth2/token`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ code, code_verifier: verifier, redirect_uri: DERIV_REDIRECT_URI }),
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "authorization_code",
+      code,
+      redirect_uri: DERIV_REDIRECT_URI,
+      client_id: DERIV_CLIENT_ID,
+      code_verifier: verifier,
+    }).toString(),
   });
-  const data = (await res.json().catch(() => ({}))) as { tokens?: DerivToken[]; error?: string };
-  if (!res.ok || !data.tokens?.length) {
-    throw new Error(data.error || "Deriv connection failed.");
+  const data = (await res.json().catch(() => ({}))) as {
+    access_token?: string;
+    error?: string;
+    error_description?: string;
+  };
+  if (!res.ok || !data.access_token) {
+    throw new Error(data.error_description || data.error || "Deriv token exchange failed.");
   }
   clearPkce();
-  return data.tokens;
+  return data.access_token;
+}
+
+// ── access-token storage (OAuth / new-API path) ─────────────────────────────
+// The classic paste path stores a1- tokens (KEY); the OAuth path stores one
+// ory_at_ access token here. Only one is active at a time.
+const ACCESS_KEY = "clunoid_deriv_access";
+
+export function saveDerivAccess(token: string): void {
+  try { localStorage.setItem(ACCESS_KEY, token); } catch { /* ignore */ }
+}
+export function loadDerivAccess(): string {
+  try { return localStorage.getItem(ACCESS_KEY) || ""; } catch { return ""; }
+}
+export function clearDerivAccess(): void {
+  try { localStorage.removeItem(ACCESS_KEY); } catch { /* ignore */ }
 }

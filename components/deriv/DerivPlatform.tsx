@@ -12,8 +12,9 @@ import Link from "next/link";
 import { ArrowLeft, Loader2, RefreshCw, Plug, Layers, LineChart, Wallet, Bot } from "lucide-react";
 import { TC, DOT_GRID, monoFont, fmtBalance } from "@/lib/trading/theme";
 import type { ConnectedAccount } from "@/lib/trading/accounts";
-import { loadDerivTokens } from "@/lib/deriv/oauth";
+import { loadDerivTokens, loadDerivAccess } from "@/lib/deriv/oauth";
 import { fetchDerivPortfolio, type DerivPortfolio } from "@/lib/deriv/client";
+import { fetchDerivPortfolioREST } from "@/lib/deriv/api";
 
 const SNAP_KEY = "clunoid_deriv_portfolio";
 
@@ -25,13 +26,17 @@ export function DerivPlatform() {
   const started = useRef(false);
 
   const load = useCallback(async () => {
+    const access = loadDerivAccess();
     const tks = loadDerivTokens();
-    setConnected(tks.length > 0);
-    if (!tks.length) { setLoading(false); return; }
+    const has = !!access || tks.length > 0;
+    setConnected(has);
+    if (!has) { setLoading(false); return; }
     setLoading(true);
     setError(null);
     try {
-      const p = await fetchDerivPortfolio(tks[0].token);
+      const p = access
+        ? await fetchDerivPortfolioREST(access) // new REST API
+        : await fetchDerivPortfolio(tks[0].token); // classic WS (pasted token)
       setPortfolio(p);
       try { localStorage.setItem(SNAP_KEY, JSON.stringify(p)); } catch { /* ignore */ }
     } catch (e) {
@@ -44,7 +49,7 @@ export function DerivPlatform() {
   useEffect(() => {
     if (started.current) return;
     started.current = true;
-    if (loadDerivTokens().length) { try { const s = localStorage.getItem(SNAP_KEY); if (s) { setPortfolio(JSON.parse(s) as DerivPortfolio); setConnected(true); } } catch { /* ignore */ } }
+    if (loadDerivAccess() || loadDerivTokens().length) { setConnected(true); try { const s = localStorage.getItem(SNAP_KEY); if (s) setPortfolio(JSON.parse(s) as DerivPortfolio); } catch { /* ignore */ } }
     void load();
   }, [load]);
 

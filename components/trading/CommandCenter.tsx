@@ -19,8 +19,12 @@ import { ArrowLeft, Wallet, Plug, RefreshCw, Loader2, LogOut, ArrowUpRight, KeyR
 import { TC, DOT_GRID, monoFont, fmtBalance } from "@/lib/trading/theme";
 import type { ConnectedAccount } from "@/lib/trading/accounts";
 import { hasDerivApp } from "@/lib/deriv/config";
-import { parseDerivRedirect, isDerivRedirect, isDerivCodeReturn, startDerivLogin, completeDerivLogin, saveDerivTokens, loadDerivTokens, clearDerivTokens, type DerivToken } from "@/lib/deriv/oauth";
+import { parseDerivRedirect, isDerivRedirect, isDerivCodeReturn, startDerivLogin, completeDerivLogin, saveDerivTokens, loadDerivTokens, clearDerivTokens, saveDerivAccess, loadDerivAccess, clearDerivAccess, type DerivToken } from "@/lib/deriv/oauth";
 import { fetchDerivPortfolio, type DerivPortfolio } from "@/lib/deriv/client";
+import { fetchDerivPortfolioREST } from "@/lib/deriv/api";
+
+/** One active connection: OAuth (new-API access token) or a pasted a1- token. */
+type Session = { kind: "oauth"; accessToken: string } | { kind: "token"; tokens: DerivToken[] };
 
 const SNAP_KEY = "clunoid_deriv_portfolio"; // cached snapshot for instant reconnect-free display
 
@@ -33,7 +37,7 @@ function BrandLogo({ src, alt, size = 26 }: { src?: string; alt: string; size?: 
 }
 
 export function CommandCenter() {
-  const [tokens, setTokens] = useState<DerivToken[]>([]);
+  const [session, setSession] = useState<Session | null>(null);
   const [portfolio, setPortfolio] = useState<DerivPortfolio | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -41,12 +45,14 @@ export function CommandCenter() {
   const [pasteVal, setPasteVal] = useState("");
   const started = useRef(false);
 
-  const refresh = useCallback(async (tks: DerivToken[]) => {
-    if (!tks.length) { setPortfolio(null); return; }
+  const refresh = useCallback(async (s: Session | null) => {
+    if (!s) { setPortfolio(null); return; }
     setLoading(true);
     setError(null);
     try {
-      const p = await fetchDerivPortfolio(tks[0].token);
+      const p = s.kind === "oauth"
+        ? await fetchDerivPortfolioREST(s.accessToken) // new REST API (api.derivws.com)
+        : await fetchDerivPortfolio(s.tokens[0].token); // classic WS (pasted a1- token)
       setPortfolio(p);
       try { localStorage.setItem(SNAP_KEY, JSON.stringify(p)); } catch { /* ignore */ }
     } catch (e) {
@@ -60,13 +66,18 @@ export function CommandCenter() {
     if (started.current) return;
     started.current = true;
     const search = window.location.search;
-    let tks = loadDerivTokens();
-    const showSnapshot = () => {
-      if (tks.length) { try { const s = localStorage.getItem(SNAP_KEY); if (s) setPortfolio(JSON.parse(s) as DerivPortfolio); } catch { /* ignore */ } }
+    const showSnapshot = (s: Session | null) => {
+      if (s) { try { const c = localStorage.getItem(SNAP_KEY); if (c) setPortfolio(JSON.parse(c) as DerivPortfolio); } catch { /* ignore */ } }
+    };
+    // Restore whichever connection is stored (OAuth access token wins over a paste).
+    const restore = (): Session | null => {
+      const acc = loadDerivAccess();
+      if (acc) return { kind: "oauth", accessToken: acc };
+      const tks = loadDerivTokens();
+      return tks.length ? { kind: "token", tokens: tks } : null;
     };
 
-    // Surface a Deriv OAuth error instead of failing silently (e.g. a redirect-URL
-    // mismatch or a declined consent comes back as ?error=…&error_description=…).
+    // Surface a Deriv OAuth error instead of failing silently.
     const qs = new URLSearchParams(search);
     if (qs.get("error")) {
       const desc = (qs.get("error_description") || qs.get("error") || "").replace(/\+/g, " ");
@@ -74,22 +85,21 @@ export function CommandCenter() {
       window.history.replaceState({}, "", "/trading/command");
     }
 
-    // NEW OIDC return (?code&state): exchange the code for account tokens (async),
-    // then load the live portfolio. Show any cached snapshot in the meantime.
+    // OIDC return (?code&state): exchange for the new-API access token, then load.
     if (isDerivCodeReturn(search)) {
       window.history.replaceState({}, "", "/trading/command");
       setLoading(true);
-      setTokens(tks);
-      showSnapshot();
+      const prior = restore();
+      setSession(prior);
+      showSnapshot(prior);
       void (async () => {
         try {
-          const fresh = await completeDerivLogin(search);
-          const byId = new Map(tks.map((t) => [t.loginid, t]));
-          for (const f of fresh) byId.set(f.loginid, f);
-          const merged = [...byId.values()];
-          saveDerivTokens(merged);
-          setTokens(merged);
-          await refresh(merged);
+          const accessToken = await completeDerivLogin(search);
+          saveDerivAccess(accessToken);
+          clearDerivTokens(); // OAuth supersedes any pasted token
+          const s: Session = { kind: "oauth", accessToken };
+          setSession(s);
+          await refresh(s);
         } catch (e) {
           setError(e instanceof Error ? e.message : "Deriv connection failed.");
           setLoading(false);
@@ -98,20 +108,24 @@ export function CommandCenter() {
       return;
     }
 
-    // Legacy flat return (?acct1&token1&cur1) — kept for the paste path / old apps.
+    // Classic flat return (?acct1&token1&cur1) — numeric-app_id flow / paste apps.
     if (isDerivRedirect(search)) {
       const fresh = parseDerivRedirect(search);
-      if (fresh.length) {
-        const byId = new Map(tks.map((t) => [t.loginid, t]));
-        for (const f of fresh) byId.set(f.loginid, f);
-        tks = [...byId.values()];
-        saveDerivTokens(tks);
-      }
       window.history.replaceState({}, "", "/trading/command");
+      if (fresh.length) {
+        saveDerivTokens(fresh);
+        clearDerivAccess();
+        const s: Session = { kind: "token", tokens: fresh };
+        setSession(s);
+        void refresh(s);
+        return;
+      }
     }
-    setTokens(tks);
-    showSnapshot(); // show the cached snapshot instantly, then refresh live
-    void refresh(tks);
+
+    const s = restore();
+    setSession(s);
+    showSnapshot(s); // show the cached snapshot instantly, then refresh live
+    void refresh(s);
   }, [refresh]);
 
   const connectDeriv = () => {
@@ -125,21 +139,24 @@ export function CommandCenter() {
     if (t.length < 8) { setError("That doesn't look like a Deriv API token."); return; }
     const tks: DerivToken[] = [{ loginid: "manual", token: t, currency: "" }];
     saveDerivTokens(tks);
-    setTokens(tks);
+    clearDerivAccess();
+    const s: Session = { kind: "token", tokens: tks };
+    setSession(s);
     setPasteOpen(false);
     setPasteVal("");
-    await refresh(tks);
+    await refresh(s);
   };
 
   const disconnect = () => {
     clearDerivTokens();
+    clearDerivAccess();
     try { localStorage.removeItem(SNAP_KEY); } catch { /* ignore */ }
-    setTokens([]);
+    setSession(null);
     setPortfolio(null);
     setError(null);
   };
 
-  const connected = tokens.length > 0;
+  const connected = session != null;
   const accounts: ConnectedAccount[] = portfolio?.accounts ?? [];
 
   return (
@@ -155,7 +172,7 @@ export function CommandCenter() {
           <span className="h-4 w-px" style={{ background: TC.line }} />
           <span className="text-[14px] font-bold tracking-[0.16em]">CENTRAL COMMAND</span>
           {connected && (
-            <button onClick={() => void refresh(tokens)} disabled={loading} className="ml-auto inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12.5px] font-medium transition hover:bg-white/5 disabled:opacity-50" style={{ borderColor: TC.line, color: TC.muted }}>
+            <button onClick={() => void refresh(session)} disabled={loading} className="ml-auto inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12.5px] font-medium transition hover:bg-white/5 disabled:opacity-50" style={{ borderColor: TC.line, color: TC.muted }}>
               {loading ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />} Refresh
             </button>
           )}
