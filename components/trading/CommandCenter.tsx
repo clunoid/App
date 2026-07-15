@@ -15,7 +15,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Wallet, Plug, RefreshCw, Loader2, LogOut, ArrowUpRight, KeyRound, ShieldCheck, Building2 } from "lucide-react";
+import { ArrowLeft, Wallet, Plug, RefreshCw, Loader2, LogOut, KeyRound, ShieldCheck, Building2, Bot, LineChart } from "lucide-react";
 import { TC, DOT_GRID, monoFont, fmtBalance } from "@/lib/trading/theme";
 import type { ConnectedAccount } from "@/lib/trading/accounts";
 import { hasDerivApp } from "@/lib/deriv/config";
@@ -28,12 +28,43 @@ type Session = { kind: "oauth"; accessToken: string } | { kind: "token"; tokens:
 
 const SNAP_KEY = "clunoid_deriv_portfolio"; // cached snapshot for instant reconnect-free display
 
+/** The Deriv Trader's Hub section an account belongs to. */
+const sectionOf = (a: ConnectedAccount): "Trading" | "Wallet" =>
+  a.kind === "wallet" ? "Wallet" : "Trading";
+
+/** Sum balances, grouped by currency; returns the largest currency bucket as the
+ *  headline (Deriv doesn't return a single converted grand total across accounts). */
+function sumBalance(accts: ConnectedAccount[]): { amount: number | null; currency: string } {
+  const byCur = new Map<string, number>();
+  for (const a of accts) if (a.balance != null) byCur.set(a.currency, (byCur.get(a.currency) ?? 0) + a.balance);
+  let cur = "", best = -Infinity;
+  for (const [c, v] of byCur) if (v > best) { best = v; cur = c; }
+  return byCur.size ? { amount: byCur.get(cur) ?? 0, currency: cur } : { amount: null, currency: "" };
+}
+
 /** An official brand logo (served same-origin), with a text fallback. */
 function BrandLogo({ src, alt, size = 26 }: { src?: string; alt: string; size?: number }) {
   const [ok, setOk] = useState(true);
   if (!src || !ok) return <span className="grid shrink-0 place-items-center rounded-lg" style={{ width: size + 8, height: size + 8, background: "rgba(56,189,248,0.12)" }}><Building2 size={size - 6} style={{ color: TC.profit }} /></span>;
   // eslint-disable-next-line @next/next/no-img-element
   return <span className="grid shrink-0 place-items-center rounded-lg bg-white/95" style={{ width: size + 8, height: size + 8 }}><img src={src} alt={alt} width={size} height={size} onError={() => setOk(false)} style={{ width: size, height: size, objectFit: "contain" }} /></span>;
+}
+
+/** One account tile: broker · product, id, real/demo badge, and balance. */
+function AccountCard({ a }: { a: ConnectedAccount }) {
+  return (
+    <div className="rounded-2xl border p-4" style={{ borderColor: TC.line, background: TC.panel }}>
+      <div className="flex items-center gap-2.5">
+        <BrandLogo src="/logos/deriv.png" alt="Deriv" size={22} />
+        <div className="min-w-0 flex-1">
+          <div className="text-[13px] font-semibold">{a.broker} · {a.platform}</div>
+          <div className="truncate text-[11px]" style={{ ...monoFont, color: TC.faint }}>{a.loginid}</div>
+        </div>
+        <span className="rounded-full px-2 py-0.5 text-[9.5px] font-semibold uppercase tracking-wider" style={{ background: a.isVirtual ? "rgba(148,168,189,0.14)" : "rgba(56,189,248,0.16)", color: a.isVirtual ? TC.faint : TC.profit }}>{a.isVirtual ? "Demo" : "Real"}</span>
+      </div>
+      <div className="mt-3 text-[22px] font-bold leading-none" style={{ ...monoFont, color: a.kind === "wallet" ? TC.text : TC.profit }}>{fmtBalance(a.balance, a.currency)}</div>
+    </div>
+  );
 }
 
 export function CommandCenter() {
@@ -158,6 +189,13 @@ export function CommandCenter() {
 
   const connected = session != null;
   const accounts: ConnectedAccount[] = portfolio?.accounts ?? [];
+  const realAccounts = accounts.filter((a) => !a.isVirtual);
+  const demoAccounts = accounts.filter((a) => a.isVirtual);
+  // Real balance per Deriv Hub section (only sections that actually hold accounts).
+  const sections = (["Trading", "Wallet"] as const)
+    .map((name) => ({ name, ...sumBalance(realAccounts.filter((a) => sectionOf(a) === name)) }))
+    .filter((s) => s.amount != null);
+  const demoTotal = sumBalance(demoAccounts);
 
   return (
     <main className="relative min-h-[100dvh] w-full overflow-x-hidden" style={{ background: TC.bg, color: TC.text }}>
@@ -206,43 +244,57 @@ export function CommandCenter() {
               </div>
             ) : (
               <>
-                {/* total balance banner */}
+                {/* Total balance — REAL only (demo excluded), demo shown separately */}
                 <div className="mb-3 flex flex-wrap items-end justify-between gap-3 rounded-2xl border p-4 sm:p-5" style={{ borderColor: TC.line, background: "linear-gradient(180deg, rgba(56,189,248,0.08), rgba(255,255,255,0.015))" }}>
                   <div>
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: TC.faint }}>Total balance</div>
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: TC.faint }}>Total balance <span className="normal-case tracking-normal opacity-70">· real, excludes demo</span></div>
                     <div className="mt-1 text-[30px] font-bold leading-none sm:text-[34px]" style={{ ...monoFont, color: TC.profit }}>{fmtBalance(portfolio?.totalReal ?? null, portfolio?.totalCurrency || "")}</div>
                   </div>
-                  {portfolio?.totalDemo != null && portfolio.totalDemo > 0 && (
+                  {demoTotal.amount != null && demoTotal.amount > 0 && (
                     <div className="text-right">
-                      <div className="text-[10.5px] font-semibold uppercase tracking-[0.14em]" style={{ color: TC.faint }}>Demo</div>
-                      <div className="mt-0.5 text-[15px] font-semibold" style={{ ...monoFont, color: TC.muted }}>{fmtBalance(portfolio.totalDemo, portfolio.totalCurrency || "")}</div>
+                      <div className="text-[10.5px] font-semibold uppercase tracking-[0.14em]" style={{ color: TC.faint }}>Demo (not counted)</div>
+                      <div className="mt-0.5 text-[15px] font-semibold" style={{ ...monoFont, color: TC.muted }}>{fmtBalance(demoTotal.amount, demoTotal.currency)}</div>
                     </div>
                   )}
                 </div>
 
-                {/* every account */}
-                <div className="grid gap-3 sm:grid-cols-2">
-                  {accounts.map((a, i) => (
-                    <div key={`${a.loginid}-${i}`} className="rounded-2xl border p-4" style={{ borderColor: TC.line, background: TC.panel }}>
-                      <div className="flex items-center gap-2.5">
-                        <BrandLogo src="/logos/deriv.png" alt="Deriv" size={22} />
-                        <div className="min-w-0 flex-1">
-                          <div className="text-[13px] font-semibold">{a.broker} · {a.platform}</div>
-                          <div className="truncate text-[11px]" style={{ ...monoFont, color: TC.faint }}>{a.loginid}</div>
-                        </div>
-                        <span className="rounded-full px-2 py-0.5 text-[9.5px] font-semibold uppercase tracking-wider" style={{ background: a.isVirtual ? "rgba(148,168,189,0.14)" : "rgba(56,189,248,0.16)", color: a.isVirtual ? TC.faint : TC.profit }}>{a.isVirtual ? "Demo" : "Real"}</span>
+                {/* Balance by Deriv section (real) */}
+                {sections.length > 0 && (
+                  <div className="mb-4 grid gap-2.5 sm:grid-cols-2">
+                    {sections.map((s) => (
+                      <div key={s.name} className="flex items-center justify-between rounded-xl border px-3.5 py-3" style={{ borderColor: TC.line, background: TC.panel }}>
+                        <span className="text-[12px] font-semibold" style={{ color: TC.muted }}>{s.name}</span>
+                        <span className="text-[15px] font-bold" style={{ ...monoFont, color: TC.text }}>{fmtBalance(s.amount, s.currency)}</span>
                       </div>
-                      <div className="mt-3 text-[22px] font-bold leading-none" style={{ ...monoFont, color: a.kind === "wallet" ? TC.text : TC.profit }}>{fmtBalance(a.balance, a.currency)}</div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Real accounts */}
+                {realAccounts.length > 0 && (
+                  <>
+                    <h3 className="mb-2 text-[10.5px] font-semibold uppercase tracking-[0.16em]" style={{ color: TC.faint }}>Real accounts · {realAccounts.length}</h3>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      {realAccounts.map((a, i) => <AccountCard key={`r-${a.loginid}-${i}`} a={a} />)}
                     </div>
-                  ))}
-                </div>
+                  </>
+                )}
+
+                {/* Demo accounts — clearly separated */}
+                {demoAccounts.length > 0 && (
+                  <>
+                    <h3 className="mb-2 mt-5 text-[10.5px] font-semibold uppercase tracking-[0.16em]" style={{ color: TC.faint }}>Demo accounts · {demoAccounts.length}</h3>
+                    <div className="grid gap-3 opacity-90 sm:grid-cols-2">
+                      {demoAccounts.map((a, i) => <AccountCard key={`d-${a.loginid}-${i}`} a={a} />)}
+                    </div>
+                  </>
+                )}
               </>
             )}
 
             {connected && (
-              <div className="mt-3 flex items-center gap-4">
-                <Link href="/trading/deriv" className="inline-flex items-center gap-1 text-[12.5px] font-medium transition hover:gap-1.5" style={{ color: TC.profitSoft }}>Open Deriv <ArrowUpRight size={13} /></Link>
-                <button onClick={disconnect} className="inline-flex items-center gap-1.5 text-[12px] transition hover:opacity-80" style={{ color: TC.faint }}><LogOut size={12} /> Disconnect</button>
+              <div className="mt-4">
+                <button onClick={disconnect} className="inline-flex items-center gap-1.5 text-[12px] transition hover:opacity-80" style={{ color: TC.faint }}><LogOut size={12} /> Disconnect Deriv</button>
               </div>
             )}
           </section>
@@ -252,26 +304,49 @@ export function CommandCenter() {
             <h2 className="mb-3 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: TC.faint }}>
               <Plug size={13} style={{ color: TC.profit }} /> Connect a platform
             </h2>
-            <div className="rounded-2xl border p-4" style={{ borderColor: TC.line, background: TC.panel }}>
+            <div className="rounded-2xl border p-4" style={{ borderColor: connected ? "rgba(52,211,153,0.35)" : TC.line, background: TC.panel }}>
               <div className="flex items-center gap-2.5">
                 <BrandLogo src="/logos/deriv.png" alt="Deriv" size={26} />
-                <div className="min-w-0">
-                  <div className="text-[13.5px] font-semibold">Deriv</div>
-                  <div className="text-[11.5px]" style={{ color: TC.faint }}>Options + MT5 · one authorisation</div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5 text-[13.5px] font-semibold">Deriv</div>
+                  <div className="flex items-center gap-1.5 text-[11.5px]" style={{ color: connected ? "#34d399" : TC.faint }}>
+                    {connected ? (
+                      <><span className="inline-block h-2 w-2 rounded-full" style={{ background: "#34d399", boxShadow: "0 0 7px #34d399" }} /> Connected</>
+                    ) : "Options + MT5 · one authorisation"}
+                  </div>
                 </div>
               </div>
-              <button onClick={connectDeriv} className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-[13.5px] font-semibold transition hover:opacity-90" style={{ background: TC.profit, color: TC.ink }}>
-                <Plug size={15} /> Connect Deriv
-              </button>
-              <button onClick={() => setPasteOpen((v) => !v)} className="mt-2 flex w-full items-center justify-center gap-1.5 text-[12px] transition hover:opacity-80" style={{ color: TC.muted }}>
-                <KeyRound size={12} /> or paste a Deriv API token
-              </button>
-              {pasteOpen && (
-                <div className="mt-2 space-y-2">
-                  <input value={pasteVal} onChange={(e) => setPasteVal(e.target.value)} placeholder="Deriv API token" className="w-full rounded-lg border bg-transparent px-3 py-2 text-[13px] outline-none focus:border-white/25" style={{ borderColor: TC.line, color: TC.text }} />
-                  <button onClick={() => void connectWithToken()} className="w-full rounded-lg border px-3 py-2 text-[12.5px] font-medium transition hover:bg-white/5" style={{ borderColor: TC.line, color: TC.text }}>Connect with token</button>
-                  <p className="text-[11px] leading-relaxed" style={{ color: TC.faint }}>Create a token in your Deriv account (Settings → API token) with the <b>Read</b> scope.</p>
+
+              {connected ? (
+                /* Automation entry points once an account is linked. */
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <Link href="/trading/deriv?bots=options" className="flex flex-col items-start gap-1 rounded-xl px-3 py-2.5 transition hover:opacity-90" style={{ background: TC.profit, color: TC.ink }}>
+                    <Bot size={16} />
+                    <span className="text-[13px] font-bold leading-none">Options</span>
+                    <span className="text-[10px] font-semibold leading-none opacity-75">Deriv bots</span>
+                  </Link>
+                  <Link href="/trading/deriv?bots=mt5" className="flex flex-col items-start gap-1 rounded-xl border px-3 py-2.5 transition hover:bg-white/5" style={{ borderColor: TC.line, color: TC.text }}>
+                    <LineChart size={16} style={{ color: TC.profit }} />
+                    <span className="text-[13px] font-bold leading-none">MT5</span>
+                    <span className="text-[10px] font-semibold leading-none" style={{ color: TC.faint }}>MT5 bots</span>
+                  </Link>
                 </div>
+              ) : (
+                <>
+                  <button onClick={connectDeriv} className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-[13.5px] font-semibold transition hover:opacity-90" style={{ background: TC.profit, color: TC.ink }}>
+                    <Plug size={15} /> Connect Deriv
+                  </button>
+                  <button onClick={() => setPasteOpen((v) => !v)} className="mt-2 flex w-full items-center justify-center gap-1.5 text-[12px] transition hover:opacity-80" style={{ color: TC.muted }}>
+                    <KeyRound size={12} /> or paste a Deriv API token
+                  </button>
+                  {pasteOpen && (
+                    <div className="mt-2 space-y-2">
+                      <input value={pasteVal} onChange={(e) => setPasteVal(e.target.value)} placeholder="Deriv API token" className="w-full rounded-lg border bg-transparent px-3 py-2 text-[13px] outline-none focus:border-white/25" style={{ borderColor: TC.line, color: TC.text }} />
+                      <button onClick={() => void connectWithToken()} className="w-full rounded-lg border px-3 py-2 text-[12.5px] font-medium transition hover:bg-white/5" style={{ borderColor: TC.line, color: TC.text }}>Connect with token</button>
+                      <p className="text-[11px] leading-relaxed" style={{ color: TC.faint }}>Create a token in your Deriv account (Settings → API token) with the <b>Read</b> scope.</p>
+                    </div>
+                  )}
+                </>
               )}
             </div>
 

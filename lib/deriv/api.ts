@@ -52,8 +52,10 @@ type WalletAcct = {
   total_balance?: { converted_to?: string; approximate_total_balance?: string };
 };
 
+// Deriv demo/virtual accounts: options report account_type "demo"; ids are VR*
+// (VRTC options, VRW wallet). Real ids are CR/MF/… and account_type "real".
 const isDemo = (...s: (string | undefined)[]) =>
-  s.some((v) => v && /demo|virtual|vrt/i.test(v));
+  s.some((v) => v && (/demo|virtual/i.test(v) || /^vr/i.test(v)));
 
 const numOr = (v: unknown): number | null =>
   typeof v === "number" ? v : typeof v === "string" && v.trim() !== "" && !isNaN(Number(v)) ? Number(v) : null;
