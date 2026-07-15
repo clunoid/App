@@ -146,6 +146,10 @@ export async function startDerivLogin(): Promise<void> {
     code_challenge: challenge,
     code_challenge_method: "S256",
     brand: "deriv",
+    // Always show Deriv's consent screen so the user explicitly grants access and
+    // the minted tokens carry the app's scopes (a silently-remembered grant can
+    // otherwise skip it).
+    prompt: "consent",
   });
   window.location.href = `${DERIV_AUTH_BASE}/oauth2/auth?${q.toString()}`;
 }
