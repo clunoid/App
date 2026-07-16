@@ -48,7 +48,7 @@ export const PLATFORMS: TradingPlatform[] = [
     broker: "Deriv",
     platform: "MT5",
     label: "Deriv · MT5",
-    status: "soon",
+    status: "beta",
     execution: "terminal-ea",
     markets: ["synthetics", "forex", "indices", "commodities", "crypto"],
     note: "Automated via an Expert Advisor in your own MT5 terminal — you keep custody of your account.",

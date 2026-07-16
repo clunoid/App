@@ -330,7 +330,7 @@ export function CommandCenter() {
                     <span className="text-[13px] font-bold leading-none">Options</span>
                     <span className="text-[10px] font-semibold leading-none opacity-75">Deriv bots</span>
                   </Link>
-                  <Link href="/trading/deriv?bots=mt5" className="flex flex-col items-start gap-1 rounded-xl border px-3 py-2.5 transition hover:bg-white/5" style={{ borderColor: TC.line, color: TC.text }}>
+                  <Link href="/trading/deriv/mt5" className="flex flex-col items-start gap-1 rounded-xl border px-3 py-2.5 transition hover:bg-white/5" style={{ borderColor: TC.line, color: TC.text }}>
                     <LineChart size={16} style={{ color: TC.profit }} />
                     <span className="text-[13px] font-bold leading-none">MT5</span>
                     <span className="text-[10px] font-semibold leading-none" style={{ color: TC.faint }}>MT5 bots</span>

@@ -36,6 +36,7 @@
     "three": "^0.172.0",
     "tiktok-live-api-sdk": "^0.5.1",
     "web-push": "^3.6.7",
+    "ws": "^8.21.1",
     "zod": "^3.24.1",
     "zustand": "^5.0.2"
   },
@@ -43,6 +44,7 @@
     "@types/node": "^22.10.2",
     "@types/react": "^19.0.2",
     "@types/react-dom": "^19.0.2",
+    "@types/ws": "^8.18.1",
     "autoprefixer": "^10.4.20",
     "eslint": "^9.17.0",
     "eslint-config-next": "^15.1.3",

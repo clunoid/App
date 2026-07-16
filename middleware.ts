@@ -52,5 +52,5 @@ export function middleware(req: NextRequest) {
 
 export const config = {
   // Run on page routes only — never on API, auth, Next internals, or static files.
-  matcher: ["/((?!api|auth|_next/static|_next/image|favicon.ico|icon.svg|robots.txt|sitemap.xml|opengraph-image|og|.*\\.(?:png|jpg|jpeg|gif|svg|webp|ico|txt|xml|json|webmanifest)).*)"],
+  matcher: ["/((?!api|auth|_next/static|_next/image|favicon.ico|icon.svg|robots.txt|sitemap.xml|opengraph-image|og|.*\\.(?:png|jpg|jpeg|gif|svg|webp|ico|txt|xml|json|webmanifest|mq5|ex5)).*)"],
 };
