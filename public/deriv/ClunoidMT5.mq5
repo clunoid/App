@@ -17,7 +17,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Clunoid"
 #property link      "https://www.clunoid.com"
-#property version   "2.10"
+#property version   "2.11"
 #property strict
 
 #include <Trade/Trade.mqh>
@@ -80,6 +80,25 @@ int OnInit()
 
 void OnDeinit(const int reason) { EventKillTimer(); }
 void OnTimer() { Poll(); }
+
+//+------------------------------------------------------------------+
+//| Strategy-Tester optimization criterion (for "Custom max").       |
+//|                                                                   |
+//| IMPORTANT: this EA trades a LIVE cloud signal feed over           |
+//| WebRequest, and MQL5 DISABLES WebRequest inside the Strategy      |
+//| Tester — so a backtest/optimization gets NO signals and places    |
+//| no trades. Test it by attaching it to a chart on a DEMO account   |
+//| in REAL TIME (not the tester). This function only exists so the   |
+//| tester's "Custom max" mode doesn't error out.                     |
+//+------------------------------------------------------------------+
+double OnTester()
+  {
+   double profit = TesterStatistics(STAT_PROFIT);
+   double ddPct  = TesterStatistics(STAT_EQUITY_DDREL_PERCENT);
+   double trades = TesterStatistics(STAT_TRADES);
+   if(trades < 1) return 0.0;
+   return profit / (1.0 + ddPct);   // reward profit, penalise drawdown
+  }
 
 // Stamp the re-entry cooldown when a Clunoid position CLOSES (not at entry).
 void OnTradeTransaction(const MqlTradeTransaction &trans, const MqlTradeRequest &req, const MqlTradeResult &res)
