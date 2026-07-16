@@ -59,10 +59,15 @@ int OnInit()
   {
    g_trade.SetExpertMagicNumber(InpMagic);
    g_trade.SetDeviationInPoints(20);
-   // Persist the daily-loss baseline so a mid-day reinit/restart doesn't re-anchor it.
+   // Restore last-known risk caps (account-scoped) so a header-less first poll
+   // still has limits; a fresh account with none blocks entries until caps arrive.
+   g_maxOpenRisk = GVget("cl_capmax"+AcctSuffix(), 0);
+   g_corrCap     = GVget("cl_capcorr"+AcctSuffix(), 0);
+   // Persist the daily-loss baseline PER ACCOUNT so a mid-day reinit/restart (or a
+   // demo<->real account switch in the same terminal) doesn't re-anchor it.
    int today = DayOfYearNow();
-   if(GlobalVariableCheck("cl_daykey") && (int)GVget("cl_daykey",0)==today)
-      g_dayStartEquity = GVget("cl_dayeq", AccountInfoDouble(ACCOUNT_EQUITY));
+   if(GlobalVariableCheck("cl_daykey"+AcctSuffix()) && (int)GVget("cl_daykey"+AcctSuffix(),0)==today)
+      g_dayStartEquity = GVget("cl_dayeq"+AcctSuffix(), AccountInfoDouble(ACCOUNT_EQUITY));
    else
       SetDayBaseline(today);
    g_dayStart = today;
@@ -97,8 +102,12 @@ int DayOfYearNow() { MqlDateTime t; TimeToStruct(TimeCurrent(), t); return t.day
 
 double GVget(string k, double def) { return GlobalVariableCheck(k) ? GlobalVariableGet(k) : def; }
 void   GVset(string k, double v)   { GlobalVariableSet(k, v); }
+// MT5 GlobalVariables are terminal-wide (shared across accounts); scope the
+// per-account state (daily baseline, cached caps) by login so a demo<->real
+// switch can't restore a foreign anchor.
+string AcctSuffix() { return "_"+(string)AccountInfoInteger(ACCOUNT_LOGIN); }
 void   SetDayBaseline(int day)
-  { g_dayStartEquity=AccountInfoDouble(ACCOUNT_EQUITY); GVset("cl_daykey",day); GVset("cl_dayeq",g_dayStartEquity); }
+  { g_dayStartEquity=AccountInfoDouble(ACCOUNT_EQUITY); GVset("cl_daykey"+AcctSuffix(),day); GVset("cl_dayeq"+AcctSuffix(),g_dayStartEquity); }
 
 // Numeric id for a correlation cluster string (for per-cluster risk summing via GVs).
 double ClusterId(string s)
@@ -144,8 +153,9 @@ void Poll()
    if(!dailyHalt) for(int i=0;i<nSigs;i++) OpenBase(sigs[i]);
    CleanupPlans();                             // drop plans for closed tickets
 
-   Comment(StringFormat("Clunoid MT5 v2.1 · %s · %d signals · %s%s",
-           ProfileStr(), nSigs, TimeToString(TimeCurrent(), TIME_SECONDS), dailyHalt?" · DAILY LOSS HALT":""));
+   string capFlag = (g_maxOpenRisk<=0) ? " · CAPS PENDING (entries blocked)" : "";
+   Comment(StringFormat("Clunoid MT5 v2.1 · %s · %d signals · %s%s%s",
+           ProfileStr(), nSigs, TimeToString(TimeCurrent(), TIME_SECONDS), dailyHalt?" · DAILY LOSS HALT":"", capFlag));
   }
 
 //+------------------------------------------------------------------+
@@ -153,11 +163,12 @@ void Poll()
 //+------------------------------------------------------------------+
 void ParseCaps(string line)
   {
-   // "# caps: maxOpenRisk=5 corrCap=2"
+   // "# caps: maxOpenRisk=5 corrCap=2" — only accept positive values, and cache
+   // the last-known-good (account-scoped) so a later header-less feed keeps limits.
    int p = StringFind(line, "maxOpenRisk=");
-   if(p>=0) g_maxOpenRisk = StringToDouble(StringSubstr(line, p+12));
+   if(p>=0) { double v=StringToDouble(StringSubstr(line, p+12)); if(v>0) { g_maxOpenRisk=v; GVset("cl_capmax"+AcctSuffix(), v); } }
    int q = StringFind(line, "corrCap=");
-   if(q>=0) g_corrCap = StringToDouble(StringSubstr(line, q+8));
+   if(q>=0) { double v=StringToDouble(StringSubstr(line, q+8)); if(v>0) { g_corrCap=v; GVset("cl_capcorr"+AcctSuffix(), v); } }
   }
 
 bool ParseLine(string line, Sig &s)
@@ -286,7 +297,7 @@ void BindPlan(Sig &s, double lots, double riskPct)
 // Total + per-cluster open-risk cap, enforced against the live book (incl. adds).
 bool OpenRiskOk(string cluster, double newRisk)
   {
-   if(g_maxOpenRisk<=0) return true;   // caps not received → don't block
+   if(g_maxOpenRisk<=0) return false;  // caps unknown → FAIL CLOSED (block new entries)
    double cid=ClusterId(cluster);
    double total=0, clus=0;
    for(int i=PositionsTotal()-1;i>=0;i--)
@@ -370,7 +381,9 @@ void FirePartials(ulong tk)
 
       double vol = ov*pc/100.0;
       if(vstep>0) vol = MathFloor(vol/vstep)*vstep;
-      if(vol>=vmin && (remaining-vol)>=vmin)               // keep at least a min-lot runner
+      double keep = remaining - vol;                       // runner left after this close
+      if(vstep>0) keep = MathRound(keep/vstep)*vstep;      // kill float error (0.03-0.02!=0.01)
+      if(vol>=vmin && keep>=vmin)                          // keep at least a min-lot runner
         {
          if(g_trade.PositionClosePartial(tk, vol)) { remaining-=vol; GVset("cl_pf_"+(string)tk, i+1); }
          else break;                                       // broker rejection → retry next poll
@@ -423,7 +436,9 @@ void AttachMissingPlans(Sig &sigs[], int n)
       if(GlobalVariableCheck("cl_trail_"+(string)tk)) continue;
       string sym=PositionGetString(POSITION_SYMBOL);
       long type=PositionGetInteger(POSITION_TYPE);
-      double vol=PositionGetDouble(POSITION_VOLUME);
+      long posId=PositionGetInteger(POSITION_IDENTIFIER);
+      double vol=OpeningVolume(posId);                     // true opening size, not the reduced current
+      if(vol<=0) vol=PositionGetDouble(POSITION_VOLUME);
       for(int k=0;k<n;k++)
         {
          if(sigs[k].sym+InpSymbolSuffix != sym) continue;
@@ -432,6 +447,20 @@ void AttachMissingPlans(Sig &sigs[], int n)
          break;
         }
      }
+  }
+
+// The original opening volume of a position (from its DEAL_ENTRY_IN deal), so a
+// recovered plan sizes partials off the true size even after a partial fired.
+double OpeningVolume(long posId)
+  {
+   if(!HistorySelectByPosition(posId)) return 0;
+   for(int i=0;i<HistoryDealsTotal();i++)
+     {
+      ulong d=HistoryDealGetTicket(i);
+      if(d==0) continue;
+      if(HistoryDealGetInteger(d,DEAL_ENTRY)==DEAL_ENTRY_IN) return HistoryDealGetDouble(d,DEAL_VOLUME);
+     }
+   return 0;
   }
 
 //+------------------------------------------------------------------+
