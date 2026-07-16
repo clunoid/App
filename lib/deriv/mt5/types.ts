@@ -70,6 +70,7 @@ export type Signal = {
   ws: string; // WS symbol the signal was computed from
   name: string;
   category: MarketCategory;
+  corr: string; // correlation cluster (EA caps aggregate exposure per cluster)
   side: Side;
   regime: Regime;
   confidence: number; // 0..100

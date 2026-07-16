@@ -7,9 +7,9 @@
 //|   Clunoid never sees a password. Put it on a VPS (Deriv/MT5       |
 //|   Virtual Hosting) to trade 24/7 with your PC off.                |
 //|                                                                   |
-//|   It opens trades, sets stop-loss & take-profit, TRAILS the stop, |
-//|   banks PARTIAL profits, and PYRAMIDS into strong trends — all    |
-//|   from the cloud signal, sized to your balance.                   |
+//|   Opens trades, sets stop-loss & take-profit, TRAILS the stop,    |
+//|   banks PARTIAL profits, PYRAMIDS into strong trends, and caps     |
+//|   total + per-correlation open risk — all sized to your balance.  |
 //|                                                                   |
 //|   One-time setup: Tools > Options > Expert Advisors >             |
 //|     tick "Allow WebRequest for listed URL" and add:               |
@@ -17,7 +17,7 @@
 //+------------------------------------------------------------------+
 #property copyright "Clunoid"
 #property link      "https://www.clunoid.com"
-#property version   "2.00"
+#property version   "2.10"
 #property strict
 
 #include <Trade/Trade.mqh>
@@ -41,7 +41,7 @@ input bool        InpTradingEnabled = true;       // Master on/off switch
 // One parsed signal line from the feed.
 struct Sig
   {
-   string sym, side;
+   string sym, side, clu;
    double entry, sl, tp, risk, trail;
    int    nP; double pPrice[8]; double pPct[8];
    int    nA; double aPrice[8]; double aPct[8];
@@ -51,22 +51,40 @@ string  g_base = "https://www.clunoid.com/api/deriv/mt5/signals";
 CTrade  g_trade;
 double  g_dayStartEquity = 0.0;
 int     g_dayStart = 0;
+double  g_maxOpenRisk = 0.0;   // from the feed "# caps:" header
+double  g_corrCap     = 0.0;
 
 //+------------------------------------------------------------------+
 int OnInit()
   {
    g_trade.SetExpertMagicNumber(InpMagic);
    g_trade.SetDeviationInPoints(20);
-   g_dayStartEquity = AccountInfoDouble(ACCOUNT_EQUITY);
-   g_dayStart = DayOfYearNow();
+   // Persist the daily-loss baseline so a mid-day reinit/restart doesn't re-anchor it.
+   int today = DayOfYearNow();
+   if(GlobalVariableCheck("cl_daykey") && (int)GVget("cl_daykey",0)==today)
+      g_dayStartEquity = GVget("cl_dayeq", AccountInfoDouble(ACCOUNT_EQUITY));
+   else
+      SetDayBaseline(today);
+   g_dayStart = today;
+
    EventSetTimer(MathMax(5, InpPollSeconds));
-   PrintFormat("Clunoid MT5 EA v2 started — profile=%s. Ensure https://www.clunoid.com is whitelisted in WebRequest.", ProfileStr());
+   PrintFormat("Clunoid MT5 EA v2.1 started — profile=%s. Ensure https://www.clunoid.com is whitelisted in WebRequest.", ProfileStr());
    Poll();
    return(INIT_SUCCEEDED);
   }
 
 void OnDeinit(const int reason) { EventKillTimer(); }
 void OnTimer() { Poll(); }
+
+// Stamp the re-entry cooldown when a Clunoid position CLOSES (not at entry).
+void OnTradeTransaction(const MqlTradeTransaction &trans, const MqlTradeRequest &req, const MqlTradeResult &res)
+  {
+   if(trans.type!=TRADE_TRANSACTION_DEAL_ADD) return;
+   if(trans.deal==0 || !HistoryDealSelect(trans.deal)) return;
+   if(HistoryDealGetInteger(trans.deal, DEAL_MAGIC)!=InpMagic) return;
+   if(HistoryDealGetInteger(trans.deal, DEAL_ENTRY)!=DEAL_ENTRY_OUT) return;
+   StampCooldown(HistoryDealGetString(trans.deal, DEAL_SYMBOL));
+  }
 
 //+------------------------------------------------------------------+
 string ProfileStr()
@@ -79,21 +97,27 @@ int DayOfYearNow() { MqlDateTime t; TimeToStruct(TimeCurrent(), t); return t.day
 
 double GVget(string k, double def) { return GlobalVariableCheck(k) ? GlobalVariableGet(k) : def; }
 void   GVset(string k, double v)   { GlobalVariableSet(k, v); }
+void   SetDayBaseline(int day)
+  { g_dayStartEquity=AccountInfoDouble(ACCOUNT_EQUITY); GVset("cl_daykey",day); GVset("cl_dayeq",g_dayStartEquity); }
+
+// Numeric id for a correlation cluster string (for per-cluster risk summing via GVs).
+double ClusterId(string s)
+  { long h=0; for(int i=0;i<StringLen(s);i++) h=h*31+(long)StringGetCharacter(s,i); return (double)h; }
 
 //+------------------------------------------------------------------+
-//| Main loop: manage open positions, then open new signals          |
+//| Main loop                                                        |
 //+------------------------------------------------------------------+
 void Poll()
   {
    if(!InpTradingEnabled) return;
 
-   if(DayOfYearNow()!=g_dayStart) { g_dayStart=DayOfYearNow(); g_dayStartEquity=AccountInfoDouble(ACCOUNT_EQUITY); }
+   if(DayOfYearNow()!=g_dayStart) { g_dayStart=DayOfYearNow(); SetDayBaseline(g_dayStart); }
 
    bool dailyHalt=false;
    if(InpMaxDailyLossPct>0 && g_dayStartEquity>0)
      {
       double dd=(AccountInfoDouble(ACCOUNT_EQUITY)-g_dayStartEquity)/g_dayStartEquity*100.0;
-      if(dd <= -InpMaxDailyLossPct) dailyHalt=true;   // no NEW entries; still manage open trades
+      if(dd <= -InpMaxDailyLossPct) dailyHalt=true;   // block NEW entries; still manage open trades
      }
 
    string url = StringFormat("%s?profile=%s&category=%s&format=csv", g_base, ProfileStr(), InpCategory);
@@ -107,28 +131,35 @@ void Poll()
       for(int i=0;i<n;i++)
         {
          string ln=lines[i]; StringTrimLeft(ln); StringTrimRight(ln);
-         if(StringLen(ln)==0 || StringGetCharacter(ln,0)=='#') continue;
+         if(StringLen(ln)==0) continue;
+         if(StringGetCharacter(ln,0)=='#') { ParseCaps(ln); continue; }
          if(ParseLine(ln, sigs[nSigs])) nSigs++;
         }
       ArrayResize(sigs, nSigs);
      }
 
-   // 1) manage every open Clunoid position (trail + partials) — always, even on halt
-   ManagePositions();
-   // 2) pyramid into live signals (hedging accounts only)
-   if(!dailyHalt) DoPyramiding(sigs, nSigs);
-   // 3) open fresh base entries
+   AttachMissingPlans(sigs, nSigs);            // heal any position that missed its plan
+   ManagePositions();                          // trail + partials (always)
+   if(!dailyHalt) DoPyramiding(sigs, nSigs);   // add to winners (hedging only)
    if(!dailyHalt) for(int i=0;i<nSigs;i++) OpenBase(sigs[i]);
-   // 4) clear stored plans for closed positions
-   CleanupPlans();
+   CleanupPlans();                             // drop plans for closed tickets
 
-   Comment(StringFormat("Clunoid MT5 v2 · %s · %d signals · %s%s",
+   Comment(StringFormat("Clunoid MT5 v2.1 · %s · %d signals · %s%s",
            ProfileStr(), nSigs, TimeToString(TimeCurrent(), TIME_SECONDS), dailyHalt?" · DAILY LOSS HALT":""));
   }
 
 //+------------------------------------------------------------------+
-//| Parse one CSV line into a Sig                                    |
+//| Parsing                                                          |
 //+------------------------------------------------------------------+
+void ParseCaps(string line)
+  {
+   // "# caps: maxOpenRisk=5 corrCap=2"
+   int p = StringFind(line, "maxOpenRisk=");
+   if(p>=0) g_maxOpenRisk = StringToDouble(StringSubstr(line, p+12));
+   int q = StringFind(line, "corrCap=");
+   if(q>=0) g_corrCap = StringToDouble(StringSubstr(line, q+8));
+  }
+
 bool ParseLine(string line, Sig &s)
   {
    string f[];
@@ -137,9 +168,10 @@ bool ParseLine(string line, Sig &s)
    s.entry=StringToDouble(f[2]); s.sl=StringToDouble(f[3]); s.tp=StringToDouble(f[4]);
    s.risk=StringToDouble(f[5]);
    s.trail = (ArraySize(f)>8) ? StringToDouble(f[8]) : 0;
-   s.nP=0; s.nA=0;
+   s.nP=0; s.nA=0; s.clu="";
    if(ArraySize(f)>9  && f[9]!="-"  && f[9]!="")  ParsePairs(f[9],  s.pPrice, s.pPct, s.nP);
    if(ArraySize(f)>10 && f[10]!="-" && f[10]!="") ParsePairs(f[10], s.aPrice, s.aPct, s.nA);
+   if(ArraySize(f)>11) s.clu=f[11];
    return true;
   }
 
@@ -155,7 +187,7 @@ void ParsePairs(string field, double &price[], double &val[], int &cnt)
   }
 
 //+------------------------------------------------------------------+
-//| Open the base position for a fresh signal                        |
+//| Entries                                                          |
 //+------------------------------------------------------------------+
 void OpenBase(Sig &s)
   {
@@ -163,6 +195,7 @@ void OpenBase(Sig &s)
    if(!SymbolSelect(sym, true)) return;
    if(HasOpenPosition(sym)) return;
    if(OnCooldown(sym)) return;
+   if(!OpenRiskOk(s.clu, s.risk)) return;
 
    double ask=SymbolInfoDouble(sym,SYMBOL_ASK), bid=SymbolInfoDouble(sym,SYMBOL_BID);
    if(ask<=0 || bid<=0) return;
@@ -173,10 +206,8 @@ void OpenBase(Sig &s)
    double price = buy ? ask : bid;
    if(buy  && !(s.sl<price && s.tp>price)) return;
    if(!buy && !(s.sl>price && s.tp<price)) return;
-
    double stopsLvl=(double)SymbolInfoInteger(sym,SYMBOL_TRADE_STOPS_LEVEL)*point;
-   double minDist=MathMax(InpMinStopPoints*point, stopsLvl);
-   if(MathAbs(price-s.sl) < minDist) return;
+   if(MathAbs(price-s.sl) < MathMax(InpMinStopPoints*point, stopsLvl)) return;
 
    double lots=LotsForRisk(sym, price, s.sl, s.risk);
    if(lots<=0) return;
@@ -186,20 +217,15 @@ void OpenBase(Sig &s)
                  : g_trade.Sell(lots, sym, price, s.sl, s.tp, "clunoid");
    if(ok)
      {
-      StampEntry(sym);
       GVset("cl_add_"+sym, 0);                 // reset pyramid counter for this symbol
-      ulong tk=FindUnplannedPosition(sym);
-      if(tk>0) StorePlan(tk, s, lots);
+      BindPlan(s, lots, s.risk);
+      int d=(int)SymbolInfoInteger(sym,SYMBOL_DIGITS);
       PrintFormat("Clunoid %s %s %.2f lots @ %s SL %s TP %s", s.side, sym, lots,
-                  DoubleToString(price,_Digits), DoubleToString(s.sl,_Digits), DoubleToString(s.tp,_Digits));
+                  DoubleToString(price,d), DoubleToString(s.sl,d), DoubleToString(s.tp,d));
      }
    else PrintFormat("Clunoid order failed %s %s: %d", s.side, sym, g_trade.ResultRetcode());
   }
 
-//+------------------------------------------------------------------+
-//| Pyramiding — add to a live winner at the next add level          |
-//| Requires a hedging account (each add is its own managed position)|
-//+------------------------------------------------------------------+
 void DoPyramiding(Sig &sigs[], int n)
   {
    if(!InpEnablePyramid) return;
@@ -211,14 +237,16 @@ void DoPyramiding(Sig &sigs[], int n)
       string sym = sigs[k].sym + InpSymbolSuffix;
       if(!SymbolSelect(sym,true) || !HasOpenPosition(sym)) continue;
       bool buy=(sigs[k].side=="buy");
-      if((BasePositionSide(sym)>0) != buy) continue;  // signal must match the open direction
+      if((BasePositionSide(sym)>0) != buy) continue;
 
       int done=(int)GVget("cl_add_"+sym, 0);
       if(done >= sigs[k].nA) continue;
+      double apct=sigs[k].aPct[done];
+      if(!OpenRiskOk(sigs[k].clu, apct)) continue;
 
       double ap=sigs[k].aPrice[done];
       double ask=SymbolInfoDouble(sym,SYMBOL_ASK), bid=SymbolInfoDouble(sym,SYMBOL_BID);
-      bool hit = buy ? (bid <= ap) : (ask >= ap);      // pulled back to the add level
+      bool hit = buy ? (bid <= ap) : (ask >= ap);
       if(!hit) continue;
 
       double price = buy ? ask : bid;
@@ -229,7 +257,7 @@ void DoPyramiding(Sig &sigs[], int n)
       double stopsLvl=(double)SymbolInfoInteger(sym,SYMBOL_TRADE_STOPS_LEVEL)*point;
       if(MathAbs(price-sigs[k].sl) < MathMax(InpMinStopPoints*point, stopsLvl)) continue;
 
-      double lots=LotsForRisk(sym, price, sigs[k].sl, sigs[k].aPct[done]);
+      double lots=LotsForRisk(sym, price, sigs[k].sl, apct);
       if(lots<=0) continue;
 
       g_trade.SetTypeFillingBySymbol(sym);
@@ -238,23 +266,51 @@ void DoPyramiding(Sig &sigs[], int n)
       if(ok)
         {
          GVset("cl_add_"+sym, done+1);
-         ulong tk=FindUnplannedPosition(sym);
-         if(tk>0) StorePlan(tk, sigs[k], lots);
+         BindPlan(sigs[k], lots, apct);
          PrintFormat("Clunoid ADD #%d %s %s %.2f lots", done+1, sigs[k].side, sym, lots);
         }
      }
   }
 
+// Bind the just-opened position (by its deal's position id) to its management plan.
+void BindPlan(Sig &s, double lots, double riskPct)
+  {
+   ulong posTk=0;
+   ulong deal=g_trade.ResultDeal();
+   if(deal>0 && HistoryDealSelect(deal)) posTk=(ulong)HistoryDealGetInteger(deal, DEAL_POSITION_ID);
+   if(posTk==0 || !PositionSelectByTicket(posTk)) posTk=FindUnplannedPosition(s.sym+InpSymbolSuffix);
+   if(posTk>0) StorePlan(posTk, s, lots, riskPct);
+   else PrintFormat("Clunoid: opened %s but could not bind plan yet (will retry next poll).", s.sym);
+  }
+
+// Total + per-cluster open-risk cap, enforced against the live book (incl. adds).
+bool OpenRiskOk(string cluster, double newRisk)
+  {
+   if(g_maxOpenRisk<=0) return true;   // caps not received → don't block
+   double cid=ClusterId(cluster);
+   double total=0, clus=0;
+   for(int i=PositionsTotal()-1;i>=0;i--)
+     {
+      ulong tk=PositionGetTicket(i);
+      if(tk==0 || PositionGetInteger(POSITION_MAGIC)!=InpMagic) continue;
+      double r=GVget("cl_risk_"+(string)tk, 0);
+      total+=r;
+      if(GVget("cl_clu_"+(string)tk, -1)==cid) clus+=r;
+     }
+   if(total+newRisk > g_maxOpenRisk+1e-9) return false;
+   if(g_corrCap>0 && clus+newRisk > g_corrCap+1e-9) return false;
+   return true;
+  }
+
 //+------------------------------------------------------------------+
-//| Manage every open Clunoid position: trailing stop + partials     |
+//| Management: trailing + partials                                  |
 //+------------------------------------------------------------------+
 void ManagePositions()
   {
    for(int i=PositionsTotal()-1;i>=0;i--)
      {
       ulong tk=PositionGetTicket(i);
-      if(tk==0) continue;
-      if(PositionGetInteger(POSITION_MAGIC)!=InpMagic) continue;
+      if(tk==0 || PositionGetInteger(POSITION_MAGIC)!=InpMagic) continue;
       if(InpEnablePartials) FirePartials(tk);
       if(InpEnableTrailing) TrailStop(tk);
      }
@@ -267,6 +323,7 @@ void TrailStop(ulong tk)
    if(trail<=0) return;
    string sym=PositionGetString(POSITION_SYMBOL);
    long type=PositionGetInteger(POSITION_TYPE);
+   double entry=PositionGetDouble(POSITION_PRICE_OPEN);
    double curSL=PositionGetDouble(POSITION_SL);
    double tp=PositionGetDouble(POSITION_TP);
    int digits=(int)SymbolInfoInteger(sym,SYMBOL_DIGITS);
@@ -276,12 +333,14 @@ void TrailStop(ulong tk)
 
    if(type==POSITION_TYPE_BUY)
      {
+      if(bid-entry < trail) return;                        // only trail once genuinely in profit
       double newSL=NormalizeDouble(bid-trail, digits);
       if(newSL > curSL+point && (bid-newSL) >= stopsLvl && newSL < bid)
          g_trade.PositionModify(tk, newSL, tp);
      }
    else
      {
+      if(entry-ask < trail) return;
       double newSL=NormalizeDouble(ask+trail, digits);
       if((curSL==0 || newSL < curSL-point) && (newSL-ask) >= stopsLvl && newSL > ask)
          g_trade.PositionModify(tk, newSL, tp);
@@ -300,34 +359,38 @@ void FirePartials(ulong tk)
    double bid=SymbolInfoDouble(sym,SYMBOL_BID), ask=SymbolInfoDouble(sym,SYMBOL_ASK);
    double vstep=SymbolInfoDouble(sym,SYMBOL_VOLUME_STEP);
    double vmin=SymbolInfoDouble(sym,SYMBOL_VOLUME_MIN);
+   double remaining=PositionGetDouble(POSITION_VOLUME);   // track locally across levels
 
    for(int i=pf;i<np;i++)
      {
       double pp=GVget("cl_pp_"+(string)tk+"_"+(string)i, 0);
       double pc=GVget("cl_pc_"+(string)tk+"_"+(string)i, 0);
       bool hit = (type==POSITION_TYPE_BUY) ? (bid>=pp) : (ask<=pp);
-      if(!hit) break;                                  // partials are ordered
+      if(!hit) break;                                      // partials are ordered
 
       double vol = ov*pc/100.0;
       if(vstep>0) vol = MathFloor(vol/vstep)*vstep;
-      double posVol = PositionGetDouble(POSITION_VOLUME);
-      // keep a runner: only close if it leaves at least the minimum lot open
-      if(vol>=vmin && (posVol-vol)>=vmin)
-         g_trade.PositionClosePartial(tk, vol);
-      GVset("cl_pf_"+(string)tk, i+1);
+      if(vol>=vmin && (remaining-vol)>=vmin)               // keep at least a min-lot runner
+        {
+         if(g_trade.PositionClosePartial(tk, vol)) { remaining-=vol; GVset("cl_pf_"+(string)tk, i+1); }
+         else break;                                       // broker rejection → retry next poll
+        }
+      else GVset("cl_pf_"+(string)tk, i+1);                // too small to bank — mark done, don't loop forever
      }
   }
 
 //+------------------------------------------------------------------+
-//| Plan storage (per position ticket) + cleanup                     |
+//| Plan storage / cleanup                                           |
 //+------------------------------------------------------------------+
-void StorePlan(ulong tk, Sig &s, double ov)
+void StorePlan(ulong tk, Sig &s, double ov, double riskPct)
   {
    string T=(string)tk;
    GVset("cl_trail_"+T, s.trail);
    GVset("cl_ov_"+T, ov);
    GVset("cl_np_"+T, s.nP);
    GVset("cl_pf_"+T, 0);
+   GVset("cl_risk_"+T, riskPct);
+   GVset("cl_clu_"+T, ClusterId(s.clu));
    for(int i=0;i<s.nP;i++) { GVset("cl_pp_"+T+"_"+(string)i, s.pPrice[i]); GVset("cl_pc_"+T+"_"+(string)i, s.pPct[i]); }
   }
 
@@ -345,11 +408,30 @@ void CleanupPlans()
 void DeleteTicketGVs(ulong tk)
   {
    string T=(string)tk;
-   GlobalVariableDel("cl_trail_"+T);
-   GlobalVariableDel("cl_ov_"+T);
-   GlobalVariableDel("cl_np_"+T);
-   GlobalVariableDel("cl_pf_"+T);
+   GlobalVariableDel("cl_trail_"+T); GlobalVariableDel("cl_ov_"+T); GlobalVariableDel("cl_np_"+T);
+   GlobalVariableDel("cl_pf_"+T);    GlobalVariableDel("cl_risk_"+T); GlobalVariableDel("cl_clu_"+T);
    for(int i=0;i<8;i++) { GlobalVariableDel("cl_pp_"+T+"_"+(string)i); GlobalVariableDel("cl_pc_"+T+"_"+(string)i); }
+  }
+
+// Attach a plan to any Clunoid position that has none yet (heals a missed bind).
+void AttachMissingPlans(Sig &sigs[], int n)
+  {
+   for(int i=PositionsTotal()-1;i>=0;i--)
+     {
+      ulong tk=PositionGetTicket(i);
+      if(tk==0 || PositionGetInteger(POSITION_MAGIC)!=InpMagic) continue;
+      if(GlobalVariableCheck("cl_trail_"+(string)tk)) continue;
+      string sym=PositionGetString(POSITION_SYMBOL);
+      long type=PositionGetInteger(POSITION_TYPE);
+      double vol=PositionGetDouble(POSITION_VOLUME);
+      for(int k=0;k<n;k++)
+        {
+         if(sigs[k].sym+InpSymbolSuffix != sym) continue;
+         if((sigs[k].side=="buy") != (type==POSITION_TYPE_BUY)) continue;
+         StorePlan(tk, sigs[k], vol, sigs[k].risk);
+         break;
+        }
+     }
   }
 
 //+------------------------------------------------------------------+
@@ -378,7 +460,6 @@ int BasePositionSide(string sym)
    return 0;
   }
 
-// The most recent Clunoid position on this symbol that has no stored plan yet.
 ulong FindUnplannedPosition(string sym)
   {
    ulong best=0; datetime bestT=0;
@@ -395,7 +476,7 @@ ulong FindUnplannedPosition(string sym)
   }
 
 //+------------------------------------------------------------------+
-//| Re-entry cooldown (prevents SL->re-enter churn)                  |
+//| Re-entry cooldown (stamped on EXIT via OnTradeTransaction)       |
 //+------------------------------------------------------------------+
 string GVKey(string sym) { return "clunoid_last_"+sym; }
 bool OnCooldown(string sym)
@@ -406,7 +487,7 @@ bool OnCooldown(string sym)
    datetime last=(datetime)GlobalVariableGet(k);
    return (TimeCurrent()-last) < (long)InpReentryCooldownMin*60;
   }
-void StampEntry(string sym) { GlobalVariableSet(GVKey(sym), (double)TimeCurrent()); }
+void StampCooldown(string sym) { GlobalVariableSet(GVKey(sym), (double)TimeCurrent()); }
 
 //+------------------------------------------------------------------+
 //| Risk-based lot sizing off CURRENT balance + this symbol's specs  |

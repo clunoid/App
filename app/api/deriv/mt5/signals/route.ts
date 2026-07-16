@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { runEngine, type EngineResult } from "@/lib/deriv/mt5/engine";
+import { PROFILES } from "@/lib/deriv/mt5/profiles";
 import type { MarketCategory, RiskProfile } from "@/lib/deriv/mt5/types";
 
 /**
@@ -13,14 +14,14 @@ import type { MarketCategory, RiskProfile } from "@/lib/deriv/mt5/types";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const PROFILES = new Set<RiskProfile>(["conservative", "moderate", "aggressive"]);
+const VALID_PROFILES = new Set<RiskProfile>(["conservative", "moderate", "aggressive"]);
 const CACHE_MS = 25_000;
 const cache = new Map<string, { at: number; data: EngineResult }>();
 
 export async function GET(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
   const profile = (sp.get("profile") || "moderate") as RiskProfile;
-  if (!PROFILES.has(profile)) {
+  if (!VALID_PROFILES.has(profile)) {
     return NextResponse.json({ error: "invalid profile" }, { status: 400 });
   }
   const category = (sp.get("category") || "forex") as MarketCategory;
@@ -48,20 +49,24 @@ export async function GET(req: NextRequest) {
 
 /**
  * EA-friendly feed: one line per signal. Columns:
- *   SYMBOL,SIDE,ENTRY,SL,TP,RISKPCT,CONF,DIGITS,TRAILATR,PARTIALS,ADDS
- * PARTIALS = "price:closePct;price:closePct" (or "-"); ADDS = "price:sizePct;…".
- * The EA uses these to trail the stop, bank partials, and pyramid.
+ *   SYMBOL,SIDE,ENTRY,SL,TP,RISKPCT,CONF,DIGITS,TRAILATR,PARTIALS,ADDS,CLUSTER
+ * PARTIALS = "price:closePct;…" (or "-"); ADDS = "price:sizePct;…"; CLUSTER =
+ * correlation group. The `# caps:` header carries the profile's aggregate limits
+ * so the EA can enforce total-open-risk and per-cluster caps against its live book.
  */
 function toCsv(d: EngineResult): string {
+  const p = PROFILES[d.profile] ?? PROFILES.moderate;
   const head =
     `# clunoid mt5 | profile=${d.profile} | ts=${d.generatedAt} | signals=${d.signals.length}\n` +
-    `# cols: SYMBOL,SIDE,ENTRY,SL,TP,RISKPCT,CONF,DIGITS,TRAILATR,PARTIALS(p:c;..),ADDS(p:s;..)`;
+    `# caps: maxOpenRisk=${p.maxOpenRiskPct} corrCap=${p.corrClusterCap}\n` +
+    `# cols: SYMBOL,SIDE,ENTRY,SL,TP,RISKPCT,CONF,DIGITS,TRAILATR,PARTIALS(p:c;..),ADDS(p:s;..),CLUSTER`;
   const rows = d.signals.map((s) =>
     [
       s.symbol, s.side, s.entry, s.stopLoss, s.takeProfit, s.riskPct, s.confidence, s.digits,
       s.trailAtr,
-      s.partials.map((p) => `${p.price}:${p.closePct}`).join(";") || "-",
+      s.partials.map((pp) => `${pp.price}:${pp.closePct}`).join(";") || "-",
       s.adds.map((a) => `${a.price}:${a.sizePct}`).join(";") || "-",
+      s.corr || "-",
     ].join(","),
   );
   return [head, ...rows].join("\n") + "\n";

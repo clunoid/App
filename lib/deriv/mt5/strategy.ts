@@ -91,7 +91,7 @@ function trendSignal(
   const confidence = Math.round(clamp(58 + strength * 34, 0, 95));
 
   const sig: Signal = {
-    symbol: m.mt5, ws: m.ws, name: m.name, category: m.category, side,
+    symbol: m.mt5, ws: m.ws, name: m.name, category: m.category, corr: m.corr, side,
     regime: side === "buy" ? "trend_up" : "trend_down",
     confidence, entry: round(price, m.digits),
     stopLoss: round(stopLoss, m.digits), takeProfit: round(takeProfit, m.digits),
@@ -134,7 +134,7 @@ function rangeSignal(c: Candle[], m: MarketDef, p: ProfileParams, now: number): 
   const confidence = Math.round(clamp(52 + (Math.abs(z) - 2) * 20, 0, 88));
 
   const sig: Signal = {
-    symbol: m.mt5, ws: m.ws, name: m.name, category: m.category, side,
+    symbol: m.mt5, ws: m.ws, name: m.name, category: m.category, corr: m.corr, side,
     regime: "range", confidence, entry: round(price, m.digits),
     stopLoss: round(stopLoss, m.digits), takeProfit: round(takeProfit, m.digits),
     riskPct: p.riskPerTradePct * 0.8, // ranges get slightly less risk than trends
