@@ -74,6 +74,9 @@ function trendSignal(
   const e21 = ema(closes(c), 21);
   for (let i = 1; i <= p.maxPyramidAdds; i++) {
     const back = side === "buy" ? e21 - i * 0.15 * a : e21 + i * 0.15 * a;
+    // Never place an add beyond the protective stop — it could only fill after the
+    // base position is already stopped out. Adds get deeper with i, so break.
+    if (side === "buy" ? back <= stopLoss : back >= stopLoss) break;
     adds.push({ price: round(back, m.digits), sizePct: round(p.riskPerTradePct / (i + 1), 2) });
   }
 
@@ -116,13 +119,16 @@ function rangeSignal(c: Candle[], m: MarketDef, p: ProfileParams, now: number): 
   if (z <= -2 && r <= loBand) side = "buy";
   else if (z >= 2 && r >= hiBand) side = "sell";
   if (!side) return null;
+  if (Math.abs(z) >= 3) return null; // too stretched to fade safely — stand aside
 
   const sd = Math.abs(price - bb.mid) / Math.max(Math.abs(z), 1e-9); // ≈ 1σ in price
-  const stopLoss = side === "buy" ? bb.mid - 3 * sd : bb.mid + 3 * sd; // hard z=±3
+  // Stop sits BEYOND the entry (away from the mean) at the z=±3 level, but floored
+  // by a fraction of ATR so it never degenerates to a noise-width stop as |z|→3.
+  const stopDist = Math.max(0.6 * a, (3 - Math.abs(z)) * sd);
+  const stopLoss = side === "buy" ? price - stopDist : price + stopDist;
   const takeProfit = bb.mid; // revert to the mean
-  const stopDist = Math.abs(price - stopLoss);
   const rr = Math.abs(takeProfit - price) / Math.max(stopDist, 1e-9);
-  if (rr < Math.min(p.minRR, 1.0)) return null; // range trades are lower-RR; floor at 1
+  if (rr < 1.0) return null; // range trades are lower-RR; floor at 1
 
   const partials = [{ price: round((price + bb.mid) / 2, m.digits), closePct: 50 }];
   const confidence = Math.round(clamp(52 + (Math.abs(z) - 2) * 20, 0, 88));

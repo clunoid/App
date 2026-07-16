@@ -26,7 +26,9 @@ input int         InpPollSeconds    = 30;         // How often to poll for signa
 input long        InpMagic          = 77090001;   // Magic number (Clunoid trades only)
 input int         InpMaxSpreadPts   = 40;         // Skip if spread exceeds this (points)
 input string      InpSymbolSuffix   = "";         // Broker symbol suffix, e.g. ".r" (blank if none)
-input double      InpMaxDailyLossPct= 0;          // Extra local daily-loss cap % (0 = use profile only)
+input double      InpMaxDailyLossPct= 5;          // Daily-loss cap % of day-start equity (halts new entries)
+input int         InpReentryCooldownMin = 15;     // Min minutes before re-entering the same symbol
+input int         InpMinStopPoints  = 10;         // Reject signals whose stop is closer than this (points)
 input bool        InpTradingEnabled = true;       // Master on/off switch
 
 string  g_base = "https://www.clunoid.com/api/deriv/mt5/signals";
@@ -128,13 +130,21 @@ bool HandleSignal(string line)
    if(buy  && !(sl<price && tp>price)) return false;
    if(!buy && !(sl>price && tp<price)) return false;
 
+   // minimum stop distance — a near-price stop would blow up the lot size or be
+   // rejected by the broker's stops level.
+   double stopsLvl = (double)SymbolInfoInteger(sym, SYMBOL_TRADE_STOPS_LEVEL) * point;
+   double minDist  = MathMax(InpMinStopPoints*point, stopsLvl);
+   if(MathAbs(price - sl) < minDist) return false;
+
+   if(OnCooldown(sym)) return false;                          // no immediate re-entry churn
+
    double lots = LotsForRisk(sym, price, sl, riskPct);
    if(lots<=0) return false;
 
    g_trade.SetTypeFillingBySymbol(sym);
    bool ok = buy ? g_trade.Buy(lots, sym, price, sl, tp, "clunoid")
                  : g_trade.Sell(lots, sym, price, sl, tp, "clunoid");
-   if(ok) PrintFormat("Clunoid %s %s %.2f lots @ %.5f SL %.5f TP %.5f", side, sym, lots, price, sl, tp);
+   if(ok) { StampEntry(sym); PrintFormat("Clunoid %s %s %.2f lots @ %.5f SL %.5f TP %.5f", side, sym, lots, price, sl, tp); }
    else   PrintFormat("Clunoid order failed %s %s: %d", side, sym, g_trade.ResultRetcode());
    return ok;
   }
@@ -144,9 +154,13 @@ bool HandleSignal(string line)
 //+------------------------------------------------------------------+
 double LotsForRisk(string sym, double price, double sl, double riskPct)
   {
+   if(riskPct<=0) return 0;
    double balance   = AccountInfoDouble(ACCOUNT_BALANCE);
    double riskMoney = balance * riskPct / 100.0;
-   double tickVal   = SymbolInfoDouble(sym, SYMBOL_TRADE_TICK_VALUE);
+   // LOSS-side tick value (differs from the profit side on cross-currency pairs);
+   // fall back to the generic tick value if the broker doesn't populate it.
+   double tickVal   = SymbolInfoDouble(sym, SYMBOL_TRADE_TICK_VALUE_LOSS);
+   if(tickVal<=0) tickVal = SymbolInfoDouble(sym, SYMBOL_TRADE_TICK_VALUE);
    double tickSize  = SymbolInfoDouble(sym, SYMBOL_TRADE_TICK_SIZE);
    if(tickVal<=0 || tickSize<=0) return 0;
 
@@ -161,9 +175,25 @@ double LotsForRisk(string sym, double price, double sl, double riskPct)
    double vmax = SymbolInfoDouble(sym, SYMBOL_VOLUME_MAX);
    double vstep= SymbolInfoDouble(sym, SYMBOL_VOLUME_STEP);
    if(vstep>0) lots = MathFloor(lots/vstep)*vstep;
-   lots = MathMax(vmin, MathMin(vmax, lots));
-   return NormalizeDouble(lots, 2);
+   if(lots < vmin) return 0;              // sub-minimum → skip, never up-size (that over-risks)
+   lots = MathMin(vmax, lots);            // only ever clamp DOWN
+   int vdig = (vstep>0) ? (int)MathRound(-MathLog10(vstep)) : 2;
+   return NormalizeDouble(lots, vdig);
   }
+
+//+------------------------------------------------------------------+
+//| Per-symbol re-entry cooldown (prevents SL->re-enter churn)       |
+//+------------------------------------------------------------------+
+string GVKey(string sym) { return "clunoid_last_"+sym; }
+bool OnCooldown(string sym)
+  {
+   if(InpReentryCooldownMin<=0) return false;
+   string k=GVKey(sym);
+   if(!GlobalVariableCheck(k)) return false;
+   datetime last=(datetime)GlobalVariableGet(k);
+   return (TimeCurrent()-last) < (long)InpReentryCooldownMin*60;
+  }
+void StampEntry(string sym) { GlobalVariableSet(GVKey(sym), (double)TimeCurrent()); }
 
 //+------------------------------------------------------------------+
 bool HasOpenPosition(string sym)
@@ -190,7 +220,7 @@ string HttpGet(string url)
    if(code==-1)
      {
       int err = GetLastError();
-      if(err==4060) PrintFormat("WebRequest blocked — add https://www.clunoid.com in Tools>Options>Expert Advisors.");
+      if(err==4014 || err==4060) PrintFormat("WebRequest blocked — add https://www.clunoid.com in Tools>Options>Expert Advisors.");
       else PrintFormat("WebRequest error %d", err);
       return "";
      }

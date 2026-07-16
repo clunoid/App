@@ -134,19 +134,24 @@ export function bollinger(c: Candle[], n = 20, mult = 2): { mid: number; upper: 
   return { mid, upper: mid + mult * sd, lower: mid - mult * sd };
 }
 
-/** Wilder RSI (0..100). */
+/** Wilder RSI (0..100) — seeded with the SMA of the first n changes, then
+ *  recursively smoothed over all remaining bars (not a plain rolling average). */
 export function rsi(c: Candle[], n = 14): number {
   const v = closes(c);
   if (v.length < n + 1) return NaN;
   let gain = 0, loss = 0;
-  for (let i = v.length - n; i < v.length; i++) {
+  for (let i = 1; i <= n; i++) {
     const d = v[i] - v[i - 1];
     if (d >= 0) gain += d; else loss -= d;
   }
-  const ag = gain / n, al = loss / n;
+  let ag = gain / n, al = loss / n;
+  for (let i = n + 1; i < v.length; i++) {
+    const d = v[i] - v[i - 1];
+    ag = (ag * (n - 1) + (d > 0 ? d : 0)) / n;
+    al = (al * (n - 1) + (d < 0 ? -d : 0)) / n;
+  }
   if (al === 0) return 100;
-  const rs = ag / al;
-  return 100 - 100 / (1 + rs);
+  return 100 - 100 / (1 + ag / al);
 }
 
 /** Z-score of the latest close vs its `n`-bar mean (mean-reversion distance). */
