@@ -46,11 +46,23 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ ...data, cached: !!(hit && Date.now() - hit.at < CACHE_MS) });
 }
 
-/** EA-friendly feed: one line per signal — SYMBOL,SIDE,ENTRY,SL,TP,RISKPCT,CONF,DIGITS. */
+/**
+ * EA-friendly feed: one line per signal. Columns:
+ *   SYMBOL,SIDE,ENTRY,SL,TP,RISKPCT,CONF,DIGITS,TRAILATR,PARTIALS,ADDS
+ * PARTIALS = "price:closePct;price:closePct" (or "-"); ADDS = "price:sizePct;…".
+ * The EA uses these to trail the stop, bank partials, and pyramid.
+ */
 function toCsv(d: EngineResult): string {
-  const head = `# clunoid mt5 | profile=${d.profile} | ts=${d.generatedAt} | signals=${d.signals.length}`;
+  const head =
+    `# clunoid mt5 | profile=${d.profile} | ts=${d.generatedAt} | signals=${d.signals.length}\n` +
+    `# cols: SYMBOL,SIDE,ENTRY,SL,TP,RISKPCT,CONF,DIGITS,TRAILATR,PARTIALS(p:c;..),ADDS(p:s;..)`;
   const rows = d.signals.map((s) =>
-    [s.symbol, s.side, s.entry, s.stopLoss, s.takeProfit, s.riskPct, s.confidence, s.digits].join(","),
+    [
+      s.symbol, s.side, s.entry, s.stopLoss, s.takeProfit, s.riskPct, s.confidence, s.digits,
+      s.trailAtr,
+      s.partials.map((p) => `${p.price}:${p.closePct}`).join(";") || "-",
+      s.adds.map((a) => `${a.price}:${a.sizePct}`).join(";") || "-",
+    ].join(","),
   );
   return [head, ...rows].join("\n") + "\n";
 }
