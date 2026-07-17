@@ -32,7 +32,9 @@ type ApiResult = {
 const PROFILE_KEY = "clunoid_mt5_profile";
 const BOT_KEY = "clunoid_mt5_bot_id";
 const CATS_KEY = "clunoid_mt5_cats";
-const CATS: MarketCategory[] = ["forex", "volatility", "crash_boom", "step", "metals", "crypto"];
+// Crash/Boom deliberately excluded: single-tick spikes blow stops far past their
+// level (backtested account-blowup risk), so the bot does not offer them.
+const CATS: MarketCategory[] = ["forex", "volatility", "step", "metals", "crypto"];
 const PROFILE_ICON: Record<RiskProfile, typeof Shield> = { conservative: Shield, moderate: Gauge, aggressive: Zap };
 
 /** URL-safe random Bot ID — the pairing key between this page and the user's EA. */
