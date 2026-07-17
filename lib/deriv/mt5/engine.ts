@@ -1,29 +1,29 @@
 /**
- * DERIV MT5 — signal orchestrator (server), v2 post-backtest overhaul.
+ * DERIV MT5 — signal orchestrator (server), CONTINUOUS build (v2.11 trading
+ * behaviour on the universal one-EA plumbing).
  *
  * The single entry point the API route calls: fetch candles for the requested
- * market categories, run ARDE per symbol, apply the correlation/open-risk
- * governor across the WHOLE basket, and return the tradable signals plus a
- * "standing aside" list (so the UI can show WHY nothing fired — honesty over a
- * blank screen).
+ * market categories, run the ARDE strategy per symbol, apply the correlation/
+ * open-risk governor across the WHOLE basket, and return the tradable signals
+ * plus a "standing aside" list (so the UI shows WHY nothing fired).
  *
- * v2 changes (measured in the backtest campaign):
- *  - Signal timeframe is M30 for 24/5 markets (M5 stops couldn't pay retail
- *    spread; M30 stops make the spread ~8-9% of risk instead of ~25%). The EA
- *    still polls every ~30s — scan cadence and signal granularity are
- *    independent.
- *  - The FORMING bar is dropped before evaluation: signals fire on closed bars
- *    only, killing the tick-poke/repaint entries that churned live accounts.
- *  - Trend entries are gated by the H4 EMA regime (one extra candle fetch).
- *  - Multiple categories can run in one call (the universal EA trades whatever
- *    the user selected on clunoid.com).
+ * Trading cadence is restored to v2.11 (continuous): the signal timeframe is M5,
+ * there is NO higher-timeframe gate, and the aggressive profile trades the
+ * transitional regime (reduced size) — so the basket produces entries
+ * continuously, the way it did before the v3 "survival" throttle. The forming
+ * bar is still dropped (signals fire on closed bars — a correctness fix, not a
+ * frequency throttle). The per-trade + per-cluster + daily-loss risk caps stay
+ * ON so continuous activity can't blow the account in a single session.
+ *
+ * The universal Bot-ID plumbing (one EA, profile + markets chosen on the site)
+ * is unchanged — this only affects how often and how the strategy fires.
  */
 import { fetchCandlesBatch } from "./feed";
-import { evaluate, htfDirection } from "./strategy";
+import { evaluate } from "./strategy";
 import { selectByRisk } from "./risk";
 import { marketsByCategory, LIVE_CATEGORIES } from "./markets";
 import { PROFILES } from "./profiles";
-import type { EngineOutput, MarketCategory, MarketDef, RiskProfile, Signal, Side } from "./types";
+import type { EngineOutput, MarketCategory, MarketDef, RiskProfile, Signal } from "./types";
 import { isSignal } from "./types";
 
 export type EngineResult = {
@@ -36,13 +36,11 @@ export type EngineResult = {
   meta: { evaluated: number; withData: number };
 };
 
-/** Signal timeframe per category: 24/5 markets run M30 (cost arithmetic); the
- *  24/7 synthetics will pick their own when they come online. */
+/** Signal timeframe per category: M5 for 24/5 markets (v2.11 continuous cadence). */
 const GRANULARITY: Partial<Record<MarketCategory, number>> = {
-  forex: 1800,
+  forex: 300,
 };
-const DEFAULT_GRAN = 1800;
-const H4 = 14400;
+const DEFAULT_GRAN = 300;
 
 /** Drop the still-forming last candle so signals fire on CLOSED bars only. */
 function closedOnly(candles: { t: number }[] | undefined, granularitySec: number, now: number) {
@@ -73,18 +71,13 @@ export async function runEngine(
     if (!markets.length) continue;
     const gran = GRANULARITY[category] ?? DEFAULT_GRAN;
     const syms = markets.map((m) => m.ws);
-    // signal-TF candles + H4 candles for the higher-timeframe gate
-    const [candlesBySym, h4BySym] = await Promise.all([
-      fetchCandlesBatch(syms, gran, bars),
-      fetchCandlesBatch(syms, H4, 120),
-    ]);
+    const candlesBySym = await fetchCandlesBatch(syms, gran, bars);
 
     for (const m of markets) {
       evaluated++;
       const candles = closedOnly(candlesBySym.get(m.ws), gran, now);
       if (candles.length) withData++;
-      const htf: Side | null = htfDirection(closedOnly(h4BySym.get(m.ws), H4, now));
-      const out = evaluate(candles, m, profile, now, htf);
+      const out = evaluate(candles, m, profile, now);
       outputs.push({ out, market: m });
       if (isSignal(out)) candidates.push({ sig: out, market: m });
     }

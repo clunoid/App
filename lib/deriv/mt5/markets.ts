@@ -34,18 +34,31 @@ const def = (
    comfortably pay it. Correlation clusters group same-currency exposure so one
    USD bet never counts as three. */
 export const FOREX: MarketDef[] = [
-  def("frxEURUSD", "EURUSD", "EUR/USD", "forex", 0.00001, "24/5", "USD", 0.00012),
-  def("frxGBPUSD", "GBPUSD", "GBP/USD", "forex", 0.00001, "24/5", "USD", 0.00015),
-  def("frxAUDUSD", "AUDUSD", "AUD/USD", "forex", 0.00001, "24/5", "AUD-USD", 0.00014),
-  def("frxUSDCAD", "USDCAD", "USD/CAD", "forex", 0.00001, "24/5", "USD-CAD", 0.00016),
-  def("frxUSDCHF", "USDCHF", "USD/CHF", "forex", 0.00001, "24/5", "USD-CHF", 0.00016),
-  def("frxUSDJPY", "USDJPY", "USD/JPY", "forex", 0.001, "24/5", "JPY", 0.013),
-  def("frxEURJPY", "EURJPY", "EUR/JPY", "forex", 0.001, "24/5", "JPY", 0.019),
-  def("frxAUDJPY", "AUDJPY", "AUD/JPY", "forex", 0.001, "24/5", "JPY", 0.019),
-  def("frxEURGBP", "EURGBP", "EUR/GBP", "forex", 0.00001, "24/5", "EUR-GBP", 0.00015),
-  def("frxEURCHF", "EURCHF", "EUR/CHF", "forex", 0.00001, "24/5", "CHF", 0.0002),
-  def("frxNZDUSD", "NZDUSD", "NZD/USD", "forex", 0.00001, "24/5", "USD-NZD", 0.00017),
-  def("frxAUDCAD", "AUDCAD", "AUD/CAD", "forex", 0.00001, "24/5", "AUD", 0.0002),
+  // Majors
+  def("frxEURUSD", "EURUSD", "EUR/USD", "forex", 0.00001, "24/5", "USD"),
+  def("frxGBPUSD", "GBPUSD", "GBP/USD", "forex", 0.00001, "24/5", "USD"),
+  def("frxAUDUSD", "AUDUSD", "AUD/USD", "forex", 0.00001, "24/5", "AUD-USD"),
+  def("frxUSDCAD", "USDCAD", "USD/CAD", "forex", 0.00001, "24/5", "USD-CAD"),
+  def("frxUSDCHF", "USDCHF", "USD/CHF", "forex", 0.00001, "24/5", "USD-CHF"),
+  def("frxUSDJPY", "USDJPY", "USD/JPY", "forex", 0.001, "24/5", "JPY"),
+  def("frxEURJPY", "EURJPY", "EUR/JPY", "forex", 0.001, "24/5", "JPY"),
+  def("frxGBPJPY", "GBPJPY", "GBP/JPY", "forex", 0.001, "24/5", "JPY"),
+  def("frxAUDJPY", "AUDJPY", "AUD/JPY", "forex", 0.001, "24/5", "JPY"),
+  def("frxEURGBP", "EURGBP", "EUR/GBP", "forex", 0.00001, "24/5", "EUR-GBP"),
+  def("frxEURAUD", "EURAUD", "EUR/AUD", "forex", 0.00001, "24/5", "AUD"),
+  def("frxEURCAD", "EURCAD", "EUR/CAD", "forex", 0.00001, "24/5", "CAD"),
+  def("frxEURCHF", "EURCHF", "EUR/CHF", "forex", 0.00001, "24/5", "CHF"),
+  def("frxGBPAUD", "GBPAUD", "GBP/AUD", "forex", 0.00001, "24/5", "AUD"),
+  // Minors
+  def("frxAUDCAD", "AUDCAD", "AUD/CAD", "forex", 0.00001, "24/5", "AUD"),
+  def("frxAUDCHF", "AUDCHF", "AUD/CHF", "forex", 0.00001, "24/5", "CHF"),
+  def("frxAUDNZD", "AUDNZD", "AUD/NZD", "forex", 0.00001, "24/5", "AUD-NZD"),
+  def("frxEURNZD", "EURNZD", "EUR/NZD", "forex", 0.00001, "24/5", "NZD"),
+  def("frxGBPCAD", "GBPCAD", "GBP/CAD", "forex", 0.00001, "24/5", "CAD"),
+  def("frxGBPCHF", "GBPCHF", "GBP/CHF", "forex", 0.00001, "24/5", "CHF"),
+  def("frxGBPNZD", "GBPNZD", "GBP/NZD", "forex", 0.00001, "24/5", "NZD"),
+  def("frxNZDUSD", "NZDUSD", "NZD/USD", "forex", 0.00001, "24/5", "USD-NZD"),
+  def("frxNZDJPY", "NZDJPY", "NZD/JPY", "forex", 0.001, "24/5", "JPY"),
 ];
 
 /* ── SYNTHETICS (24/7) — next up; registered now for the picker ────────────── */
