@@ -17,15 +17,16 @@
 //+------------------------------------------------------------------+
 #property copyright "Clunoid"
 #property link      "https://www.clunoid.com"
-#property version   "2.11"
+#property version   "3.00"
 #property strict
 
 #include <Trade/Trade.mqh>
 
 enum RiskProfile { CONSERVATIVE=0, MODERATE=1, AGGRESSIVE=2 };
 
-input RiskProfile InpProfile        = MODERATE;   // Risk profile (match your choice on clunoid.com)
-input string      InpCategory       = "forex";    // Market category
+input string      InpBotId          = "";         // Bot ID from clunoid.com (controls profile + markets remotely)
+input RiskProfile InpProfile        = AGGRESSIVE; // Risk profile (used only when Bot ID is empty)
+input string      InpCategory       = "forex";    // Market category (used only when Bot ID is empty)
 input int         InpPollSeconds    = 30;         // How often to poll for signals
 input long        InpMagic          = 77090001;   // Magic number (Clunoid trades only)
 input int         InpMaxSpreadPts   = 40;         // Skip if spread exceeds this (points)
@@ -53,6 +54,7 @@ double  g_dayStartEquity = 0.0;
 int     g_dayStart = 0;
 double  g_maxOpenRisk = 0.0;   // from the feed "# caps:" header
 double  g_corrCap     = 0.0;
+long    g_feedTs      = 0;     // feed generation time (unix, from "ts=")
 
 //+------------------------------------------------------------------+
 int OnInit()
@@ -148,7 +150,11 @@ void Poll()
       if(dd <= -InpMaxDailyLossPct) dailyHalt=true;   // block NEW entries; still manage open trades
      }
 
-   string url = StringFormat("%s?profile=%s&category=%s&format=csv", g_base, ProfileStr(), InpCategory);
+   // With a Bot ID the server applies the profile + market selection saved on
+   // clunoid.com (one EA, remotely configured); otherwise use the local inputs.
+   string url = (StringLen(InpBotId) >= 8)
+      ? StringFormat("%s?bot=%s&format=csv", g_base, InpBotId)
+      : StringFormat("%s?profile=%s&category=%s&format=csv", g_base, ProfileStr(), InpCategory);
    string body = HttpGet(url);
 
    Sig sigs[]; int nSigs=0;
@@ -166,15 +172,19 @@ void Poll()
       ArrayResize(sigs, nSigs);
      }
 
+   // Freshness: never act on a stale feed (cache/CDN hiccup) — manage only.
+   bool stale = (g_feedTs > 0 && (TimeGMT() - (datetime)g_feedTs) > 180);
+
    AttachMissingPlans(sigs, nSigs);            // heal any position that missed its plan
    ManagePositions();                          // trail + partials (always)
-   if(!dailyHalt) DoPyramiding(sigs, nSigs);   // add to winners (hedging only)
-   if(!dailyHalt) for(int i=0;i<nSigs;i++) OpenBase(sigs[i]);
+   if(!dailyHalt && !stale) DoPyramiding(sigs, nSigs);   // add to winners (hedging only)
+   if(!dailyHalt && !stale) for(int i=0;i<nSigs;i++) OpenBase(sigs[i]);
    CleanupPlans();                             // drop plans for closed tickets
 
    string capFlag = (g_maxOpenRisk<=0) ? " · CAPS PENDING (entries blocked)" : "";
-   Comment(StringFormat("Clunoid MT5 v2.1 · %s · %d signals · %s%s%s",
-           ProfileStr(), nSigs, TimeToString(TimeCurrent(), TIME_SECONDS), dailyHalt?" · DAILY LOSS HALT":"", capFlag));
+   string mode = (StringLen(InpBotId)>=8) ? ("bot "+InpBotId) : ProfileStr();
+   Comment(StringFormat("Clunoid MT5 v3 · %s · %d signals · %s%s%s%s",
+           mode, nSigs, TimeToString(TimeCurrent(), TIME_SECONDS), dailyHalt?" · DAILY LOSS HALT":"", capFlag, stale?" · STALE FEED":""));
   }
 
 //+------------------------------------------------------------------+
@@ -188,6 +198,9 @@ void ParseCaps(string line)
    if(p>=0) { double v=StringToDouble(StringSubstr(line, p+12)); if(v>0) { g_maxOpenRisk=v; GVset("cl_capmax"+AcctSuffix(), v); } }
    int q = StringFind(line, "corrCap=");
    if(q>=0) { double v=StringToDouble(StringSubstr(line, q+8)); if(v>0) { g_corrCap=v; GVset("cl_capcorr"+AcctSuffix(), v); } }
+   // "ts=<unix seconds>" — the feed's generation time, for the staleness guard.
+   int r = StringFind(line, "ts=");
+   if(r>=0) { long v=StringToInteger(StringSubstr(line, r+3)); if(v>0) g_feedTs=v; }
   }
 
 bool ParseLine(string line, Sig &s)
@@ -276,7 +289,9 @@ void DoPyramiding(Sig &sigs[], int n)
 
       double ap=sigs[k].aPrice[done];
       double ask=SymbolInfoDouble(sym,SYMBOL_ASK), bid=SymbolInfoDouble(sym,SYMBOL_BID);
-      bool hit = buy ? (bid <= ap) : (ask >= ap);
+      // WINNER-side adds: the level sits beyond entry in the trade direction, so
+      // we add only as the trade proves itself (bid/ask has ADVANCED to it).
+      bool hit = buy ? (bid >= ap) : (ask <= ap);
       if(!hit) continue;
 
       double price = buy ? ask : bid;

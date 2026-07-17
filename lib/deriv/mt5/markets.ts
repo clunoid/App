@@ -21,38 +21,31 @@ const def = (
   pip: number,
   session: MarketDef["session"],
   corr: string,
+  spreadEst = 0,
   trendOnly = false,
-): MarketDef => ({ ws, mt5, name, category, pip, digits: digitsFromPip(pip), session, corr, trendOnly });
+): MarketDef => ({ ws, mt5, name, category, pip, digits: digitsFromPip(pip), session, corr, spreadEst, trendOnly });
 
-/* ── FOREX (24/5) — the first automation ─────────────────────────────────────
-   Correlation clusters group same-base/quote exposure so we never treat one USD
-   bet as three. */
+/* ── FOREX (24/5) — post-backtest basket ─────────────────────────────────────
+   Trimmed to the pairs where spread is a small fraction of a normal stop: the
+   3-year backtests showed the expensive minors (GBP/NZD-class, 3-4.5 pips) were
+   consistent losers under EVERY configuration — the spread tax alone sank them.
+   `spreadEst` = typical Deriv spread in PRICE units (calibrated from live
+   bid/ask sampling); the engine's cost gates reject any signal whose stop can't
+   comfortably pay it. Correlation clusters group same-currency exposure so one
+   USD bet never counts as three. */
 export const FOREX: MarketDef[] = [
-  // Majors
-  def("frxEURUSD", "EURUSD", "EUR/USD", "forex", 0.00001, "24/5", "USD"),
-  def("frxGBPUSD", "GBPUSD", "GBP/USD", "forex", 0.00001, "24/5", "USD"),
-  def("frxAUDUSD", "AUDUSD", "AUD/USD", "forex", 0.00001, "24/5", "AUD-USD"),
-  def("frxUSDCAD", "USDCAD", "USD/CAD", "forex", 0.00001, "24/5", "USD-CAD"),
-  def("frxUSDCHF", "USDCHF", "USD/CHF", "forex", 0.00001, "24/5", "USD-CHF"),
-  def("frxUSDJPY", "USDJPY", "USD/JPY", "forex", 0.001, "24/5", "JPY"),
-  def("frxEURJPY", "EURJPY", "EUR/JPY", "forex", 0.001, "24/5", "JPY"),
-  def("frxGBPJPY", "GBPJPY", "GBP/JPY", "forex", 0.001, "24/5", "JPY"),
-  def("frxAUDJPY", "AUDJPY", "AUD/JPY", "forex", 0.001, "24/5", "JPY"),
-  def("frxEURGBP", "EURGBP", "EUR/GBP", "forex", 0.00001, "24/5", "EUR-GBP"),
-  def("frxEURAUD", "EURAUD", "EUR/AUD", "forex", 0.00001, "24/5", "AUD"),
-  def("frxEURCAD", "EURCAD", "EUR/CAD", "forex", 0.00001, "24/5", "CAD"),
-  def("frxEURCHF", "EURCHF", "EUR/CHF", "forex", 0.00001, "24/5", "CHF"),
-  def("frxGBPAUD", "GBPAUD", "GBP/AUD", "forex", 0.00001, "24/5", "AUD"),
-  // Minors
-  def("frxAUDCAD", "AUDCAD", "AUD/CAD", "forex", 0.00001, "24/5", "AUD"),
-  def("frxAUDCHF", "AUDCHF", "AUD/CHF", "forex", 0.00001, "24/5", "CHF"),
-  def("frxAUDNZD", "AUDNZD", "AUD/NZD", "forex", 0.00001, "24/5", "AUD-NZD"),
-  def("frxEURNZD", "EURNZD", "EUR/NZD", "forex", 0.00001, "24/5", "NZD"),
-  def("frxGBPCAD", "GBPCAD", "GBP/CAD", "forex", 0.00001, "24/5", "CAD"),
-  def("frxGBPCHF", "GBPCHF", "GBP/CHF", "forex", 0.00001, "24/5", "CHF"),
-  def("frxGBPNZD", "GBPNZD", "GBP/NZD", "forex", 0.00001, "24/5", "NZD"),
-  def("frxNZDUSD", "NZDUSD", "NZD/USD", "forex", 0.00001, "24/5", "USD-NZD"),
-  def("frxNZDJPY", "NZDJPY", "NZD/JPY", "forex", 0.001, "24/5", "JPY"),
+  def("frxEURUSD", "EURUSD", "EUR/USD", "forex", 0.00001, "24/5", "USD", 0.00012),
+  def("frxGBPUSD", "GBPUSD", "GBP/USD", "forex", 0.00001, "24/5", "USD", 0.00015),
+  def("frxAUDUSD", "AUDUSD", "AUD/USD", "forex", 0.00001, "24/5", "AUD-USD", 0.00014),
+  def("frxUSDCAD", "USDCAD", "USD/CAD", "forex", 0.00001, "24/5", "USD-CAD", 0.00016),
+  def("frxUSDCHF", "USDCHF", "USD/CHF", "forex", 0.00001, "24/5", "USD-CHF", 0.00016),
+  def("frxUSDJPY", "USDJPY", "USD/JPY", "forex", 0.001, "24/5", "JPY", 0.013),
+  def("frxEURJPY", "EURJPY", "EUR/JPY", "forex", 0.001, "24/5", "JPY", 0.019),
+  def("frxAUDJPY", "AUDJPY", "AUD/JPY", "forex", 0.001, "24/5", "JPY", 0.019),
+  def("frxEURGBP", "EURGBP", "EUR/GBP", "forex", 0.00001, "24/5", "EUR-GBP", 0.00015),
+  def("frxEURCHF", "EURCHF", "EUR/CHF", "forex", 0.00001, "24/5", "CHF", 0.0002),
+  def("frxNZDUSD", "NZDUSD", "NZD/USD", "forex", 0.00001, "24/5", "USD-NZD", 0.00017),
+  def("frxAUDCAD", "AUDCAD", "AUD/CAD", "forex", 0.00001, "24/5", "AUD", 0.0002),
 ];
 
 /* ── SYNTHETICS (24/7) — next up; registered now for the picker ────────────── */
@@ -71,10 +64,10 @@ export const VOLATILITY: MarketDef[] = [
 
 // Crash/Boom are ASYMMETRIC — trend-only, never fade the spike direction.
 export const CRASH_BOOM: MarketDef[] = [
-  def("BOOM500", "Boom 500 Index", "Boom 500", "crash_boom", 0.001, "24/7", "boom", true),
-  def("BOOM1000", "Boom 1000 Index", "Boom 1000", "crash_boom", 0.001, "24/7", "boom", true),
-  def("CRASH500", "Crash 500 Index", "Crash 500", "crash_boom", 0.001, "24/7", "crash", true),
-  def("CRASH1000", "Crash 1000 Index", "Crash 1000", "crash_boom", 0.001, "24/7", "crash", true),
+  def("BOOM500", "Boom 500 Index", "Boom 500", "crash_boom", 0.001, "24/7", "boom", 0, true),
+  def("BOOM1000", "Boom 1000 Index", "Boom 1000", "crash_boom", 0.001, "24/7", "boom", 0, true),
+  def("CRASH500", "Crash 500 Index", "Crash 500", "crash_boom", 0.001, "24/7", "crash", 0, true),
+  def("CRASH1000", "Crash 1000 Index", "Crash 1000", "crash_boom", 0.001, "24/7", "crash", 0, true),
 ];
 
 export const STEP: MarketDef[] = [

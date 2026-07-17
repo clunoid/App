@@ -43,6 +43,9 @@ export type MarketDef = {
   session: Session;
   /** Correlation cluster — instruments in the same cluster count as one bet. */
   corr: string;
+  /** Typical spread in PRICE units (0 = unknown). Drives the engine's
+   *  cost-admission gate and net-of-spread RR floor. */
+  spreadEst?: number;
   /** Synthetics that must never be mean-reversion faded (Crash/Boom). */
   trendOnly?: boolean;
 };
