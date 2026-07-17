@@ -36,9 +36,11 @@ export type EngineResult = {
   meta: { evaluated: number; withData: number };
 };
 
-/** Signal timeframe per category: M5 for 24/5 markets (v2.11 continuous cadence). */
+/** Signal timeframe per category (M5 = v2.11 continuous cadence). Volatility
+ *  indices are 24/7 synthetics; they run the same M5 scan as forex. */
 const GRANULARITY: Partial<Record<MarketCategory, number>> = {
   forex: 300,
+  volatility: 300,
 };
 const DEFAULT_GRAN = 300;
 

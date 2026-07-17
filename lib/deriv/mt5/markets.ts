@@ -120,8 +120,11 @@ export const CATEGORY_LABELS: Record<MarketCategory, string> = {
   basket: "Baskets",
 };
 
-/** Categories the engine trades TODAY (rest are "coming online"). */
-export const LIVE_CATEGORIES: MarketCategory[] = ["forex"];
+/** Categories the engine trades TODAY (rest are "coming online").
+ *  Volatility indices are 24/7 synthetics (constant-volatility random walks); the
+ *  same ARDE strategy runs on them via the ONE universal EA (no separate download).
+ *  They are NOT trend-only, so trend/range/transitional all apply. */
+export const LIVE_CATEGORIES: MarketCategory[] = ["forex", "volatility"];
 
 export const marketByWs = (ws: string): MarketDef | undefined => ALL_MARKETS.find((m) => m.ws === ws);
 export const marketsByCategory = (c: MarketCategory): MarketDef[] => ALL_MARKETS.filter((m) => m.category === c);
