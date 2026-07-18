@@ -68,10 +68,6 @@ export function DerivBotRunner({ botId }: { botId: string }) {
     } catch { /* ignore */ }
     if (cached.length) { setAccounts(cached); setMode(cached.some((a) => a.isVirtual) ? "demo" : "real"); }
     setReady(true);
-    try {
-      const r = new URLSearchParams(window.location.search).get("result");
-      if (r === "tp" || r === "sl") setFinish({ kind: r === "tp" ? "take-profit" : "stop-loss", summary: { balance: 0, currency: "USD", totalProfit: r === "tp" ? 100 : -1000, totalTrades: 42, wins: 30, winRate: 71.4, currentStake: 1, consecutiveLosses: r === "tp" ? 0 : 3, market: "R_100", target: "Differ 5", runningSeconds: 3725 } });
-    } catch { /* ignore */ }
     void refreshAccounts(acc);
   }, [router, refreshAccounts, meta]);
 
