@@ -1,17 +1,12 @@
-import type { Metadata } from "next";
-import { DerivPlatform } from "@/components/deriv/DerivPlatform";
+import { redirect } from "next/navigation";
 
 /**
- * /trading/deriv — the Deriv platform page. The destination after connecting
- * Deriv in Central Command: the user's Options + MT5 accounts, balances, and
- * (next step) the automation controls. Under /trading/* so it's reachable in
- * trading mode; also the OAuth flow can safely bounce through here.
+ * /trading/deriv was an early Deriv landing page that duplicated the command
+ * center (it loaded the connection + rendered the portfolio). The command center
+ * (/trading/command) is the hub now, so this route renders NOTHING of its own —
+ * it just redirects there, so it can never leak the connection, routes or paths.
+ * The URL is kept (not deleted) in case it's repurposed as an SEO page later.
  */
-export const metadata: Metadata = {
-  title: "Deriv · Clunoid Trading",
-  description: "Your connected Deriv Options and MT5 accounts, balances and automation.",
-};
-
-export default function DerivPage() {
-  return <DerivPlatform />;
+export default function DerivIndexPage() {
+  redirect("/trading/command");
 }
