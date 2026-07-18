@@ -15,11 +15,10 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Wallet, Plug, RefreshCw, Loader2, LogOut, KeyRound, ShieldCheck, Building2, Bot, LineChart, Lock, UserPlus } from "lucide-react";
+import { ArrowLeft, Wallet, Plug, RefreshCw, Loader2, LogOut, KeyRound, ShieldCheck, Building2, Bot, LineChart, UserPlus } from "lucide-react";
 import { TC, DOT_GRID, monoFont, fmtBalance } from "@/lib/trading/theme";
 import type { ConnectedAccount } from "@/lib/trading/accounts";
 import { hasDerivApp, DERIV_AFFILIATE_URL } from "@/lib/deriv/config";
-import { checkDerivReferral } from "@/lib/deriv/referral";
 import { parseDerivRedirect, isDerivRedirect, isDerivCodeReturn, startDerivLogin, completeDerivLogin, saveDerivTokens, loadDerivTokens, clearDerivTokens, saveDerivAccess, loadDerivAccess, clearDerivAccess, type DerivToken } from "@/lib/deriv/oauth";
 import { fetchDerivPortfolio, type DerivPortfolio } from "@/lib/deriv/client";
 import { fetchDerivPortfolioREST } from "@/lib/deriv/api";
@@ -75,7 +74,6 @@ function AccountCard({ a }: { a: ConnectedAccount }) {
 
 export function CommandCenter() {
   const [session, setSession] = useState<Session | null>(null);
-  const [referred, setReferred] = useState<boolean | null>(null); // is this connection our referral? (gates MT5)
   const [portfolio, setPortfolio] = useState<DerivPortfolio | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -165,12 +163,6 @@ export function CommandCenter() {
     showSnapshot(s); // show the cached snapshot instantly, then refresh live
     void refresh(s);
   }, [refresh]);
-
-  // Referral status (gates MT5) — verified server-side from the OAuth access token.
-  useEffect(() => {
-    if (session?.kind === "oauth") { setReferred(null); void checkDerivReferral(session.accessToken).then(setReferred); }
-    else setReferred(false);
-  }, [session]);
 
   const connectDeriv = () => {
     if (!hasDerivApp()) { setError("Deriv OAuth isn't configured yet — paste a Deriv API token below to connect in the meantime."); setPasteOpen(true); return; }
@@ -331,32 +323,19 @@ export function CommandCenter() {
               </div>
 
               {connected ? (
-                /* Automation entry points once an account is linked. Deriv Bots are free
-                   for everyone; MT5 is unlocked only for our referrals. */
+                /* Automation entry points once an account is linked (both open to all;
+                   the MT5 EA download itself is gated to sign-ups on the MT5 page). */
                 <div className="mt-3 grid grid-cols-2 gap-2">
                   <Link href="/trading/deriv/bots" className="flex flex-col items-start gap-1 rounded-xl px-3 py-2.5 transition hover:opacity-90" style={{ background: TC.profit, color: TC.ink }}>
                     <Bot size={16} />
                     <span className="text-[13px] font-bold leading-none">Deriv Bots</span>
                     <span className="text-[10px] font-semibold leading-none opacity-75">Digit / recovery bots</span>
                   </Link>
-                  {referred === null ? (
-                    <div className="flex items-center justify-center rounded-xl border px-3 py-2.5" style={{ borderColor: TC.line }}>
-                      <Loader2 size={16} className="animate-spin" style={{ color: TC.faint }} />
-                    </div>
-                  ) : referred ? (
-                    <Link href="/trading/deriv/mt5" className="flex flex-col items-start gap-1 rounded-xl border px-3 py-2.5 transition hover:bg-white/5" style={{ borderColor: TC.line, color: TC.text }}>
-                      <LineChart size={16} style={{ color: TC.profit }} />
-                      <span className="text-[13px] font-bold leading-none">MT5</span>
-                      <span className="text-[10px] font-semibold leading-none" style={{ color: TC.faint }}>MT5 bots</span>
-                    </Link>
-                  ) : (
-                    <a href={DERIV_AFFILIATE_URL} target="_blank" rel="noopener noreferrer" title="Open a Deriv account with us to unlock the MT5 bots"
-                      className="flex flex-col items-start gap-1 rounded-xl border border-dashed px-3 py-2.5 transition hover:bg-white/5" style={{ borderColor: TC.line, color: TC.text }}>
-                      <Lock size={16} style={{ color: TC.faint }} />
-                      <span className="text-[13px] font-bold leading-none">Unlock MT5</span>
-                      <span className="text-[10px] font-semibold leading-none" style={{ color: TC.faint }}>Open an account with us</span>
-                    </a>
-                  )}
+                  <Link href="/trading/deriv/mt5" className="flex flex-col items-start gap-1 rounded-xl border px-3 py-2.5 transition hover:bg-white/5" style={{ borderColor: TC.line, color: TC.text }}>
+                    <LineChart size={16} style={{ color: TC.profit }} />
+                    <span className="text-[13px] font-bold leading-none">MT5</span>
+                    <span className="text-[10px] font-semibold leading-none" style={{ color: TC.faint }}>MT5 bots</span>
+                  </Link>
                 </div>
               ) : (
                 <>

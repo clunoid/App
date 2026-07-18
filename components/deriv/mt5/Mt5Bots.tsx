@@ -89,39 +89,6 @@ export function Mt5Bots() {
 
   const activeProfile = PROFILE_LIST.find((x) => x.key === profile)!;
 
-  // Gate: the MT5 EA is for our referrals only. Non-referrals get a brief open-account
-  // path + the free Deriv Bots. Referrals see the full page — nothing about referral.
-  if (referred === null) {
-    return (
-      <main className="grid min-h-[100dvh] place-items-center" style={{ background: TC.bg, color: TC.text }}>
-        <span className="inline-flex items-center gap-2 text-[13px]" style={{ color: TC.muted }}>
-          <Loader2 size={16} className="animate-spin" style={{ color: TC.profit }} /> Loading…
-        </span>
-      </main>
-    );
-  }
-  if (!referred) {
-    return (
-      <main className="relative grid min-h-[100dvh] place-items-center px-6" style={{ background: TC.bg, color: TC.text }}>
-        <div aria-hidden className="pointer-events-none absolute inset-0" style={DOT_GRID} />
-        <div className="relative z-10 w-full max-w-md rounded-2xl border p-6 text-center" style={{ borderColor: TC.line, background: TC.panel }}>
-          <span className="mx-auto grid h-12 w-12 place-items-center rounded-xl" style={{ background: "rgba(56,189,248,0.14)" }}><Lock size={22} style={{ color: TC.profit }} /></span>
-          <h1 className="mt-3 text-[18px] font-bold">MT5 bots come with a Clunoid account</h1>
-          <p className="mt-1.5 text-[13px] leading-relaxed" style={{ color: TC.muted }}>
-            The MT5 Expert Advisor is included when you open your Deriv account with us. Open a free account to unlock it — the Deriv Bots are free to use right now.
-          </p>
-          <a href={DERIV_AFFILIATE_URL} target="_blank" rel="noopener noreferrer" className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-[13.5px] font-semibold transition hover:opacity-90" style={{ background: TC.profit, color: TC.ink }}>
-            Open a Deriv account
-          </a>
-          <Link href="/trading/deriv/bots" className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-xl border px-5 py-2.5 text-[13.5px] font-semibold transition hover:bg-white/5" style={{ borderColor: TC.line, color: TC.text }}>
-            <Bot size={15} style={{ color: TC.profit }} /> Use Deriv Bots (free)
-          </Link>
-          <Link href="/trading/command" className="mt-3 inline-block text-[12px] transition hover:opacity-80" style={{ color: TC.faint }}>Back to command center</Link>
-        </div>
-      </main>
-    );
-  }
-
   return (
     <main className="relative min-h-[100dvh] w-full overflow-x-hidden" style={{ background: TC.bg, color: TC.text }}>
       <div aria-hidden className="pointer-events-none absolute inset-0" style={DOT_GRID} />
@@ -249,10 +216,25 @@ export function Mt5Bots() {
               ))}
             </ol>
             <div className="mt-4 flex flex-wrap items-center gap-3">
-              <a href="/deriv/ClunoidMT5.mq5" download className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-[13px] font-semibold transition hover:opacity-90" style={{ background: TC.profit, color: TC.ink }}>
-                <Download size={15} /> Download Clunoid EA
-              </a>
-              <span className="text-[11.5px]" style={{ color: TC.faint }}>Set it up once — it needs no dashboard interaction after that.</span>
+              {referred === null ? (
+                <span className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-[13px] font-semibold" style={{ background: "rgba(255,255,255,0.06)", color: TC.faint }}>
+                  <Loader2 size={15} className="animate-spin" /> Checking access…
+                </span>
+              ) : referred ? (
+                <>
+                  <a href="/deriv/ClunoidMT5.mq5" download className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-[13px] font-semibold transition hover:opacity-90" style={{ background: TC.profit, color: TC.ink }}>
+                    <Download size={15} /> Download Clunoid EA
+                  </a>
+                  <span className="text-[11.5px]" style={{ color: TC.faint }}>Set it up once — it needs no dashboard interaction after that.</span>
+                </>
+              ) : (
+                <>
+                  <a href={DERIV_AFFILIATE_URL} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-[13px] font-semibold transition hover:opacity-90" style={{ background: TC.profit, color: TC.ink }}>
+                    <Lock size={15} /> Open a Deriv account to download
+                  </a>
+                  <span className="text-[11.5px]" style={{ color: TC.faint }}>The EA download comes with a Deriv account opened through Clunoid — everything above is free to explore.</span>
+                </>
+              )}
             </div>
           </div>
         </Section>
