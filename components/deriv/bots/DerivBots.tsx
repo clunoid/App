@@ -189,7 +189,7 @@ export function DerivBots() {
                       )}
                     </div>
                     <p className="mt-3 text-[11px]" style={{ color: TC.faint }}>
-                      The bot stops automatically at your take-profit or stop-loss (measured on this session's realised P/L). Test on a Demo account first — this places real trades on the selected account.
+                      The bot stops automatically at your take-profit or stop-loss (measured on this session’s realised P/L). Test on a Demo account first — this places real trades on the selected account.
                     </p>
                   </div>
                 </Section>
