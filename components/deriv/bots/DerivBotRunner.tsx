@@ -9,7 +9,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Play, Square, Loader2, TrendingUp, TrendingDown, Wallet, Star } from "lucide-react";
+import { ArrowLeft, Play, Square, Loader2, TrendingUp, TrendingDown, Wallet, Star, Trophy, ShieldAlert, X } from "lucide-react";
 import { TC, DOT_GRID, monoFont, fmtBalance } from "@/lib/trading/theme";
 import type { ConnectedAccount } from "@/lib/trading/accounts";
 import { loadDerivAccess } from "@/lib/deriv/oauth";
@@ -43,6 +43,7 @@ export function DerivBotRunner({ botId }: { botId: string }) {
   const [stats, setStats] = useState<BotStats | null>(null);
   const [trades, setTrades] = useState<TradeRow[]>([]);
   const [liveBalance, setLiveBalance] = useState<{ balance: number | null; currency: string } | null>(null);
+  const [finish, setFinish] = useState<{ kind: "take-profit" | "stop-loss"; summary: BotStats } | null>(null);
   const botRef = useRef<DerivBot | null>(null);
 
   const refreshAccounts = useCallback(async (acc: string): Promise<ConnectedAccount[]> => {
@@ -67,6 +68,10 @@ export function DerivBotRunner({ botId }: { botId: string }) {
     } catch { /* ignore */ }
     if (cached.length) { setAccounts(cached); setMode(cached.some((a) => a.isVirtual) ? "demo" : "real"); }
     setReady(true);
+    try {
+      const r = new URLSearchParams(window.location.search).get("result");
+      if (r === "tp" || r === "sl") setFinish({ kind: r === "tp" ? "take-profit" : "stop-loss", summary: { balance: 0, currency: "USD", totalProfit: r === "tp" ? 100 : -1000, totalTrades: 42, wins: 30, winRate: 71.4, currentStake: 1, consecutiveLosses: r === "tp" ? 0 : 3, market: "R_100", target: "Differ 5", runningSeconds: 3725 } });
+    } catch { /* ignore */ }
     void refreshAccounts(acc);
   }, [router, refreshAccounts, meta]);
 
@@ -96,7 +101,7 @@ export function DerivBotRunner({ botId }: { botId: string }) {
 
     botRef.current?.stop("Restarting.", "info");
     botRef.current = null;
-    setTrades([]); setStats(null); setStatus(null);
+    setTrades([]); setStats(null); setStatus(null); setFinish(null);
     const tradedId = selected.loginid;
     setLiveBalance({ balance: selected.balance, currency: selected.currency });
     const ui: BotUI = {
@@ -111,6 +116,7 @@ export function DerivBotRunner({ botId }: { botId: string }) {
         });
       },
       onBalance: (balance, currency) => setLiveBalance({ balance, currency }),
+      onFinish: (kind, summary) => setFinish({ kind, summary }),
     };
     const bot = new DerivBot(ui, { accessToken: access, accountId: selected.loginid, currency: selected.currency }, meta.createStrategy());
     botRef.current = bot;
@@ -240,7 +246,75 @@ export function DerivBotRunner({ botId }: { botId: string }) {
           Trading carries risk. This is an automated tool, not financial advice or a profit guarantee. Test on a Demo account first and never risk more than you can afford to lose.
         </p>
       </div>
+
+      {finish && <FinishModal finish={finish} onClose={() => setFinish(null)} />}
     </main>
+  );
+}
+
+function FinishModal({ finish, onClose }: { finish: { kind: "take-profit" | "stop-loss"; summary: BotStats }; onClose: () => void }) {
+  const tp = finish.kind === "take-profit";
+  const s = finish.summary;
+  const c = tp ? TC.profit : TC.loss;
+  const rgb = tp ? "56,189,248" : "242,96,125";
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return (
+    <div role="dialog" aria-modal="true" onClick={onClose}
+      className="fixed inset-0 z-50 grid place-items-center p-4"
+      style={{ background: "rgba(6,10,18,0.72)", backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)" }}>
+      <div onClick={(e) => e.stopPropagation()}
+        className="relative w-full max-w-sm overflow-hidden rounded-3xl border p-7 text-center"
+        style={{ borderColor: `rgba(${rgb},0.45)`, background: TC.panel, boxShadow: `0 24px 70px -20px rgba(${rgb},0.5)` }}>
+        {/* accent glow */}
+        <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-40" style={{ background: `radial-gradient(120% 90% at 50% 0%, rgba(${rgb},0.20), transparent 70%)` }} />
+        <button onClick={onClose} aria-label="Close" className="absolute right-3.5 top-3.5 rounded-full p-1.5 transition hover:bg-white/10" style={{ color: TC.muted }}>
+          <X size={16} />
+        </button>
+
+        <div className="relative">
+          <span className="mx-auto grid h-16 w-16 place-items-center rounded-2xl" style={{ background: `rgba(${rgb},0.16)`, boxShadow: `inset 0 0 0 1px rgba(${rgb},0.4)` }}>
+            {tp ? <Trophy size={30} style={{ color: c }} /> : <ShieldAlert size={30} style={{ color: c }} />}
+          </span>
+          <div className="mt-3.5 text-[10.5px] font-bold uppercase tracking-[0.22em]" style={{ color: c }}>{tp ? "Take Profit" : "Stop Loss"}</div>
+          <h2 className="mt-1 text-[20px] font-bold" style={{ color: TC.text }}>{tp ? "Target reached 🎯" : "Stop-loss hit"}</h2>
+          <p className="mx-auto mt-1.5 max-w-[16rem] text-[12px] leading-relaxed" style={{ color: TC.muted }}>
+            {tp ? "Your take-profit target was reached and the bot stopped — profit locked in." : "Your stop-loss was reached, so the bot stopped to protect your balance."}
+          </p>
+
+          <div className="mt-4 rounded-2xl border p-4" style={{ borderColor: `rgba(${rgb},0.25)`, background: `rgba(${rgb},0.06)` }}>
+            <div className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: TC.faint }}>Session P/L</div>
+            <div className="mt-0.5 text-[30px] font-bold leading-none" style={{ ...monoFont, color: c }}>
+              {s.totalProfit >= 0 ? "+" : ""}{s.totalProfit.toFixed(2)} <span className="text-[16px]">{s.currency}</span>
+            </div>
+          </div>
+
+          <div className="mt-3 grid grid-cols-3 gap-2">
+            <MiniStat label="Trades" value={String(s.totalTrades)} />
+            <MiniStat label="Win rate" value={`${s.winRate.toFixed(0)}%`} />
+            <MiniStat label="Time" value={fmtTime(s.runningSeconds)} />
+          </div>
+
+          <button onClick={onClose} className="mt-5 w-full rounded-xl px-4 py-2.5 text-[13.5px] font-semibold transition hover:opacity-90" style={{ background: c, color: TC.ink }}>
+            Done
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MiniStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl border p-2" style={{ borderColor: TC.line, background: "rgba(0,0,0,0.2)" }}>
+      <div className="text-[9px] font-semibold uppercase tracking-wider" style={{ color: TC.faint }}>{label}</div>
+      <div className="mt-0.5 text-[13px] font-bold" style={{ ...monoFont, color: TC.text }}>{value}</div>
+    </div>
   );
 }
 

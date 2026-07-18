@@ -319,10 +319,12 @@ export class DerivBot {
   private shouldStop(): boolean {
     // Stop ONLY on realised P/L — take-profit or stop-loss (never on stake size).
     if (this.config.takeProfit > 0 && this.totalProfit >= this.config.takeProfit) {
+      this.ui.onFinish?.("take-profit", this.snapshot());
       this.stop(`🎯 Take-profit hit: +${this.totalProfit.toFixed(2)} ${this.currency}. Bot stopped.`, "success");
       return true;
     }
     if (this.config.stopLoss > 0 && this.totalProfit <= -Math.abs(this.config.stopLoss)) {
+      this.ui.onFinish?.("stop-loss", this.snapshot());
       this.stop(`🛑 Stop-loss hit: ${this.totalProfit.toFixed(2)} ${this.currency}. Bot stopped.`, "error");
       return true;
     }

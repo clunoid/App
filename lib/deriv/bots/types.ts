@@ -71,6 +71,9 @@ export type BotUI = {
   onTrade: (t: TradeRow) => void;
   onRunning: (running: boolean) => void;
   onBalance: (balance: number, currency: string) => void;
+  /** Fired when the bot stops because take-profit or stop-loss was reached — the UI
+   *  shows a result popup. `summary` is the final stats snapshot. */
+  onFinish?: (kind: "take-profit" | "stop-loss", summary: BotStats) => void;
 };
 
 /** Which Deriv account the bot trades on (the Demo/Real choice). */
