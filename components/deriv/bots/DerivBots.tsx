@@ -23,6 +23,7 @@ import { PhoenixRecoveryDiffer, type BotUI, type BotStats, type TradeRow } from 
 type StatusKind = "info" | "success" | "warning" | "error";
 type Mode = "demo" | "real";
 const SNAP_KEY = "clunoid_deriv_portfolio";
+const onlyOptions = (accts: ConnectedAccount[]) => accts.filter((a) => a.kind === "options");
 
 const BOT = {
   name: "Phoenix Recovery Differ",
@@ -49,10 +50,23 @@ export function DerivBots() {
   const [status, setStatus] = useState<{ msg: string; kind: StatusKind } | null>(null);
   const [stats, setStats] = useState<BotStats | null>(null);
   const [trades, setTrades] = useState<TradeRow[]>([]);
-  const [liveBalance, setLiveBalance] = useState<{ balance: number; currency: string } | null>(null);
+  const [liveBalance, setLiveBalance] = useState<{ balance: number | null; currency: string } | null>(null);
   const botRef = useRef<PhoenixRecoveryDiffer | null>(null);
 
-  const onlyOptions = (accts: ConnectedAccount[]) => accts.filter((a) => a.kind === "options");
+  // Fetch the live options accounts (Demo + Real) and refresh the cached snapshot.
+  // Reused on mount AND whenever the bot stops, so balances stay current everywhere.
+  const refreshAccounts = useCallback(async (acc: string): Promise<ConnectedAccount[]> => {
+    try {
+      const p = await fetchDerivPortfolioREST(acc);
+      const opts = onlyOptions(p.accounts);
+      if (opts.length) {
+        setAccounts(opts);
+        setMode((m) => (opts.some((a) => a.isVirtual) ? m : "real"));
+      }
+      try { localStorage.setItem(SNAP_KEY, JSON.stringify(p)); } catch { /* ignore */ }
+      return opts;
+    } catch { return []; /* keep the current view */ }
+  }, []);
 
   // Reuse the command-center connection. Read the cached portfolio for an instant
   // view, then refresh live balances. No connection at all → back to command center.
@@ -68,18 +82,8 @@ export function DerivBots() {
     } catch { /* ignore */ }
     if (cached.length) { setAccounts(cached); setMode(cached.some((a) => a.isVirtual) ? "demo" : "real"); }
     setReady(true);
-
-    void (async () => {
-      try {
-        const p = await fetchDerivPortfolioREST(acc);
-        const opts = onlyOptions(p.accounts);
-        if (opts.length) {
-          setAccounts(opts);
-          setMode((m) => (opts.some((a) => a.isVirtual) ? m : "real"));
-        }
-      } catch { /* keep cached snapshot */ }
-    })();
-  }, [router]);
+    void refreshAccounts(acc);
+  }, [router, refreshAccounts]);
 
   // stop the bot if the user navigates away
   useEffect(() => () => { botRef.current?.stop("Left the page.", "info"); }, []);
@@ -88,8 +92,10 @@ export function DerivBots() {
   const realAccount = accounts.find((a) => !a.isVirtual) || null;
   const selected = mode === "demo" ? demoAccount : realAccount;
 
-  // balance shown for the selected account: live while running, else the portfolio value
-  const shownBalance = runningState && liveBalance ? liveBalance : { balance: selected?.balance ?? null, currency: selected?.currency ?? "" };
+  // Balance shown for the selected account: the LIVE balance (updated by the WS on
+  // every trade) whenever we have it — it stays accurate after the bot stops too.
+  // Falls back to the portfolio value before the first run / after switching accounts.
+  const shownBalance = liveBalance ?? { balance: selected?.balance ?? null, currency: selected?.currency ?? "" };
 
   const switchMode = (m: Mode) => { if (runningState) return; setMode(m); setLiveBalance(null); };
 
@@ -108,13 +114,27 @@ export function DerivBots() {
     const v = validate();
     if (!v.ok) { setStatus({ msg: v.msg!, kind: "error" }); return; }
 
+    // Fresh session — tear down any previous run and clear ALL last-run state so the
+    // bot starts clean (no leftover trades, stats, or status).
+    botRef.current?.stop("Restarting.", "info");
+    botRef.current = null;
     setTrades([]);
-    setLiveBalance({ balance: selected.balance ?? 0, currency: selected.currency });
+    setStats(null);
+    setStatus(null);
+    const tradedId = selected.loginid;
+    setLiveBalance({ balance: selected.balance, currency: selected.currency }); // may be null → shows "—" until the WS reports
     const ui: BotUI = {
       onStatus: (msg, kind) => setStatus({ msg, kind }),
       onStats: (s) => setStats(s),
       onTrade: (t) => setTrades((prev) => [t, ...prev].slice(0, 100)),
-      onRunning: (r) => setRunning(r),
+      // On stop, pull the authoritative post-settlement balance from REST and show it.
+      onRunning: (r) => {
+        setRunning(r);
+        if (!r) void refreshAccounts(access).then((opts) => {
+          const acct = opts.find((a) => a.loginid === tradedId);
+          if (acct && acct.balance != null) setLiveBalance({ balance: acct.balance, currency: acct.currency });
+        });
+      },
       onBalance: (balance, currency) => setLiveBalance({ balance, currency }),
     };
     const bot = new PhoenixRecoveryDiffer(ui, { accessToken: access, accountId: selected.loginid, currency: selected.currency });

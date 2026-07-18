@@ -70,6 +70,10 @@ type MarketAnalysis = { digits: number[]; over4: number; under5: number; total: 
 
 const round2 = (v: number) => Math.round(v * 100) / 100;
 
+/** Only ONE bot may run at a time across the whole app (all bot types). Starting a
+ *  bot stops whatever was running, so trading sessions can never overlap. */
+let ACTIVE_BOT: { stop: (msg?: string, kind?: "info" | "success" | "warning" | "error") => void } | null = null;
+
 export class PhoenixRecoveryDiffer {
   private ui: BotUI;
   private accessToken: string;
@@ -116,6 +120,8 @@ export class PhoenixRecoveryDiffer {
   private statsTimer: ReturnType<typeof setInterval> | null = null;
   private watchdogTimer: ReturnType<typeof setTimeout> | null = null;
   private tradeStartedAt = 0;
+  private awaitingProposal = false; // true only between sending a proposal and buying it
+  private buyInFlight = false; // true between sending `buy` and its acknowledgement
 
   constructor(ui: BotUI, account: BotAccount) {
     this.ui = ui;
@@ -133,10 +139,14 @@ export class PhoenixRecoveryDiffer {
     this.currentStake = this.config.initialStake;
     this.totalProfit = 0; this.totalTrades = 0; this.wins = 0; this.consecutiveLosses = 0;
     this.lastMarket = null; this.lastDigit = null;
-    this.activeContractId = null; this.tradeInProgress = false;
+    this.activeContractId = null; this.tradeInProgress = false; this.awaitingProposal = false; this.buyInFlight = false;
     this.recoveryMode = false; this.recoveryMarket = null; this.recoveryTradeType = null;
     this.analysis = {}; this.tickSubs = {};
     this.reconnectAttempts = 0;
+
+    // One bot at a time — stop any other running bot before we take over.
+    if (ACTIVE_BOT && ACTIVE_BOT !== this) { try { ACTIVE_BOT.stop("Stopped — another bot was started.", "info"); } catch { /* ignore */ } }
+    ACTIVE_BOT = this;
 
     this.isRunning = true; this.stopRequested = false;
     this.startTime = Date.now();
@@ -186,9 +196,20 @@ export class PhoenixRecoveryDiffer {
       this.send({ balance: 1, subscribe: 1 });
       this.tickSubs = {}; // fresh socket → tick subs don't carry over; re-subscribe
       this.subscribeAllTicks();
-      // If we reconnected mid-trade, re-attach to OUR open contract so we still get
-      // its settlement (contracts are tracked per-id, never account-wide).
-      if (this.activeContractId) this.send({ proposal_open_contract: 1, contract_id: this.activeContractId, subscribe: 1 });
+      // Mid-trade reconnect — reconcile before doing anything new:
+      //  • a BOUGHT contract (we have its id) → re-attach for its settlement;
+      //  • a buy was IN FLIGHT when the socket dropped → a contract may already exist,
+      //    so DON'T open another. Scan open contracts and adopt the one that matches
+      //    the trade we just sent (handleContract), keeping the gate closed;
+      //  • otherwise only a proposal was pending (nothing bought) → drop the gate.
+      if (this.activeContractId) {
+        this.send({ proposal_open_contract: 1, contract_id: this.activeContractId, subscribe: 1 });
+      } else if (this.buyInFlight) {
+        this.send({ proposal_open_contract: 1, subscribe: 1 }); // reconcile: adopt our orphan
+        this.armWatchdog(); // backstop: if no matching contract appears, free + retry
+      } else {
+        this.tradeInProgress = false; this.awaitingProposal = false;
+      }
       this.startPing();
       if (!this.tradeInProgress) this.queueNextTrade();
     };
@@ -238,13 +259,21 @@ export class PhoenixRecoveryDiffer {
       }
       case "proposal": {
         const p = d.proposal as { id?: string; ask_price?: number } | undefined;
-        if (this.isRunning && p?.id) this.send({ buy: p.id, price: p.ask_price });
+        // Buy exactly ONCE per proposal we sent. Ignoring stale/duplicate proposal
+        // responses (e.g. a late one after a reconnect) prevents opening an extra
+        // contract — the class of ghost trade that made markup look inconsistent.
+        if (this.isRunning && this.awaitingProposal && p?.id) {
+          this.awaitingProposal = false;
+          this.buyInFlight = true; // a contract may now exist even before the ack lands
+          this.send({ buy: p.id, price: p.ask_price });
+        }
         break;
       }
       case "buy": {
         const b = d.buy as { contract_id?: number; balance_after?: number } | undefined;
         if (b?.contract_id) {
           this.activeContractId = b.contract_id;
+          this.buyInFlight = false;
           // Track ONLY our own contract — not every open contract on the account.
           this.send({ proposal_open_contract: 1, contract_id: b.contract_id, subscribe: 1 });
         }
@@ -334,6 +363,7 @@ export class PhoenixRecoveryDiffer {
     }
 
     this.tradeInProgress = true;
+    this.awaitingProposal = true;
     this.tradeStartedAt = Date.now();
     this.currentMarket = market; this.currentTarget = target;
     this.armWatchdog();
@@ -366,10 +396,22 @@ export class PhoenixRecoveryDiffer {
 
   private handleContract(c: Record<string, unknown>): void {
     if (!c || typeof c.contract_id === "undefined") return;
+    const cid = Number(c.contract_id);
+    // Reconcile an orphaned buy after a mid-buy reconnect: adopt the open contract that
+    // matches the trade we just sent (same market + ~same stake), so it's tracked
+    // rather than becoming a ghost — and so we never open a duplicate for it.
+    if (this.activeContractId === null && this.buyInFlight) {
+      const sym = String(c.underlying_symbol || "");
+      const bp = Number(c.buy_price);
+      if (sym === this.currentMarket && Math.abs(bp - round2(this.currentStake)) < 0.01) {
+        this.activeContractId = cid;
+        this.buyInFlight = false;
+      }
+    }
     // Only OUR current contract. Requiring a non-null match (not just "differs from")
     // means foreign contracts settling in the gap between our trades can't be booked,
     // and once we free the trade its duplicate settlements are ignored too.
-    if (this.activeContractId === null || Number(c.contract_id) !== this.activeContractId) return;
+    if (this.activeContractId === null || cid !== this.activeContractId) return;
     if (!c.is_sold) return;
 
     const profit = Number(c.profit) || 0;
@@ -435,23 +477,27 @@ export class PhoenixRecoveryDiffer {
 
   private freeTrade(): void {
     this.tradeInProgress = false;
+    this.awaitingProposal = false;
+    this.buyInFlight = false;
     this.activeContractId = null;
     if (this.watchdogTimer) { clearTimeout(this.watchdogTimer); this.watchdogTimer = null; }
   }
 
-  /** If a settlement never arrives (dropped stream), free the gate so the bot
-   *  doesn't wedge forever, then re-poll the open contract. */
+  /** If a settlement never arrives (dropped stream), re-poll the open contract and
+   *  give it a short grace to be booked (so its P/L still counts toward the stop-loss)
+   *  before freeing the gate so the bot doesn't wedge forever. */
   private armWatchdog(): void {
     if (this.watchdogTimer) clearTimeout(this.watchdogTimer);
     this.watchdogTimer = setTimeout(() => {
-      if (this.isRunning && this.tradeInProgress && Date.now() - this.tradeStartedAt > 25000) {
-        this.ui.onStatus("Trade update stalled — re-syncing…", "warning");
-        // Best-effort nudge for OUR contract's final state, then free the gate so
-        // the bot doesn't wedge (the balance subscription still reflects the result).
-        if (this.activeContractId) this.send({ proposal_open_contract: 1, contract_id: this.activeContractId, subscribe: 1 });
-        this.freeTrade();
-        this.scheduleNext(1500);
-      }
+      if (!(this.isRunning && this.tradeInProgress && Date.now() - this.tradeStartedAt > 25000)) return;
+      this.ui.onStatus("Trade update stalled — re-syncing…", "warning");
+      // Best-effort: pull our contract's final state (or scan for an orphaned buy),
+      // then give it a grace window to settle & book before freeing the gate.
+      if (this.activeContractId) this.send({ proposal_open_contract: 1, contract_id: this.activeContractId, subscribe: 1 });
+      else this.send({ proposal_open_contract: 1, subscribe: 1 });
+      this.watchdogTimer = setTimeout(() => {
+        if (this.isRunning && this.tradeInProgress) { this.freeTrade(); this.scheduleNext(1500); }
+      }, 4000);
     }, 30000);
   }
 
@@ -492,11 +538,14 @@ export class PhoenixRecoveryDiffer {
   }
 
   private finishStop(): void {
-    this.isRunning = false; this.tradeInProgress = false; this.activeContractId = null;
+    this.isRunning = false; this.tradeInProgress = false; this.awaitingProposal = false; this.buyInFlight = false; this.activeContractId = null;
     this.stopPing();
     if (this.statsTimer) { clearInterval(this.statsTimer); this.statsTimer = null; }
     if (this.reconnectTimer) { clearTimeout(this.reconnectTimer); this.reconnectTimer = null; }
     if (this.watchdogTimer) { clearTimeout(this.watchdogTimer); this.watchdogTimer = null; }
+    // Fully detach the socket so nothing from this session can fire again.
+    if (this.ws) { try { this.ws.onopen = this.ws.onmessage = this.ws.onerror = this.ws.onclose = null; this.ws.close(); } catch { /* ignore */ } this.ws = null; }
+    if (ACTIVE_BOT === this) ACTIVE_BOT = null;
     this.ui.onRunning(false);
     if (this.stopMessage) this.ui.onStatus(this.stopMessage.msg, this.stopMessage.kind);
   }
