@@ -16,7 +16,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Bot, Sparkles, Play, Square, Loader2, TrendingUp, TrendingDown, Wallet, Activity, Clock, Target, Layers, CheckCircle2 } from "lucide-react";
 import { TC, DOT_GRID, monoFont } from "@/lib/trading/theme";
-import { loadDerivTokens, loadDerivAccess, type DerivToken } from "@/lib/deriv/oauth";
+import { loadDerivTokens, loadDerivAccess, startDerivTradingGrant, type DerivToken } from "@/lib/deriv/oauth";
 import { BOT_DEFAULTS } from "@/lib/deriv/bots/config";
 import { PhoenixRecoveryDiffer, type BotUI, type BotStats, type TradeRow } from "@/lib/deriv/bots/phoenixRecoveryDiffer";
 
@@ -34,10 +34,10 @@ const BOT = {
 export function DerivBots() {
   const router = useRouter();
   const [ready, setReady] = useState(false);
-  // a1- account tokens (paste / classic flow — one token per account) OR a single
-  // OAuth access token that authorises the user's default account.
+  // a1- account tokens — one per Deriv account (this is what the trade WebSocket
+  // authorises with AND what lets the user switch between Demo and Real).
   const [tokens, setTokens] = useState<DerivToken[]>([]);
-  const [accessToken, setAccessToken] = useState("");
+  const [needGrant, setNeedGrant] = useState(false); // connected, but no trade tokens yet
   const [accountIdx, setAccountIdx] = useState(0);
   const [open, setOpen] = useState(true);
 
@@ -52,24 +52,41 @@ export function DerivBots() {
   const [trades, setTrades] = useState<TradeRow[]>([]);
   const botRef = useRef<PhoenixRecoveryDiffer | null>(null);
 
-  // Reuse the command-center connection. No connection → back to command center.
+  // Reuse the command-center connection. The trade WebSocket needs a1- account
+  // tokens; if the user connected via OAuth (ory_at_ only) we harvest them once,
+  // reusing the same Deriv authorisation (no second consent). No connection at all
+  // → back to the command center.
   useEffect(() => {
     const a1 = loadDerivTokens();
-    const access = loadDerivAccess();
-    if (!a1.length && !access) { router.replace("/trading/command"); return; }
-    setTokens(a1);
-    setAccessToken(access);
-    const demoAt = a1.findIndex((x) => isDemo(x.loginid));
-    setAccountIdx(demoAt >= 0 ? demoAt : 0);
-    setReady(true);
+    if (a1.length) {
+      setTokens(a1);
+      const demoAt = a1.findIndex((x) => isDemo(x.loginid));
+      setAccountIdx(demoAt >= 0 ? demoAt : 0);
+      setReady(true);
+      try { sessionStorage.removeItem("clunoid_deriv_grant_tried"); } catch { /* ignore */ }
+      return;
+    }
+    if (loadDerivAccess()) {
+      let tried = false;
+      try { tried = !!sessionStorage.getItem("clunoid_deriv_grant_tried"); } catch { /* ignore */ }
+      if (!tried) {
+        try { sessionStorage.setItem("clunoid_deriv_grant_tried", "1"); } catch { /* ignore */ }
+        startDerivTradingGrant("/trading/deriv/bots"); // seamless bounce, then back here
+        return;
+      }
+      setNeedGrant(true); // came back still without trade tokens — show a manual tap
+      setReady(true);
+      return;
+    }
+    router.replace("/trading/command");
   }, [router]);
 
   // stop the bot if the user navigates away
   useEffect(() => () => { botRef.current?.stop("Left the page.", "info"); }, []);
 
-  // the token the bot trades with: the selected a1- account token, else the OAuth token
+  // the token the bot trades with: the selected account's a1- token
   const account = tokens[accountIdx];
-  const authToken = account?.token || accessToken;
+  const authToken = account?.token || "";
 
   const validate = useCallback((): { ok: boolean; msg?: string } => {
     const s = parseFloat(stake), tp = parseFloat(takeProfit), sl = parseFloat(stopLoss), m = parseFloat(martingale);
@@ -109,8 +126,30 @@ export function DerivBots() {
     return (
       <main className="grid min-h-[100dvh] place-items-center" style={{ background: TC.bg, color: TC.text }}>
         <span className="inline-flex items-center gap-2 text-[13px]" style={{ color: TC.muted }}>
-          <Loader2 size={16} className="animate-spin" style={{ color: TC.profit }} /> Loading your Deriv connection…
+          <Loader2 size={16} className="animate-spin" style={{ color: TC.profit }} /> Preparing your Deriv trading session…
         </span>
+      </main>
+    );
+  }
+
+  // Connected, but the trade WebSocket needs a1- account tokens and the harvest came
+  // back empty — offer one tap to authorise trading (reuses the same Deriv login).
+  if (needGrant) {
+    return (
+      <main className="relative grid min-h-[100dvh] place-items-center px-6" style={{ background: TC.bg, color: TC.text }}>
+        <div aria-hidden className="pointer-events-none absolute inset-0" style={DOT_GRID} />
+        <div className="relative z-10 w-full max-w-md rounded-2xl border p-6 text-center" style={{ borderColor: TC.line, background: TC.panel }}>
+          <span className="mx-auto grid h-11 w-11 place-items-center rounded-xl" style={{ background: "rgba(56,189,248,0.14)" }}><Bot size={22} style={{ color: TC.profit }} /></span>
+          <h1 className="mt-3 text-[18px] font-bold">One tap to enable trading</h1>
+          <p className="mt-1.5 text-[13px] leading-relaxed" style={{ color: TC.muted }}>
+            You&rsquo;re connected to Deriv. To let the bots place trades on your account — and to switch between your Demo and Real accounts — Deriv needs to hand Clunoid your account trading tokens. This reuses the same Deriv login, so there&rsquo;s no new sign-in.
+          </p>
+          <button onClick={() => { try { sessionStorage.removeItem("clunoid_deriv_grant_tried"); } catch { /* ignore */ } startDerivTradingGrant("/trading/deriv/bots"); }}
+            className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-[13.5px] font-semibold transition hover:opacity-90" style={{ background: TC.profit, color: TC.ink }}>
+            <Play size={15} /> Enable trading
+          </button>
+          <Link href="/trading/command" className="mt-3 inline-block text-[12px] transition hover:opacity-80" style={{ color: TC.faint }}>Back to command center</Link>
+        </div>
       </main>
     );
   }
@@ -141,7 +180,7 @@ export function DerivBots() {
                 ))}
               </select>
             ) : (
-              <span style={{ color: TC.text }}>{account ? `${account.loginid} · ${account.currency}` : (stats ? `${stats.balance.toFixed(2)} ${stats.currency}` : "Deriv account")} connected</span>
+              <span style={{ color: TC.text }}>{account ? `${account.loginid} · ${account.currency}${demoActive ? " (Demo)" : " (Real)"}` : "Deriv account"}</span>
             )}
           </span>
         </header>

@@ -6,25 +6,30 @@
  * (proposal → buy → proposal_open_contract), the way Deriv's own DBot does. The
  * user's Deriv account token never leaves the browser.
  *
- * MARKUP: every bot connects on the app owner's app_id so trades earn the app's
- * configured markup. Deriv trading (buying contracts) is WebSocket-only — the new
- * REST API (api.derivws.com) is read-only (verified: every /trading/v1 buy/
- * proposal path 404s), so the bots must use the WS with an a1- account token.
+ * ⚠️ TRADE SOCKET app_id (PROVEN live 2026-07-18, Node + a real browser):
+ *   wss://ws.derivws.com/websockets/v3?app_id=33PP0AqLX0blymxYDSg92  → HTTP 401
+ *   wss://ws.derivws.com/websockets/v3?app_id=1089                   → connects
+ * `33PP…` is Clunoid's OAuth/OIDC LOGIN app (it passes oauth.deriv.com/authorize,
+ * which is how the command center connects) but Deriv's trade WebSocket REJECTS it
+ * at the handshake — it is not a WS trading app. So the bots MUST open the trade
+ * socket on a WS-capable app_id. We reuse `DERIV_WS_APP_ID` — the same one the rest
+ * of Clunoid's WebSocket code already uses (1089 by default) — so this is guaranteed
+ * to connect.
  *
- * ⚠️ app_id caveat (verified live 2026-07-18): the OIDC login client_id
- * (33PP0AqLX0blymxYDSg92) is REJECTED at the WS handshake — it is a login client,
- * not a WS trading app. A WS trading app needs a Deriv app_id that the WebSocket
- * accepts (classic numeric, or an app registered for browser/WS use). Set the
- * correct markup app id in NEXT_PUBLIC_DERIV_BOT_APP_ID; the default below is the
- * value the owner supplied and can be overridden without a code change.
+ * MARKUP: Deriv attributes markup to the app_id that owns the trade socket. To earn
+ * markup the owner registers a WS-capable app with app_markup_percentage set and
+ * points NEXT_PUBLIC_DERIV_WS_APP_ID at it (no code change) — the bots then trade on
+ * that app and every buy carries the markup. Until then trades run on 1089 (no
+ * markup) so the bots work on Demo/Real immediately.
  */
+import { DERIV_WS_APP_ID } from "../config";
 
-/** The app id the bot's trading WebSocket connects on → this app earns the markup. */
-export const DERIV_BOT_APP_ID =
-  process.env.NEXT_PUBLIC_DERIV_BOT_APP_ID || "33PP0AqLX0blymxYDSg92";
+/** The app id the bot's trading WebSocket connects on. MUST be a WS-capable app
+ *  (33PP… is not — it 401s the handshake). This is also the app that earns markup,
+ *  so set NEXT_PUBLIC_DERIV_WS_APP_ID to your markup-enabled WS app to collect it. */
+export const DERIV_BOT_APP_ID = DERIV_WS_APP_ID;
 
-/** The bot trading WebSocket (separate from the account-data socket, so the
- *  markup app id is used for every buy). */
+/** The bot trading WebSocket. */
 export const DERIV_BOT_WS_URL = `wss://ws.derivws.com/websockets/v3?app_id=${DERIV_BOT_APP_ID}`;
 
 /** Deriv Volatility indices the digit bots trade. */
