@@ -73,3 +73,8 @@ export const DERIV_OAUTH_BASE = "https://oauth.deriv.com";
  *  (including the bare root domain). */
 export const DERIV_REDIRECT_URI =
   process.env.NEXT_PUBLIC_DERIV_REDIRECT_URI || "https://www.clunoid.com/trading/command";
+
+/** The owner's Deriv REVENUE-SHARE affiliate link — used for the "Create a Deriv
+ *  account" button so new sign-ups are attributed to us (recurring commission). */
+export const DERIV_AFFILIATE_URL =
+  process.env.NEXT_PUBLIC_DERIV_AFFILIATE_URL || "https://track.deriv.com/_30qaRjl291f1hit6RV3zsGNd7ZgqdRLk/1/";

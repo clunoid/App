@@ -17,6 +17,9 @@ import { TC, DOT_GRID, monoFont } from "@/lib/trading/theme";
 import { PROFILE_LIST } from "@/lib/deriv/mt5/profiles";
 import { CATEGORY_LABELS, LIVE_CATEGORIES } from "@/lib/deriv/mt5/markets";
 import type { RiskProfile, MarketCategory, Side } from "@/lib/deriv/mt5/types";
+import { loadDerivAccess } from "@/lib/deriv/oauth";
+import { checkDerivReferral } from "@/lib/deriv/referral";
+import { DERIV_AFFILIATE_URL } from "@/lib/deriv/config";
 
 type ApiSignal = {
   symbol: string; name: string; side: Side; regime: string; confidence: number;
@@ -46,6 +49,7 @@ export function Mt5Bots() {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [updatedAt, setUpdatedAt] = useState<number>(0);
+  const [referred, setReferred] = useState<boolean | null>(null); // gate: MT5 EA is for our referrals
   const started = useRef(false);
 
   const load = useCallback(async (p: RiskProfile) => {
@@ -68,6 +72,7 @@ export function Mt5Bots() {
     try { const s = localStorage.getItem(PROFILE_KEY) as RiskProfile | null; if (s) p = s; } catch { /* ignore */ }
     setProfile(p);
     void load(p);
+    void checkDerivReferral(loadDerivAccess()).then(setReferred); // verify referral → gate the EA
   }, [load]);
 
   // auto-refresh every REFRESH_MS (users can still click Refresh any time)
@@ -83,6 +88,39 @@ export function Mt5Bots() {
   };
 
   const activeProfile = PROFILE_LIST.find((x) => x.key === profile)!;
+
+  // Gate: the MT5 EA is for our referrals only. Non-referrals get a brief open-account
+  // path + the free Deriv Bots. Referrals see the full page — nothing about referral.
+  if (referred === null) {
+    return (
+      <main className="grid min-h-[100dvh] place-items-center" style={{ background: TC.bg, color: TC.text }}>
+        <span className="inline-flex items-center gap-2 text-[13px]" style={{ color: TC.muted }}>
+          <Loader2 size={16} className="animate-spin" style={{ color: TC.profit }} /> Loading…
+        </span>
+      </main>
+    );
+  }
+  if (!referred) {
+    return (
+      <main className="relative grid min-h-[100dvh] place-items-center px-6" style={{ background: TC.bg, color: TC.text }}>
+        <div aria-hidden className="pointer-events-none absolute inset-0" style={DOT_GRID} />
+        <div className="relative z-10 w-full max-w-md rounded-2xl border p-6 text-center" style={{ borderColor: TC.line, background: TC.panel }}>
+          <span className="mx-auto grid h-12 w-12 place-items-center rounded-xl" style={{ background: "rgba(56,189,248,0.14)" }}><Lock size={22} style={{ color: TC.profit }} /></span>
+          <h1 className="mt-3 text-[18px] font-bold">MT5 bots come with a Clunoid account</h1>
+          <p className="mt-1.5 text-[13px] leading-relaxed" style={{ color: TC.muted }}>
+            The MT5 Expert Advisor is included when you open your Deriv account with us. Open a free account to unlock it — the Deriv Bots are free to use right now.
+          </p>
+          <a href={DERIV_AFFILIATE_URL} target="_blank" rel="noopener noreferrer" className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-[13.5px] font-semibold transition hover:opacity-90" style={{ background: TC.profit, color: TC.ink }}>
+            Open a Deriv account
+          </a>
+          <Link href="/trading/deriv/bots" className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-xl border px-5 py-2.5 text-[13.5px] font-semibold transition hover:bg-white/5" style={{ borderColor: TC.line, color: TC.text }}>
+            <Bot size={15} style={{ color: TC.profit }} /> Use Deriv Bots (free)
+          </Link>
+          <Link href="/trading/command" className="mt-3 inline-block text-[12px] transition hover:opacity-80" style={{ color: TC.faint }}>Back to command center</Link>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="relative min-h-[100dvh] w-full overflow-x-hidden" style={{ background: TC.bg, color: TC.text }}>
