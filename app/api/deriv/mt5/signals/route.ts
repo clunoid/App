@@ -96,7 +96,7 @@ function toCsv(d: EngineResult): string {
   const p = PROFILES[d.profile] ?? PROFILES.moderate;
   const head =
     `# clunoid mt5 | profile=${d.profile} | ts=${d.generatedAt} | signals=${d.signals.length} | cats=${d.categories.join("+")}\n` +
-    `# caps: maxOpenRisk=${p.maxOpenRiskPct} corrCap=${p.corrClusterCap}\n` +
+    `# caps: maxOpenRisk=${p.maxOpenRiskPct} corrCap=${p.corrClusterCap} dailyLoss=${p.maxDailyLossPct}\n` +
     `# cols: SYMBOL,SIDE,ENTRY,SL,TP,RISKPCT,CONF,DIGITS,TRAILATR,PARTIALS(p:c;..),ADDS(p:s;..),CLUSTER`;
   const rows = d.signals.map((s) =>
     [

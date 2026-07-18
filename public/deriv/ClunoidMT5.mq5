@@ -17,16 +17,14 @@
 //+------------------------------------------------------------------+
 #property copyright "Clunoid"
 #property link      "https://www.clunoid.com"
-#property version   "3.00"
+#property version   "3.10"
 #property strict
 
 #include <Trade/Trade.mqh>
 
 enum RiskProfile { CONSERVATIVE=0, MODERATE=1, AGGRESSIVE=2 };
 
-input string      InpBotId          = "";         // Bot ID from clunoid.com (controls profile + markets remotely)
-input RiskProfile InpProfile        = AGGRESSIVE; // Risk profile (used only when Bot ID is empty)
-input string      InpCategory       = "forex";    // Market category (used only when Bot ID is empty)
+input RiskProfile InpProfile        = AGGRESSIVE; // Risk profile — Conservative / Moderate / Aggressive (sets the risk caps)
 input int         InpPollSeconds    = 30;         // How often to poll for signals
 input long        InpMagic          = 77090001;   // Magic number (Clunoid trades only)
 input int         InpMaxSpreadPts   = 40;         // Skip if spread exceeds this (points)
@@ -54,6 +52,7 @@ double  g_dayStartEquity = 0.0;
 int     g_dayStart = 0;
 double  g_maxOpenRisk = 0.0;   // from the feed "# caps:" header
 double  g_corrCap     = 0.0;
+double  g_dailyLoss   = 0.0;   // per-profile daily-loss cap % (from the feed)
 long    g_feedTs      = 0;     // feed generation time (unix, from "ts=")
 
 //+------------------------------------------------------------------+
@@ -65,6 +64,7 @@ int OnInit()
    // still has limits; a fresh account with none blocks entries until caps arrive.
    g_maxOpenRisk = GVget("cl_capmax"+AcctSuffix(), 0);
    g_corrCap     = GVget("cl_capcorr"+AcctSuffix(), 0);
+   g_dailyLoss   = GVget("cl_capdaily"+AcctSuffix(), 0);
    // Persist the daily-loss baseline PER ACCOUNT so a mid-day reinit/restart (or a
    // demo<->real account switch in the same terminal) doesn't re-anchor it.
    int today = DayOfYearNow();
@@ -75,7 +75,7 @@ int OnInit()
    g_dayStart = today;
 
    EventSetTimer(MathMax(5, InpPollSeconds));
-   PrintFormat("Clunoid MT5 EA v2.1 started — profile=%s. Ensure https://www.clunoid.com is whitelisted in WebRequest.", ProfileStr());
+   PrintFormat("Clunoid MT5 EA v3.1 started — profile=%s, trading forex + Volatility. Ensure https://www.clunoid.com is whitelisted in WebRequest.", ProfileStr());
    Poll();
    return(INIT_SUCCEEDED);
   }
@@ -143,18 +143,20 @@ void Poll()
 
    if(DayOfYearNow()!=g_dayStart) { g_dayStart=DayOfYearNow(); SetDayBaseline(g_dayStart); }
 
+   // Daily-loss cap = the profile's cap (from the feed), or the manual input;
+   // when both are set the TIGHTER one wins (a user can only ever be safer).
+   double dailyCap = InpMaxDailyLossPct;
+   if(g_dailyLoss>0) dailyCap = (dailyCap>0) ? MathMin(dailyCap, g_dailyLoss) : g_dailyLoss;
    bool dailyHalt=false;
-   if(InpMaxDailyLossPct>0 && g_dayStartEquity>0)
+   if(dailyCap>0 && g_dayStartEquity>0)
      {
       double dd=(AccountInfoDouble(ACCOUNT_EQUITY)-g_dayStartEquity)/g_dayStartEquity*100.0;
-      if(dd <= -InpMaxDailyLossPct) dailyHalt=true;   // block NEW entries; still manage open trades
+      if(dd <= -dailyCap) dailyHalt=true;   // block NEW entries; still manage open trades
      }
 
-   // With a Bot ID the server applies the profile + market selection saved on
-   // clunoid.com (one EA, remotely configured); otherwise use the local inputs.
-   string url = (StringLen(InpBotId) >= 8)
-      ? StringFormat("%s?bot=%s&format=csv", g_base, InpBotId)
-      : StringFormat("%s?profile=%s&category=%s&format=csv", g_base, ProfileStr(), InpCategory);
+   // One self-contained EA: trades every live market (forex + Volatility Indices)
+   // sized to the chosen risk profile. No Bot ID / pairing needed.
+   string url = StringFormat("%s?profile=%s&categories=forex,volatility&format=csv", g_base, ProfileStr());
    string body = HttpGet(url);
 
    Sig sigs[]; int nSigs=0;
@@ -182,9 +184,8 @@ void Poll()
    CleanupPlans();                             // drop plans for closed tickets
 
    string capFlag = (g_maxOpenRisk<=0) ? " · CAPS PENDING (entries blocked)" : "";
-   string mode = (StringLen(InpBotId)>=8) ? ("bot "+InpBotId) : ProfileStr();
-   Comment(StringFormat("Clunoid MT5 v3 · %s · %d signals · %s%s%s%s",
-           mode, nSigs, TimeToString(TimeCurrent(), TIME_SECONDS), dailyHalt?" · DAILY LOSS HALT":"", capFlag, stale?" · STALE FEED":""));
+   Comment(StringFormat("Clunoid MT5 v3.1 · %s · forex+volatility · %d signals · %s%s%s%s",
+           ProfileStr(), nSigs, TimeToString(TimeCurrent(), TIME_SECONDS), dailyHalt?" · DAILY LOSS HALT":"", capFlag, stale?" · STALE FEED":""));
   }
 
 //+------------------------------------------------------------------+
@@ -198,6 +199,8 @@ void ParseCaps(string line)
    if(p>=0) { double v=StringToDouble(StringSubstr(line, p+12)); if(v>0) { g_maxOpenRisk=v; GVset("cl_capmax"+AcctSuffix(), v); } }
    int q = StringFind(line, "corrCap=");
    if(q>=0) { double v=StringToDouble(StringSubstr(line, q+8)); if(v>0) { g_corrCap=v; GVset("cl_capcorr"+AcctSuffix(), v); } }
+   int dl = StringFind(line, "dailyLoss=");
+   if(dl>=0) { double v=StringToDouble(StringSubstr(line, dl+10)); if(v>0) { g_dailyLoss=v; GVset("cl_capdaily"+AcctSuffix(), v); } }
    // "ts=<unix seconds>" — the feed's generation time, for the staleness guard.
    int r = StringFind(line, "ts=");
    if(r>=0) { long v=StringToInteger(StringSubstr(line, r+3)); if(v>0) g_feedTs=v; }
