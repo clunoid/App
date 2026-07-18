@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { DerivBots } from "@/components/deriv/bots/DerivBots";
+import { DerivBotsList } from "@/components/deriv/bots/DerivBotsList";
 
 export const metadata: Metadata = {
   title: "Deriv Bots · Clunoid Trading",
@@ -7,5 +7,5 @@ export const metadata: Metadata = {
 };
 
 export default function DerivBotsPage() {
-  return <DerivBots />;
+  return <DerivBotsList />;
 }
