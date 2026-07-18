@@ -12,17 +12,22 @@
  *    the strongest bias, so a single win claws back the accumulated losses. Exit
  *    recovery on the first win and reset the stake.
  *
- * Runs entirely client-side over the Deriv WebSocket: authorize → subscribe
- * ticks/balance/contracts → proposal → buy → proposal_open_contract → settle →
- * next. Exactly one contract is open at a time (tradeInProgress + activeContractId).
+ * Runs entirely client-side on the NEW Deriv API. It reuses the command-center
+ * connection: the OAuth access token (ory_at_…) + a chosen options account id.
+ * connect() exchanges those for an OTP-authenticated WebSocket URL scoped to that
+ * account (Demo or Real), opens it, then subscribes ticks/balance/contracts and
+ * runs proposal → buy → proposal_open_contract → settle → next. Exactly one
+ * contract is open at a time (tradeInProgress + activeContractId). There is NO
+ * `authorize` step — the OTP URL is already authenticated; each (re)connect fetches
+ * a fresh OTP.
  *
- * Hardened vs the reference implementation: an explicit ping heartbeat, a trade
- * watchdog that clears a stuck in-progress flag if a settlement never arrives,
- * the in-progress flag is cleared on EVERY error path (not just token/rate-limit),
- * and the stop-loss is pre-checked BEFORE each martingale escalation so a runaway
- * stake can't blow far past the configured stop.
+ * Hardened: an explicit ping heartbeat, a trade watchdog that clears a stuck
+ * in-progress flag if a settlement never arrives, the in-progress flag is cleared
+ * on EVERY error path, and the stop-loss is pre-checked BEFORE each martingale
+ * escalation so a runaway stake can't blow far past the configured stop.
  */
-import { DERIV_BOT_WS_URL, DERIV_VOLATILITY_MARKETS, BOT_DEFAULTS, type BotConfig } from "./config";
+import { DERIV_VOLATILITY_MARKETS, DERIV_PIP_DECIMALS, BOT_DEFAULTS, type BotConfig } from "./config";
+import { fetchTradeSocketUrl } from "./session";
 
 export type TradeRow = {
   win: boolean;
@@ -58,13 +63,17 @@ export type BotUI = {
   onBalance: (balance: number, currency: string) => void;
 };
 
+/** Which Deriv account the bot trades on (the Demo/Real choice). */
+export type BotAccount = { accessToken: string; accountId: string; currency: string };
+
 type MarketAnalysis = { digits: number[]; over4: number; under5: number; total: number };
 
 const round2 = (v: number) => Math.round(v * 100) / 100;
 
 export class PhoenixRecoveryDiffer {
   private ui: BotUI;
-  private token: string;
+  private accessToken: string;
+  private accountId: string;
   private markets = [...DERIV_VOLATILITY_MARKETS];
 
   private ws: WebSocket | null = null;
@@ -108,15 +117,17 @@ export class PhoenixRecoveryDiffer {
   private watchdogTimer: ReturnType<typeof setTimeout> | null = null;
   private tradeStartedAt = 0;
 
-  constructor(ui: BotUI, token: string) {
+  constructor(ui: BotUI, account: BotAccount) {
     this.ui = ui;
-    this.token = token;
+    this.accessToken = account.accessToken;
+    this.accountId = account.accountId;
+    this.currency = account.currency || "USD";
   }
 
   /** Start the bot with a validated config. */
   start(config: BotConfig): void {
     if (this.isRunning) { this.ui.onStatus("Bot is already running.", "warning"); return; }
-    if (!this.token) { this.ui.onStatus("Connect your Deriv account first.", "error"); return; }
+    if (!this.accessToken || !this.accountId) { this.ui.onStatus("Connect your Deriv account first.", "error"); return; }
 
     this.config = { ...this.config, ...config };
     this.currentStake = this.config.initialStake;
@@ -130,9 +141,9 @@ export class PhoenixRecoveryDiffer {
     this.isRunning = true; this.stopRequested = false;
     this.startTime = Date.now();
     this.ui.onRunning(true);
-    this.ui.onStatus("Authorizing with Deriv…", "info");
+    this.ui.onStatus("Opening your Deriv trading session…", "info");
     this.startStatsTimer();
-    this.connect();
+    void this.connect();
   }
 
   stop(msg = "Bot stopped", kind: "info" | "success" | "warning" | "error" = "info"): void {
@@ -146,18 +157,40 @@ export class PhoenixRecoveryDiffer {
   }
   private stopMessage: { msg: string; kind: "info" | "success" | "warning" | "error" } | null = null;
 
-  private connect(): void {
+  private async connect(): Promise<void> {
     if (this.stopRequested) return;
+
+    // Fresh OTP → a ready-to-connect, account-scoped WebSocket URL. (Re)fetched on
+    // every connect since the OTP is single-use.
+    let url: string;
+    try {
+      url = await fetchTradeSocketUrl(this.accessToken, this.accountId);
+    } catch (e) {
+      this.attemptReconnect(e instanceof Error ? e.message : "Couldn't open the trading session.");
+      return;
+    }
+    if (this.stopRequested) return;
+
     let ws: WebSocket;
-    try { ws = new WebSocket(DERIV_BOT_WS_URL); }
+    try { ws = new WebSocket(url); }
     catch { this.attemptReconnect("Couldn't open the trading connection."); return; }
     this.ws = ws;
 
     ws.onopen = () => {
+      const resuming = this.isReconnecting;
       this.reconnectAttempts = 0; this.isReconnecting = false;
       if (this.reconnectTimer) { clearTimeout(this.reconnectTimer); this.reconnectTimer = null; }
-      this.send({ authorize: this.token });
+      this.ui.onStatus(resuming ? "Reconnected. Resuming…" : "Connected. Running Phoenix Recovery Differ…", "success");
+      // The OTP URL is pre-authenticated — no `authorize`. Subscriptions are
+      // PER-SOCKET, so re-subscribe everything on every (re)open.
+      this.send({ balance: 1, subscribe: 1 });
+      this.tickSubs = {}; // fresh socket → tick subs don't carry over; re-subscribe
+      this.subscribeAllTicks();
+      // If we reconnected mid-trade, re-attach to OUR open contract so we still get
+      // its settlement (contracts are tracked per-id, never account-wide).
+      if (this.activeContractId) this.send({ proposal_open_contract: 1, contract_id: this.activeContractId, subscribe: 1 });
       this.startPing();
+      if (!this.tradeInProgress) this.queueNextTrade();
     };
     ws.onmessage = (ev) => this.handleMessage(ev.data as string);
     ws.onerror = () => { if (!this.stopRequested && !this.isReconnecting) this.attemptReconnect("Connection error. Reconnecting…"); };
@@ -181,9 +214,9 @@ export class PhoenixRecoveryDiffer {
       const err = d.error as { code?: string; message?: string };
       // A failed proposal/buy must free the entry gate, or the bot wedges.
       const inTradeMsg = d.msg_type === "proposal" || d.msg_type === "buy";
-      if (err.code === "InvalidToken" || err.code === "AuthorizationRequired") {
-        this.ui.onStatus("Authorization expired. Reconnecting…", "warning");
-        this.attemptReconnect("Re-authenticating…");
+      if (err.code === "InvalidToken" || err.code === "AuthorizationRequired" || err.code === "InvalidOTP" || err.code === "OTPExpired") {
+        this.ui.onStatus("Session refreshing…", "warning");
+        this.attemptReconnect("Refreshing the trading session…");
         return;
       }
       if (err.code === "RateLimit" || err.code === "TooManyRequests") {
@@ -198,20 +231,6 @@ export class PhoenixRecoveryDiffer {
     }
 
     switch (d.msg_type) {
-      case "authorize": {
-        const a = d.authorize as { balance?: number; currency?: string } | undefined;
-        if (!a) return;
-        this.balance = Number(a.balance) || 0;
-        this.currency = a.currency || "USD";
-        this.ui.onBalance(this.balance, this.currency);
-        this.ui.onStatus(this.isReconnecting ? "Reconnected. Resuming…" : "Connected. Running Phoenix Recovery Differ…", "success");
-        this.isReconnecting = false;
-        this.send({ balance: 1, subscribe: 1 });
-        this.send({ proposal_open_contract: 1, subscribe: 1 });
-        this.subscribeAllTicks();
-        if (!this.tradeInProgress) this.queueNextTrade();
-        break;
-      }
       case "balance": {
         const b = d.balance as { balance?: number; currency?: string } | undefined;
         if (b && typeof b.balance !== "undefined") { this.balance = Number(b.balance); this.currency = b.currency || this.currency; this.ui.onBalance(this.balance, this.currency); }
@@ -223,15 +242,20 @@ export class PhoenixRecoveryDiffer {
         break;
       }
       case "buy": {
-        const b = d.buy as { contract_id?: number } | undefined;
-        if (b?.contract_id) this.activeContractId = b.contract_id;
+        const b = d.buy as { contract_id?: number; balance_after?: number } | undefined;
+        if (b?.contract_id) {
+          this.activeContractId = b.contract_id;
+          // Track ONLY our own contract — not every open contract on the account.
+          this.send({ proposal_open_contract: 1, contract_id: b.contract_id, subscribe: 1 });
+        }
+        if (b && typeof b.balance_after !== "undefined") { this.balance = Number(b.balance_after); this.ui.onBalance(this.balance, this.currency); }
         break;
       }
       case "proposal_open_contract":
         this.handleContract(d.proposal_open_contract as Record<string, unknown>);
         break;
       case "tick":
-        this.recordTick(d.tick as { symbol?: string; quote?: number } | undefined);
+        this.recordTick(d.tick as { symbol?: string; quote?: number; pip_size?: number } | undefined);
         break;
       default:
         break;
@@ -244,10 +268,14 @@ export class PhoenixRecoveryDiffer {
     }
   }
 
-  private recordTick(tick?: { symbol?: string; quote?: number }): void {
+  private recordTick(tick?: { symbol?: string; quote?: number; pip_size?: number }): void {
     if (!tick?.symbol || typeof tick.quote === "undefined") return;
     const market = tick.symbol;
-    const digit = parseInt(String(tick.quote).slice(-1), 10);
+    // Read the LAST digit at the instrument's pip precision. A raw JS number drops
+    // trailing zeros (9955.20 → 9955.2), which would misread every digit-0 tick and
+    // bias the recovery analysis — so format to `pip_size` decimals first.
+    const decimals = typeof tick.pip_size === "number" ? tick.pip_size : (DERIV_PIP_DECIMALS[market] ?? 2);
+    const digit = parseInt(Number(tick.quote).toFixed(decimals).slice(-1), 10);
     if (Number.isNaN(digit)) return;
     let a = this.analysis[market];
     if (!a) { a = this.analysis[market] = { digits: [], over4: 0, under5: 0, total: 0 }; }
@@ -310,15 +338,17 @@ export class PhoenixRecoveryDiffer {
     this.currentMarket = market; this.currentTarget = target;
     this.armWatchdog();
 
+    // New-API proposal: `underlying_symbol` (not `symbol`). No authorize needed.
+    // `amount` must be a NUMBER (the schema is type:number — a string is rejected).
     this.send({
       proposal: 1,
-      amount: round2(this.currentStake).toFixed(2),
+      amount: round2(this.currentStake),
       basis: "stake",
       contract_type: contractType,
       currency: this.currency || "USD",
       duration: 1,
       duration_unit: "t",
-      symbol: market,
+      underlying_symbol: market,
       barrier,
     });
   }
@@ -336,7 +366,10 @@ export class PhoenixRecoveryDiffer {
 
   private handleContract(c: Record<string, unknown>): void {
     if (!c || typeof c.contract_id === "undefined") return;
-    if (this.activeContractId && c.contract_id !== this.activeContractId) return; // not ours
+    // Only OUR current contract. Requiring a non-null match (not just "differs from")
+    // means foreign contracts settling in the gap between our trades can't be booked,
+    // and once we free the trade its duplicate settlements are ignored too.
+    if (this.activeContractId === null || Number(c.contract_id) !== this.activeContractId) return;
     if (!c.is_sold) return;
 
     const profit = Number(c.profit) || 0;
@@ -413,7 +446,9 @@ export class PhoenixRecoveryDiffer {
     this.watchdogTimer = setTimeout(() => {
       if (this.isRunning && this.tradeInProgress && Date.now() - this.tradeStartedAt > 25000) {
         this.ui.onStatus("Trade update stalled — re-syncing…", "warning");
-        this.send({ proposal_open_contract: 1, subscribe: 1 });
+        // Best-effort nudge for OUR contract's final state, then free the gate so
+        // the bot doesn't wedge (the balance subscription still reflects the result).
+        if (this.activeContractId) this.send({ proposal_open_contract: 1, contract_id: this.activeContractId, subscribe: 1 });
         this.freeTrade();
         this.scheduleNext(1500);
       }
@@ -429,7 +464,7 @@ export class PhoenixRecoveryDiffer {
     const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts - 1), 30000);
     this.ui.onStatus(`${message} (attempt ${this.reconnectAttempts}/10)`, "warning");
     if (this.ws) { try { this.ws.onopen = this.ws.onmessage = this.ws.onerror = this.ws.onclose = null; this.ws.close(); } catch { /* ignore */ } }
-    this.reconnectTimer = setTimeout(() => { if (!this.stopRequested) this.connect(); }, delay);
+    this.reconnectTimer = setTimeout(() => { if (!this.stopRequested) void this.connect(); }, delay);
   }
 
   private startPing(): void {

@@ -174,52 +174,6 @@ export async function startDerivLogin(): Promise<void> {
   window.location.href = `${DERIV_AUTH_BASE}/oauth2/auth?${q.toString()}`;
 }
 
-/** The token a browser bot uses to authorize the trading WebSocket. Reuses the
- *  SAME connection the user made in the command center: a classic a1- account
- *  token if one exists (paste / classic flow), otherwise the OAuth access token.
- *  Returns "" when the user has never connected. */
-export function getBotAuthToken(): string {
-  try {
-    const a1 = loadDerivTokens();
-    if (a1.length && a1[0]?.token) return a1[0].token;
-  } catch { /* ignore */ }
-  return loadDerivAccess();
-}
-
-/** True if the user has ANY Deriv connection (so the bots page can assume one). */
-export function hasDerivConnection(): boolean {
-  return getBotAuthToken() !== "";
-}
-
-// ── trading-token grant (a1- account tokens for the trade WebSocket) ──────────
-// The command center's OIDC login yields an `ory_at_` REST token — great for
-// reading the portfolio, but Deriv's trade WebSocket only authorises with classic
-// `a1-` ACCOUNT tokens (one per account → this is also what lets a user switch
-// between their Demo and Real accounts). Deriv's CLASSIC OAuth returns all of them
-// in one redirect. We reuse the SAME app the user already authorised, so Deriv
-// remembers the grant and bounces straight back — no second consent.
-
-const AFTER_KEY = "clunoid_deriv_after";
-
-/** Redirect into Deriv's classic OAuth to harvest the per-account a1- tokens the
- *  trade WebSocket needs (and Demo/Real switching relies on). Returns to the app's
- *  registered redirect (/trading/command), which already parses + stores them;
- *  `afterPath` is where to send the user once the tokens are in. */
-export function startDerivTradingGrant(afterPath?: string): void {
-  try { if (afterPath) sessionStorage.setItem(AFTER_KEY, afterPath); } catch { /* ignore */ }
-  const q = new URLSearchParams({ app_id: DERIV_CLIENT_ID, l: "EN", brand: "deriv" });
-  window.location.href = `${DERIV_OAUTH_BASE}/oauth2/authorize?${q.toString()}`;
-}
-
-/** Read + clear the post-grant destination stashed by startDerivTradingGrant. */
-export function takeDerivAfter(): string {
-  try {
-    const v = sessionStorage.getItem(AFTER_KEY);
-    if (v) { sessionStorage.removeItem(AFTER_KEY); return v; }
-  } catch { /* ignore */ }
-  return "";
-}
-
 /**
  * Finish the OIDC login from the ?code&state redirect: verify state, then exchange
  * the code for the NEW-API access token (PKCE, public client, no secret) directly

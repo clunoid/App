@@ -19,7 +19,7 @@ import { ArrowLeft, Wallet, Plug, RefreshCw, Loader2, LogOut, KeyRound, ShieldCh
 import { TC, DOT_GRID, monoFont, fmtBalance } from "@/lib/trading/theme";
 import type { ConnectedAccount } from "@/lib/trading/accounts";
 import { hasDerivApp } from "@/lib/deriv/config";
-import { parseDerivRedirect, isDerivRedirect, isDerivCodeReturn, startDerivLogin, completeDerivLogin, saveDerivTokens, loadDerivTokens, clearDerivTokens, saveDerivAccess, loadDerivAccess, clearDerivAccess, takeDerivAfter, type DerivToken } from "@/lib/deriv/oauth";
+import { parseDerivRedirect, isDerivRedirect, isDerivCodeReturn, startDerivLogin, completeDerivLogin, saveDerivTokens, loadDerivTokens, clearDerivTokens, saveDerivAccess, loadDerivAccess, clearDerivAccess, type DerivToken } from "@/lib/deriv/oauth";
 import { fetchDerivPortfolio, type DerivPortfolio } from "@/lib/deriv/client";
 import { fetchDerivPortfolioREST } from "@/lib/deriv/api";
 
@@ -154,9 +154,6 @@ export function CommandCenter() {
         const s: Session = { kind: "token", tokens: fresh };
         setSession(s);
         void refresh(s);
-        // If a bot sent the user here just to mint trading tokens, hop back.
-        const after = takeDerivAfter();
-        if (after) { window.location.assign(after); return; }
         return;
       }
     }

@@ -3,42 +3,41 @@
 /**
  * DERIV BOTS — browser-side, API-executed Deriv bots (the DBot-style track).
  *
- * The bots REUSE the Deriv connection the user already made in the command
- * center (/trading/command) — same OAuth app (33PP…), same token. There is no
- * separate "connect" step here; if the user somehow arrives without a connection
- * we bounce them to the command center. The bot runs entirely in the browser over
- * the Deriv WebSocket (proposal → buy → settle), placing real trades on the
- * user's account and streaming live stats + trades. First bot: Phoenix Recovery
- * Differ.
+ * REUSES the exact Deriv connection made in the command center (/trading/command):
+ * the same app (33PP…) and the same OAuth access token. There is no extra sign-in,
+ * no consent, no separate token step. The user just toggles Demo ↔ Real and the bot
+ * trades that account on the new Deriv API (OTP → account-scoped WebSocket), with the
+ * balance updating live as it trades. First bot: Phoenix Recovery Differ.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Bot, Sparkles, Play, Square, Loader2, TrendingUp, TrendingDown, Wallet, Activity, Clock, Target, Layers, CheckCircle2 } from "lucide-react";
-import { TC, DOT_GRID, monoFont } from "@/lib/trading/theme";
-import { loadDerivTokens, loadDerivAccess, startDerivTradingGrant, type DerivToken } from "@/lib/deriv/oauth";
+import { TC, DOT_GRID, monoFont, fmtBalance } from "@/lib/trading/theme";
+import type { ConnectedAccount } from "@/lib/trading/accounts";
+import { loadDerivAccess } from "@/lib/deriv/oauth";
+import { fetchDerivPortfolioREST } from "@/lib/deriv/api";
 import { BOT_DEFAULTS } from "@/lib/deriv/bots/config";
 import { PhoenixRecoveryDiffer, type BotUI, type BotStats, type TradeRow } from "@/lib/deriv/bots/phoenixRecoveryDiffer";
 
 type StatusKind = "info" | "success" | "warning" | "error";
-const isDemo = (loginid: string) => /^vr/i.test(loginid) || /demo|virtual/i.test(loginid);
+type Mode = "demo" | "real";
+const SNAP_KEY = "clunoid_deriv_portfolio";
 
 const BOT = {
   name: "Phoenix Recovery Differ",
   tagline: "Smart digit differ with intelligent market-analysis recovery",
   rating: 5.0,
   blurb:
-    "Trades 1-tick Digit Differ on the Volatility indices. After a loss it escalates the stake and switches to a bias-analysed Over-4 / Under-5 recovery trade — so a single win claws the losses back, then it resets. Runs in your browser on your connected Deriv account.",
+    "Trades 1-tick Digit Differ on the Volatility indices. After a loss it escalates the stake and switches to a bias-analysed Over-4 / Under-5 recovery trade — so a single win claws the losses back, then it resets. Runs in your browser on the account you select below.",
 };
 
 export function DerivBots() {
   const router = useRouter();
   const [ready, setReady] = useState(false);
-  // a1- account tokens — one per Deriv account (this is what the trade WebSocket
-  // authorises with AND what lets the user switch between Demo and Real).
-  const [tokens, setTokens] = useState<DerivToken[]>([]);
-  const [needGrant, setNeedGrant] = useState(false); // connected, but no trade tokens yet
-  const [accountIdx, setAccountIdx] = useState(0);
+  const [access, setAccess] = useState("");
+  const [accounts, setAccounts] = useState<ConnectedAccount[]>([]); // options accounts only
+  const [mode, setMode] = useState<Mode>("demo");
   const [open, setOpen] = useState(true);
 
   const [stake, setStake] = useState(String(BOT_DEFAULTS.initialStake));
@@ -50,67 +49,75 @@ export function DerivBots() {
   const [status, setStatus] = useState<{ msg: string; kind: StatusKind } | null>(null);
   const [stats, setStats] = useState<BotStats | null>(null);
   const [trades, setTrades] = useState<TradeRow[]>([]);
+  const [liveBalance, setLiveBalance] = useState<{ balance: number; currency: string } | null>(null);
   const botRef = useRef<PhoenixRecoveryDiffer | null>(null);
 
-  // Reuse the command-center connection. The trade WebSocket needs a1- account
-  // tokens; if the user connected via OAuth (ory_at_ only) we harvest them once,
-  // reusing the same Deriv authorisation (no second consent). No connection at all
-  // → back to the command center.
+  const onlyOptions = (accts: ConnectedAccount[]) => accts.filter((a) => a.kind === "options");
+
+  // Reuse the command-center connection. Read the cached portfolio for an instant
+  // view, then refresh live balances. No connection at all → back to command center.
   useEffect(() => {
-    const a1 = loadDerivTokens();
-    if (a1.length) {
-      setTokens(a1);
-      const demoAt = a1.findIndex((x) => isDemo(x.loginid));
-      setAccountIdx(demoAt >= 0 ? demoAt : 0);
-      setReady(true);
-      try { sessionStorage.removeItem("clunoid_deriv_grant_tried"); } catch { /* ignore */ }
-      return;
-    }
-    if (loadDerivAccess()) {
-      let tried = false;
-      try { tried = !!sessionStorage.getItem("clunoid_deriv_grant_tried"); } catch { /* ignore */ }
-      if (!tried) {
-        try { sessionStorage.setItem("clunoid_deriv_grant_tried", "1"); } catch { /* ignore */ }
-        startDerivTradingGrant("/trading/deriv/bots"); // seamless bounce, then back here
-        return;
-      }
-      setNeedGrant(true); // came back still without trade tokens — show a manual tap
-      setReady(true);
-      return;
-    }
-    router.replace("/trading/command");
+    const acc = loadDerivAccess();
+    if (!acc) { router.replace("/trading/command"); return; }
+    setAccess(acc);
+
+    let cached: ConnectedAccount[] = [];
+    try {
+      const raw = localStorage.getItem(SNAP_KEY);
+      if (raw) cached = onlyOptions((JSON.parse(raw) as { accounts?: ConnectedAccount[] }).accounts ?? []);
+    } catch { /* ignore */ }
+    if (cached.length) { setAccounts(cached); setMode(cached.some((a) => a.isVirtual) ? "demo" : "real"); }
+    setReady(true);
+
+    void (async () => {
+      try {
+        const p = await fetchDerivPortfolioREST(acc);
+        const opts = onlyOptions(p.accounts);
+        if (opts.length) {
+          setAccounts(opts);
+          setMode((m) => (opts.some((a) => a.isVirtual) ? m : "real"));
+        }
+      } catch { /* keep cached snapshot */ }
+    })();
   }, [router]);
 
   // stop the bot if the user navigates away
   useEffect(() => () => { botRef.current?.stop("Left the page.", "info"); }, []);
 
-  // the token the bot trades with: the selected account's a1- token
-  const account = tokens[accountIdx];
-  const authToken = account?.token || "";
+  const demoAccount = accounts.find((a) => a.isVirtual) || null;
+  const realAccount = accounts.find((a) => !a.isVirtual) || null;
+  const selected = mode === "demo" ? demoAccount : realAccount;
+
+  // balance shown for the selected account: live while running, else the portfolio value
+  const shownBalance = runningState && liveBalance ? liveBalance : { balance: selected?.balance ?? null, currency: selected?.currency ?? "" };
+
+  const switchMode = (m: Mode) => { if (runningState) return; setMode(m); setLiveBalance(null); };
 
   const validate = useCallback((): { ok: boolean; msg?: string } => {
-    const s = parseFloat(stake), tp = parseFloat(takeProfit), sl = parseFloat(stopLoss), m = parseFloat(martingale);
+    const s = parseFloat(stake), tp = parseFloat(takeProfit), sl = parseFloat(stopLoss), mg = parseFloat(martingale);
     if (!(s >= BOT_DEFAULTS.minStake)) return { ok: false, msg: `Stake must be at least ${BOT_DEFAULTS.minStake}.` };
     if (!(tp > 0)) return { ok: false, msg: "Take profit must be greater than 0." };
     if (!(sl > 0)) return { ok: false, msg: "Stop loss must be greater than 0." };
-    if (!(m >= 1)) return { ok: false, msg: "Martingale multiplier must be at least 1." };
+    if (!(mg >= 1)) return { ok: false, msg: "Martingale multiplier must be at least 1." };
     return { ok: true };
   }, [stake, takeProfit, stopLoss, martingale]);
 
   const startBot = () => {
-    if (!authToken) { router.replace("/trading/command"); return; }
+    if (!access) { router.replace("/trading/command"); return; }
+    if (!selected) { setStatus({ msg: `No ${mode} account found on your Deriv connection.`, kind: "error" }); return; }
     const v = validate();
     if (!v.ok) { setStatus({ msg: v.msg!, kind: "error" }); return; }
 
     setTrades([]);
+    setLiveBalance({ balance: selected.balance ?? 0, currency: selected.currency });
     const ui: BotUI = {
       onStatus: (msg, kind) => setStatus({ msg, kind }),
       onStats: (s) => setStats(s),
       onTrade: (t) => setTrades((prev) => [t, ...prev].slice(0, 100)),
       onRunning: (r) => setRunning(r),
-      onBalance: () => { /* stats carry balance */ },
+      onBalance: (balance, currency) => setLiveBalance({ balance, currency }),
     };
-    const bot = new PhoenixRecoveryDiffer(ui, authToken);
+    const bot = new PhoenixRecoveryDiffer(ui, { accessToken: access, accountId: selected.loginid, currency: selected.currency });
     botRef.current = bot;
     bot.start({
       initialStake: parseFloat(stake),
@@ -126,35 +133,11 @@ export function DerivBots() {
     return (
       <main className="grid min-h-[100dvh] place-items-center" style={{ background: TC.bg, color: TC.text }}>
         <span className="inline-flex items-center gap-2 text-[13px]" style={{ color: TC.muted }}>
-          <Loader2 size={16} className="animate-spin" style={{ color: TC.profit }} /> Preparing your Deriv trading session…
+          <Loader2 size={16} className="animate-spin" style={{ color: TC.profit }} /> Loading…
         </span>
       </main>
     );
   }
-
-  // Connected, but the trade WebSocket needs a1- account tokens and the harvest came
-  // back empty — offer one tap to authorise trading (reuses the same Deriv login).
-  if (needGrant) {
-    return (
-      <main className="relative grid min-h-[100dvh] place-items-center px-6" style={{ background: TC.bg, color: TC.text }}>
-        <div aria-hidden className="pointer-events-none absolute inset-0" style={DOT_GRID} />
-        <div className="relative z-10 w-full max-w-md rounded-2xl border p-6 text-center" style={{ borderColor: TC.line, background: TC.panel }}>
-          <span className="mx-auto grid h-11 w-11 place-items-center rounded-xl" style={{ background: "rgba(56,189,248,0.14)" }}><Bot size={22} style={{ color: TC.profit }} /></span>
-          <h1 className="mt-3 text-[18px] font-bold">One tap to enable trading</h1>
-          <p className="mt-1.5 text-[13px] leading-relaxed" style={{ color: TC.muted }}>
-            You&rsquo;re connected to Deriv. To let the bots place trades on your account — and to switch between your Demo and Real accounts — Deriv needs to hand Clunoid your account trading tokens. This reuses the same Deriv login, so there&rsquo;s no new sign-in.
-          </p>
-          <button onClick={() => { try { sessionStorage.removeItem("clunoid_deriv_grant_tried"); } catch { /* ignore */ } startDerivTradingGrant("/trading/deriv/bots"); }}
-            className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-[13.5px] font-semibold transition hover:opacity-90" style={{ background: TC.profit, color: TC.ink }}>
-            <Play size={15} /> Enable trading
-          </button>
-          <Link href="/trading/command" className="mt-3 inline-block text-[12px] transition hover:opacity-80" style={{ color: TC.faint }}>Back to command center</Link>
-        </div>
-      </main>
-    );
-  }
-
-  const demoActive = account ? isDemo(account.loginid) : false;
 
   return (
     <main className="relative min-h-[100dvh] w-full overflow-x-hidden" style={{ background: TC.bg, color: TC.text }}>
@@ -168,32 +151,50 @@ export function DerivBots() {
           </Link>
           <span className="h-4 w-px" style={{ background: TC.line }} />
           <span className="inline-flex items-center gap-1.5 text-[14px] font-bold tracking-[0.14em]"><Bot size={16} style={{ color: TC.profit }} /> DERIV BOTS</span>
-          <span className="ml-auto inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-[12px]" style={{ borderColor: TC.line, color: TC.muted }}>
-            <Wallet size={13} style={{ color: TC.profit }} />
-            {tokens.length > 1 ? (
-              <select value={accountIdx} onChange={(e) => setAccountIdx(Number(e.target.value))} disabled={runningState}
-                className="bg-transparent outline-none disabled:opacity-60" style={{ color: TC.text }}>
-                {tokens.map((t, i) => (
-                  <option key={t.loginid} value={i} style={{ background: TC.bg }}>
-                    {t.loginid} · {t.currency}{isDemo(t.loginid) ? " (Demo)" : " (Real)"}
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <span style={{ color: TC.text }}>{account ? `${account.loginid} · ${account.currency}${demoActive ? " (Demo)" : " (Real)"}` : "Deriv account"}</span>
-            )}
-          </span>
         </header>
 
         <div className="mt-2 max-w-2xl">
           <h1 className="text-[26px] font-bold sm:text-[30px]">Deriv Bots</h1>
           <p className="mt-1.5 text-[13.5px] leading-relaxed" style={{ color: TC.muted }}>
-            Automated Deriv bots that run in your browser and trade directly on your connected Deriv account — configure, start, and watch live trades and statistics. More bots coming; this is the first.
+            Automated bots that trade directly on your connected Deriv account. Pick Demo or Real, configure, and watch live trades, statistics, and your balance update in real time.
           </p>
         </div>
 
+        {/* account: Demo/Real toggle + live balance */}
+        <section className="mt-6">
+          <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border p-4 sm:p-5" style={{ borderColor: TC.line, background: "linear-gradient(180deg, rgba(56,189,248,0.08), rgba(255,255,255,0.015))" }}>
+            <div className="flex items-center gap-3">
+              <span className="grid h-10 w-10 place-items-center rounded-xl" style={{ background: "rgba(56,189,248,0.14)" }}><Wallet size={19} style={{ color: TC.profit }} /></span>
+              <div>
+                <div className="text-[10.5px] font-semibold uppercase tracking-[0.16em]" style={{ color: TC.faint }}>{mode === "demo" ? "Demo balance" : "Real balance"}{selected ? ` · ${selected.loginid}` : ""}</div>
+                <div className="mt-0.5 text-[26px] font-bold leading-none sm:text-[30px]" style={{ ...monoFont, color: mode === "demo" ? TC.text : TC.profit }}>
+                  {fmtBalance(shownBalance.balance, shownBalance.currency)}
+                </div>
+              </div>
+            </div>
+            {/* segmented Demo | Real */}
+            <div className="inline-flex rounded-xl border p-1" style={{ borderColor: TC.line, background: "rgba(0,0,0,0.2)" }}>
+              {(["demo", "real"] as const).map((m) => {
+                const avail = m === "demo" ? !!demoAccount : !!realAccount;
+                const active = mode === m;
+                return (
+                  <button key={m} onClick={() => switchMode(m)} disabled={runningState || !avail}
+                    title={!avail ? `No ${m} account on your Deriv connection` : runningState ? "Stop the bot to switch accounts" : ""}
+                    className="rounded-lg px-4 py-1.5 text-[12.5px] font-semibold capitalize transition disabled:cursor-not-allowed disabled:opacity-40"
+                    style={active ? { background: m === "real" ? TC.profit : "rgba(148,168,189,0.22)", color: m === "real" ? TC.ink : TC.text } : { color: TC.muted }}>
+                    {m}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          {mode === "real" && (
+            <p className="mt-2 text-[11.5px]" style={{ color: TC.loss }}>Real account selected — the bot trades with real money. Test on Demo first.</p>
+          )}
+        </section>
+
         {/* 1 · the bot */}
-        <Section n={1} title="Choose a bot" right={account ? (demoActive ? "Demo account — safe to test" : "Real account — live money") : undefined}>
+        <Section n={1} title="Choose a bot">
           <button onClick={() => setOpen((o) => !o)} className="w-full rounded-2xl border p-5 text-left transition hover:bg-white/5"
             style={{ borderColor: open ? TC.profit : TC.line, background: open ? "rgba(56,189,248,0.08)" : TC.panel }}>
             <div className="flex items-center gap-2.5">
@@ -225,14 +226,14 @@ export function DerivBots() {
                 <div className="mt-4 flex flex-wrap items-center gap-3">
                   {!runningState ? (
                     <button onClick={startBot} className="inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-[13.5px] font-semibold transition hover:opacity-90" style={{ background: TC.profit, color: TC.ink }}>
-                      <Play size={15} /> Start bot
+                      <Play size={15} /> Start bot on {mode === "demo" ? "Demo" : "Real"}
                     </button>
                   ) : (
                     <button onClick={stopBot} className="inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-[13.5px] font-semibold transition hover:opacity-90" style={{ background: TC.loss, color: "#fff" }}>
                       <Square size={15} /> Stop bot
                     </button>
                   )}
-                  {runningState && <span className="inline-flex items-center gap-1.5 text-[12px]" style={{ color: TC.profit }}><Loader2 size={13} className="animate-spin" /> running</span>}
+                  {runningState && <span className="inline-flex items-center gap-1.5 text-[12px]" style={{ color: TC.profit }}><Loader2 size={13} className="animate-spin" /> running on {mode}</span>}
                   {status && (
                     <span className="text-[12px]" style={{ color: status.kind === "error" ? TC.loss : status.kind === "success" ? TC.profit : status.kind === "warning" ? "#f5c451" : TC.muted }}>
                       {status.msg}
@@ -240,7 +241,7 @@ export function DerivBots() {
                   )}
                 </div>
                 <p className="mt-3 text-[11px]" style={{ color: TC.faint }}>
-                  The bot stops automatically at your take-profit or stop-loss (measured on this session’s realised P/L). Test on a Demo account first — this places real trades on your connected account.
+                  The bot stops automatically at your take-profit or stop-loss (measured on this session&rsquo;s realised P/L). It places real trades on the selected account — test on Demo first.
                 </p>
               </div>
             </Section>
@@ -248,7 +249,7 @@ export function DerivBots() {
             {/* 3 · live statistics */}
             <Section n={3} title="Live statistics" right={stats ? `${stats.totalTrades} trades` : undefined}>
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                <Stat icon={<Wallet size={14} />} label="Balance" value={stats ? `${stats.balance.toFixed(2)} ${stats.currency}` : "—"} />
+                <Stat icon={<Wallet size={14} />} label="Balance" value={fmtBalance(shownBalance.balance, shownBalance.currency)} />
                 <Stat icon={<Activity size={14} />} label="Session P/L" value={stats ? `${stats.totalProfit >= 0 ? "+" : ""}${stats.totalProfit.toFixed(2)}` : "—"} tone={stats ? (stats.totalProfit >= 0 ? "profit" : "loss") : undefined} />
                 <Stat icon={<Target size={14} />} label="Win rate" value={stats ? `${stats.winRate.toFixed(1)}%` : "—"} sub={stats ? `${stats.wins}/${stats.totalTrades}` : undefined} />
                 <Stat icon={<Layers size={14} />} label="Current stake" value={stats ? stats.currentStake.toFixed(2) : "—"} sub={stats?.recoveryMode ? "recovery mode" : "normal"} tone={stats?.recoveryMode ? "loss" : undefined} />
