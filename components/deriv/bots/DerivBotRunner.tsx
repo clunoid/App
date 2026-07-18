@@ -196,7 +196,6 @@ export function DerivBotRunner({ botId }: { botId: string }) {
             )}
             {runningState && <div className="mt-2 inline-flex items-center gap-1.5 text-[12px]" style={{ color: TC.profit }}><Loader2 size={13} className="animate-spin" /> running on {mode}</div>}
             {status && <div className="mt-2 text-[12px] leading-snug" style={{ color: status.kind === "error" ? TC.loss : status.kind === "success" ? TC.profit : status.kind === "warning" ? "#f5c451" : TC.muted }}>{status.msg}</div>}
-            {mode === "real" && <div className="mt-2 text-[11px]" style={{ color: TC.loss }}>Real account — real money. Test on Demo first.</div>}
             <p className="mt-3 text-[10.5px] leading-relaxed" style={{ color: TC.faint }}>Stops automatically at your take-profit or stop-loss (realised P/L).</p>
           </Col>
 
@@ -239,7 +238,7 @@ export function DerivBotRunner({ botId }: { botId: string }) {
         </div>
 
         <p className="mt-5 text-[10.5px] leading-relaxed" style={{ color: TC.faint }}>
-          Trading carries risk. This is an automated tool, not financial advice or a profit guarantee. Test on a Demo account first and never risk more than you can afford to lose.
+          Trading carries risk. This is an automated tool, not financial advice or a profit guarantee. Never risk more than you can afford to lose.
         </p>
       </div>
 
