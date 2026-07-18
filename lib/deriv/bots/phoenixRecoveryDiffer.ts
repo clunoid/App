@@ -460,13 +460,9 @@ export class PhoenixRecoveryDiffer {
       this.stop(`🛑 Stop-loss hit: ${this.totalProfit.toFixed(2)} ${this.currency}. Bot stopped.`, "error");
       return true;
     }
-    // Also stop if the next martingale stake would exceed the remaining stop-loss room
-    // or the account balance — prevents a single trade blowing past the stop.
-    const room = this.config.stopLoss > 0 ? this.config.stopLoss + this.totalProfit : Infinity;
-    if (this.recoveryMode && (this.currentStake > room || this.currentStake > this.balance)) {
-      this.stop("Next recovery stake would exceed your stop-loss/balance. Bot stopped safely.", "warning");
-      return true;
-    }
+    // Stop ONLY on realised P/L (take-profit / stop-loss above). We do NOT stop just
+    // because the next martingale STAKE would exceed the stop-loss or balance — the
+    // stop is governed by P/L hitting the configured stop-loss, nothing else.
     return false;
   }
 
