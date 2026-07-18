@@ -3,16 +3,20 @@
 /**
  * DERIV BOTS — browser-side, API-executed Deriv bots (the DBot-style track).
  *
- * The user connects their Deriv account in the command center; this page runs the
- * bot ENTIRELY in the browser over the Deriv WebSocket (proposal → buy → settle),
- * placing real trades on the user's account and streaming live stats + trades.
- * First bot: Phoenix Recovery Differ.
+ * The bots REUSE the Deriv connection the user already made in the command
+ * center (/trading/command) — same OAuth app (33PP…), same token. There is no
+ * separate "connect" step here; if the user somehow arrives without a connection
+ * we bounce them to the command center. The bot runs entirely in the browser over
+ * the Deriv WebSocket (proposal → buy → settle), placing real trades on the
+ * user's account and streaming live stats + trades. First bot: Phoenix Recovery
+ * Differ.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Bot, Sparkles, Play, Square, Loader2, TrendingUp, TrendingDown, Wallet, Activity, ShieldAlert, Clock, Target, Layers, CheckCircle2 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { ArrowLeft, Bot, Sparkles, Play, Square, Loader2, TrendingUp, TrendingDown, Wallet, Activity, Clock, Target, Layers, CheckCircle2 } from "lucide-react";
 import { TC, DOT_GRID, monoFont } from "@/lib/trading/theme";
-import { loadDerivTokens, type DerivToken } from "@/lib/deriv/oauth";
+import { loadDerivTokens, loadDerivAccess, type DerivToken } from "@/lib/deriv/oauth";
 import { BOT_DEFAULTS } from "@/lib/deriv/bots/config";
 import { PhoenixRecoveryDiffer, type BotUI, type BotStats, type TradeRow } from "@/lib/deriv/bots/phoenixRecoveryDiffer";
 
@@ -20,16 +24,20 @@ type StatusKind = "info" | "success" | "warning" | "error";
 const isDemo = (loginid: string) => /^vr/i.test(loginid) || /demo|virtual/i.test(loginid);
 
 const BOT = {
-  id: "phoenix-recovery-differ",
   name: "Phoenix Recovery Differ",
   tagline: "Smart digit differ with intelligent market-analysis recovery",
   rating: 5.0,
   blurb:
-    "Trades 1-tick Digit Differ on the Volatility indices. After a loss it escalates the stake and switches to a bias-analysed Over-4 / Under-5 recovery trade — so a single win claws the losses back, then it resets. Runs in your browser on your own Deriv account.",
+    "Trades 1-tick Digit Differ on the Volatility indices. After a loss it escalates the stake and switches to a bias-analysed Over-4 / Under-5 recovery trade — so a single win claws the losses back, then it resets. Runs in your browser on your connected Deriv account.",
 };
 
 export function DerivBots() {
+  const router = useRouter();
+  const [ready, setReady] = useState(false);
+  // a1- account tokens (paste / classic flow — one token per account) OR a single
+  // OAuth access token that authorises the user's default account.
   const [tokens, setTokens] = useState<DerivToken[]>([]);
+  const [accessToken, setAccessToken] = useState("");
   const [accountIdx, setAccountIdx] = useState(0);
   const [open, setOpen] = useState(true);
 
@@ -38,24 +46,30 @@ export function DerivBots() {
   const [stopLoss, setStopLoss] = useState(String(BOT_DEFAULTS.stopLoss));
   const [martingale, setMartingale] = useState(String(BOT_DEFAULTS.martingaleMultiplier));
 
-  const [running, setRunning] = useState(false);
+  const [runningState, setRunning] = useState(false);
   const [status, setStatus] = useState<{ msg: string; kind: StatusKind } | null>(null);
   const [stats, setStats] = useState<BotStats | null>(null);
   const [trades, setTrades] = useState<TradeRow[]>([]);
   const botRef = useRef<PhoenixRecoveryDiffer | null>(null);
 
-  // read connected Deriv accounts (a1- WS tokens); prefer a demo account for safety
+  // Reuse the command-center connection. No connection → back to command center.
   useEffect(() => {
-    const t = loadDerivTokens();
-    setTokens(t);
-    const demoAt = t.findIndex((x) => isDemo(x.loginid));
+    const a1 = loadDerivTokens();
+    const access = loadDerivAccess();
+    if (!a1.length && !access) { router.replace("/trading/command"); return; }
+    setTokens(a1);
+    setAccessToken(access);
+    const demoAt = a1.findIndex((x) => isDemo(x.loginid));
     setAccountIdx(demoAt >= 0 ? demoAt : 0);
-  }, []);
+    setReady(true);
+  }, [router]);
 
   // stop the bot if the user navigates away
   useEffect(() => () => { botRef.current?.stop("Left the page.", "info"); }, []);
 
+  // the token the bot trades with: the selected a1- account token, else the OAuth token
   const account = tokens[accountIdx];
+  const authToken = account?.token || accessToken;
 
   const validate = useCallback((): { ok: boolean; msg?: string } => {
     const s = parseFloat(stake), tp = parseFloat(takeProfit), sl = parseFloat(stopLoss), m = parseFloat(martingale);
@@ -67,7 +81,7 @@ export function DerivBots() {
   }, [stake, takeProfit, stopLoss, martingale]);
 
   const startBot = () => {
-    if (!account) { setStatus({ msg: "Connect a Deriv account first.", kind: "error" }); return; }
+    if (!authToken) { router.replace("/trading/command"); return; }
     const v = validate();
     if (!v.ok) { setStatus({ msg: v.msg!, kind: "error" }); return; }
 
@@ -79,7 +93,7 @@ export function DerivBots() {
       onRunning: (r) => setRunning(r),
       onBalance: () => { /* stats carry balance */ },
     };
-    const bot = new PhoenixRecoveryDiffer(ui, account.token);
+    const bot = new PhoenixRecoveryDiffer(ui, authToken);
     botRef.current = bot;
     bot.start({
       initialStake: parseFloat(stake),
@@ -91,7 +105,17 @@ export function DerivBots() {
 
   const stopBot = () => botRef.current?.stop("Bot stopped by you.", "info");
 
-  const connected = tokens.length > 0;
+  if (!ready) {
+    return (
+      <main className="grid min-h-[100dvh] place-items-center" style={{ background: TC.bg, color: TC.text }}>
+        <span className="inline-flex items-center gap-2 text-[13px]" style={{ color: TC.muted }}>
+          <Loader2 size={16} className="animate-spin" style={{ color: TC.profit }} /> Loading your Deriv connection…
+        </span>
+      </main>
+    );
+  }
+
+  const demoActive = account ? isDemo(account.loginid) : false;
 
   return (
     <main className="relative min-h-[100dvh] w-full overflow-x-hidden" style={{ background: TC.bg, color: TC.text }}>
@@ -105,10 +129,10 @@ export function DerivBots() {
           </Link>
           <span className="h-4 w-px" style={{ background: TC.line }} />
           <span className="inline-flex items-center gap-1.5 text-[14px] font-bold tracking-[0.14em]"><Bot size={16} style={{ color: TC.profit }} /> DERIV BOTS</span>
-          {connected && account && (
-            <span className="ml-auto inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-[12px]" style={{ borderColor: TC.line, color: TC.muted }}>
-              <Wallet size={13} style={{ color: TC.profit }} />
-              <select value={accountIdx} onChange={(e) => setAccountIdx(Number(e.target.value))} disabled={running}
+          <span className="ml-auto inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-[12px]" style={{ borderColor: TC.line, color: TC.muted }}>
+            <Wallet size={13} style={{ color: TC.profit }} />
+            {tokens.length > 1 ? (
+              <select value={accountIdx} onChange={(e) => setAccountIdx(Number(e.target.value))} disabled={runningState}
                 className="bg-transparent outline-none disabled:opacity-60" style={{ color: TC.text }}>
                 {tokens.map((t, i) => (
                   <option key={t.loginid} value={i} style={{ background: TC.bg }}>
@@ -116,8 +140,10 @@ export function DerivBots() {
                   </option>
                 ))}
               </select>
-            </span>
-          )}
+            ) : (
+              <span style={{ color: TC.text }}>{account ? `${account.loginid} · ${account.currency}` : (stats ? `${stats.balance.toFixed(2)} ${stats.currency}` : "Deriv account")} connected</span>
+            )}
+          </span>
         </header>
 
         <div className="mt-2 max-w-2xl">
@@ -127,114 +153,98 @@ export function DerivBots() {
           </p>
         </div>
 
-        {!connected ? (
-          <Section n={1} title="Connect your Deriv account">
-            <Panel>
-              <div className="text-center">
-                <ShieldAlert size={22} className="mx-auto mb-2" style={{ color: TC.profit }} />
-                <p className="text-[13px]" style={{ color: TC.muted }}>You need a connected Deriv account (with a trading token) to run bots.</p>
-                <Link href="/trading/command" className="mt-3 inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-[13px] font-semibold transition hover:opacity-90" style={{ background: TC.profit, color: TC.ink }}>
-                  <Bot size={15} /> Connect Deriv in Command Center
-                </Link>
-              </div>
-            </Panel>
-          </Section>
-        ) : (
-          <>
-            {/* 1 · the bot */}
-            <Section n={1} title="Choose a bot" right={`${account && isDemo(account.loginid) ? "Demo account — safe to test" : "Real account — live money"}`}>
-              <button onClick={() => setOpen((o) => !o)} className="w-full rounded-2xl border p-5 text-left transition hover:bg-white/5"
-                style={{ borderColor: open ? TC.profit : TC.line, background: open ? "rgba(56,189,248,0.08)" : TC.panel }}>
-                <div className="flex items-center gap-2.5">
-                  <span className="grid h-9 w-9 place-items-center rounded-xl" style={{ background: "rgba(56,189,248,0.14)" }}><Sparkles size={18} style={{ color: TC.profit }} /></span>
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-[15px] font-bold">{BOT.name}</span>
-                      <span className="rounded-full px-2 py-0.5 text-[10px] font-bold" style={{ background: "rgba(56,189,248,0.16)", color: TC.profit }}>★ {BOT.rating.toFixed(1)}</span>
-                      {open && <CheckCircle2 size={15} className="ml-auto" style={{ color: TC.profit }} />}
-                    </div>
-                    <div className="mt-0.5 text-[12px]" style={{ color: TC.muted }}>{BOT.tagline}</div>
-                  </div>
+        {/* 1 · the bot */}
+        <Section n={1} title="Choose a bot" right={account ? (demoActive ? "Demo account — safe to test" : "Real account — live money") : undefined}>
+          <button onClick={() => setOpen((o) => !o)} className="w-full rounded-2xl border p-5 text-left transition hover:bg-white/5"
+            style={{ borderColor: open ? TC.profit : TC.line, background: open ? "rgba(56,189,248,0.08)" : TC.panel }}>
+            <div className="flex items-center gap-2.5">
+              <span className="grid h-9 w-9 place-items-center rounded-xl" style={{ background: "rgba(56,189,248,0.14)" }}><Sparkles size={18} style={{ color: TC.profit }} /></span>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-[15px] font-bold">{BOT.name}</span>
+                  <span className="rounded-full px-2 py-0.5 text-[10px] font-bold" style={{ background: "rgba(56,189,248,0.16)", color: TC.profit }}>★ {BOT.rating.toFixed(1)}</span>
+                  {open && <CheckCircle2 size={15} className="ml-auto" style={{ color: TC.profit }} />}
                 </div>
-                {open && <p className="mt-3 text-[12px] leading-relaxed" style={{ color: TC.muted }}>{BOT.blurb}</p>}
-              </button>
+                <div className="mt-0.5 text-[12px]" style={{ color: TC.muted }}>{BOT.tagline}</div>
+              </div>
+            </div>
+            {open && <p className="mt-3 text-[12px] leading-relaxed" style={{ color: TC.muted }}>{BOT.blurb}</p>}
+          </button>
+        </Section>
+
+        {open && (
+          <>
+            {/* 2 · configure */}
+            <Section n={2} title="Configure & run">
+              <div className="rounded-2xl border p-5" style={{ borderColor: TC.line, background: TC.panel }}>
+                <div className="grid gap-3 sm:grid-cols-4">
+                  <Field label="Initial stake (USD)" value={stake} onChange={setStake} min={BOT_DEFAULTS.minStake} step={0.01} disabled={runningState} />
+                  <Field label="Take profit (USD)" value={takeProfit} onChange={setTakeProfit} min={1} step={1} disabled={runningState} />
+                  <Field label="Stop loss (USD)" value={stopLoss} onChange={setStopLoss} min={1} step={1} disabled={runningState} />
+                  <Field label="Martingale ×" value={martingale} onChange={setMartingale} min={1} step={0.1} disabled={runningState} />
+                </div>
+                <div className="mt-4 flex flex-wrap items-center gap-3">
+                  {!runningState ? (
+                    <button onClick={startBot} className="inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-[13.5px] font-semibold transition hover:opacity-90" style={{ background: TC.profit, color: TC.ink }}>
+                      <Play size={15} /> Start bot
+                    </button>
+                  ) : (
+                    <button onClick={stopBot} className="inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-[13.5px] font-semibold transition hover:opacity-90" style={{ background: TC.loss, color: "#fff" }}>
+                      <Square size={15} /> Stop bot
+                    </button>
+                  )}
+                  {runningState && <span className="inline-flex items-center gap-1.5 text-[12px]" style={{ color: TC.profit }}><Loader2 size={13} className="animate-spin" /> running</span>}
+                  {status && (
+                    <span className="text-[12px]" style={{ color: status.kind === "error" ? TC.loss : status.kind === "success" ? TC.profit : status.kind === "warning" ? "#f5c451" : TC.muted }}>
+                      {status.msg}
+                    </span>
+                  )}
+                </div>
+                <p className="mt-3 text-[11px]" style={{ color: TC.faint }}>
+                  The bot stops automatically at your take-profit or stop-loss (measured on this session’s realised P/L). Test on a Demo account first — this places real trades on your connected account.
+                </p>
+              </div>
             </Section>
 
-            {open && (
-              <>
-                {/* 2 · configure */}
-                <Section n={2} title="Configure & run">
-                  <div className="rounded-2xl border p-5" style={{ borderColor: TC.line, background: TC.panel }}>
-                    <div className="grid gap-3 sm:grid-cols-4">
-                      <Field label="Initial stake (USD)" value={stake} onChange={setStake} min={BOT_DEFAULTS.minStake} step={0.01} disabled={running} />
-                      <Field label="Take profit (USD)" value={takeProfit} onChange={setTakeProfit} min={1} step={1} disabled={running} />
-                      <Field label="Stop loss (USD)" value={stopLoss} onChange={setStopLoss} min={1} step={1} disabled={running} />
-                      <Field label="Martingale ×" value={martingale} onChange={setMartingale} min={1} step={0.1} disabled={running} />
-                    </div>
-                    <div className="mt-4 flex flex-wrap items-center gap-3">
-                      {!running ? (
-                        <button onClick={startBot} className="inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-[13.5px] font-semibold transition hover:opacity-90" style={{ background: TC.profit, color: TC.ink }}>
-                          <Play size={15} /> Start bot
-                        </button>
-                      ) : (
-                        <button onClick={stopBot} className="inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-[13.5px] font-semibold transition hover:opacity-90" style={{ background: TC.loss, color: "#fff" }}>
-                          <Square size={15} /> Stop bot
-                        </button>
-                      )}
-                      {running && <span className="inline-flex items-center gap-1.5 text-[12px]" style={{ color: TC.profit }}><Loader2 size={13} className="animate-spin" /> running</span>}
-                      {status && (
-                        <span className="text-[12px]" style={{ color: status.kind === "error" ? TC.loss : status.kind === "success" ? TC.profit : status.kind === "warning" ? "#f5c451" : TC.muted }}>
-                          {status.msg}
+            {/* 3 · live statistics */}
+            <Section n={3} title="Live statistics" right={stats ? `${stats.totalTrades} trades` : undefined}>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <Stat icon={<Wallet size={14} />} label="Balance" value={stats ? `${stats.balance.toFixed(2)} ${stats.currency}` : "—"} />
+                <Stat icon={<Activity size={14} />} label="Session P/L" value={stats ? `${stats.totalProfit >= 0 ? "+" : ""}${stats.totalProfit.toFixed(2)}` : "—"} tone={stats ? (stats.totalProfit >= 0 ? "profit" : "loss") : undefined} />
+                <Stat icon={<Target size={14} />} label="Win rate" value={stats ? `${stats.winRate.toFixed(1)}%` : "—"} sub={stats ? `${stats.wins}/${stats.totalTrades}` : undefined} />
+                <Stat icon={<Layers size={14} />} label="Current stake" value={stats ? stats.currentStake.toFixed(2) : "—"} sub={stats?.recoveryMode ? "recovery mode" : "normal"} tone={stats?.recoveryMode ? "loss" : undefined} />
+                <Stat icon={<Target size={14} />} label="Market" value={stats?.market ?? "—"} sub={stats?.target} />
+                <Stat icon={<TrendingDown size={14} />} label="Loss streak" value={stats ? String(stats.consecutiveLosses) : "—"} />
+                <Stat icon={<Clock size={14} />} label="Running" value={stats ? fmtTime(stats.runningSeconds) : "00:00:00"} />
+                <Stat icon={<Sparkles size={14} />} label="Mode" value={stats?.recoveryMode ? "Recovery" : "Normal"} tone={stats?.recoveryMode ? "loss" : "profit"} />
+              </div>
+            </Section>
+
+            {/* 4 · recent trades */}
+            <Section n={4} title="Recent trades" right={trades.length ? `${trades.length}` : undefined}>
+              {trades.length === 0 ? (
+                <Panel><span className="text-[13px]" style={{ color: TC.muted }}>No trades yet — start the bot to see live trades appear here.</span></Panel>
+              ) : (
+                <div className="overflow-hidden rounded-2xl border" style={{ borderColor: TC.line }}>
+                  <div className="grid grid-cols-[auto_1fr_1fr_1fr_1fr] gap-2 px-4 py-2 text-[10.5px] font-semibold uppercase tracking-wider" style={{ background: TC.panel, color: TC.faint }}>
+                    <span>Result</span><span>Market</span><span>Target</span><span>Stake</span><span className="text-right">Profit</span>
+                  </div>
+                  <div className="max-h-[420px] overflow-y-auto">
+                    {trades.map((t, i) => (
+                      <div key={i} className="grid grid-cols-[auto_1fr_1fr_1fr_1fr] items-center gap-2 border-t px-4 py-2 text-[12px]" style={{ borderColor: TC.line }}>
+                        <span className="inline-flex items-center gap-1 font-bold" style={{ color: t.win ? TC.profit : TC.loss }}>
+                          {t.win ? <TrendingUp size={13} /> : <TrendingDown size={13} />} {t.win ? "Win" : "Loss"}
                         </span>
-                      )}
-                    </div>
-                    <p className="mt-3 text-[11px]" style={{ color: TC.faint }}>
-                      The bot stops automatically at your take-profit or stop-loss (measured on this session’s realised P/L). Test on a Demo account first — this places real trades on the selected account.
-                    </p>
-                  </div>
-                </Section>
-
-                {/* 3 · live statistics */}
-                <Section n={3} title="Live statistics" right={stats ? `${stats.totalTrades} trades` : undefined}>
-                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                    <Stat icon={<Wallet size={14} />} label="Balance" value={stats ? `${stats.balance.toFixed(2)} ${stats.currency}` : "—"} />
-                    <Stat icon={<Activity size={14} />} label="Session P/L" value={stats ? `${stats.totalProfit >= 0 ? "+" : ""}${stats.totalProfit.toFixed(2)}` : "—"} tone={stats ? (stats.totalProfit >= 0 ? "profit" : "loss") : undefined} />
-                    <Stat icon={<Target size={14} />} label="Win rate" value={stats ? `${stats.winRate.toFixed(1)}%` : "—"} sub={stats ? `${stats.wins}/${stats.totalTrades}` : undefined} />
-                    <Stat icon={<Layers size={14} />} label="Current stake" value={stats ? stats.currentStake.toFixed(2) : "—"} sub={stats?.recoveryMode ? "recovery mode" : "normal"} tone={stats?.recoveryMode ? "loss" : undefined} />
-                    <Stat icon={<Target size={14} />} label="Market" value={stats?.market ?? "—"} sub={stats?.target} />
-                    <Stat icon={<TrendingDown size={14} />} label="Loss streak" value={stats ? String(stats.consecutiveLosses) : "—"} />
-                    <Stat icon={<Clock size={14} />} label="Running" value={stats ? fmtTime(stats.runningSeconds) : "00:00:00"} />
-                    <Stat icon={<Sparkles size={14} />} label="Mode" value={stats?.recoveryMode ? "Recovery" : "Normal"} tone={stats?.recoveryMode ? "loss" : "profit"} />
-                  </div>
-                </Section>
-
-                {/* 4 · recent trades */}
-                <Section n={4} title="Recent trades" right={trades.length ? `${trades.length}` : undefined}>
-                  {trades.length === 0 ? (
-                    <Panel><span className="text-[13px]" style={{ color: TC.muted }}>No trades yet — start the bot to see live trades appear here.</span></Panel>
-                  ) : (
-                    <div className="overflow-hidden rounded-2xl border" style={{ borderColor: TC.line }}>
-                      <div className="grid grid-cols-[auto_1fr_1fr_1fr_1fr] gap-2 px-4 py-2 text-[10.5px] font-semibold uppercase tracking-wider" style={{ background: TC.panel, color: TC.faint }}>
-                        <span>Result</span><span>Market</span><span>Target</span><span>Stake</span><span className="text-right">Profit</span>
+                        <span style={{ color: TC.muted }}>{t.market}</span>
+                        <span style={{ color: TC.muted }}>{t.target}{t.recovery ? " · rec" : ""}</span>
+                        <span style={{ ...monoFont, color: TC.muted }}>{t.stake.toFixed(2)}</span>
+                        <span className="text-right font-bold" style={{ ...monoFont, color: t.win ? TC.profit : TC.loss }}>{t.profit >= 0 ? "+" : ""}{t.profit.toFixed(2)}</span>
                       </div>
-                      <div className="max-h-[420px] overflow-y-auto">
-                        {trades.map((t, i) => (
-                          <div key={i} className="grid grid-cols-[auto_1fr_1fr_1fr_1fr] items-center gap-2 border-t px-4 py-2 text-[12px]" style={{ borderColor: TC.line }}>
-                            <span className="inline-flex items-center gap-1 font-bold" style={{ color: t.win ? TC.profit : TC.loss }}>
-                              {t.win ? <TrendingUp size={13} /> : <TrendingDown size={13} />} {t.win ? "Win" : "Loss"}
-                            </span>
-                            <span style={{ color: TC.muted }}>{t.market}</span>
-                            <span style={{ color: TC.muted }}>{t.target}{t.recovery ? " · rec" : ""}</span>
-                            <span style={{ ...monoFont, color: TC.muted }}>{t.stake.toFixed(2)}</span>
-                            <span className="text-right font-bold" style={{ ...monoFont, color: t.win ? TC.profit : TC.loss }}>{t.profit >= 0 ? "+" : ""}{t.profit.toFixed(2)}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </Section>
-              </>
-            )}
+                    ))}
+                  </div>
+                </div>
+              )}
+            </Section>
           </>
         )}
 

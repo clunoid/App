@@ -166,10 +166,29 @@ export async function startDerivLogin(): Promise<void> {
     code_challenge: challenge,
     code_challenge_method: "S256",
     brand: "deriv",
-    // Always show Deriv's consent screen so the user explicitly grants access.
-    prompt: "consent",
   });
+  // No forced `prompt=consent`: once a user has authorised Clunoid, Deriv
+  // remembers the grant and redirects straight back on a reconnect — so a user
+  // who disconnects (or returns later) is re-linked automatically without having
+  // to click through the consent screen again.
   window.location.href = `${DERIV_AUTH_BASE}/oauth2/auth?${q.toString()}`;
+}
+
+/** The token a browser bot uses to authorize the trading WebSocket. Reuses the
+ *  SAME connection the user made in the command center: a classic a1- account
+ *  token if one exists (paste / classic flow), otherwise the OAuth access token.
+ *  Returns "" when the user has never connected. */
+export function getBotAuthToken(): string {
+  try {
+    const a1 = loadDerivTokens();
+    if (a1.length && a1[0]?.token) return a1[0].token;
+  } catch { /* ignore */ }
+  return loadDerivAccess();
+}
+
+/** True if the user has ANY Deriv connection (so the bots page can assume one). */
+export function hasDerivConnection(): boolean {
+  return getBotAuthToken() !== "";
 }
 
 /**
