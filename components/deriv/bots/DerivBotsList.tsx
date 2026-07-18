@@ -14,6 +14,7 @@ import { loadDerivAccess } from "@/lib/deriv/oauth";
 import { BOTS, type BotBadge } from "@/lib/deriv/bots/registry";
 
 const BADGE_STYLE: Record<BotBadge, { bg: string; color: string }> = {
+  Recommended: { bg: "rgba(56,189,248,0.18)", color: "#38bdf8" },
   Popular: { bg: "rgba(245,158,11,0.15)", color: "#fbbf24" },
   Beginner: { bg: "rgba(34,197,94,0.15)", color: "#4ade80" },
   Fast: { bg: "rgba(59,130,246,0.15)", color: "#60a5fa" },
@@ -65,9 +66,9 @@ export function DerivBotsList() {
               style={{ borderColor: TC.line, background: TC.panel }}>
               <div className="flex items-start gap-2">
                 <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider" style={{ background: "rgba(56,189,248,0.12)", color: TC.profit }}>{b.chip}</span>
-                {b.badge && (
-                  <span className="rounded-full px-2 py-0.5 text-[10px] font-bold" style={{ background: BADGE_STYLE[b.badge].bg, color: BADGE_STYLE[b.badge].color }}>{b.badge}</span>
-                )}
+                {b.badges?.map((bd) => (
+                  <span key={bd} className="rounded-full px-2 py-0.5 text-[10px] font-bold" style={{ background: BADGE_STYLE[bd].bg, color: BADGE_STYLE[bd].color }}>{bd}</span>
+                ))}
                 <span className="ml-auto inline-flex items-center gap-1 text-[11px] font-bold" style={{ color: "#fcd34d" }}>
                   <Star size={12} fill="#fcd34d" /> {b.rating.toFixed(1)}
                 </span>

@@ -16,7 +16,7 @@ import { NoTouchStrategy } from "./strategies/noTouch";
 import { AlienRiseFallStrategy } from "./strategies/alienRiseFall";
 import { RiseFallProStrategy } from "./strategies/riseFallPro";
 
-export type BotBadge = "Popular" | "Beginner" | "Fast" | "Stable";
+export type BotBadge = "Recommended" | "Popular" | "Beginner" | "Fast" | "Stable";
 
 export type BotMeta = {
   id: string;            // URL slug
@@ -25,38 +25,37 @@ export type BotMeta = {
   chip: string;          // short strategy tag
   tagline: string;
   blurb: string;
-  badge?: BotBadge;
+  badges?: BotBadge[];
   markets: string;       // display, e.g. "Volatility 10–100" or "Volatility 75"
   supportsMartingale: boolean;
   defaultMartingale: number;
   createStrategy: () => Strategy;
 };
 
-// Order = BotsLab BOT_DEFINITIONS order.
 export const BOTS: BotMeta[] = [
   {
-    id: "all-markets-differ", name: "All Markets Differ", rating: 4.9, chip: "Digit Differ", badge: "Popular",
-    markets: "Volatility 10–100", supportsMartingale: true, defaultMartingale: 16,
-    tagline: "Random markets & digits, smart recovery",
-    blurb: "Trades 1-tick Digit Differ across all Volatility indices, rotating markets and digits. Standard martingale recovery after a loss.",
-    createStrategy: () => new AllMarketsDifferStrategy(),
-  },
-  {
-    id: "random-over-0", name: "Random Markets Over 0", rating: 4.7, chip: "Digit Over", badge: "Beginner",
-    markets: "Volatility 10–100", supportsMartingale: true, defaultMartingale: 16,
-    tagline: "Over 0 across random markets",
-    blurb: "Trades Digit Over 0 (last digit greater than 0) on a rotating Volatility index each tick, with martingale recovery.",
-    createStrategy: () => new RandomOver0Strategy(),
-  },
-  {
-    id: "smart-recovery-differ", name: "Smart Recovery Differ", rating: 5.0, chip: "Differ + Recovery", badge: "Fast",
+    id: "smart-recovery-differ", name: "Smart Recovery Differ", rating: 5.0, chip: "Differ + Recovery", badges: ["Recommended", "Popular"],
     markets: "Volatility 10–100", supportsMartingale: true, defaultMartingale: 3.1,
     tagline: "Smart digit differ with market-analysis recovery",
     blurb: "Digit Differ in normal mode; after a loss it analyses each market's last-digit bias and switches to Over-4 / Under-5 recovery until a win, then resets.",
     createStrategy: () => new SmartRecoveryDifferStrategy(),
   },
   {
-    id: "random-under-9", name: "Random Markets Under 9", rating: 4.8, chip: "Digit Under", badge: "Stable",
+    id: "all-markets-differ", name: "All Markets Differ", rating: 4.9, chip: "Digit Differ", badges: ["Beginner"],
+    markets: "Volatility 10–100", supportsMartingale: true, defaultMartingale: 16,
+    tagline: "Random markets & digits, smart recovery",
+    blurb: "Trades 1-tick Digit Differ across all Volatility indices, rotating markets and digits. Standard martingale recovery after a loss.",
+    createStrategy: () => new AllMarketsDifferStrategy(),
+  },
+  {
+    id: "random-over-0", name: "Random Markets Over 0", rating: 4.7, chip: "Digit Over", badges: ["Fast"],
+    markets: "Volatility 10–100", supportsMartingale: true, defaultMartingale: 16,
+    tagline: "Over 0 across random markets",
+    blurb: "Trades Digit Over 0 (last digit greater than 0) on a rotating Volatility index each tick, with martingale recovery.",
+    createStrategy: () => new RandomOver0Strategy(),
+  },
+  {
+    id: "random-under-9", name: "Random Markets Under 9", rating: 4.8, chip: "Digit Under", badges: ["Stable"],
     markets: "Volatility 10–100", supportsMartingale: true, defaultMartingale: 16,
     tagline: "Under 9 across random markets",
     blurb: "Trades Digit Under 9 (last digit less than 9) on a rotating Volatility index each tick, with martingale recovery.",
