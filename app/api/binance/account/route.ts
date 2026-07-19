@@ -44,11 +44,16 @@ export async function POST(req: Request) {
     const data = (await res.json().catch(() => null)) as BinanceAccount | null;
 
     if (!res.ok || !data || !Array.isArray(data.balances)) {
-      const msg = data?.msg
-        ? `Binance: ${data.msg}`
-        : res.status === 401
-          ? "Binance rejected those credentials — check the key and secret."
-          : `Binance rejected the request (${res.status}).`;
+      // Binance geo-blocks some hosting regions. That's OUR server's location, not
+      // the user's account — say so plainly instead of leaking a confusing terms link.
+      const restricted = /restricted location|Eligibility/i.test(data?.msg || "");
+      const msg = restricted
+        ? "Binance is blocking our server's region — this is on our side, not your account or your key. We're sorting it out."
+        : data?.msg
+          ? `Binance: ${data.msg}`
+          : res.status === 401
+            ? "Binance rejected those credentials — check the key and secret."
+            : `Binance rejected the request (${res.status}).`;
       return NextResponse.json({ error: msg }, { status: 400 });
     }
 
