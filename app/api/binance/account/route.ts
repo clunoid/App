@@ -14,6 +14,12 @@ import { BINANCE_API_BASE } from "@/lib/binance/config";
  * withdraw, and its permission does not expire the way trading permission does.
  */
 export const runtime = "nodejs";
+/**
+ * IMPORTANT: Binance.com geo-blocks some regions (notably the US) — a call from a
+ * US-hosted function returns "Service unavailable from a restricted location".
+ * Vercel defaults to a US region, so this route is pinned to Frankfurt.
+ */
+export const preferredRegion = "fra1";
 
 type BinanceBalance = { asset: string; free: string; locked: string };
 type BinanceAccount = { balances?: BinanceBalance[]; canTrade?: boolean; accountType?: string; msg?: string; code?: number };
