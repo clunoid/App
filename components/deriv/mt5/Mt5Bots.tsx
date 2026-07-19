@@ -17,9 +17,6 @@ import { TC, DOT_GRID, monoFont } from "@/lib/trading/theme";
 import { PROFILE_LIST } from "@/lib/deriv/mt5/profiles";
 import { CATEGORY_LABELS, LIVE_CATEGORIES } from "@/lib/deriv/mt5/markets";
 import type { RiskProfile, MarketCategory, Side } from "@/lib/deriv/mt5/types";
-import { loadDerivAccess } from "@/lib/deriv/oauth";
-import { checkDerivReferral } from "@/lib/deriv/referral";
-import { DERIV_AFFILIATE_URL } from "@/lib/deriv/config";
 
 type ApiSignal = {
   symbol: string; name: string; side: Side; regime: string; confidence: number;
@@ -49,7 +46,6 @@ export function Mt5Bots() {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [updatedAt, setUpdatedAt] = useState<number>(0);
-  const [referred, setReferred] = useState<boolean | null>(null); // gate: MT5 EA is for our referrals
   const started = useRef(false);
 
   const load = useCallback(async (p: RiskProfile) => {
@@ -72,7 +68,6 @@ export function Mt5Bots() {
     try { const s = localStorage.getItem(PROFILE_KEY) as RiskProfile | null; if (s) p = s; } catch { /* ignore */ }
     setProfile(p);
     void load(p);
-    void checkDerivReferral(loadDerivAccess()).then(setReferred); // verify referral → gate the EA
   }, [load]);
 
   // auto-refresh every REFRESH_MS (users can still click Refresh any time)
@@ -216,25 +211,10 @@ export function Mt5Bots() {
               ))}
             </ol>
             <div className="mt-4 flex flex-wrap items-center gap-3">
-              {referred === null ? (
-                <span className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-[13px] font-semibold" style={{ background: "rgba(255,255,255,0.06)", color: TC.faint }}>
-                  <Loader2 size={15} className="animate-spin" /> Checking access…
-                </span>
-              ) : referred ? (
-                <>
-                  <a href="/deriv/ClunoidMT5.mq5" download className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-[13px] font-semibold transition hover:opacity-90" style={{ background: TC.profit, color: TC.ink }}>
-                    <Download size={15} /> Download Clunoid EA
-                  </a>
-                  <span className="text-[11.5px]" style={{ color: TC.faint }}>Set it up once — it needs no dashboard interaction after that.</span>
-                </>
-              ) : (
-                <>
-                  <a href={DERIV_AFFILIATE_URL} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-[13px] font-semibold transition hover:opacity-90" style={{ background: TC.profit, color: TC.ink }}>
-                    <Lock size={15} /> Open a Deriv account to download
-                  </a>
-                  <span className="text-[11.5px]" style={{ color: TC.faint }}>The EA download comes with a Deriv account opened through Clunoid — everything above is free to explore.</span>
-                </>
-              )}
+              <a href="/deriv/ClunoidMT5.mq5" download className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-[13px] font-semibold transition hover:opacity-90" style={{ background: TC.profit, color: TC.ink }}>
+                <Download size={15} /> Download Clunoid EA
+              </a>
+              <span className="text-[11.5px]" style={{ color: TC.faint }}>Set it up once — it needs no dashboard interaction after that.</span>
             </div>
           </div>
         </Section>
