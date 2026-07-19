@@ -15,16 +15,15 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Wallet, Plug, RefreshCw, Loader2, LogOut, KeyRound, ShieldCheck, Building2, Bot, LineChart, UserPlus } from "lucide-react";
+import { ArrowLeft, Wallet, Plug, RefreshCw, Loader2, LogOut, KeyRound, ShieldCheck, Building2, Bot, LineChart, UserPlus, Gift, ChevronRight } from "lucide-react";
 import { TC, DOT_GRID, monoFont, fmtBalance } from "@/lib/trading/theme";
 import type { ConnectedAccount } from "@/lib/trading/accounts";
 import { hasDerivApp, DERIV_AFFILIATE_URL } from "@/lib/deriv/config";
 import { parseDerivRedirect, isDerivRedirect, isDerivCodeReturn, startDerivLogin, completeDerivLogin, saveDerivTokens, loadDerivTokens, clearDerivTokens, saveDerivAccess, loadDerivAccess, clearDerivAccess, type DerivToken } from "@/lib/deriv/oauth";
 import { fetchDerivPortfolio, type DerivPortfolio } from "@/lib/deriv/client";
 import { fetchDerivPortfolioREST } from "@/lib/deriv/api";
-import { BINANCE_API_MANAGEMENT_URL } from "@/lib/binance/config";
-import { loadBinanceKeys, saveBinanceKeys, clearBinanceKeys, type BinanceKeys } from "@/lib/binance/keys";
-import { fetchBinancePortfolio, type BinancePortfolio } from "@/lib/binance/client";
+/** Binance referral — open an account with us and claim the welcome gifts. */
+const BINANCE_REFERRAL_URL = "https://www.binance.com/referral/earn-together/refer2earn-usdc/claim?hl=en&ref=GRO_28502_IIEHW&utm_source=referral_entrance";
 
 /** One active connection: OAuth (new-API access token) or a pasted a1- token. */
 type Session = { kind: "oauth"; accessToken: string } | { kind: "token"; tokens: DerivToken[] };
@@ -83,15 +82,6 @@ export function CommandCenter() {
   const [pasteOpen, setPasteOpen] = useState(false);
   const [pasteVal, setPasteVal] = useState("");
   const started = useRef(false);
-
-  // ── Binance (read-only API key → stable connection, never expires) ──
-  const [bnKeys, setBnKeys] = useState<BinanceKeys | null>(null);
-  const [bnPortfolio, setBnPortfolio] = useState<BinancePortfolio | null>(null);
-  const [bnLoading, setBnLoading] = useState(false);
-  const [bnError, setBnError] = useState<string | null>(null);
-  const [bnOpen, setBnOpen] = useState(false);
-  const [bnKeyVal, setBnKeyVal] = useState("");
-  const [bnSecretVal, setBnSecretVal] = useState("");
 
   const refresh = useCallback(async (s: Session | null) => {
     if (!s) { setPortfolio(null); return; }
@@ -175,38 +165,6 @@ export function CommandCenter() {
     showSnapshot(s); // show the cached snapshot instantly, then refresh live
     void refresh(s);
   }, [refresh]);
-
-  // Binance: load the saved read-only key on mount and pull balances.
-  const refreshBinance = useCallback(async (k: BinanceKeys) => {
-    setBnLoading(true); setBnError(null);
-    try { setBnPortfolio(await fetchBinancePortfolio(k)); }
-    catch (e) { setBnError(e instanceof Error ? e.message : "Couldn't load your Binance balances."); }
-    finally { setBnLoading(false); }
-  }, []);
-
-  useEffect(() => {
-    const k = loadBinanceKeys();
-    if (k) { setBnKeys(k); void refreshBinance(k); }
-  }, [refreshBinance]);
-
-  const connectBinance = async () => {
-    const k: BinanceKeys = { apiKey: bnKeyVal.trim(), apiSecret: bnSecretVal.trim() };
-    if (!k.apiKey || !k.apiSecret) { setBnError("Enter both your API key and secret."); return; }
-    setBnLoading(true); setBnError(null);
-    try {
-      const p = await fetchBinancePortfolio(k); // validate before saving
-      saveBinanceKeys(k);
-      setBnKeys(k); setBnPortfolio(p);
-      setBnOpen(false); setBnKeyVal(""); setBnSecretVal("");
-    } catch (e) {
-      setBnError(e instanceof Error ? e.message : "Couldn't connect to Binance.");
-    } finally { setBnLoading(false); }
-  };
-
-  const disconnectBinance = () => {
-    clearBinanceKeys();
-    setBnKeys(null); setBnPortfolio(null); setBnError(null);
-  };
 
   const connectDeriv = () => {
     if (!hasDerivApp()) { setError("Deriv OAuth isn't configured yet — paste a Deriv API token below to connect in the meantime."); setPasteOpen(true); return; }
@@ -403,81 +361,9 @@ export function CommandCenter() {
               )}
             </div>
 
-            {/* ── Binance: read-only API key → stable connection + live balances ── */}
-            <div className="mt-3 rounded-2xl border p-4" style={{ borderColor: bnKeys ? "rgba(52,211,153,0.35)" : TC.line, background: TC.panel }}>
-              <div className="flex items-center gap-2.5">
-                <BrandLogo src={undefined} alt="Binance" size={26} />
-                <div className="min-w-0 flex-1">
-                  <div className="text-[13.5px] font-semibold">Binance</div>
-                  <div className="flex items-center gap-1.5 text-[11.5px]" style={{ color: bnKeys ? "#34d399" : TC.faint }}>
-                    {bnKeys ? (
-                      <><span className="inline-block h-2 w-2 rounded-full" style={{ background: "#34d399", boxShadow: "0 0 7px #34d399" }} /> Connected</>
-                    ) : "Spot balances · read-only key"}
-                  </div>
-                </div>
-                {bnKeys && (
-                  <button onClick={() => void refreshBinance(bnKeys)} disabled={bnLoading} title="Refresh balances"
-                    className="rounded-full border p-1.5 transition hover:bg-white/5 disabled:opacity-50" style={{ borderColor: TC.line, color: TC.muted }}>
-                    {bnLoading ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
-                  </button>
-                )}
-              </div>
-
-              {bnKeys ? (
-                <>
-                  <div className="mt-3">
-                    <div className="text-[10.5px] font-semibold uppercase tracking-[0.16em]" style={{ color: TC.faint }}>Total balance</div>
-                    <div className="mt-0.5 text-[24px] font-bold leading-none" style={{ ...monoFont, color: TC.profit }}>
-                      {bnPortfolio ? `${(bnPortfolio.totalUsdt ?? 0).toFixed(2)} USDT` : bnLoading ? "…" : "—"}
-                    </div>
-                  </div>
-                  {bnPortfolio && bnPortfolio.assets.length > 0 && (
-                    <div className="mt-2.5 space-y-1">
-                      {bnPortfolio.assets.slice(0, 5).map((a) => (
-                        <div key={a.asset} className="flex items-center justify-between gap-2 text-[11.5px]">
-                          <span style={{ color: TC.muted }}>{a.asset}</span>
-                          <span className="truncate" style={{ ...monoFont, color: TC.text }}>
-                            {a.total < 1 ? a.total.toFixed(6) : a.total.toFixed(4)}
-                            {a.usdt != null && a.usdt > 0 ? ` · ${a.usdt.toFixed(2)} USDT` : ""}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  {bnError && <p className="mt-2 text-[11px]" style={{ color: TC.loss }}>{bnError}</p>}
-                  <button onClick={disconnectBinance} className="mt-3 inline-flex items-center gap-1.5 text-[12px] transition hover:opacity-80" style={{ color: TC.faint }}>
-                    <LogOut size={12} /> Disconnect Binance
-                  </button>
-                </>
-              ) : (
-                <>
-                  <button onClick={() => setBnOpen((v) => !v)} className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-[13.5px] font-semibold transition hover:opacity-90" style={{ background: TC.profit, color: TC.ink }}>
-                    <Plug size={15} /> Connect Binance
-                  </button>
-                  {bnOpen && (
-                    <div className="mt-2 space-y-2">
-                      <input value={bnKeyVal} onChange={(e) => setBnKeyVal(e.target.value)} placeholder="API key"
-                        className="w-full rounded-lg border bg-transparent px-3 py-2 text-[13px] outline-none focus:border-white/25" style={{ borderColor: TC.line, color: TC.text }} />
-                      <input value={bnSecretVal} onChange={(e) => setBnSecretVal(e.target.value)} type="password" placeholder="Secret key"
-                        className="w-full rounded-lg border bg-transparent px-3 py-2 text-[13px] outline-none focus:border-white/25" style={{ borderColor: TC.line, color: TC.text }} />
-                      <button onClick={() => void connectBinance()} disabled={bnLoading}
-                        className="w-full rounded-lg border px-3 py-2 text-[12.5px] font-medium transition hover:bg-white/5 disabled:opacity-50" style={{ borderColor: TC.line, color: TC.text }}>
-                        {bnLoading ? "Connecting…" : "Connect with key"}
-                      </button>
-                      {bnError && <p className="text-[11px]" style={{ color: TC.loss }}>{bnError}</p>}
-                      <p className="text-[11px] leading-relaxed" style={{ color: TC.faint }}>
-                        In Binance go to <b style={{ color: TC.text }}>API Management</b> and create a key with <b style={{ color: TC.text }}>Read Only</b> permission — do not enable trading or withdrawals. A read-only key never expires, so the connection stays stable.{" "}
-                        <a href={BINANCE_API_MANAGEMENT_URL} target="_blank" rel="noopener noreferrer" style={{ color: TC.profit }}>Open API Management</a>
-                      </p>
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-
             {/* coming soon — official logos */}
             <div className="mt-3 space-y-2">
-              {[{ name: "cTrader", logo: "/logos/ctrader.svg" }, { name: "More brokers", logo: undefined as string | undefined }].map((p) => (
+              {[{ name: "Binance", logo: "/logos/binance.svg" }, { name: "cTrader", logo: "/logos/ctrader.svg" }, { name: "More brokers", logo: undefined as string | undefined }].map((p) => (
                 <div key={p.name} className="flex items-center gap-2.5 rounded-xl border p-3 opacity-75" style={{ borderColor: TC.line }}>
                   <BrandLogo src={p.logo} alt={p.name} size={20} />
                   <div className="min-w-0 flex-1"><div className="text-[12.5px] font-semibold">{p.name}</div></div>
@@ -485,6 +371,20 @@ export function CommandCenter() {
                 </div>
               ))}
             </div>
+
+            {/* Binance referral — open an account and claim the welcome gifts */}
+            <a href={BINANCE_REFERRAL_URL} target="_blank" rel="noopener noreferrer"
+              className="group mt-3 flex items-center gap-3 rounded-2xl border p-4 transition hover:-translate-y-0.5"
+              style={{ borderColor: "rgba(243,186,47,0.38)", background: "linear-gradient(180deg, rgba(243,186,47,0.12), rgba(255,255,255,0.015))" }}>
+              <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl" style={{ background: "rgba(243,186,47,0.16)", boxShadow: "inset 0 0 0 1px rgba(243,186,47,0.35)" }}>
+                <Gift size={22} style={{ color: "#f3ba2f" }} />
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="text-[13.5px] font-bold">Claim your Binance gifts</div>
+                <div className="mt-0.5 text-[11.5px] leading-snug" style={{ color: TC.muted }}>Create a Binance account and claim your welcome rewards.</div>
+              </div>
+              <ChevronRight size={16} className="shrink-0 transition group-hover:translate-x-0.5" style={{ color: "#f3ba2f" }} />
+            </a>
 
             <p className="mt-3 flex items-start gap-1.5 text-[11px] leading-relaxed" style={{ color: TC.faint }}>
               <ShieldCheck size={13} className="mt-0.5 shrink-0" style={{ color: TC.profit }} /> You authorise your own broker directly. Clunoid never sees your password, and your access stays in this browser.
