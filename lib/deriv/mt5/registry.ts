@@ -17,6 +17,16 @@ export type Mt5BotMeta = {
 
 export const MT5_BOTS: Mt5BotMeta[] = [
   {
+    id: "gold",
+    name: "Gold AI Automation",
+    rating: 7,
+    chip: "XAU/USD",
+    tagline: "Dedicated gold trend trader",
+    blurb:
+      "A gold specialist. Reads the trend on H4, waits for a pullback on H1, then places its stop and target at real levels on the chart — targeting 2R or better, banking a partial at 1R and trailing the rest. Runs entirely on your terminal from your broker's own gold prices.",
+    markets: "Gold · XAU/USD",
+  },
+  {
     id: "generalmt5",
     name: "General MT5 AI Automation",
     rating: 2,
