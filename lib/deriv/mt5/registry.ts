@@ -17,6 +17,16 @@ export type Mt5BotMeta = {
 
 export const MT5_BOTS: Mt5BotMeta[] = [
   {
+    id: "indices",
+    name: "Stock Index AI Automation",
+    rating: 8,
+    chip: "Swiss 20 + Wall St 30",
+    tagline: "The two indices that held up",
+    blurb:
+      "Eleven stock indices were tested identically and picked on how WIDE their winning region was, not their best number. Swiss 20 held 27 of 34 settings and Wall Street 30 held 31 of 42, while most managed one or none. Trades European and US hours only.",
+    markets: "Swiss 20 · Wall Street 30",
+  },
+  {
     id: "forex",
     name: "Forex AI Automation",
     rating: 8,
