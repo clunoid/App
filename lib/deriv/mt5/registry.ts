@@ -17,6 +17,16 @@ export type Mt5BotMeta = {
 
 export const MT5_BOTS: Mt5BotMeta[] = [
   {
+    id: "volatility",
+    name: "Synthetic Index AI Automation",
+    rating: 8,
+    chip: "Range Break 200 · 24/7",
+    tagline: "The one synthetic that is not a random walk",
+    blurb:
+      "We measured every synthetic Deriv offers. All but one zigzag MORE than a random walk, so there is nothing to trade. Range Break 200 travels 14.3% more than chance — and this bot trades it the way it is built: wait for a tight range, take the break, cut small and run far.",
+    markets: "Range Break 200",
+  },
+  {
     id: "indices",
     name: "Stock Index AI Automation",
     rating: 8,
