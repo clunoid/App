@@ -17,6 +17,16 @@ export type Mt5BotMeta = {
 
 export const MT5_BOTS: Mt5BotMeta[] = [
   {
+    id: "crypto",
+    name: "Crypto AI Automation",
+    rating: 8,
+    chip: "BTC + ETH · 24/7",
+    tagline: "Bitcoin and Ether, around the clock",
+    blurb:
+      "A crypto specialist built on a year of measured BTC/ETH data — which showed crypto does NOT trend the way folklore claims. So it trades rarely and only on its strongest reads, and because the two coins move together at 0.86 correlation they share one account-wide risk ceiling.",
+    markets: "Bitcoin · Ether",
+  },
+  {
     id: "gold",
     name: "Gold AI Automation",
     rating: 7,
