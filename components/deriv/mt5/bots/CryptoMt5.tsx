@@ -20,7 +20,6 @@ const PROFILE_ICON: Record<CryptoProfile["key"], typeof Shield> = {
 
 export function CryptoMt5() {
   const [profile, setProfile] = useState<CryptoProfile["key"]>("aggressive");
-  const active = CRYPTO_PROFILES.find((p) => p.key === profile)!;
 
   return (
     <main className="relative min-h-[100dvh] w-full overflow-x-hidden" style={{ background: TC.bg, color: TC.text }}>
@@ -106,9 +105,8 @@ export function CryptoMt5() {
 
         <p className="mt-7 flex items-start gap-1.5 text-[11px] leading-relaxed" style={{ color: TC.faint }}>
           <CircleDashed size={13} className="mt-0.5 shrink-0" style={{ color: ACCENT }} />
-          On {active.label} the bot risks {active.riskPerTradePct}% of your balance per trade. Trading carries risk; this
-          is an automated tool, not financial advice or a profit guarantee. Never risk more than you can afford to lose,
-          and run it on a demo account first.
+          Trading carries risk; this is an automated tool, not financial advice or a profit guarantee. Never risk more
+          than you can afford to lose.
         </p>
       </div>
     </main>
