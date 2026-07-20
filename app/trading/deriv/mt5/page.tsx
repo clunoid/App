@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
-import { Mt5Bots } from "@/components/deriv/mt5/Mt5Bots";
+import { Mt5BotsList } from "@/components/deriv/mt5/Mt5BotsList";
 
 export const metadata: Metadata = {
   title: "Deriv MT5 Automations · Clunoid Trading",
-  description: "Continuous AI forex + synthetics automation for your Deriv MT5 account.",
+  description: "AI Expert Advisors for your Deriv MT5 account — forex and Volatility indices.",
 };
 
 export default function Mt5BotsPage() {
-  return <Mt5Bots />;
+  return <Mt5BotsList />;
 }

@@ -40,7 +40,7 @@ const CATS: MarketCategory[] = ["forex", "volatility", "step", "metals", "crypto
 const TRADED = CATS.filter((c) => LIVE_CATEGORIES.includes(c));
 const PROFILE_ICON: Record<RiskProfile, typeof Shield> = { conservative: Shield, moderate: Gauge, aggressive: Zap };
 
-export function Mt5Bots() {
+export function GeneralMt5() {
   const [profile, setProfile] = useState<RiskProfile>("aggressive");
   const [data, setData] = useState<ApiResult | null>(null);
   const [loading, setLoading] = useState(false);
@@ -91,8 +91,8 @@ export function Mt5Bots() {
 
         {/* header */}
         <header className="flex flex-wrap items-center gap-3">
-          <Link href="/trading/command" className="flex items-center gap-1.5 text-[13px] font-medium transition hover:opacity-80" style={{ color: TC.muted }}>
-            <ArrowLeft size={15} /> Command
+          <Link href="/trading/deriv/mt5" className="flex items-center gap-1.5 text-[13px] font-medium transition hover:opacity-80" style={{ color: TC.muted }}>
+            <ArrowLeft size={15} /> All MT5 bots
           </Link>
           <span className="h-4 w-px" style={{ background: TC.line }} />
           <span className="inline-flex items-center gap-1.5 text-[14px] font-bold tracking-[0.14em]"><Bot size={16} style={{ color: TC.profit }} /> MT5 AUTOMATIONS</span>
