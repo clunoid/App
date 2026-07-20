@@ -17,6 +17,16 @@ export type Mt5BotMeta = {
 
 export const MT5_BOTS: Mt5BotMeta[] = [
   {
+    id: "forex",
+    name: "Forex AI Automation",
+    rating: 8,
+    chip: "USD/JPY · session",
+    tagline: "The one major that passed",
+    blurb:
+      "All seven majors were tested identically and only USD/JPY held up across both halves of the year. It trades the London–New York overlap only: every configuration restricted to that window was robust, while none that traded around the clock were.",
+    markets: "USD/JPY · majors",
+  },
+  {
     id: "crypto",
     name: "Crypto AI Automation",
     rating: 8,
