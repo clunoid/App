@@ -288,13 +288,38 @@ export function ForexMt5() {
           </p>
         </div>
 
+        {/* the honest counter-argument */}
+        <div className="mt-6 rounded-2xl border p-4" style={{ borderColor: TC.line, background: TC.panel }}>
+          <div className="flex items-center gap-2">
+            <AlertTriangle size={15} style={{ color: TC.faint }} />
+            <span className="text-[12.5px] font-bold">What argues against this bot</span>
+          </div>
+          <p className="mt-2 text-[11.5px] leading-relaxed" style={{ color: TC.muted }}>
+            Two things you should weigh before running it. First,{" "}
+            <b style={{ color: TC.text }}>we chose USD/JPY out of 896 combinations</b> — seven pairs against a
+            128-setting grid. Test enough combinations and something looks good by luck, which is exactly why every
+            candidate had to survive both halves of the year and why the result is reported alongside the six pairs that
+            failed. What makes us think it is real rather than lucky: the winners cluster (14 robust settings on USD/JPY,
+            none at all on any other pair) and the session split is structural rather than a tuned number.
+          </p>
+          <p className="mt-2 text-[11.5px] leading-relaxed" style={{ color: TC.muted }}>
+            Second, the academic evidence for intraday forex rules is genuinely poor. Neely and Weller (2003) tested
+            technical rules on intraday FX and found{" "}
+            <i>&ldquo;no evidence of excess returns&rdquo;</i> once realistic transaction costs and trading hours were
+            applied, and Olson (2004) found moving-average profits decayed from over 3% a year in the early 1980s to
+            about zero by the 1990s. Most published FX work that does hold up uses daily bars and much longer lookbacks
+            than this bot. Our result is one year of measurement on one broker&rsquo;s data over{" "}
+            {FOREX_TEST.trades} trades; it is not a rebuttal of that literature, and you should size it accordingly.
+          </p>
+        </div>
+
         <p className="mt-5 flex items-start gap-1.5 text-[11px] leading-relaxed" style={{ color: TC.faint }}>
           <CircleDashed size={13} className="mt-0.5 shrink-0" style={{ color: ACCENT }} />
           On {active.label} the bot risks {active.riskPerTradePct}% per trade and never lets total open risk pass{" "}
           {active.maxOpenRiskPct}% across all pairs. Tested over {FOREX_TEST.trades} trades in a year at a{" "}
-          {FOREX_TEST.winRate}% win rate — a deliberately small number of high-quality trades, and a modest sample you
-          should weigh accordingly. Trading carries risk; this is an automated tool, not financial advice or a profit
-          guarantee. Past results are not a prediction. Run it on a demo account first.
+          {FOREX_TEST.winRate}% win rate — a deliberately small number of high-quality trades. Trading carries risk; this
+          is an automated tool, not financial advice or a profit guarantee. Past results are not a prediction. Run it on
+          a demo account first.
         </p>
       </div>
     </main>
