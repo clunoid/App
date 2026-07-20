@@ -26,7 +26,7 @@ export function Mt5BotsList() {
         <div className="mt-2 max-w-2xl">
           <h1 className="text-[26px] font-bold sm:text-[30px]">Choose an MT5 bot</h1>
           <p className="mt-1.5 text-[13.5px] leading-relaxed" style={{ color: TC.muted }}>
-            Each bot is an Expert Advisor you run in your own MetaTrader 5 terminal — you keep full custody. Open one to see its live signals, risk profiles and setup.
+            Each bot is an Expert Advisor you run in your own MetaTrader 5 terminal — you keep full custody, and we never see a password. Open one to download it and set your risk profile.
           </p>
         </div>
 

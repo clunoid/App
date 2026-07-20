@@ -3,13 +3,20 @@
  * /trading/deriv/mt5. Each bot lives in its OWN component file under
  * components/deriv/mt5/bots/ and opens at /trading/deriv/mt5/<id>, so adding a bot
  * is: one entry here + one component file + one line in the [botId] route map.
+ *
+ * ORDER: the general automation leads, then every dedicated bot in the order it
+ * was added. Append new bots to the END of this list.
+ *
+ * COPY: cards sell the outcome, never the method. No timeframes, indicators,
+ * entry rules, sessions or test figures — those belong in the source, not on a
+ * public page.
  */
 
 export type Mt5BotMeta = {
   id: string;      // URL slug → /trading/deriv/mt5/<id>
   name: string;
   rating: number;  // out of 10
-  chip: string;    // short strategy tag
+  chip: string;    // short market tag
   tagline: string;
   blurb: string;
   markets: string; // display, e.g. "Forex · Volatility"
@@ -17,34 +24,24 @@ export type Mt5BotMeta = {
 
 export const MT5_BOTS: Mt5BotMeta[] = [
   {
-    id: "volatility",
-    name: "Synthetic Index AI Automation",
-    rating: 8,
-    chip: "Range Break 200 · 24/7",
-    tagline: "The one synthetic that is not a random walk",
+    id: "generalmt5",
+    name: "General MT5 AI Automation",
+    rating: 2,
+    chip: "Forex + Volatility",
+    tagline: "Every market, one setup",
     blurb:
-      "We measured every synthetic Deriv offers. All but one zigzag MORE than a random walk, so there is nothing to trade. Range Break 200 travels 14.3% more than chance — and this bot trades it the way it is built: wait for a tight range, take the break, cut small and run far.",
-    markets: "Range Break 200",
+      "The all-in-one automation. Install it once on a single chart and it covers forex and Volatility indices together, sizing every position to your balance and protecting it the moment it opens. Pick a risk profile and it runs hands-free from there.",
+    markets: "Forex · Volatility",
   },
   {
-    id: "indices",
-    name: "Stock Index AI Automation",
-    rating: 8,
-    chip: "Swiss 20 + Wall St 30",
-    tagline: "The two indices that held up",
+    id: "gold",
+    name: "Gold AI Automation",
+    rating: 7,
+    chip: "XAU/USD",
+    tagline: "Hands-free gold trading",
     blurb:
-      "Eleven stock indices were tested identically and picked on how WIDE their winning region was, not their best number. Swiss 20 held 27 of 34 settings and Wall Street 30 held 31 of 42, while most managed one or none. Trades European and US hours only.",
-    markets: "Swiss 20 · Wall Street 30",
-  },
-  {
-    id: "forex",
-    name: "Forex AI Automation",
-    rating: 8,
-    chip: "USD/JPY · session",
-    tagline: "The one major that passed",
-    blurb:
-      "All seven majors were tested identically and only USD/JPY held up across both halves of the year. It trades the London–New York overlap only: every configuration restricted to that window was robust, while none that traded around the clock were.",
-    markets: "USD/JPY · majors",
+      "Full automation for the world's most traded metal. Every position is sized to your balance and carries its stop and target from the second it opens, so your risk is settled before the trade begins. Set your risk profile once and let it work.",
+    markets: "Gold · XAU/USD",
   },
   {
     id: "crypto",
@@ -53,28 +50,38 @@ export const MT5_BOTS: Mt5BotMeta[] = [
     chip: "BTC + ETH · 24/7",
     tagline: "Bitcoin and Ether, around the clock",
     blurb:
-      "A crypto specialist built on a year of measured BTC/ETH data — which showed crypto does NOT trend the way folklore claims. So it trades rarely and only on its strongest reads, and because the two coins move together at 0.86 correlation they share one account-wide risk ceiling.",
+      "Crypto never sleeps, and neither does this. It covers Bitcoin and Ether continuously from a single chart, every position sized to your balance and protected the instant it opens. One risk setting, then genuinely hands-free — nights and weekends included.",
     markets: "Bitcoin · Ether",
   },
   {
-    id: "gold",
-    name: "Gold AI Automation",
-    rating: 7,
-    chip: "XAU/USD",
-    tagline: "Dedicated gold trend trader",
+    id: "forex",
+    name: "Forex AI Automation",
+    rating: 8,
+    chip: "USD/JPY",
+    tagline: "Set it once, leave it running",
     blurb:
-      "A gold specialist. Reads the trend on H4, waits for a pullback on H1, then places its stop and target at real levels on the chart — targeting 2R or better, banking a partial at 1R and trailing the rest. Runs entirely on your terminal from your broker's own gold prices.",
-    markets: "Gold · XAU/USD",
+      "Disciplined currency automation for traders who would rather not watch a screen. Positions are sized to your balance with protection in place from the moment they open, and the whole account stays inside the limit you choose. No charts, no second-guessing.",
+    markets: "USD/JPY · majors",
   },
   {
-    id: "generalmt5",
-    name: "General MT5 AI Automation",
-    rating: 2,
-    chip: "Forex + Volatility",
-    tagline: "Forex and Volatility",
+    id: "indices",
+    name: "Stock Index AI Automation",
+    rating: 8,
+    chip: "Swiss 20 + Wall St 30",
+    tagline: "The world's markets, automated",
     blurb:
-      "One Expert Advisor that trades every live market automatically — forex (24/5) and Volatility indices (24/7) — from a single risk profile you set once. Broad and general-purpose; dedicated per-market bots are coming.",
-    markets: "Forex · Volatility",
+      "Automated exposure to major stock indices without watching a screen. One chart runs them all, every position is sized to your balance and protected from the moment it opens, and a single risk setting keeps your whole account inside your limit.",
+    markets: "Swiss 20 · Wall Street 30",
+  },
+  {
+    id: "volatility",
+    name: "Synthetic Index AI Automation",
+    rating: 8,
+    chip: "Range Break 200 · 24/7",
+    tagline: "Always on, weekends included",
+    blurb:
+      "Synthetic indices trade every hour of every day, and this runs right alongside them. Positions are sized to your balance and protected the instant they open, so the automation keeps working through the night and the weekend while you get on with your life.",
+    markets: "Range Break 200",
   },
 ];
 
