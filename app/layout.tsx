@@ -22,21 +22,25 @@ const serif = Source_Serif_4({
 });
 
 const SEO_DESCRIPTION =
-  "Clunoid is your AI host Isaac — ask anything and watch it answered with synced visuals, build animated Stat Battle bar-chart-race videos from any topic or your own files, play the Guess the Country flag game, and export shareable recap videos with AI captions. Free to start.";
+  "Free, fully automated trading bots for MetaTrader 5 and Deriv. AI-driven Expert Advisors that analyse the market, size every position to your balance and place the trades on your own broker account — forex, gold, crypto, stock indices and synthetic indices, around the clock. You keep custody.";
 
-// Broad but relevant keyword set spanning every feature + the terms people search.
+/**
+ * Keywords spanning what people actually search around automated trading. The
+ * full topic index lives on the /trading hub (lib/trading/knowledge.ts); this is
+ * the short head-term set.
+ */
 const SEO_KEYWORDS = [
-  "Clunoid", "Isaac AI", "Clunoid AI", "talk to AI", "AI host", "voice AI", "conversational AI",
-  "ask AI anything", "AI that shows you anything", "AI explainer", "AI answers with visuals",
-  "super-intelligent AI", "AI assistant", "AI search", "learn anything", "AI tutor", "study tool", "AI calculator",
-  "stat battle", "bar chart race", "bar chart race maker", "animated bar chart race", "data race video",
-  "data visualization", "data visualization video", "chart animation", "statistics video", "data storytelling",
-  "PDF to chart", "CSV to chart", "turn data into video", "infographic video maker",
-  "guess the country", "flag quiz", "flag game", "country quiz", "world flags game", "geography game", "AI trivia game",
-  "recap video maker", "shareable video maker", "social media video maker", "TikTok video maker", "Reels maker",
-  "YouTube Shorts maker", "video with AI voiceover", "AI captions", "AI hashtag generator", "auto caption video",
-  "AI voice", "AI narration", "text to speech", "AI voice generator", "AI host voices",
-  "AI credits", "buy AI credits", "pay as you go AI", "AI auto-reload",
+  "Clunoid", "Clunoid Trading", "automated trading", "trading bots", "free trading bots",
+  "AI trading bot", "algorithmic trading", "algo trading", "automated forex trading",
+  "MT5 bots", "free mt5 bots", "ai mt5 bots", "mt5 expert advisor", "MetaTrader 5 EA",
+  "forex robot", "free forex robot", "best forex ea", "expert advisor download",
+  "deriv bots", "free deriv bots", "deriv bot download", "deriv mt5", "deriv automation",
+  "binary bots", "free binary bots", "pocket option bots", "synthetic indices bot",
+  "volatility 75 bot", "boom and crash bot", "gold trading bot", "xauusd ea",
+  "crypto trading bot", "bitcoin trading bot", "stock index trading bot",
+  "copy trading", "trading automation software", "prop firm ea", "ftmo ea",
+  "risk management trading", "position size calculator", "risk reward ratio",
+  "what is trading", "forex for beginners", "how to start trading",
 ];
 
 const JSON_LD = {
@@ -45,15 +49,15 @@ const JSON_LD = {
     {
       "@type": "Organization",
       "@id": "https://www.clunoid.com/#organization",
-      name: "Clunoid",
-      url: "https://www.clunoid.com",
+      name: "Clunoid Trading",
+      url: "https://www.clunoid.com/trading",
       logo: "https://www.clunoid.com/icon.svg",
     },
     {
       "@type": "WebSite",
       "@id": "https://www.clunoid.com/#website",
       url: "https://www.clunoid.com",
-      name: "Clunoid",
+      name: "Clunoid Trading",
       description: SEO_DESCRIPTION,
       inLanguage: "en",
       publisher: { "@id": "https://www.clunoid.com/#organization" },
@@ -61,27 +65,21 @@ const JSON_LD = {
     {
       "@type": "SoftwareApplication",
       "@id": "https://www.clunoid.com/#app",
-      name: "Clunoid",
-      url: "https://www.clunoid.com",
-      applicationCategory: "MultimediaApplication",
-      operatingSystem: "Web, iOS, Android",
+      name: "Clunoid Trading",
+      url: "https://www.clunoid.com/trading",
+      applicationCategory: "FinanceApplication",
+      operatingSystem: "Web, Windows, MetaTrader 5",
       description: SEO_DESCRIPTION,
       featureList: [
-        "Isaac — a super-intelligent AI host you talk to by voice or text",
-        "Ask anything: web-grounded answers with synced animated visuals and info cards",
-        "Stat Battles — animated bar-chart-race videos from any topic or your own PDF, CSV or documents",
-        "Guess the Country — a voice-hosted flag quiz game (multiple-choice or speak your answer)",
-        "Shareable recap videos (vertical & wide) with AI-generated titles, captions and hashtags",
-        "Clunoid Voices — choose your AI host voice",
-        "File analyzer — turn PDFs, CSVs and documents into data stories",
-        "Free HD video export",
-        "Credits with pay-as-you-go top-ups and auto-reload",
+        "Free automated trading bots (Expert Advisors) for MetaTrader 5",
+        "Automated Deriv bots that run in the browser on your connected account",
+        "Bots for forex, gold and silver, crypto, stock indices and synthetic indices",
+        "Every position sized to your balance, with a stop loss and target set on entry",
+        "Conservative, moderate and aggressive risk profiles",
+        "Runs on any MT5 broker account — you keep custody, we never see a password",
+        "Runs 24/7, including weekends on synthetic indices",
       ],
-      offers: [
-        { "@type": "Offer", name: "Free", price: "0", priceCurrency: "USD" },
-        { "@type": "Offer", name: "Pro", price: "12", priceCurrency: "USD" },
-        { "@type": "Offer", name: "Max", price: "30", priceCurrency: "USD" },
-      ],
+      offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
       publisher: { "@id": "https://www.clunoid.com/#organization" },
     },
   ],
@@ -89,29 +87,40 @@ const JSON_LD = {
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://www.clunoid.com"),
-  title: { default: "Clunoid — Talk to Isaac, an AI that shows you anything", template: "%s · Clunoid" },
+  title: {
+    default: "Clunoid Trading — free automated trading bots for MT5 and Deriv",
+    template: "%s · Clunoid Trading",
+  },
   description: SEO_DESCRIPTION,
-  applicationName: "Clunoid",
+  applicationName: "Clunoid Trading",
   keywords: SEO_KEYWORDS,
-  category: "technology",
+  category: "finance",
   authors: [{ name: "Clunoid" }],
   creator: "Clunoid",
   publisher: "Clunoid",
-  alternates: { canonical: "/" },
+  // NOTE: no `alternates.canonical` here on purpose. A canonical set in the root
+  // layout is INHERITED by every route that does not set its own, which would
+  // point all 21 trading pages at one URL and drop them from the index. Each
+  // page declares its own canonical instead.
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: { index: true, follow: true, "max-image-preview": "large", "max-snippet": -1, "max-video-preview": -1 },
+  },
   openGraph: {
     type: "website",
-    url: "https://www.clunoid.com",
-    siteName: "Clunoid",
+    url: "https://www.clunoid.com/trading",
+    siteName: "Clunoid Trading",
     locale: "en_US",
-    title: "Clunoid — Talk to Isaac, an AI that shows you anything",
+    title: "Clunoid Trading — free automated trading bots for MT5 and Deriv",
     description: SEO_DESCRIPTION,
   },
   twitter: {
     card: "summary_large_image",
-    title: "Clunoid — Talk to Isaac, an AI that shows you anything",
+    title: "Clunoid Trading — free automated trading bots for MT5 and Deriv",
     description: SEO_DESCRIPTION,
   },
-  appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: "Clunoid" },
+  appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: "Clunoid Trading" },
   // Google Search Console verification (also verified via the static HTML file in
   // public/ and the DNS TXT record at the registrar).
   verification: { google: "nZ4tS4HU5SuDFm29AgPfaOm42hMl6jq27wxcLq5hvBk" },
