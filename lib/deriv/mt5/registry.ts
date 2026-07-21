@@ -47,41 +47,41 @@ export const MT5_BOTS: Mt5BotMeta[] = [
     id: "crypto",
     name: "Crypto AI Automation",
     rating: 8,
-    chip: "BTC + ETH · 24/7",
-    tagline: "Bitcoin and Ether, around the clock",
+    chip: "Crypto · 24/7",
+    tagline: "The major coins, around the clock",
     blurb:
-      "Crypto never sleeps, and neither does this. It covers Bitcoin and Ether continuously from a single chart, every position sized to your balance and protected the instant it opens. One risk setting, then genuinely hands-free — nights and weekends included.",
-    markets: "Bitcoin · Ether",
+      "Crypto never sleeps, and neither does this. It covers the major coins continuously from a single chart, every position sized to your balance and protected the instant it opens. One risk setting, then genuinely hands-free — nights and weekends included.",
+    markets: "Major coins",
   },
   {
     id: "forex",
     name: "Forex AI Automation",
     rating: 8,
-    chip: "USD/JPY",
+    chip: "Forex",
     tagline: "Set it once, leave it running",
     blurb:
       "Disciplined currency automation for traders who would rather not watch a screen. Positions are sized to your balance with protection in place from the moment they open, and the whole account stays inside the limit you choose. No charts, no second-guessing.",
-    markets: "USD/JPY · majors",
+    markets: "Major pairs",
   },
   {
     id: "indices",
     name: "Stock Index AI Automation",
     rating: 8,
-    chip: "Swiss 20 + Wall St 30",
+    chip: "Stock indices",
     tagline: "The world's markets, automated",
     blurb:
       "Automated exposure to major stock indices without watching a screen. One chart runs them all, every position is sized to your balance and protected from the moment it opens, and a single risk setting keeps your whole account inside your limit.",
-    markets: "Swiss 20 · Wall Street 30",
+    markets: "Global indices",
   },
   {
     id: "volatility",
     name: "Synthetic Index AI Automation",
     rating: 8,
-    chip: "Range Break 200 · 24/7",
+    chip: "Synthetic · 24/7",
     tagline: "Always on, weekends included",
     blurb:
       "Synthetic indices trade every hour of every day, and this runs right alongside them. Positions are sized to your balance and protected the instant they open, so the automation keeps working through the night and the weekend while you get on with your life.",
-    markets: "Range Break 200",
+    markets: "Synthetic indices",
   },
 ];
 
