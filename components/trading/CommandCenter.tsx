@@ -15,7 +15,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Wallet, Plug, RefreshCw, Loader2, LogOut, KeyRound, ShieldCheck, Building2, Bot, LineChart, UserPlus, Gift, ChevronRight } from "lucide-react";
+import { ArrowLeft, Wallet, Plug, RefreshCw, Loader2, LogOut, KeyRound, ShieldCheck, Building2, Bot, LineChart, UserPlus, Gift, ChevronRight, X } from "lucide-react";
 import { TC, DOT_GRID, monoFont, fmtBalance } from "@/lib/trading/theme";
 import type { ConnectedAccount } from "@/lib/trading/accounts";
 import { hasDerivApp, DERIV_AFFILIATE_URL } from "@/lib/deriv/config";
@@ -27,6 +27,106 @@ const BINANCE_REFERRAL_URL = "https://www.binance.com/referral/earn-together/ref
 
 /** One active connection: OAuth (new-API access token) or a pasted a1- token. */
 type Session = { kind: "oauth"; accessToken: string } | { kind: "token"; tokens: DerivToken[] };
+
+/**
+ * The two automations this hub opens into. While nothing is connected these
+ * stand in for the empty portfolio — a visitor should SEE the bots exist before
+ * being asked to authorise anything. Clicking one opens the connect prompt
+ * instead of navigating; once connected they behave as ordinary links.
+ */
+type GateTarget = "bots" | "mt5";
+const GATE_ORDER: readonly GateTarget[] = ["bots", "mt5"];
+const GATES: Record<GateTarget, { href: string; label: string; sub: string; icon: typeof Bot; noun: string }> = {
+  bots: { href: "/trading/deriv/bots", label: "Deriv Bots", sub: "AI automation", icon: Bot, noun: "The Deriv bots" },
+  mt5: { href: "/trading/deriv/mt5", label: "MT5", sub: "MT5 AI bots", icon: LineChart, noun: "The MT5 bots" },
+};
+
+/**
+ * Asked for at the moment someone opens an automation without a linked account:
+ * connect the one they have, or open one. It drives the SAME handlers as the
+ * panel on the right — no second connection path.
+ */
+function ConnectPrompt({ target, onConnect, onClose }: { target: GateTarget; onConnect: () => void; onClose: () => void }) {
+  const [busy, setBusy] = useState(false);
+  // Only dismiss on a backdrop press that STARTED on the backdrop: a click is
+  // dispatched on the common ancestor, so selecting the text and releasing
+  // outside the panel would otherwise close the prompt underneath you.
+  const downOnBackdrop = useRef(false);
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const opener = document.activeElement as HTMLElement | null;
+    panelRef.current?.focus();
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") { onClose(); return; }
+      if (e.key !== "Tab") return;
+      const panel = panelRef.current;
+      if (!panel) return;
+      const items = panel.querySelectorAll<HTMLElement>("a[href], button:not([disabled])");
+      if (!items.length) return;
+      // Hold Tab inside the prompt. The page behind is dimmed but still
+      // focusable, so without this a keyboard user walks straight into the
+      // panel on the right and fires controls they cannot see.
+      const first = items[0];
+      const last = items[items.length - 1];
+      const active = document.activeElement;
+      if (e.shiftKey && (active === first || active === panel)) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && active === last) { e.preventDefault(); first.focus(); }
+      else if (active && !panel.contains(active)) { e.preventDefault(); first.focus(); }
+    };
+
+    // Coming Back from Deriv restores this page from bfcache with React state
+    // intact — clear the hand-off latch so the button is live again instead of
+    // sitting on a disabled "Connecting…".
+    const onShow = (e: PageTransitionEvent) => { if (e.persisted) setBusy(false); };
+
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("pageshow", onShow);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("pageshow", onShow);
+      opener?.focus?.();
+    };
+  }, [onClose]);
+
+  return (
+    <div role="dialog" aria-modal="true" aria-labelledby="connect-prompt-title"
+      className="fixed inset-0 z-50 grid place-items-center p-5"
+      style={{ background: "rgba(4,10,20,0.72)", backdropFilter: "blur(3px)" }}
+      onMouseDown={(e) => { downOnBackdrop.current = e.target === e.currentTarget; }}
+      onClick={(e) => { if (downOnBackdrop.current && e.target === e.currentTarget) onClose(); }}>
+      <div ref={panelRef} tabIndex={-1} className="relative w-full max-w-[400px] rounded-2xl border p-5 outline-none"
+        style={{ borderColor: TC.line, background: TC.panel, boxShadow: "0 24px 60px rgba(0,0,0,0.55)" }}>
+        <button onClick={onClose} aria-label="Close" className="absolute right-3.5 top-3.5 rounded-lg p-1 transition hover:bg-white/10" style={{ color: TC.faint }}>
+          <X size={16} />
+        </button>
+
+        <BrandLogo src="/logos/deriv.png" alt="Deriv" size={26} />
+        <h3 id="connect-prompt-title" className="mt-3 text-[17px] font-bold">Connect your Deriv account</h3>
+        <p className="mt-1.5 text-[12.5px] leading-relaxed" style={{ color: TC.muted }}>
+          {GATES[target].noun} trade your own Deriv account, so it needs to be linked first. It takes one tap — and if
+          you don&rsquo;t have an account yet, you can open one now.
+        </p>
+
+        {/* Stays on screen through the hand-off: closing first makes a slow
+            redirect look like a dead button. */}
+        <button onClick={() => { setBusy(true); onConnect(); }} disabled={busy}
+          className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-[13.5px] font-semibold transition hover:opacity-90 disabled:opacity-70"
+          style={{ background: TC.profit, color: TC.ink }}>
+          {busy ? <><Loader2 size={15} className="animate-spin" /> Connecting…</> : <><Plug size={15} /> Connect Deriv</>}
+        </button>
+        <a href={DERIV_AFFILIATE_URL} target="_blank" rel="noopener noreferrer" className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-[13.5px] font-semibold transition hover:bg-white/5" style={{ borderColor: TC.line, color: TC.text }}>
+          <UserPlus size={15} style={{ color: TC.profit }} /> Create a Deriv account
+        </a>
+
+        <p className="mt-3 flex items-start gap-1.5 text-[11px] leading-relaxed" style={{ color: TC.faint }}>
+          <ShieldCheck size={13} className="mt-0.5 shrink-0" style={{ color: TC.profit }} /> You authorise your own broker directly.
+        </p>
+      </div>
+    </div>
+  );
+}
 
 const SNAP_KEY = "clunoid_deriv_portfolio"; // cached snapshot for instant reconnect-free display
 
@@ -81,6 +181,8 @@ export function CommandCenter() {
   const [error, setError] = useState<string | null>(null);
   const [pasteOpen, setPasteOpen] = useState(false);
   const [pasteVal, setPasteVal] = useState("");
+  /** Which automation was reached for before connecting. null = prompt closed. */
+  const [gate, setGate] = useState<GateTarget | null>(null);
   const started = useRef(false);
 
   const refresh = useCallback(async (s: Session | null) => {
@@ -166,6 +268,11 @@ export function CommandCenter() {
     void refresh(s);
   }, [refresh]);
 
+  // Drop a pending gate the moment a connection lands. Without this, a tile
+  // tapped during the OAuth exchange leaves `gate` set, the prompt is hidden
+  // rather than closed, and a later disconnect springs it open unbidden.
+  useEffect(() => { if (session) setGate(null); }, [session]);
+
   const connectDeriv = () => {
     if (!hasDerivApp()) { setError("Deriv OAuth isn't configured yet — paste a Deriv API token below to connect in the meantime."); setPasteOpen(true); return; }
     setError(null);
@@ -242,6 +349,37 @@ export function CommandCenter() {
             {loading && accounts.length === 0 ? (
               <div className="grid place-items-center rounded-2xl border p-12" style={{ borderColor: TC.line, background: TC.panel }}>
                 <span className="inline-flex items-center gap-2 text-[13px]" style={{ color: TC.muted }}><Loader2 size={16} className="animate-spin" style={{ color: TC.profit }} /> Loading your portfolio…</span>
+              </div>
+            ) : !connected ? (
+              /* Nothing linked yet: show the automations rather than an empty
+                 wallet, so a visitor can see the bots are real before being
+                 asked to authorise anything. A click opens the connect prompt. */
+              <div className="rounded-2xl border p-5 sm:p-6" style={{ borderColor: TC.line, background: TC.panel }}>
+                <h3 className="text-[15.5px] font-bold">Your automations are ready</h3>
+                <p className="mt-1 text-[12.5px] leading-relaxed" style={{ color: TC.muted }}>
+                  Open either one to connect your account — or create one — and your full portfolio appears here.
+                </p>
+
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  {GATE_ORDER.map((t) => {
+                    const g = GATES[t];
+                    const Icon = g.icon;
+                    return (
+                      <button key={t} type="button" onClick={() => { setError(null); setGate(t); }}
+                        className="flex items-center gap-3 rounded-xl border p-4 text-left transition hover:-translate-y-0.5 hover:bg-white/5"
+                        style={{ borderColor: TC.line, background: "linear-gradient(180deg, rgba(56,189,248,0.07), rgba(255,255,255,0.015))" }}>
+                        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl" style={{ background: "rgba(56,189,248,0.14)" }}>
+                          <Icon size={19} style={{ color: TC.profit }} />
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block text-[14px] font-bold leading-tight">{g.label}</span>
+                          <span className="mt-0.5 block text-[11.5px]" style={{ color: TC.faint }}>{g.sub}</span>
+                        </span>
+                        <ChevronRight size={16} className="ml-auto shrink-0" style={{ color: TC.faint }} />
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             ) : accounts.length === 0 ? (
               <div className="grid place-items-center rounded-2xl border border-dashed p-12 text-center" style={{ borderColor: TC.line }}>
@@ -392,6 +530,20 @@ export function CommandCenter() {
           </aside>
         </div>
       </div>
+
+      {gate && !connected && (
+        <ConnectPrompt
+          target={gate}
+          onClose={() => setGate(null)}
+          onConnect={() => {
+            // Same handler the panel on the right uses. Without a configured app
+            // it falls back to the token box, which lives behind the prompt — so
+            // in that one case step out of the way first.
+            if (!hasDerivApp()) setGate(null);
+            connectDeriv();
+          }}
+        />
+      )}
     </main>
   );
 }
