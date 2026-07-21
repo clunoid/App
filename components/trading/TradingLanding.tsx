@@ -56,12 +56,12 @@ const MARKETS = ["Volatility 75", "Volatility 100", "Boom 1000", "Crash 500", "J
  * marks are capped so every logo lands at a similar optical weight.
  */
 const BRANDS: { name: string; src: string; cap: number }[] = [
-  { name: "Deriv", src: "/logos/deriv-wordmark.svg", cap: 1 },
+  { name: "Deriv", src: "/logos/deriv-wordmark.svg", cap: 0.62 },
   { name: "MetaTrader 5", src: "/logos/metatrader5.svg", cap: 1 },
   { name: "TradingView", src: "/logos/tradingview.svg", cap: 1 },
-  { name: "Binance", src: "/logos/binance.svg", cap: 0.58 },
-  { name: "cTrader", src: "/logos/ctrader.svg", cap: 0.58 },
-  { name: "Exness", src: "/logos/exness.svg", cap: 1 },
+  { name: "Binance", src: "/logos/binance.svg", cap: 0.75 },
+  { name: "cTrader", src: "/logos/ctrader.svg", cap: 1 },
+  { name: "Exness", src: "/logos/exness.svg", cap: 0.72 },
   { name: "OANDA", src: "/logos/oanda.svg", cap: 0.45 },
   { name: "FTMO", src: "/logos/ftmo.svg", cap: 0.46 },
   { name: "FundedNext", src: "/logos/fundednext.png", cap: 1 },
@@ -134,6 +134,8 @@ export function TradingLanding() {
                 See supported platforms
               </a>
             </div>
+            <BrandBand />
+
             <div className="mt-6 flex flex-wrap items-center gap-x-6 gap-y-2 text-[12.5px]" style={{ color: C.faint }}>
               <span className="inline-flex items-center gap-1.5"><ShieldCheck size={14} style={{ color: C.profit }} /> You keep account custody</span>
               <span className="inline-flex items-center gap-1.5"><Cpu size={14} style={{ color: C.profit }} /> Runs 24/7</span>
@@ -156,9 +158,6 @@ export function TradingLanding() {
           </div>
         </div>
 
-        {/* ── brand recognition band ── */}
-        <BrandBand />
-
         {/* ── pillars ── */}
         <section className="w-full px-6 py-14 sm:px-10 lg:px-16">
           <div className="grid gap-4 sm:grid-cols-3">
@@ -178,35 +177,56 @@ export function TradingLanding() {
 
         {/* ── platforms ── */}
         <section id="platforms" className="w-full px-6 pb-16 sm:px-10 lg:px-16">
-          <div className="mb-5 flex items-end justify-between gap-4">
-            <div>
-              <h2 className="text-[22px] font-bold sm:text-[26px]">Built to run anywhere</h2>
-              <p className="mt-1.5 max-w-xl text-[13.5px] leading-relaxed" style={{ color: C.muted }}>
-                The engine is broker-agnostic — one intelligence, many platforms. We start with Deriv MT5, then Deriv Options, then cTrader and more.
-              </p>
-            </div>
+          <div className="mx-auto max-w-2xl text-center">
+            <h2 className="text-[24px] font-bold sm:text-[30px]">Built to run anywhere</h2>
+            <p className="mx-auto mt-2.5 text-[14px] leading-relaxed" style={{ color: C.muted }}>
+              One intelligence, many platforms. The engine is broker-agnostic, so a strategy proven on one
+              carries straight over as the next comes online.
+            </p>
           </div>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+
+          <div className="mt-9 grid gap-3.5 sm:grid-cols-2 lg:grid-cols-4">
             {PLATFORMS.map((p) => {
               const s = STATUS_META[p.status];
               return (
-                <div key={p.id} className="flex flex-col rounded-2xl border p-4" style={{ borderColor: C.line, background: C.panel }}>
-                  <div className="flex items-center justify-between">
-                    <span className="text-[14px] font-semibold">{p.label}</span>
-                    <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider" style={{ background: `${s.color}1f`, color: s.color }}>{s.label}</span>
+                <div key={p.id} className="group relative flex flex-col overflow-hidden rounded-2xl border p-5 transition duration-200 hover:-translate-y-0.5"
+                  style={{ borderColor: C.line, background: C.panel }}>
+                  {/* a hairline of the status colour, so state reads before the words do */}
+                  <span aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-px"
+                    style={{ background: `linear-gradient(90deg, transparent, ${s.color}66, transparent)` }} />
+
+                  <div className="flex items-center gap-3">
+                    <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl" style={{ background: C.panelHi }}>
+                      {p.logo ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={p.logo} alt="" aria-hidden decoding="async" className="h-5 w-5 object-contain" />
+                      ) : (
+                        <LineChart size={17} style={{ color: C.faint }} />
+                      )}
+                    </span>
+                    <div className="min-w-0">
+                      <div className="truncate text-[14.5px] font-semibold leading-tight">{p.broker}</div>
+                      <div className="mt-0.5 truncate text-[11.5px]" style={{ color: C.faint }}>{p.platform}</div>
+                    </div>
                   </div>
-                  <p className="mt-2 flex-1 text-[12px] leading-relaxed" style={{ color: C.muted }}>{p.note}</p>
-                  <div className="mt-3 flex flex-wrap gap-1">
-                    {p.markets.slice(0, 4).map((m) => (
-                      <span key={m} className="rounded px-1.5 py-0.5 text-[10px]" style={{ ...mono, background: C.panelHi, color: C.faint }}>{m}</span>
-                    ))}
+
+                  <p className="mt-3.5 flex-1 text-[12.5px] leading-relaxed" style={{ color: C.muted }}>{p.note}</p>
+
+                  <div className="mt-4 flex items-center justify-between gap-2 border-t pt-3" style={{ borderColor: C.line }}>
+                    <span className="inline-flex shrink-0 items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: s.color }}>
+                      <span className="h-1.5 w-1.5 rounded-full" style={{ background: s.color, boxShadow: `0 0 6px ${s.color}` }} />
+                      {s.label}
+                    </span>
+                    <span className="truncate text-[10.5px]" style={{ ...mono, color: C.faint }}>{p.markets.slice(0, 3).join(" · ")}</span>
                   </div>
                 </div>
               );
             })}
           </div>
-          <p className="mt-6 text-[12px]" style={{ color: C.faint }}>
-            On MT5, automation runs through an Expert Advisor in your own terminal — you keep custody of your account. Live execution is being wired next.
+
+          <p className="mx-auto mt-7 max-w-2xl text-center text-[12px] leading-relaxed" style={{ color: C.faint }}>
+            On MT5, automation runs through an Expert Advisor inside your own terminal — you keep custody of your
+            account. Live execution is being wired next.
           </p>
         </section>
 
@@ -222,42 +242,34 @@ export function TradingLanding() {
 }
 
 /**
- * The logo band. Every mark is forced to a single white silhouette
- * (`brightness(0) invert(1)`) because these eleven brands ship logos in yellow,
- * red, near-black and grey — left alone, half of them are invisible on this
- * background and the rest fight each other. One ink keeps the row calm and
- * legible, and each logo lifts to full strength on hover.
+ * The logo strip that sits directly under the hero call to action — full brand
+ * colour, deliberately small, and never more than a couple of lines tall.
+ *
+ * Colour is the point, so nothing is filtered. The only two lockups that could
+ * not survive this background (Exness's near-black ink, MetaTrader's grey
+ * wordmark) were lightened in the asset itself; their accents — and every other
+ * brand's — are untouched.
  *
  * Sizing is a fixed box per brand with object-contain, so a 5:1 wordmark and a
- * square mark both settle inside the same cell at any width, and the row
- * re-centres as it wraps instead of leaving a ragged last line.
+ * square mark settle inside the same cell at any width.
  */
 function BrandBand() {
   return (
-    <section aria-label="Platforms and firms traders know" className="w-full px-6 pt-12 sm:px-10 lg:px-16">
-      <p className="text-center text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: C.faint }}>
-        The platforms and firms traders know
-      </p>
-
-      <ul className="mx-auto mt-7 flex max-w-4xl list-none flex-wrap items-center justify-center gap-x-6 gap-y-6 sm:gap-x-11 sm:gap-y-7">
-        {BRANDS.map((b) => (
-          <li key={b.name} className="flex h-9 w-[84px] items-center justify-center sm:h-12 sm:w-[124px]">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={b.src}
-              alt={b.name}
-              decoding="async"
-              className="w-auto max-w-full object-contain opacity-60 transition duration-200 hover:opacity-100"
-              style={{ maxHeight: `${b.cap * 100}%`, filter: "brightness(0) invert(1)" }}
-            />
-          </li>
-        ))}
-      </ul>
-
-      <p className="mt-7 text-center text-[11px] leading-relaxed" style={{ color: C.faint }}>
-        Logos are the property of their respective owners and are shown for identification only.
-      </p>
-    </section>
+    <ul className="mt-6 flex max-w-xl list-none flex-wrap items-center gap-x-4 gap-y-3.5 sm:gap-x-6">
+      {BRANDS.map((b) => (
+        <li key={b.name} className="flex h-6 w-[68px] items-center justify-center sm:h-7 sm:w-[78px]">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={b.src}
+            alt={b.name}
+            title={b.name}
+            decoding="async"
+            className="w-auto max-w-full object-contain opacity-75 transition duration-200 hover:opacity-100"
+            style={{ maxHeight: `${b.cap * 100}%` }}
+          />
+        </li>
+      ))}
+    </ul>
   );
 }
 
