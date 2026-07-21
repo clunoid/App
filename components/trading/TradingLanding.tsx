@@ -11,9 +11,9 @@
  * to classic Clunoid.
  */
 import { useState } from "react";
-import { Activity, ArrowUpRight, BrainCircuit, Cpu, LineChart, Lock, ShieldCheck, Zap, ChevronRight, Loader2 } from "lucide-react";
+import { Activity, ArrowUpRight, BookOpen, BrainCircuit, Cpu, LineChart, Lock, ShieldCheck, Zap, ChevronRight, Loader2 } from "lucide-react";
 import { useClunoid } from "@/lib/store/useClunoid";
-import { PLATFORMS, type PlatformStatus } from "@/lib/trading/platforms";
+import { TradingHub } from "@/components/trading/TradingHub";
 
 const C = {
   bg: "#070b12",
@@ -32,13 +32,6 @@ const DOT_GRID = {
   backgroundImage: "radial-gradient(rgba(125,211,252,0.10) 1px, transparent 1px)",
   backgroundSize: "24px 24px",
 } as const;
-
-const STATUS_META: Record<PlatformStatus, { label: string; color: string }> = {
-  live: { label: "Live", color: C.profit },
-  beta: { label: "Beta", color: C.profitSoft },
-  soon: { label: "Coming soon", color: "#fbbf24" },
-  planned: { label: "Planned", color: C.faint },
-};
 
 /* the markets we automate — decorative strip (names only, not live quotes) */
 const MARKETS = ["Volatility 75", "Volatility 100", "Boom 1000", "Crash 500", "Jump 25", "EUR/USD", "XAU/USD", "BTC/USD", "US Tech 100", "Step Index"];
@@ -131,7 +124,7 @@ export function TradingLanding() {
                 Get started <ArrowUpRight size={16} />
               </a>
               <a href="#platforms" className="inline-flex items-center gap-2 rounded-xl border px-5 py-3 text-[14px] font-medium transition hover:bg-white/5" style={{ borderColor: C.line, color: C.text }}>
-                See supported platforms
+                <BookOpen size={16} style={{ color: C.profit }} /> Explore the trading hub
               </a>
             </div>
             <BrandBand />
@@ -175,60 +168,8 @@ export function TradingLanding() {
           </div>
         </section>
 
-        {/* ── platforms ── */}
-        <section id="platforms" className="w-full px-6 pb-16 sm:px-10 lg:px-16">
-          <div className="mx-auto max-w-2xl text-center">
-            <h2 className="text-[24px] font-bold sm:text-[30px]">Built to run anywhere</h2>
-            <p className="mx-auto mt-2.5 text-[14px] leading-relaxed" style={{ color: C.muted }}>
-              One intelligence, many platforms. The engine is broker-agnostic, so a strategy proven on one
-              carries straight over as the next comes online.
-            </p>
-          </div>
-
-          <div className="mt-9 grid gap-3.5 sm:grid-cols-2 lg:grid-cols-4">
-            {PLATFORMS.map((p) => {
-              const s = STATUS_META[p.status];
-              return (
-                <div key={p.id} className="group relative flex flex-col overflow-hidden rounded-2xl border p-5 transition duration-200 hover:-translate-y-0.5"
-                  style={{ borderColor: C.line, background: C.panel }}>
-                  {/* a hairline of the status colour, so state reads before the words do */}
-                  <span aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-px"
-                    style={{ background: `linear-gradient(90deg, transparent, ${s.color}66, transparent)` }} />
-
-                  <div className="flex items-center gap-3">
-                    <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl" style={{ background: C.panelHi }}>
-                      {p.logo ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={p.logo} alt="" aria-hidden decoding="async" className="h-5 w-5 object-contain" />
-                      ) : (
-                        <LineChart size={17} style={{ color: C.faint }} />
-                      )}
-                    </span>
-                    <div className="min-w-0">
-                      <div className="truncate text-[14.5px] font-semibold leading-tight">{p.broker}</div>
-                      <div className="mt-0.5 truncate text-[11.5px]" style={{ color: C.faint }}>{p.platform}</div>
-                    </div>
-                  </div>
-
-                  <p className="mt-3.5 flex-1 text-[12.5px] leading-relaxed" style={{ color: C.muted }}>{p.note}</p>
-
-                  <div className="mt-4 flex items-center justify-between gap-2 border-t pt-3" style={{ borderColor: C.line }}>
-                    <span className="inline-flex shrink-0 items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: s.color }}>
-                      <span className="h-1.5 w-1.5 rounded-full" style={{ background: s.color, boxShadow: `0 0 6px ${s.color}` }} />
-                      {s.label}
-                    </span>
-                    <span className="truncate text-[10.5px]" style={{ ...mono, color: C.faint }}>{p.markets.slice(0, 3).join(" · ")}</span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          <p className="mx-auto mt-7 max-w-2xl text-center text-[12px] leading-relaxed" style={{ color: C.faint }}>
-            On MT5, automation runs through an Expert Advisor inside your own terminal — you keep custody of your
-            account. Live execution is being wired next.
-          </p>
-        </section>
+        {/* ── the trading hub: platforms, market knowledge, discovery ── */}
+        <TradingHub />
 
         {/* ── footer ── */}
         <footer className="border-t px-5 py-6 text-center text-[12px] sm:px-8" style={{ borderColor: C.line, color: C.faint }}>
