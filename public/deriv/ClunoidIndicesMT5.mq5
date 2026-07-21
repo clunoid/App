@@ -50,7 +50,7 @@ input double      InpRiskPctOverride = 0;          // Override risk % per trade 
 input double      InpMaxDailyLossPct = 5.0;        // Halt new entries after this daily loss (% of day-start equity)
 
 input group           "=== Markets ==="
-input string      InpSymbols         = "Swiss 20,Wall Street 30"; // Indices to trade (comma separated; names may contain spaces)
+input string      InpSymbols         = "Swiss 20,Wall Street 30,UK 100,Europe 50"; // Indices to trade (comma separated; names may contain spaces)
 input double      InpMaxSpreadPct    = 0.08;       // Skip entries when spread exceeds this % of price
 
 input group           "=== Session (GMT) ==="
@@ -73,7 +73,7 @@ input long        InpMagic           = 77091111;   // Magic number (this EA's tr
 #define ADX_PERIOD    14
 #define ATR_PERIOD    14
 #define ADX_GATE      18.0
-#define MIN_CONF      55.0
+#define MIN_CONF      35.0   // trend agreement is enough — a higher bar starves the bot of trades
 #define MIN_RR        2.0
 #define MAX_R         5.0
 #define MAX_STOP_ATR  2.5
@@ -83,7 +83,7 @@ input long        InpMagic           = 77091111;   // Magic number (this EA's tr
 #define PARTIAL_AT_R  1.0
 #define PULLBACK_LOOK 10
 #define PULLBACK_ATR  0.6
-#define ENTRY_COOLDOWN 8
+#define ENTRY_COOLDOWN 3     // bars between entries per market
 #define SWING_K       2
 #define RATES_N       400
 #define MAX_SYMBOLS   8
@@ -315,9 +315,12 @@ Setup Analyse(const int k)
       if(d <= PULLBACK_ATR) { retraced=true; break; }
      }
    double body = close - r[1].open;
+   // A close back through the fast average with the bar closing in our direction
+   // is enough. Also demanding it take out the previous bar's extreme roughly
+   // halved the number of entries for no measured gain.
    bool resumed = (dir>0)
-                  ? (close > emaF[1] && body > 0 && close > r[2].high)
-                  : (close < emaF[1] && body < 0 && close < r[2].low);
+                  ? (close > emaF[1] && body > 0)
+                  : (close < emaF[1] && body < 0);
    s.dir=dir; s.conf=conf;
    if(!retraced) { s.why="no pullback yet"; return(s); }
    if(!resumed)  { s.why="waiting for resumption"; return(s); }

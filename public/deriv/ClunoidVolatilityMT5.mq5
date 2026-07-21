@@ -51,7 +51,7 @@ input double      InpRiskPctOverride = 0;          // Override risk % per trade 
 input double      InpMaxDailyLossPct = 5.0;        // Halt new entries after this daily loss (% of day-start equity)
 
 input group           "=== Markets ==="
-input string      InpSymbols         = "Range Break 200 Index"; // Markets to trade (names may contain spaces)
+input string      InpSymbols         = "Range Break 200 Index,Range Break 100 Index"; // Markets to trade (names may contain spaces)
 input double      InpMaxSpreadPct    = 0.10;       // Skip entries when spread exceeds this % of price
 
 input group           "=== Behaviour ==="
@@ -65,7 +65,7 @@ input long        InpMagic           = 77091222;   // Magic number (this EA's tr
 #define STOP_ATR       1.2    // stop distance, floored at half the range width
 #define TARGET_RR      3.0    // breaks that work, run
 #define TRAIL_ATR      2.5
-#define ENTRY_COOLDOWN 4      // bars to wait after an exit before re-arming
+#define ENTRY_COOLDOWN 2      // bars to wait after an exit before re-arming
 #define ATR_PERIOD     14
 #define RATES_N        200
 #define MAX_SYMBOLS    6

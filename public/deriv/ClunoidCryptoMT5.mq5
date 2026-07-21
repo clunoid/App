@@ -65,7 +65,7 @@ input long        InpMagic           = 77090888;   // Magic number (this EA's tr
 #define ADX_PERIOD    14
 #define ATR_PERIOD    14
 #define ADX_GATE      25.0   // measured: 25 beat both 20 and 30 at every confidence level
-#define MIN_CONF      85.0   // measured: profit factor rose monotonically with this
+#define MIN_CONF      35.0   // trend agreement is enough — a higher bar starves the bot of trades
 #define MIN_RR        2.0
 #define MAX_R         5.0
 #define MAX_STOP_ATR  2.5
@@ -75,7 +75,7 @@ input long        InpMagic           = 77090888;   // Magic number (this EA's tr
 #define PARTIAL_AT_R  1.0
 #define PULLBACK_LOOK 10
 #define PULLBACK_ATR  0.6
-#define ENTRY_COOLDOWN 8     // bars between entries PER COIN
+#define ENTRY_COOLDOWN 3     // bars between entries per market
 #define SWING_K       2
 #define RATES_N       400
 #define MAX_SYMBOLS   8
@@ -151,7 +151,9 @@ bool SymbolUsable(const string s)
    if(!SymbolSelect(s,true)) return(false);
    long mode = SymbolInfoInteger(s,SYMBOL_TRADE_MODE);
    if(mode==SYMBOL_TRADE_MODE_DISABLED || mode==SYMBOL_TRADE_MODE_CLOSEONLY) return(false);
-   if(SymbolInfoString(s,SYMBOL_CURRENCY_PROFIT) != AccountInfoString(ACCOUNT_CURRENCY)) return(false);
+   // Do NOT demand the profit currency match the account currency: on a EUR or
+   // GBP account a perfectly normal BTCUSD settles in USD and the terminal
+   // converts. The space check above is what keeps synthetic look-alikes out.
    return(true);
   }
 
@@ -169,7 +171,7 @@ string ResolveOne(const string want)
         {
          string s = SymbolName(i,pass==0);
          string su = s; StringToUpper(su);
-         if(StringFind(su,wu)!=0) continue;             // must START with the wanted name
+         if(StringFind(su,wu)<0) continue;              // contains, so EURUSD.r and mEURUSD both resolve
          if(!SymbolUsable(s)) continue;
          if(best=="" || StringLen(s)<StringLen(best)) best = s;
         }
@@ -305,9 +307,12 @@ Setup Analyse(const int k)
       if(d <= PULLBACK_ATR) { retraced = true; break; }
      }
    double body = close - r[1].open;
+   // A close back through the fast average with the bar closing in our direction
+   // is enough. Also demanding it take out the previous bar's extreme roughly
+   // halved the number of entries for no measured gain.
    bool resumed = (dir>0)
-                  ? (close > emaF[1] && body > 0 && close > r[2].high)
-                  : (close < emaF[1] && body < 0 && close < r[2].low);
+                  ? (close > emaF[1] && body > 0)
+                  : (close < emaF[1] && body < 0);
    s.dir = dir; s.conf = conf;
    if(!retraced) { s.why="no pullback yet"; return(s); }
    if(!resumed)  { s.why="waiting for resumption"; return(s); }

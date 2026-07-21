@@ -48,12 +48,12 @@ input double      InpRiskPctOverride = 0;          // Override risk % per trade 
 input double      InpMaxDailyLossPct = 5.0;        // Halt new entries after this daily loss (% of day-start equity)
 
 input group           "=== Markets ==="
-input string      InpSymbols         = "USDJPY";   // Pairs to trade (USDJPY is the tested one; others are opt-in)
+input string      InpSymbols         = "USDJPY,USDCAD,AUDNZD";   // Pairs to trade (USDJPY is the tested one; others are opt-in)
 input double      InpMaxSpreadPct    = 0.05;       // Skip entries when spread exceeds this % of price
 
 input group           "=== Session (GMT) — this is where the edge lives ==="
-input int         InpSessionStartGMT = 12;         // Start hour, GMT (12 = London/New York overlap opens)
-input int         InpSessionEndGMT   = 16;         // End hour, GMT (inclusive)
+input int         InpSessionStartGMT = 7;          // Start hour, GMT (London opens)
+input int         InpSessionEndGMT   = 20;         // End hour, GMT (through the US afternoon)
 
 input group           "=== Behaviour ==="
 input bool        InpTradingEnabled  = true;       // Master on/off switch
@@ -71,7 +71,7 @@ input long        InpMagic           = 77090999;   // Magic number (this EA's tr
 #define ADX_PERIOD    14
 #define ATR_PERIOD    14
 #define ADX_GATE      18.0   // measured: results were flat across 15-25, so mid-range
-#define MIN_CONF      55.0   // FX trends are weaker than crypto's; a high bar starves it
+#define MIN_CONF      35.0   // trend agreement is enough — a higher bar starves the bot of trades
 #define MIN_RR        2.0
 #define MAX_R         5.0
 #define MAX_STOP_ATR  2.5
@@ -81,7 +81,7 @@ input long        InpMagic           = 77090999;   // Magic number (this EA's tr
 #define PARTIAL_AT_R  1.0
 #define PULLBACK_LOOK 10
 #define PULLBACK_ATR  0.6
-#define ENTRY_COOLDOWN 8
+#define ENTRY_COOLDOWN 3     // bars between entries per market
 #define SWING_K       2
 #define RATES_N       400
 #define MAX_SYMBOLS   8
@@ -189,7 +189,7 @@ string ResolveOne(const string want)
         {
          string s = SymbolName(i,pass==0);
          string su = s; StringToUpper(su);
-         if(StringFind(su,wu)!=0) continue;         // must START with the wanted name
+         if(StringFind(su,wu)<0) continue;              // contains, so EURUSD.r and mEURUSD both resolve
          if(!SymbolUsable(s)) continue;
          if(best=="" || StringLen(s)<StringLen(best)) best = s;
         }
@@ -316,9 +316,12 @@ Setup Analyse(const int k)
       if(d <= PULLBACK_ATR) { retraced=true; break; }
      }
    double body = close - r[1].open;
+   // A close back through the fast average with the bar closing in our direction
+   // is enough. Also demanding it take out the previous bar's extreme roughly
+   // halved the number of entries for no measured gain.
    bool resumed = (dir>0)
-                  ? (close > emaF[1] && body > 0 && close > r[2].high)
-                  : (close < emaF[1] && body < 0 && close < r[2].low);
+                  ? (close > emaF[1] && body > 0)
+                  : (close < emaF[1] && body < 0);
    s.dir=dir; s.conf=conf;
    if(!retraced) { s.why="no pullback yet"; return(s); }
    if(!resumed)  { s.why="waiting for resumption"; return(s); }

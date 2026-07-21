@@ -35,13 +35,13 @@ export const MT5_BOTS: Mt5BotMeta[] = [
   },
   {
     id: "gold",
-    name: "Gold AI Automation",
+    name: "Gold & Silver AI Automation",
     rating: 7,
-    chip: "XAU/USD",
-    tagline: "Hands-free gold trading",
+    chip: "Gold + Silver",
+    tagline: "Hands-free precious metals",
     blurb:
-      "Full automation for the world's most traded metal. Every position is sized to your balance and carries its stop and target from the second it opens, so your risk is settled before the trade begins. Set your risk profile once and let it work.",
-    markets: "Gold · XAU/USD",
+      "Full automation across gold and silver, the two metals traders watch most. Every position is sized to your balance and carries its stop and target from the second it opens, so your risk is settled before the trade begins. Set it once and let it work.",
+    markets: "Gold · Silver",
   },
   {
     id: "crypto",

@@ -31,14 +31,14 @@ export function GoldMt5() {
           </Link>
           <span className="h-4 w-px" style={{ background: TC.line }} />
           <span className="inline-flex items-center gap-1.5 text-[14px] font-bold tracking-[0.14em]">
-            <Bot size={16} style={{ color: ACCENT }} /> GOLD AUTOMATION
+            <Bot size={16} style={{ color: ACCENT }} /> METALS AUTOMATION
           </span>
         </header>
 
         <div className="mt-2 max-w-2xl">
-          <h1 className="text-[26px] font-bold sm:text-[30px]">Gold (XAU/USD) — AI automation</h1>
+          <h1 className="text-[26px] font-bold sm:text-[30px]">Gold and Silver — AI automation</h1>
           <p className="mt-1.5 text-[13.5px] leading-relaxed" style={{ color: TC.muted }}>
-            A dedicated gold Expert Advisor that runs on your own MetaTrader 5 terminal and trades your account automatically. Set it once and leave it.
+            A precious-metals Expert Advisor covering gold and silver, running on your own MetaTrader 5 terminal. One chart runs both markets. Set it once and leave it.
           </p>
         </div>
 
@@ -54,7 +54,7 @@ export function GoldMt5() {
               {[
                 <>Copy the file into MT5&rsquo;s <code style={cx}>MQL5/Experts</code> folder — find it via <code style={cx}>File → Open Data Folder</code>.</>,
                 <>Restart MT5, or press <b style={{ color: TC.text }}>Compile</b> in MetaEditor. The bot then appears under Expert Advisors.</>,
-                <>Drag it onto <b style={{ color: TC.text }}>any XAUUSD chart</b>, set <code style={cx}>InpProfile</code> to your risk level, and enable <b style={{ color: TC.text }}>Algo Trading</b>.</>,
+                <>Drag it onto <b style={{ color: TC.text }}>any chart</b>, set <code style={cx}>InpProfile</code> to your risk level, and enable <b style={{ color: TC.text }}>Algo Trading</b>.</>,
                 <>(Recommended) Right-click the bot → <b style={{ color: TC.text }}>Register a Virtual Server</b> so it keeps trading with your computer off.</>,
               ].map((step, i) => (
                 <li key={i} className="flex gap-3">
