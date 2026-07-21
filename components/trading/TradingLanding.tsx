@@ -43,6 +43,32 @@ const STATUS_META: Record<PlatformStatus, { label: string; color: string }> = {
 /* the markets we automate — decorative strip (names only, not live quotes) */
 const MARKETS = ["Volatility 75", "Volatility 100", "Boom 1000", "Crash 500", "Jump 25", "EUR/USD", "XAU/USD", "BTC/USD", "US Tech 100", "Step Index"];
 
+/**
+ * The names traders already know — a recognition band, NOT a claim of
+ * integration or endorsement. Every logo is the brand's own official asset,
+ * self-hosted in /public/logos.
+ *
+ * `cap` is the share of the cell height each mark may take, tuned against the
+ * measured render. These lockups run from square (Binance, cTrader) to 10:1
+ * (FundedNext): sized to one height the squares tower over the wordmarks, and
+ * sized to one width the stubby ones dwarf everything. Wide wordmarks are
+ * limited by the cell width anyway, so cap=1 leaves them alone; the squarer
+ * marks are capped so every logo lands at a similar optical weight.
+ */
+const BRANDS: { name: string; src: string; cap: number }[] = [
+  { name: "Deriv", src: "/logos/deriv-wordmark.svg", cap: 1 },
+  { name: "MetaTrader 5", src: "/logos/metatrader5.svg", cap: 1 },
+  { name: "TradingView", src: "/logos/tradingview.svg", cap: 1 },
+  { name: "Binance", src: "/logos/binance.svg", cap: 0.58 },
+  { name: "cTrader", src: "/logos/ctrader.svg", cap: 0.58 },
+  { name: "Exness", src: "/logos/exness.svg", cap: 1 },
+  { name: "OANDA", src: "/logos/oanda.svg", cap: 0.45 },
+  { name: "FTMO", src: "/logos/ftmo.svg", cap: 0.46 },
+  { name: "FundedNext", src: "/logos/fundednext.png", cap: 1 },
+  { name: "The 5%ers", src: "/logos/the5ers.svg", cap: 0.6 },
+  { name: "FundingPips", src: "/logos/fundingpips.svg", cap: 1 },
+];
+
 export function TradingLanding() {
   const isAuthed = useClunoid((s) => s.user.isAuthed);
   const userId = useClunoid((s) => s.user.id);
@@ -94,7 +120,7 @@ export function TradingLanding() {
               <Zap size={12} /> Automated · AI-driven · broker-agnostic
             </span>
             <h1 className="mt-5 text-[34px] font-bold leading-[1.08] sm:text-[46px]">
-              Intelligent trading that <span style={{ color: C.profit }}>executes for you</span>.
+              Free, fully automated trading bots that <span style={{ color: C.profit }}>execute for you</span>.
             </h1>
             <p className="mt-4 max-w-xl text-[15px] leading-relaxed" style={{ color: C.muted }}>
               Clunoid Trading turns advanced AI into automated strategies that run on your own broker account —
@@ -129,6 +155,9 @@ export function TradingLanding() {
             ))}
           </div>
         </div>
+
+        {/* ── brand recognition band ── */}
+        <BrandBand />
 
         {/* ── pillars ── */}
         <section className="w-full px-6 py-14 sm:px-10 lg:px-16">
@@ -189,6 +218,46 @@ export function TradingLanding() {
 
       <style>{`@keyframes ticker { from { transform: translateX(0) } to { transform: translateX(-50%) } }`}</style>
     </main>
+  );
+}
+
+/**
+ * The logo band. Every mark is forced to a single white silhouette
+ * (`brightness(0) invert(1)`) because these eleven brands ship logos in yellow,
+ * red, near-black and grey — left alone, half of them are invisible on this
+ * background and the rest fight each other. One ink keeps the row calm and
+ * legible, and each logo lifts to full strength on hover.
+ *
+ * Sizing is a fixed box per brand with object-contain, so a 5:1 wordmark and a
+ * square mark both settle inside the same cell at any width, and the row
+ * re-centres as it wraps instead of leaving a ragged last line.
+ */
+function BrandBand() {
+  return (
+    <section aria-label="Platforms and firms traders know" className="w-full px-6 pt-12 sm:px-10 lg:px-16">
+      <p className="text-center text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: C.faint }}>
+        The platforms and firms traders know
+      </p>
+
+      <ul className="mx-auto mt-7 flex max-w-4xl list-none flex-wrap items-center justify-center gap-x-6 gap-y-6 sm:gap-x-11 sm:gap-y-7">
+        {BRANDS.map((b) => (
+          <li key={b.name} className="flex h-9 w-[84px] items-center justify-center sm:h-12 sm:w-[124px]">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={b.src}
+              alt={b.name}
+              decoding="async"
+              className="w-auto max-w-full object-contain opacity-60 transition duration-200 hover:opacity-100"
+              style={{ maxHeight: `${b.cap * 100}%`, filter: "brightness(0) invert(1)" }}
+            />
+          </li>
+        ))}
+      </ul>
+
+      <p className="mt-7 text-center text-[11px] leading-relaxed" style={{ color: C.faint }}>
+        Logos are the property of their respective owners and are shown for identification only.
+      </p>
+    </section>
   );
 }
 
