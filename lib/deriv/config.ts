@@ -106,3 +106,10 @@ export const DERIV_WITHDRAW_URL =
   "https://home.deriv.com/dashboard/withdraw/verify?currency=USD&from=portfolio&openWithdraw=1";
 export const DERIV_TRACKED_WITHDRAW_URL =
   `${DERIV_WITHDRAW_URL}&t=${DERIV_AFFILIATE_TOKEN}&${DERIV_AFFILIATE_UTM}`;
+
+/** The Deriv portfolio page — where a user moves funds into their options trading
+ *  account (the only balance we can read) — deep-linked + tracked. No existing
+ *  query on this URL, so the tracking params start with `?`. */
+export const DERIV_PORTFOLIO_URL = "https://home.deriv.com/dashboard/portfolio";
+export const DERIV_TRACKED_PORTFOLIO_URL =
+  `${DERIV_PORTFOLIO_URL}?t=${DERIV_AFFILIATE_TOKEN}&${DERIV_AFFILIATE_UTM}`;

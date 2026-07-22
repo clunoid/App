@@ -19,6 +19,7 @@ import { ArrowLeft, Wallet, Plug, RefreshCw, Loader2, LogOut, KeyRound, ShieldCh
 import { TC, DOT_GRID, monoFont, fmtBalance } from "@/lib/trading/theme";
 import type { ConnectedAccount } from "@/lib/trading/accounts";
 import { hasDerivApp, DERIV_AFFILIATE_URL, DERIV_TRACKED_DEPOSIT_URL, DERIV_TRACKED_WITHDRAW_URL } from "@/lib/deriv/config";
+import { BalanceVisibilityNote } from "@/components/deriv/BalanceVisibilityNote";
 import { parseDerivRedirect, isDerivRedirect, isDerivCodeReturn, startDerivLogin, completeDerivLogin, saveDerivTokens, loadDerivTokens, clearDerivTokens, saveDerivAccess, loadDerivAccess, clearDerivAccess, type DerivToken } from "@/lib/deriv/oauth";
 import { fetchDerivPortfolio, type DerivPortfolio } from "@/lib/deriv/client";
 import { fetchDerivPortfolioREST } from "@/lib/deriv/api";
@@ -410,6 +411,8 @@ export function CommandCenter() {
                   )}
                 </div>
 
+                <BalanceVisibilityNote className="mb-4 text-[11.5px] leading-relaxed" style={{ color: TC.faint }} />
+
                 {/* Balance by Deriv section (real) */}
                 {sections.length > 0 && (
                   <div className="mb-4 grid gap-2.5 sm:grid-cols-2">
@@ -479,6 +482,7 @@ export function CommandCenter() {
                   </Link>
                   <Link href="/trading/deriv/mt5" className="flex items-center gap-1.5 rounded-xl border px-2.5 py-2 text-[12px] font-bold transition hover:bg-white/5" style={{ borderColor: TC.line, color: TC.text }}>
                     <LineChart size={14} style={{ color: TC.profit }} /> MT5
+                    <span className="rounded px-1 py-0.5 text-[8.5px] font-bold uppercase tracking-wide" style={{ background: "rgba(56,189,248,0.16)", color: "#38bdf8" }}>AI bots</span>
                   </Link>
                   <a href={DERIV_TRACKED_DEPOSIT_URL} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 rounded-xl border px-2.5 py-2 text-[12px] font-bold transition hover:bg-white/5" style={{ borderColor: "rgba(52,211,153,0.45)", color: "#34d399" }}>
                     <ArrowDownToLine size={14} /> Deposit

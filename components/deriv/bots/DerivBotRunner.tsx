@@ -14,6 +14,7 @@ import { TC, DOT_GRID, monoFont, fmtBalance } from "@/lib/trading/theme";
 import type { ConnectedAccount } from "@/lib/trading/accounts";
 import { loadDerivAccess } from "@/lib/deriv/oauth";
 import { DERIV_TRACKED_DEPOSIT_URL } from "@/lib/deriv/config";
+import { BalanceVisibilityNote } from "@/components/deriv/BalanceVisibilityNote";
 import { fetchDerivPortfolioREST } from "@/lib/deriv/api";
 import { BOT_DEFAULTS } from "@/lib/deriv/bots/config";
 import { DerivBot } from "@/lib/deriv/bots/engine";
@@ -346,6 +347,8 @@ function RecommendBalanceModal({ balance, currency, onClose }: { balance: number
           without long waits for a target to hit.
         </p>
 
+        <BalanceVisibilityNote className="mt-2 text-[11.5px] leading-relaxed" style={{ color: TC.faint }} />
+
         <div className="mt-3 rounded-xl border p-3" style={{ borderColor: TC.line, background: "rgba(56,189,248,0.06)" }}>
           <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider" style={{ color: TC.profit }}>
             <Lightbulb size={13} /> A few tips
@@ -408,6 +411,8 @@ function NeedDepositModal({ balance, currency, onClose }: { balance: number | nu
           trade yet. You can deposit <b style={{ color: TC.text }}>any amount</b>, and we recommend{" "}
           <b style={{ color: TC.text }}>1,000 USD or more</b> for the best results.
         </p>
+
+        <BalanceVisibilityNote className="mt-2 text-[11.5px] leading-relaxed" style={{ color: TC.faint }} />
 
         <a href={DERIV_TRACKED_DEPOSIT_URL} target="_blank" rel="noopener noreferrer" onClick={onClose}
           className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-[13.5px] font-semibold transition hover:opacity-90" style={{ background: TC.profit, color: TC.ink }}>

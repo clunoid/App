@@ -22,7 +22,7 @@ export function Mt5PlatformList() {
           <span className="h-4 w-px" style={{ background: TC.line }} />
           <span className="inline-flex items-center gap-2 text-[14px] font-bold tracking-[0.12em]">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/logos/metatrader5.svg" alt="MetaTrader 5" className="h-4 w-auto" style={{ maxWidth: 120 }} /> AUTOMATIONS
+            <img src="/logos/metatrader5.svg" alt="MetaTrader 5" className="h-4 w-auto" style={{ maxWidth: 120 }} /> AI BOTS
           </span>
         </header>
 
