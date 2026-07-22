@@ -56,6 +56,18 @@ export const MT5_AUTOS: Mt5Auto[] = [
     file: "/mt5/ClunoidDipMT5.mq5",
   },
   {
+    id: "volatility-breakout",
+    name: "Volatility Breakout",
+    rating: 9.0,
+    chip: "Metals · Crypto · Energy",
+    tagline: "Catch expansion the moment it starts",
+    blurb:
+      "A Keltner-band expansion breakout tuned for the markets that trend hardest — gold, silver, oil, copper and the major coins. When price thrusts beyond its volatility band with the trend, it rides the move on a wide trail. Volatility sizing, hard stop, let winners run.",
+    markets: "Gold · Silver · Oil · Copper · Crypto",
+    status: "available",
+    file: "/mt5/ClunoidVolBreakoutMT5.mq5",
+  },
+  {
     id: "currency-trend",
     name: "Currency Trend",
     rating: 9.1,
@@ -64,17 +76,6 @@ export const MT5_AUTOS: Mt5Auto[] = [
     blurb:
       "A daily-timeframe trend system across the major currency pairs — the approach with the strongest documented persistence in FX. Low turnover by design, so spread never eats the edge, with volatility sizing and a disciplined exit.",
     markets: "EUR/USD · GBP/USD · USD/JPY · majors",
-    status: "building",
-  },
-  {
-    id: "volatility-breakout",
-    name: "Volatility Breakout",
-    rating: 9.0,
-    chip: "Gold · Crypto · 24/7",
-    tagline: "Catch expansion the moment it starts",
-    blurb:
-      "A channel-expansion breakout tuned for the markets that trend hardest — gold and the major coins — with volatility sizing, pyramiding into strength and a trailing exit that lets the big moves run.",
-    markets: "Gold · Bitcoin · Ether",
     status: "building",
   },
   {
