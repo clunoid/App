@@ -339,11 +339,11 @@ function RecommendBalanceModal({ balance, currency, onClose }: { balance: number
         <span className="grid h-11 w-11 place-items-center rounded-xl" style={{ background: "rgba(52,211,153,0.14)" }}>
           <PiggyBank size={20} style={{ color: TC.profit }} />
         </span>
-        <h3 id="reco-bal-title" className="mt-3 text-[17px] font-bold">Trade with room to grow</h3>
+        <h3 id="reco-bal-title" className="mt-3 text-[21px] font-semibold tracking-tight" style={{ fontFamily: "var(--font-serif)" }}>Recommendation</h3>
         <p className="mt-1.5 text-[12.5px] leading-relaxed" style={{ color: TC.muted }}>
           Your balance is <b style={{ color: TC.text }}>{fmtBalance(balance, currency)}</b>. These bots trade on any
-          balance — but with <b style={{ color: TC.text }}>1,000 USD or more</b> profits add up faster, without long
-          waits for a target to hit.
+          balance, but we recommend <b style={{ color: TC.text }}>1,000 USD or more</b> — profits add up faster,
+          without long waits for a target to hit.
         </p>
 
         <div className="mt-3 rounded-xl border p-3" style={{ borderColor: TC.line, background: "rgba(56,189,248,0.06)" }}>
@@ -402,7 +402,7 @@ function NeedDepositModal({ balance, currency, onClose }: { balance: number | nu
         <span className="grid h-11 w-11 place-items-center rounded-xl" style={{ background: "rgba(52,211,153,0.14)" }}>
           <Wallet size={20} style={{ color: TC.profit }} />
         </span>
-        <h3 id="need-dep-title" className="mt-3 text-[17px] font-bold">Add funds to start</h3>
+        <h3 id="need-dep-title" className="mt-3 text-[21px] font-semibold tracking-tight" style={{ fontFamily: "var(--font-serif)" }}>Add funds to start</h3>
         <p className="mt-1.5 text-[12.5px] leading-relaxed" style={{ color: TC.muted }}>
           Your balance is <b style={{ color: TC.text }}>{fmtBalance(balance, currency)}</b> — not enough to place this
           trade yet. You can deposit <b style={{ color: TC.text }}>any amount</b>, and we recommend{" "}

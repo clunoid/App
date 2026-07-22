@@ -129,7 +129,7 @@ export function DerivBotsList() {
         </div>
 
         <p className="mt-6 text-[11px] leading-relaxed" style={{ color: TC.faint }}>
-          Trading carries risk. Several of these bots use martingale-style recovery which can escalate stakes quickly — always test on a Demo account first and never risk more than you can afford to lose.
+          Trading carries risk — start with a small stake, set a take profit, and never risk more than you can afford to lose.
         </p>
       </div>
     </main>
