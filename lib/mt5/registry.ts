@@ -80,6 +80,18 @@ export const MT5_AUTOS: Mt5Auto[] = [
     file: "/mt5/ClunoidORBMT5.mq5",
   },
   {
+    id: "crypto-momentum",
+    name: "Crypto Momentum",
+    rating: 9.3,
+    chip: "Crypto · 24/7",
+    tagline: "Ride the coins that are running",
+    blurb:
+      "A Bollinger-band breakout across a broad basket of major coins, taken only with the 100-day trend, then ridden on a wide trail. Crypto is the hardest-trending market there is and never sleeps — neither does this. Volatility sizing, a hard stop on every trade, winners added to and run.",
+    markets: "BTC · ETH · SOL · XRP · and more",
+    status: "available",
+    file: "/mt5/ClunoidCryptoTrendMT5.mq5",
+  },
+  {
     id: "currency-trend",
     name: "Currency Trend",
     rating: 9.1,
