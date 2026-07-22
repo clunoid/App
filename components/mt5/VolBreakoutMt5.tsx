@@ -1,13 +1,12 @@
 "use client";
 
 /**
- * Volatility Breakout — the third MT5 automation's page. A one-time purchase, risk
- * profiles, honest performance (a trend-family breakout on the hardest-trending
- * markets; low win rate, big runners, deep crypto drawdowns).
+ * Volatility Breakout — the third MT5 automation's page. A one-time purchase,
+ * with setup and risk profiles.
  */
 import { useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Bot, Shield, Zap, Gauge, CheckCircle2, CircleDashed, Flame } from "lucide-react";
+import { ArrowLeft, Bot, Shield, Zap, Gauge, CheckCircle2, CircleDashed } from "lucide-react";
 import { TC, DOT_GRID, monoFont } from "@/lib/trading/theme";
 import { Mt5Download } from "@/components/deriv/mt5/Mt5Download";
 
@@ -20,12 +19,14 @@ const PROFILES: Profile[] = [
   { key: "conservative", label: "Conservative", risk: "0.35% per trade", blurb: "The same breakouts at the smallest size, for the calmest ride.", icon: Shield },
 ];
 
-const STATS = [
-  { v: "+458%", l: "15-year net return", s: "6 high-vol markets, after realistic spread" },
-  { v: "1.58", l: "profit factor", s: "gross win ÷ gross loss" },
-  { v: "+68% / +203%", l: "both halves positive", s: "robust across sub-periods" },
-  { v: "~4 / month", l: "trade frequency", s: "waits for a real expansion" },
+const HERO = "Some markets move harder than the rest. This automation lives in gold, silver, oil, copper and crypto, stepping in when a real move takes hold and holding on with a wide, patient exit — so your biggest winners have room to run.";
+const BENEFIT_LEAD = "Built to do one thing beautifully — capture the market's most powerful moves and stay with them — while keeping you protected and fully in control from the first trade on.";
+const BENEFITS = [
+  { t: "Winners run further", d: "A wide trailing exit stays with strong moves instead of cutting them short." },
+  { t: "Protected on every trade", d: "Each position is sized to your balance and opens with a hard stop in place." },
+  { t: "Diversified by design", d: "Risk is shared across metals, oil and the major coins, never one lone bet." },
 ];
+const DISCLAIMER = "Trading carries real risk and this is not financial advice; past moves never guarantee future ones, so never risk more than you can afford to lose.";
 
 export function VolBreakoutMt5() {
   const [profile, setProfile] = useState<Profile["key"]>("moderate");
@@ -45,31 +46,20 @@ export function VolBreakoutMt5() {
 
         <div className="mt-2 max-w-2xl">
           <h1 className="text-[26px] font-bold sm:text-[30px]">Volatility Breakout</h1>
-          <p className="mt-1.5 text-[13.5px] leading-relaxed" style={{ color: TC.muted }}>
-            Catches volatility expansion in the markets that trend hardest — gold, silver, oil, copper and the major
-            coins. When price thrusts beyond its volatility band in the trend&rsquo;s direction, it rides the move on a
-            wide trail. Runs on your own MT5 terminal, on any broker.
-          </p>
+          <p className="mt-1.5 text-[13.5px] leading-relaxed" style={{ color: TC.muted }}>{HERO}</p>
         </div>
 
-        <Section n={1} title="What it does, proven">
+        <Section n={1} title="Why traders choose it">
           <div className="rounded-2xl border p-5" style={{ borderColor: TC.line, background: TC.panel }}>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              {STATS.map((s) => (
-                <div key={s.l} className="rounded-xl border p-4" style={{ borderColor: TC.line, background: "rgba(251,146,60,0.05)" }}>
-                  <div className="text-[20px] font-bold leading-none" style={{ ...monoFont, color: ACCENT }}>{s.v}</div>
-                  <div className="mt-1.5 text-[11px] font-semibold uppercase tracking-wider" style={{ color: TC.faint }}>{s.l}</div>
-                  <div className="mt-1 text-[11px] leading-snug" style={{ color: TC.muted }}>{s.s}</div>
+            <p className="text-[13px] leading-relaxed" style={{ color: TC.muted }}>{BENEFIT_LEAD}</p>
+            <div className="mt-4 grid gap-3 sm:grid-cols-3">
+              {BENEFITS.map((b) => (
+                <div key={b.t} className="rounded-xl border p-4" style={{ borderColor: TC.line, background: "rgba(251,146,60,0.05)" }}>
+                  <div className="text-[13px] font-bold" style={{ color: ACCENT }}>{b.t}</div>
+                  <p className="mt-1.5 text-[11.5px] leading-relaxed" style={{ color: TC.faint }}>{b.d}</p>
                 </div>
               ))}
             </div>
-            <p className="mt-4 flex items-start gap-2 text-[12px] leading-relaxed" style={{ color: TC.muted }}>
-              <Flame size={15} className="mt-0.5 shrink-0" style={{ color: ACCENT }} />
-              A breakout of the volatility band, taken only with the 100-day trend, then a wide trailing stop that lets
-              the big expansions run. Like all trend-family systems it has a low win rate and rides a few large winners
-              — and these are the highest-volatility markets, so the swings are real. It never adds to a losing trade.
-              Its results held up across the whole range of settings tested, not one lucky configuration.
-            </p>
           </div>
         </Section>
 
@@ -81,9 +71,9 @@ export function VolBreakoutMt5() {
                 botName="Volatility Breakout"
                 accent={ACCENT}
                 label="Download EA"
-                freeHref="/trading/mt5"
-                freeLabel="Use the free automation instead."
-                freeBlurb={<>Not ready to buy? Our <b style={{ color: TC.text }}>Aggressive MT5 automation</b> is free and fully automated — use it right now at no cost.</>}
+                freeHref="/trading/command"
+                freeLabel="Use our free trading bots instead."
+                freeBlurb={<>Not ready to buy? Use our <b style={{ color: TC.text }}>free, fully automated trading bots</b> at no cost — connect your account or create one to get started.</>}
               />
               <span className="text-[11.5px]" style={{ color: TC.faint }}>Add gold, silver, oil, copper and the major coins to Market Watch.</span>
             </div>
@@ -102,7 +92,7 @@ export function VolBreakoutMt5() {
             </ol>
             <p className="mt-4 text-[11.5px] leading-relaxed" style={{ color: TC.faint }}>
               You keep full custody — it runs entirely on your own terminal and we never see a password. The crypto and
-              metals legs are what drive the returns; give it as many of the basket as your broker offers.
+              metals legs are the core; give it as many of the basket as your broker offers.
             </p>
           </div>
         </Section>
@@ -133,8 +123,7 @@ export function VolBreakoutMt5() {
 
         <p className="mt-7 flex items-start gap-1.5 text-[11px] leading-relaxed" style={{ color: TC.faint }}>
           <CircleDashed size={13} className="mt-0.5 shrink-0" style={{ color: ACCENT }} />
-          Trading carries risk; this is an automated tool, not financial advice or a profit guarantee. High-volatility
-          markets cut deep — never risk more than you can afford to lose.
+          {DISCLAIMER}
         </p>
       </div>
     </main>

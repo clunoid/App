@@ -1,8 +1,8 @@
 "use client";
 
 /**
- * Crypto Long-Short — a market-neutral relative-strength automation's page. A one-time purchase, risk profiles, and TWO honest callouts: it needs a broker that lets
- * you short coins, and the ~28% drawdown / funding drag are real.
+ * Crypto Long-Short — a market-neutral crypto automation's page. A one-time
+ * purchase, with setup and risk profiles. Needs a broker that allows shorting.
  */
 import { useState } from "react";
 import Link from "next/link";
@@ -19,12 +19,14 @@ const PROFILES: Profile[] = [
   { key: "conservative", label: "Conservative", gross: "60% gross", blurb: "A smaller book, for the calmest ride.", icon: Shield },
 ];
 
-const STATS = [
-  { v: "+867%", l: "11-year net return", s: "12 coins, after realistic spread" },
-  { v: "0.76", l: "Sharpe ratio", s: "strong for a market-neutral book" },
-  { v: "+23% / +20%", l: "both halves positive", s: "robust across sub-periods" },
-  { v: "market-neutral", l: "not a bet on crypto", s: "profits from dispersion, not direction" },
+const HERO = "Most crypto tools only make money when prices rise. This one is built differently — it goes long the strongest coins and short the weakest at once, aiming to profit from which coins outperform, whether the market climbs or falls.";
+const BENEFIT_LEAD = "This is a genuinely different kind of return — one that doesn't depend on crypto going up, and that keeps its discipline automatically on every position it takes.";
+const BENEFITS = [
+  { t: "Market-neutral by design", d: "By pairing longs and shorts, it aims to make money whether crypto rises or falls." },
+  { t: "Hands-free, always on", d: "Fully automated on your own terminal, refreshing its book around the clock — no screen time needed." },
+  { t: "Protected on every trade", d: "Each position is sized to your balance and carries a hard stop the moment it opens." },
 ];
+const DISCLAIMER = "This is an automated tool, not financial advice or a profit guarantee — market-neutral is not risk-free. Never risk more than you can afford to lose.";
 
 export function CryptoLSMt5() {
   const [profile, setProfile] = useState<Profile["key"]>("moderate");
@@ -47,31 +49,20 @@ export function CryptoLSMt5() {
 
         <div className="mt-2 max-w-2xl">
           <h1 className="text-[26px] font-bold sm:text-[30px]">Crypto Long-Short</h1>
-          <p className="mt-1.5 text-[13.5px] leading-relaxed" style={{ color: TC.muted }}>
-            Each week it ranks a basket of coins by momentum, goes long the strongest few and short the weakest few,
-            dollar-neutral. It wins on <b style={{ color: TC.text }}>which coins</b> outperform — not on crypto going
-            up — so it aims to make money whether the market rises or falls. A genuinely different kind of return.
-          </p>
+          <p className="mt-1.5 text-[13.5px] leading-relaxed" style={{ color: TC.muted }}>{HERO}</p>
         </div>
 
-        <Section n={1} title="What it does, proven">
+        <Section n={1} title="Why traders choose it">
           <div className="rounded-2xl border p-5" style={{ borderColor: TC.line, background: TC.panel }}>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              {STATS.map((s) => (
-                <div key={s.l} className="rounded-xl border p-4" style={{ borderColor: TC.line, background: "rgba(34,211,238,0.05)" }}>
-                  <div className="text-[17px] font-bold leading-none" style={{ ...monoFont, color: ACCENT }}>{s.v}</div>
-                  <div className="mt-1.5 text-[11px] font-semibold uppercase tracking-wider" style={{ color: TC.faint }}>{s.l}</div>
-                  <div className="mt-1 text-[11px] leading-snug" style={{ color: TC.muted }}>{s.s}</div>
+            <p className="text-[13px] leading-relaxed" style={{ color: TC.muted }}>{BENEFIT_LEAD}</p>
+            <div className="mt-4 grid gap-3 sm:grid-cols-3">
+              {BENEFITS.map((b) => (
+                <div key={b.t} className="rounded-xl border p-4" style={{ borderColor: TC.line, background: "rgba(34,211,238,0.05)" }}>
+                  <div className="text-[13px] font-bold" style={{ color: ACCENT }}>{b.t}</div>
+                  <p className="mt-1.5 text-[11.5px] leading-relaxed" style={{ color: TC.faint }}>{b.d}</p>
                 </div>
               ))}
             </div>
-            <p className="mt-4 flex items-start gap-2 text-[12px] leading-relaxed" style={{ color: TC.muted }}>
-              <Scale size={15} className="mt-0.5 shrink-0" style={{ color: ACCENT }} />
-              Cross-sectional momentum is one of the most documented effects in crypto: leaders keep leading, laggards
-              keep lagging. Because the book is long and short in equal size, it hedges out most of the market&rsquo;s
-              direction — a different return stream that diversifies the trend and breakout bots. It never averages into
-              a loser; the whole book is refreshed weekly.
-            </p>
           </div>
         </Section>
 
@@ -79,9 +70,8 @@ export function CryptoLSMt5() {
         <div className="mt-5 flex items-start gap-2.5 rounded-2xl border p-4" style={{ borderColor: "rgba(251,191,36,0.4)", background: "rgba(251,191,36,0.07)" }}>
           <AlertTriangle size={17} className="mt-0.5 shrink-0" style={{ color: "#fbbf24" }} />
           <p className="text-[12px] leading-relaxed" style={{ color: TC.muted }}>
-            <b style={{ color: TC.text }}>Two honest caveats.</b> It needs a broker that lets you <b style={{ color: TC.text }}>short</b> the coins. And the validation is net of spread but <b style={{ color: TC.text }}>not of daily
-            CFD funding</b> — holding longs and shorts for a week accrues financing on both legs, which varies by broker
-            and eats into the edge. Use a low-swap crypto account, and size it modestly.
+            <b style={{ color: TC.text }}>Two things to know.</b> It needs a broker that lets you <b style={{ color: TC.text }}>short</b> the coins. And because it holds longs and shorts at the same time, <b style={{ color: TC.text }}>overnight financing</b>
+            accrues on both sides and varies by broker — use a low-swap crypto account, and size it modestly.
           </p>
         </div>
 
@@ -93,9 +83,9 @@ export function CryptoLSMt5() {
                 botName="Crypto Long-Short"
                 accent={ACCENT}
                 label="Download EA"
-                freeHref="/trading/mt5"
-                freeLabel="Use the free automation instead."
-                freeBlurb={<>Not ready to buy? Our <b style={{ color: TC.text }}>Aggressive MT5 automation</b> is free and fully automated — use it right now at no cost.</>}
+                freeHref="/trading/command"
+                freeLabel="Use our free trading bots instead."
+                freeBlurb={<>Not ready to buy? Use our <b style={{ color: TC.text }}>free, fully automated trading bots</b> at no cost — connect your account or create one to get started.</>}
               />
               <span className="text-[11.5px]" style={{ color: TC.faint }}>Add at least 8 shortable coins to Market Watch (BTC, ETH, SOL, XRP, LTC, BNB, ADA, DOGE…).</span>
             </div>
@@ -145,8 +135,7 @@ export function CryptoLSMt5() {
 
         <p className="mt-7 flex items-start gap-1.5 text-[11px] leading-relaxed" style={{ color: TC.faint }}>
           <CircleDashed size={13} className="mt-0.5 shrink-0" style={{ color: ACCENT }} />
-          Trading carries risk; this is an automated tool, not financial advice or a profit guarantee. Market-neutral
-          does not mean risk-free — a long-short book can still lose. Never risk more than you can afford to lose.
+          {DISCLAIMER}
         </p>
       </div>
     </main>

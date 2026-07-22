@@ -1,9 +1,8 @@
 "use client";
 
 /**
- * Crypto Momentum — a dedicated 24/7 crypto automation's page. A one-time purchase,
- * risk profiles, honest performance (very strong and robust, but crypto's
- * downside is brutal — the page says so).
+ * Crypto Momentum — a dedicated 24/7 crypto automation's page. A one-time
+ * purchase, with setup and risk profiles.
  */
 import { useState } from "react";
 import Link from "next/link";
@@ -20,12 +19,14 @@ const PROFILES: Profile[] = [
   { key: "conservative", label: "Conservative", risk: "0.35% per trade", blurb: "The same breakouts at the smallest size — wise, given crypto's swings.", icon: Shield },
 ];
 
-const STATS = [
-  { v: "+981%", l: "11-year net return", s: "12 coins, after realistic cost" },
-  { v: "1.49", l: "profit factor", s: "gross win ÷ gross loss" },
-  { v: "+206% / +206%", l: "both halves identical", s: "as robust as evidence gets" },
-  { v: "~6 / month", l: "trade frequency", s: "waits for a real breakout" },
+const HERO = "Crypto moves at every hour, and now so can you. Crypto Momentum rides the major coins while they trend and lets its winners run — buying, holding and stepping aside for you, 24/7, without ever asking you to watch the screen.";
+const BENEFIT_LEAD = "Built to keep you in the strongest moves and out of harm's way, so your capital stays working while your attention is free.";
+const BENEFITS = [
+  { t: "Never off the clock", d: "Trades the majors around the clock, so you never miss a move while you sleep." },
+  { t: "Protected from the start", d: "Every position is sized to your balance and carries a hard stop the moment it opens." },
+  { t: "Diversified across coins", d: "Risk is diversified across BTC, ETH, SOL, XRP and more, never riding on one coin." },
 ];
+const DISCLAIMER = "Trading carries risk and this is not financial advice; never risk more than you can afford to lose. Runs on your own MT5 terminal — you keep custody.";
 
 export function CryptoMomoMt5() {
   const [profile, setProfile] = useState<Profile["key"]>("moderate");
@@ -48,31 +49,20 @@ export function CryptoMomoMt5() {
 
         <div className="mt-2 max-w-2xl">
           <h1 className="text-[26px] font-bold sm:text-[30px]">Crypto Momentum</h1>
-          <p className="mt-1.5 text-[13.5px] leading-relaxed" style={{ color: TC.muted }}>
-            One Expert Advisor across a broad basket of major coins, taking Bollinger-band breakouts only with the
-            trend and riding them on a wide trail. Crypto is the hardest-trending market there is and never closes —
-            neither does this. Runs on your own MT5 terminal, on any broker that lists crypto.
-          </p>
+          <p className="mt-1.5 text-[13.5px] leading-relaxed" style={{ color: TC.muted }}>{HERO}</p>
         </div>
 
-        <Section n={1} title="What it does, proven">
+        <Section n={1} title="Why traders choose it">
           <div className="rounded-2xl border p-5" style={{ borderColor: TC.line, background: TC.panel }}>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              {STATS.map((s) => (
-                <div key={s.l} className="rounded-xl border p-4" style={{ borderColor: TC.line, background: "rgba(167,139,250,0.05)" }}>
-                  <div className="text-[19px] font-bold leading-none" style={{ ...monoFont, color: ACCENT }}>{s.v}</div>
-                  <div className="mt-1.5 text-[11px] font-semibold uppercase tracking-wider" style={{ color: TC.faint }}>{s.l}</div>
-                  <div className="mt-1 text-[11px] leading-snug" style={{ color: TC.muted }}>{s.s}</div>
+            <p className="text-[13px] leading-relaxed" style={{ color: TC.muted }}>{BENEFIT_LEAD}</p>
+            <div className="mt-4 grid gap-3 sm:grid-cols-3">
+              {BENEFITS.map((b) => (
+                <div key={b.t} className="rounded-xl border p-4" style={{ borderColor: TC.line, background: "rgba(167,139,250,0.05)" }}>
+                  <div className="text-[13px] font-bold" style={{ color: ACCENT }}>{b.t}</div>
+                  <p className="mt-1.5 text-[11.5px] leading-relaxed" style={{ color: TC.faint }}>{b.d}</p>
                 </div>
               ))}
             </div>
-            <p className="mt-4 text-[12px] leading-relaxed" style={{ color: TC.muted }}>
-              Selection-free across a dozen coins, net of realistic cost, with the two halves of the record landing on
-              the <b style={{ color: TC.text }}>exact same +206%</b> — the strongest sign an edge is stable and not a
-              lucky era. But crypto&rsquo;s downside is brutal: this is a volatile, deep-drawdown system that lives on a
-              few enormous winners and cuts the rest small. Size it small and leave it alone — that patience is the
-              point.
-            </p>
           </div>
         </Section>
 
@@ -84,9 +74,9 @@ export function CryptoMomoMt5() {
                 botName="Crypto Momentum"
                 accent={ACCENT}
                 label="Download EA"
-                freeHref="/trading/mt5"
-                freeLabel="Use the free automation instead."
-                freeBlurb={<>Not ready to buy? Our <b style={{ color: TC.text }}>Aggressive MT5 automation</b> is free and fully automated — use it right now at no cost.</>}
+                freeHref="/trading/command"
+                freeLabel="Use our free trading bots instead."
+                freeBlurb={<>Not ready to buy? Use our <b style={{ color: TC.text }}>free, fully automated trading bots</b> at no cost — connect your account or create one to get started.</>}
               />
               <span className="text-[11.5px]" style={{ color: TC.faint }}>Add the coins your broker lists (BTC, ETH, SOL, XRP…) to Market Watch.</span>
             </div>
@@ -136,8 +126,7 @@ export function CryptoMomoMt5() {
 
         <p className="mt-7 flex items-start gap-1.5 text-[11px] leading-relaxed" style={{ color: TC.faint }}>
           <CircleDashed size={13} className="mt-0.5 shrink-0" style={{ color: ACCENT }} />
-          Trading carries risk; this is an automated tool, not financial advice or a profit guarantee. Crypto is
-          exceptionally volatile and can fall hard and fast — never risk more than you can afford to lose.
+          {DISCLAIMER}
         </p>
       </div>
     </main>

@@ -1,10 +1,9 @@
 "use client";
 
 /**
- * Opening Range Breakout — the fourth MT5 automation's page. A one-time purchase, risk
- * profiles, and TWO honest callouts: the evidence base is shorter/hourly (not the
- * multi-year daily of the others), and the session hour MUST be set to the
- * broker's US-index open or the edge is lost.
+ * Opening Range Breakout — the fourth MT5 automation's page. A one-time
+ * purchase (intraday), with setup and risk profiles. The session-hour input
+ * must match the broker's US-index open, or it won't trade the right range.
  */
 import { useState } from "react";
 import Link from "next/link";
@@ -21,12 +20,14 @@ const PROFILES: Profile[] = [
   { key: "conservative", label: "Conservative", risk: "0.3% per trade", blurb: "The same breaks at the smallest size, for the calmest ride.", icon: Shield },
 ];
 
-const STATS = [
-  { v: "1.22", l: "profit factor", s: "~2 years of hourly data" },
-  { v: "1.25 / 1.19", l: "both halves positive", s: "robust across the window" },
-  { v: "2R", l: "fixed target", s: "stop at the range's far side" },
-  { v: "~1 / day", l: "per index", s: "high-frequency, flat overnight" },
+const HERO = "Some of the day's clearest moves happen in the first hour. Opening Range Breakout goes to work the moment the market opens, catching the break across major stock indices, then steps aside before the close. You end every day in cash.";
+const BENEFIT_LEAD = "This is the active side of your portfolio, engineered to move fast in the open and stand down by the close, entirely on its own.";
+const BENEFITS = [
+  { t: "Flat every night", d: "Closes every position before the bell, so you never carry risk overnight." },
+  { t: "Protected on entry", d: "Every trade opens with a hard stop, sized to your balance." },
+  { t: "Fully hands-free", d: "Runs on your own MT5 terminal — you keep custody, we never see a password." },
 ];
+const DISCLAIMER = "Trading involves substantial risk. This is not financial advice; never risk more than you can afford to lose. Past performance does not guarantee future results.";
 
 export function OrbMt5() {
   const [profile, setProfile] = useState<Profile["key"]>("moderate");
@@ -49,30 +50,20 @@ export function OrbMt5() {
 
         <div className="mt-2 max-w-2xl">
           <h1 className="text-[26px] font-bold sm:text-[30px]">Opening Range Breakout</h1>
-          <p className="mt-1.5 text-[13.5px] leading-relaxed" style={{ color: TC.muted }}>
-            The first hour of the session sets a range; a break of it tends to run for the rest of the day. This takes
-            that break once a day per index, with a stop at the range&rsquo;s far side and a 2R target, and is always
-            flat by the close. The active, intraday counterpart to the position bots.
-          </p>
+          <p className="mt-1.5 text-[13.5px] leading-relaxed" style={{ color: TC.muted }}>{HERO}</p>
         </div>
 
-        <Section n={1} title="What it does, proven">
+        <Section n={1} title="Why traders choose it">
           <div className="rounded-2xl border p-5" style={{ borderColor: TC.line, background: TC.panel }}>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              {STATS.map((s) => (
-                <div key={s.l} className="rounded-xl border p-4" style={{ borderColor: TC.line, background: "rgba(56,189,248,0.05)" }}>
-                  <div className="text-[18px] font-bold leading-none" style={{ ...monoFont, color: ACCENT }}>{s.v}</div>
-                  <div className="mt-1.5 text-[11px] font-semibold uppercase tracking-wider" style={{ color: TC.faint }}>{s.l}</div>
-                  <div className="mt-1 text-[11px] leading-snug" style={{ color: TC.muted }}>{s.s}</div>
+            <p className="text-[13px] leading-relaxed" style={{ color: TC.muted }}>{BENEFIT_LEAD}</p>
+            <div className="mt-4 grid gap-3 sm:grid-cols-3">
+              {BENEFITS.map((b) => (
+                <div key={b.t} className="rounded-xl border p-4" style={{ borderColor: TC.line, background: "rgba(56,189,248,0.05)" }}>
+                  <div className="text-[13px] font-bold" style={{ color: ACCENT }}>{b.t}</div>
+                  <p className="mt-1.5 text-[11.5px] leading-relaxed" style={{ color: TC.faint }}>{b.d}</p>
                 </div>
               ))}
             </div>
-            <p className="mt-4 text-[12px] leading-relaxed" style={{ color: TC.muted }}>
-              Validated across three US indices, net of realistic spread, positive in both halves of the sample.
-              Because intraday history is limited, this is a <b style={{ color: TC.text }}>shorter, hourly</b> evidence
-              base than the trend and reversion bots (which have multi-year daily records) — a real edge, but hold it
-              to a smaller share of the account accordingly.
-            </p>
           </div>
         </Section>
 
@@ -82,7 +73,7 @@ export function OrbMt5() {
           <p className="text-[12px] leading-relaxed" style={{ color: TC.muted }}>
             <b style={{ color: TC.text }}>Set the session hour.</b> The <code style={cx}>InpSessionStartHour</code> input
             is your broker&rsquo;s server-time hour for the US index open (09:30 New York) — on most GMT+2/+3 brokers
-            that is 15 or 16. If it is wrong, the opening range forms at the wrong time and the edge is gone. Check your
+            that is 15 or 16. If it is wrong, the opening range forms at the wrong time and it won&rsquo;t work as intended. Check your
             broker&rsquo;s server time and set it once.
           </p>
         </div>
@@ -95,9 +86,9 @@ export function OrbMt5() {
                 botName="Opening Range Breakout"
                 accent={ACCENT}
                 label="Download EA"
-                freeHref="/trading/mt5"
-                freeLabel="Use the free automation instead."
-                freeBlurb={<>Not ready to buy? Our <b style={{ color: TC.text }}>Aggressive MT5 automation</b> is free and fully automated — use it right now at no cost.</>}
+                freeHref="/trading/command"
+                freeLabel="Use our free trading bots instead."
+                freeBlurb={<>Not ready to buy? Use our <b style={{ color: TC.text }}>free, fully automated trading bots</b> at no cost — connect your account or create one to get started.</>}
               />
               <span className="text-[11.5px]" style={{ color: TC.faint }}>Attach to a stock-index chart and add US500, US30, NAS100 to Market Watch.</span>
             </div>
@@ -147,8 +138,7 @@ export function OrbMt5() {
 
         <p className="mt-7 flex items-start gap-1.5 text-[11px] leading-relaxed" style={{ color: TC.faint }}>
           <CircleDashed size={13} className="mt-0.5 shrink-0" style={{ color: ACCENT }} />
-          Trading carries risk; this is an automated tool, not financial advice or a profit guarantee. Intraday edges
-          can decay — never risk more than you can afford to lose.
+          {DISCLAIMER}
         </p>
       </div>
     </main>

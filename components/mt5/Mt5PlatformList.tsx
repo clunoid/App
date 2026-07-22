@@ -29,9 +29,9 @@ export function Mt5PlatformList() {
         <div className="mt-3 max-w-2xl">
           <h1 className="text-[26px] font-bold sm:text-[30px]">Automations for MetaTrader 5</h1>
           <p className="mt-1.5 text-[13.5px] leading-relaxed" style={{ color: TC.muted }}>
-            Expert Advisors you run in your own MT5 terminal, on any broker. Each is built on a documented market
-            edge — not a curve-fit backtest — with volatility-based sizing that fits any balance and a hard stop on
-            every trade. One is free; the rest are a one-time purchase — no subscriptions, no connection needed.
+            Professional Expert Advisors that run hands-free on your own MT5 terminal — any broker, any balance. Every
+            trade is sized to your account and carries a hard stop the instant it opens. One is free; the rest, a simple
+            one-time purchase — no subscriptions, no connection needed.
           </p>
           <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 text-[12px]" style={{ color: TC.faint }}>
             <span className="inline-flex items-center gap-1.5"><Wallet size={13} style={{ color: TC.profit }} /> Manages any balance</span>
@@ -63,8 +63,6 @@ export function Mt5PlatformList() {
                   <div className="flex items-center gap-2">
                     {b.free ? (
                       <span className="inline-flex items-center rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider" style={{ background: "rgba(52,211,153,0.16)", color: "#34d399" }}>Free</span>
-                    ) : b.priceUsd ? (
-                      <span className="inline-flex items-center text-[12px] font-bold" style={{ ...monoFont, color: TC.text }}>${b.priceUsd}</span>
                     ) : null}
                     {live ? (
                       <span className="inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-[12px] font-semibold transition group-hover:opacity-90" style={{ background: TC.profit, color: TC.ink }}>
@@ -92,8 +90,8 @@ export function Mt5PlatformList() {
         </div>
 
         <p className="mt-7 max-w-3xl text-[11px] leading-relaxed" style={{ color: TC.faint }}>
-          Trading carries risk; these are automated tools, not financial advice or a profit guarantee. Trend and
-          momentum systems have losing streaks and deep drawdowns — never risk more than you can afford to lose.
+          Trading carries risk; these are automated tools, not financial advice or a profit guarantee. Never risk more
+          than you can afford to lose.
         </p>
       </div>
     </main>

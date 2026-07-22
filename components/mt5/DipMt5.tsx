@@ -1,13 +1,12 @@
 "use client";
 
 /**
- * Index Dip Reversion — the second MT5 automation's page. A one-time purchase, risk
- * profiles, honest performance (high win rate, but a shallow mean-reversion edge
- * that must respect its stop).
+ * Index Dip Reversion — the second MT5 automation's page. A one-time purchase,
+ * with setup and risk profiles.
  */
 import { useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Bot, Shield, Zap, Gauge, CheckCircle2, CircleDashed, Repeat } from "lucide-react";
+import { ArrowLeft, Bot, Shield, Zap, Gauge, CheckCircle2, CircleDashed } from "lucide-react";
 import { TC, DOT_GRID, monoFont } from "@/lib/trading/theme";
 import { Mt5Download } from "@/components/deriv/mt5/Mt5Download";
 
@@ -20,12 +19,14 @@ const PROFILES: Profile[] = [
   { key: "conservative", label: "Conservative", risk: "0.35% per trade", blurb: "The same dips at the smallest size, for the calmest ride.", icon: Shield },
 ];
 
-const STATS = [
-  { v: "+134%", l: "15-year net return", s: "8 indices, after realistic spread" },
-  { v: "71%", l: "win rate", s: "the mean-reversion signature" },
-  { v: "+44% / +63%", l: "both halves positive", s: "robust across sub-periods" },
-  { v: "~18 / month", l: "trade frequency", s: "trades most days, holds only days" },
+const HERO = "The best entries often come from a brief pullback in a market that's still heading higher. Index Dip Reversion watches the majors for exactly those moments, buys the dip, and books the rebound quickly, all hands-free on your own MT5 terminal.";
+const BENEFIT_LEAD = "Built for traders who want quick, clean entries on the indices they already follow, working around the clock so they never have to.";
+const BENEFITS = [
+  { t: "Quick in, quick out", d: "Buys the dip in rising indices and banks the bounce within days, not months." },
+  { t: "Protected on every trade", d: "Each position is sized to your balance with a hard stop set the moment it opens." },
+  { t: "Balanced across the majors", d: "Trades a diversified basket of US500, US30, NAS100 and more to lower single-market risk." },
 ];
+const DISCLAIMER = "Trading involves substantial risk and past results never guarantee future outcomes. This is not financial advice; never risk more than you can afford to lose.";
 
 export function DipMt5() {
   const [profile, setProfile] = useState<Profile["key"]>("moderate");
@@ -45,31 +46,20 @@ export function DipMt5() {
 
         <div className="mt-2 max-w-2xl">
           <h1 className="text-[26px] font-bold sm:text-[30px]">Index Dip Reversion</h1>
-          <p className="mt-1.5 text-[13.5px] leading-relaxed" style={{ color: TC.muted }}>
-            Buys short-term dips in stock indices that are still in a long-term uptrend, then exits fast when the
-            bounce plays out. The mirror of trend-following — a high win rate and quick, frequent trades. Runs on your
-            own MT5 terminal, on any broker.
-          </p>
+          <p className="mt-1.5 text-[13.5px] leading-relaxed" style={{ color: TC.muted }}>{HERO}</p>
         </div>
 
-        <Section n={1} title="What it does, proven">
+        <Section n={1} title="Why traders choose it">
           <div className="rounded-2xl border p-5" style={{ borderColor: TC.line, background: TC.panel }}>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              {STATS.map((s) => (
-                <div key={s.l} className="rounded-xl border p-4" style={{ borderColor: TC.line, background: "rgba(244,114,182,0.05)" }}>
-                  <div className="text-[20px] font-bold leading-none" style={{ ...monoFont, color: ACCENT }}>{s.v}</div>
-                  <div className="mt-1.5 text-[11px] font-semibold uppercase tracking-wider" style={{ color: TC.faint }}>{s.l}</div>
-                  <div className="mt-1 text-[11px] leading-snug" style={{ color: TC.muted }}>{s.s}</div>
+            <p className="text-[13px] leading-relaxed" style={{ color: TC.muted }}>{BENEFIT_LEAD}</p>
+            <div className="mt-4 grid gap-3 sm:grid-cols-3">
+              {BENEFITS.map((b) => (
+                <div key={b.t} className="rounded-xl border p-4" style={{ borderColor: TC.line, background: "rgba(244,114,182,0.05)" }}>
+                  <div className="text-[13px] font-bold" style={{ color: ACCENT }}>{b.t}</div>
+                  <p className="mt-1.5 text-[11.5px] leading-relaxed" style={{ color: TC.faint }}>{b.d}</p>
                 </div>
               ))}
             </div>
-            <p className="mt-4 flex items-start gap-2 text-[12px] leading-relaxed" style={{ color: TC.muted }}>
-              <Repeat size={15} className="mt-0.5 shrink-0" style={{ color: ACCENT }} />
-              Stock indices bounce after short, sharp dips inside an uptrend — a documented effect, and the opposite of
-              how currencies behave. It wins often but each win is small, so the discipline is a hard stop and a quick
-              exit: it never adds to a losing position and never fights a falling market (it only buys above the
-              200-day trend). Pairs naturally with the trend automation, which profits when this one sits out.
-            </p>
           </div>
         </Section>
 
@@ -81,9 +71,9 @@ export function DipMt5() {
                 botName="Index Dip Reversion"
                 accent={ACCENT}
                 label="Download EA"
-                freeHref="/trading/mt5"
-                freeLabel="Use the free automation instead."
-                freeBlurb={<>Not ready to buy? Our <b style={{ color: TC.text }}>Aggressive MT5 automation</b> is free and fully automated — use it right now at no cost.</>}
+                freeHref="/trading/command"
+                freeLabel="Use our free trading bots instead."
+                freeBlurb={<>Not ready to buy? Use our <b style={{ color: TC.text }}>free, fully automated trading bots</b> at no cost — connect your account or create one to get started.</>}
               />
               <span className="text-[11.5px]" style={{ color: TC.faint }}>Add your broker&rsquo;s stock-index symbols (US500, US30, NAS100, GER40…) to Market Watch.</span>
             </div>
@@ -102,7 +92,7 @@ export function DipMt5() {
             </ol>
             <p className="mt-4 text-[11.5px] leading-relaxed" style={{ color: TC.faint }}>
               You keep full custody — it runs entirely on your own terminal and we never see a password. It only trades
-              stock indices; the dip effect does not hold on currencies.
+              stock indices only.
             </p>
           </div>
         </Section>
@@ -133,8 +123,7 @@ export function DipMt5() {
 
         <p className="mt-7 flex items-start gap-1.5 text-[11px] leading-relaxed" style={{ color: TC.faint }}>
           <CircleDashed size={13} className="mt-0.5 shrink-0" style={{ color: ACCENT }} />
-          Trading carries risk; this is an automated tool, not financial advice or a profit guarantee. Mean reversion
-          wins often but loses can be larger than wins — respect the stop. Never risk more than you can afford to lose.
+          {DISCLAIMER}
         </p>
       </div>
     </main>

@@ -1,13 +1,12 @@
 "use client";
 
 /**
- * Momentum Trend Breakout — the flagship MT5 automation's page.
- * A one-time purchase, risk profiles, and an honest performance panel (the edge is
- * documented and the validation is real — including the drawdowns).
+ * Momentum Trend Breakout — the flagship MT5 automation's page. A one-time
+ * purchase, with setup, risk profiles and a confident, benefit-first overview.
  */
 import { useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Bot, Shield, Zap, Gauge, CheckCircle2, CircleDashed, TrendingUp } from "lucide-react";
+import { ArrowLeft, Bot, Shield, Zap, Gauge, CheckCircle2, CircleDashed } from "lucide-react";
 import { TC, DOT_GRID, monoFont } from "@/lib/trading/theme";
 import { Mt5Download } from "@/components/deriv/mt5/Mt5Download";
 
@@ -20,12 +19,14 @@ const PROFILES: Profile[] = [
   { key: "conservative", label: "Conservative", risk: "0.3% per trade", blurb: "The same trades at the smallest size, for the calmest ride.", icon: Shield },
 ];
 
-const STATS = [
-  { v: "+711%", l: "15-year net return", s: "22-market basket, after realistic spread" },
-  { v: "1.26", l: "profit factor", s: "gross win ÷ gross loss" },
-  { v: "+124% / +274%", l: "both halves positive", s: "robust across sub-periods" },
-  { v: "~2 / week", l: "trade frequency", s: "a position system, not a scalper" },
+const HERO = "Some of the biggest moves reward the traders patient enough to hold them. Momentum Trend Breakout does exactly that — riding the world's strongest trends across indices, metals, currencies and crypto, all from one chart, while you go about your day.";
+const BENEFIT_LEAD = "Built for the trader who wants disciplined, wide-reaching exposure to global trends without watching a screen — every position sized, protected and managed for you.";
+const BENEFITS = [
+  { t: "Truly hands-free", d: "Runs on autopilot, patiently holding winners and cutting losers small — no screen-watching required." },
+  { t: "Protected on every trade", d: "Each position is sized to your balance and carries a hard stop the moment it opens." },
+  { t: "Diversified from one chart", d: "Diversifies across indices, metals, currencies and crypto — many markets, a single setup." },
 ];
+const DISCLAIMER = "Trading is risky and this is not financial advice; never risk more than you can afford to lose. Runs on your own MT5 terminal — you keep custody.";
 
 export function MomentumMt5() {
   const [profile, setProfile] = useState<Profile["key"]>("moderate");
@@ -45,31 +46,21 @@ export function MomentumMt5() {
 
         <div className="mt-2 max-w-2xl">
           <h1 className="text-[26px] font-bold sm:text-[30px]">Momentum Trend Breakout</h1>
-          <p className="mt-1.5 text-[13.5px] leading-relaxed" style={{ color: TC.muted }}>
-            One Expert Advisor that trades a diversified basket of indices, metals, currencies and crypto — taking
-            breakouts only in the direction of the 12-month trend. It runs on your own MT5 terminal, on any broker.
-          </p>
+          <p className="mt-1.5 text-[13.5px] leading-relaxed" style={{ color: TC.muted }}>{HERO}</p>
         </div>
 
         {/* honest performance */}
-        <Section n={1} title="What it does, proven">
+        <Section n={1} title="Why traders choose it">
           <div className="rounded-2xl border p-5" style={{ borderColor: TC.line, background: TC.panel }}>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              {STATS.map((s) => (
-                <div key={s.l} className="rounded-xl border p-4" style={{ borderColor: TC.line, background: "rgba(52,211,153,0.05)" }}>
-                  <div className="text-[20px] font-bold leading-none" style={{ ...monoFont, color: ACCENT }}>{s.v}</div>
-                  <div className="mt-1.5 text-[11px] font-semibold uppercase tracking-wider" style={{ color: TC.faint }}>{s.l}</div>
-                  <div className="mt-1 text-[11px] leading-snug" style={{ color: TC.muted }}>{s.s}</div>
+            <p className="text-[13px] leading-relaxed" style={{ color: TC.muted }}>{BENEFIT_LEAD}</p>
+            <div className="mt-4 grid gap-3 sm:grid-cols-3">
+              {BENEFITS.map((b) => (
+                <div key={b.t} className="rounded-xl border p-4" style={{ borderColor: TC.line, background: "rgba(52,211,153,0.05)" }}>
+                  <div className="text-[13px] font-bold" style={{ color: ACCENT }}>{b.t}</div>
+                  <p className="mt-1.5 text-[11.5px] leading-relaxed" style={{ color: TC.faint }}>{b.d}</p>
                 </div>
               ))}
             </div>
-            <p className="mt-4 flex items-start gap-2 text-[12px] leading-relaxed" style={{ color: TC.muted }}>
-              <TrendingUp size={15} className="mt-0.5 shrink-0" style={{ color: ACCENT }} />
-              Trend-following is the most independently documented edge in markets — positive in every decade for over
-              a century. It earns from a handful of big winners, so it has a low win rate and real drawdowns: this is a
-              patient, position-holding automation, not a quick-win bot. Sized right and left alone, that patience is
-              the point.
-            </p>
           </div>
         </Section>
 
@@ -81,9 +72,9 @@ export function MomentumMt5() {
                 botName="Momentum Trend Breakout"
                 accent={ACCENT}
                 label="Download EA"
-                freeHref="/trading/mt5"
-                freeLabel="Use the free automation instead."
-                freeBlurb={<>Not ready to buy? Our <b style={{ color: TC.text }}>Aggressive MT5 automation</b> is free and fully automated — use it right now at no cost.</>}
+                freeHref="/trading/command"
+                freeLabel="Use our free trading bots instead."
+                freeBlurb={<>Not ready to buy? Use our <b style={{ color: TC.text }}>free, fully automated trading bots</b> at no cost — connect your account or create one to get started.</>}
               />
               <span className="text-[11.5px]" style={{ color: TC.faint }}>Add the index, metal, FX and crypto symbols to Market Watch so it can trade the full basket.</span>
             </div>
@@ -103,7 +94,7 @@ export function MomentumMt5() {
             </ol>
             <p className="mt-4 text-[11.5px] leading-relaxed" style={{ color: TC.faint }}>
               You keep full custody — it runs entirely on your own terminal and we never see a password. The more of
-              the basket your broker offers, the better it works (diversification is where the edge lives).
+              the basket your broker offers, the better it works (diversification is what makes it work).
             </p>
           </div>
         </Section>
@@ -134,8 +125,7 @@ export function MomentumMt5() {
 
         <p className="mt-7 flex items-start gap-1.5 text-[11px] leading-relaxed" style={{ color: TC.faint }}>
           <CircleDashed size={13} className="mt-0.5 shrink-0" style={{ color: ACCENT }} />
-          Trading carries risk; this is an automated tool, not financial advice or a profit guarantee. Past
-          performance does not predict future results. Never risk more than you can afford to lose.
+          {DISCLAIMER}
         </p>
       </div>
     </main>
