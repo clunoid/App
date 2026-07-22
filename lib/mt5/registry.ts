@@ -68,6 +68,18 @@ export const MT5_AUTOS: Mt5Auto[] = [
     file: "/mt5/ClunoidVolBreakoutMT5.mq5",
   },
   {
+    id: "orb",
+    name: "Opening Range Breakout",
+    rating: 8.8,
+    chip: "Indices · intraday",
+    tagline: "Trade the break of the open",
+    blurb:
+      "The first hour of the session sets a range; a break of it tends to run for the rest of the day. Takes that break once a day per index with a stop at the range's far side, a 2R target, and always flat by the close. High-frequency and fully intraday — the active counterpart to the position bots.",
+    markets: "US500 · US30 · NAS100 · indices",
+    status: "available",
+    file: "/mt5/ClunoidORBMT5.mq5",
+  },
+  {
     id: "currency-trend",
     name: "Currency Trend",
     rating: 9.1,
@@ -87,17 +99,6 @@ export const MT5_AUTOS: Mt5Auto[] = [
     blurb:
       "Exploits a peer-reviewed intraday seasonality: the market's final hour tends to continue its morning direction. Trades the S&P index once a day, flat overnight, with a defined stop.",
     markets: "US500 · US30 · NAS100",
-    status: "building",
-  },
-  {
-    id: "orb",
-    name: "Opening Range Breakout",
-    rating: 8.8,
-    chip: "Indices · session open",
-    tagline: "Trade the break of the open",
-    blurb:
-      "Takes the break of the first range of the session in the trend's direction — the classic opening-range breakout, with a session filter, a fixed stop and a defined R-multiple target.",
-    markets: "US indices · session hours",
     status: "building",
   },
 ];

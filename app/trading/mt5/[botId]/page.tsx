@@ -4,6 +4,7 @@ import { getMt5Auto } from "@/lib/mt5/registry";
 import { MomentumMt5 } from "@/components/mt5/MomentumMt5";
 import { DipMt5 } from "@/components/mt5/DipMt5";
 import { VolBreakoutMt5 } from "@/components/mt5/VolBreakoutMt5";
+import { OrbMt5 } from "@/components/mt5/OrbMt5";
 
 type Props = { params: Promise<{ botId: string }> };
 
@@ -23,6 +24,7 @@ const VIEWS: Record<string, React.ComponentType> = {
   momentum: MomentumMt5,
   "index-dip": DipMt5,
   "volatility-breakout": VolBreakoutMt5,
+  orb: OrbMt5,
 };
 
 export default async function Mt5AutoPage({ params }: Props) {
