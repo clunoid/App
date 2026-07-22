@@ -100,8 +100,7 @@ export function IndicesMt5() {
 
         <p className="mt-7 flex items-start gap-1.5 text-[11px] leading-relaxed" style={{ color: TC.faint }}>
           <CircleDashed size={13} className="mt-0.5 shrink-0" style={{ color: ACCENT }} />
-          Trading carries risk; this is an automated tool, not financial advice or a profit guarantee. Never risk more
-          than you can afford to lose.
+          Trading carries risk. This is an automated tool, not financial advice or a profit guarantee. Never risk more than you can afford to lose.
         </p>
       </div>
     </main>

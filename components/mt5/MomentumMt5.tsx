@@ -26,7 +26,7 @@ const BENEFITS = [
   { t: "Protected on every trade", d: "Each position is sized to your balance and carries a hard stop the moment it opens." },
   { t: "Diversified from one chart", d: "Diversifies across indices, metals, currencies and crypto — many markets, a single setup." },
 ];
-const DISCLAIMER = "Trading is risky and this is not financial advice; never risk more than you can afford to lose. Runs on your own MT5 terminal — you keep custody.";
+const DISCLAIMER = "Trading carries risk. This is an automated tool, not financial advice or a profit guarantee. Never risk more than you can afford to lose.";
 
 export function MomentumMt5() {
   const [profile, setProfile] = useState<Profile["key"]>("moderate");

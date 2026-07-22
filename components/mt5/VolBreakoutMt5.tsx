@@ -26,7 +26,7 @@ const BENEFITS = [
   { t: "Protected on every trade", d: "Each position is sized to your balance and opens with a hard stop in place." },
   { t: "Diversified by design", d: "Risk is shared across metals, oil and the major coins, never one lone bet." },
 ];
-const DISCLAIMER = "Trading carries real risk and this is not financial advice; past moves never guarantee future ones, so never risk more than you can afford to lose.";
+const DISCLAIMER = "Trading carries risk. This is an automated tool, not financial advice or a profit guarantee. Never risk more than you can afford to lose.";
 
 export function VolBreakoutMt5() {
   const [profile, setProfile] = useState<Profile["key"]>("moderate");

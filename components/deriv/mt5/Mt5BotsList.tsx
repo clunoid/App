@@ -64,7 +64,7 @@ export function Mt5BotsList() {
         </div>
 
         <p className="mt-6 text-[11px] leading-relaxed" style={{ color: TC.faint }}>
-          Trading carries risk. These automations run on your own MT5 terminal and trade your live account. This is an automated tool, not financial advice or a profit guarantee. Never risk more than you can afford to lose.
+          Trading carries risk. This is an automated tool, not financial advice or a profit guarantee. Never risk more than you can afford to lose.
         </p>
       </div>
     </main>

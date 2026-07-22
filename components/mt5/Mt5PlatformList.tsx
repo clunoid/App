@@ -90,8 +90,7 @@ export function Mt5PlatformList() {
         </div>
 
         <p className="mt-7 max-w-3xl text-[11px] leading-relaxed" style={{ color: TC.faint }}>
-          Trading carries risk; these are automated tools, not financial advice or a profit guarantee. Never risk more
-          than you can afford to lose.
+          Trading carries risk. This is an automated tool, not financial advice or a profit guarantee. Never risk more than you can afford to lose.
         </p>
       </div>
     </main>

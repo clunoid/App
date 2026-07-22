@@ -169,9 +169,9 @@ export function DerivBotRunner({ botId }: { botId: string }) {
   }
 
   return (
-    <main className="relative flex min-h-[100dvh] w-full flex-col overflow-x-hidden" style={{ background: TC.bg, color: TC.text }}>
+    <main className="relative min-h-[100dvh] w-full overflow-x-hidden" style={{ background: TC.bg, color: TC.text }}>
       <div aria-hidden className="pointer-events-none absolute inset-0" style={DOT_GRID} />
-      <div className="relative z-10 flex w-full flex-1 flex-col px-4 py-4 sm:px-6 lg:px-10">
+      <div className="relative z-10 w-full px-4 py-4 sm:px-6 lg:px-10">
 
         {/* compact top bar: name only + small balance chip with Demo/Real toggle */}
         <header className="flex flex-wrap items-center gap-x-3 gap-y-2">
@@ -213,9 +213,8 @@ export function DerivBotRunner({ botId }: { botId: string }) {
           </div>
         </header>
 
-        {/* three columns, side by side (stack on small screens); on desktop the
-            row grows to fill the viewport so there's no dead space at the bottom */}
-        <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3 lg:flex-1 lg:auto-rows-fr">
+        {/* three columns, side by side (stack on small screens) */}
+        <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
 
           {/* Configuration */}
           <Col title="Configuration">
@@ -256,11 +255,11 @@ export function DerivBotRunner({ botId }: { botId: string }) {
           {/* Recent Trades */}
           <Col title="Recent Trades" right={trades.length ? `${trades.length}` : undefined}>
             {trades.length === 0 ? (
-              <div className="grid place-items-center rounded-xl border border-dashed py-10 text-center lg:flex-1" style={{ borderColor: TC.line }}>
+              <div className="grid place-items-center rounded-xl border border-dashed py-10 text-center" style={{ borderColor: TC.line }}>
                 <span className="text-[12px]" style={{ color: TC.muted }}>No trades yet — start the bot.</span>
               </div>
             ) : (
-              <div className="flex max-h-[60vh] flex-col gap-2 overflow-y-auto pr-1 lg:max-h-none lg:min-h-0 lg:flex-1">
+              <div className="flex max-h-[420px] flex-col gap-2 overflow-y-auto pr-1">
                 {trades.map((t, i) => (
                   <div key={i} className="flex items-center justify-between rounded-xl border px-3 py-2" style={{ borderColor: t.win ? "rgba(56,189,248,0.3)" : "rgba(242,96,125,0.3)", background: "rgba(255,255,255,0.02)" }}>
                     <div className="min-w-0">

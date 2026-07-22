@@ -100,3 +100,9 @@ const DERIV_AFFILIATE_UTM =
  *  utm so Deriv attributes the visit to us (no homepage bounce). */
 export const DERIV_TRACKED_DEPOSIT_URL =
   `${DERIV_DEPOSIT_URL}&t=${DERIV_AFFILIATE_TOKEN}&${DERIV_AFFILIATE_UTM}`;
+
+/** The Deriv cashier withdraw page, deep-linked + tracked the same way. */
+export const DERIV_WITHDRAW_URL =
+  "https://home.deriv.com/dashboard/withdraw/verify?currency=USD&from=portfolio&openWithdraw=1";
+export const DERIV_TRACKED_WITHDRAW_URL =
+  `${DERIV_WITHDRAW_URL}&t=${DERIV_AFFILIATE_TOKEN}&${DERIV_AFFILIATE_UTM}`;

@@ -26,7 +26,7 @@ const BENEFITS = [
   { t: "Hands-free, always on", d: "Fully automated on your own terminal, refreshing its book around the clock — no screen time needed." },
   { t: "Protected on every trade", d: "Each position is sized to your balance and carries a hard stop the moment it opens." },
 ];
-const DISCLAIMER = "This is an automated tool, not financial advice or a profit guarantee — market-neutral is not risk-free. Never risk more than you can afford to lose.";
+const DISCLAIMER = "Trading carries risk. This is an automated tool, not financial advice or a profit guarantee. Never risk more than you can afford to lose.";
 
 export function CryptoLSMt5() {
   const [profile, setProfile] = useState<Profile["key"]>("moderate");

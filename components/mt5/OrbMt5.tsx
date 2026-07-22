@@ -27,7 +27,7 @@ const BENEFITS = [
   { t: "Protected on entry", d: "Every trade opens with a hard stop, sized to your balance." },
   { t: "Fully hands-free", d: "Runs on your own MT5 terminal — you keep custody, we never see a password." },
 ];
-const DISCLAIMER = "Trading involves substantial risk. This is not financial advice; never risk more than you can afford to lose. Past performance does not guarantee future results.";
+const DISCLAIMER = "Trading carries risk. This is an automated tool, not financial advice or a profit guarantee. Never risk more than you can afford to lose.";
 
 export function OrbMt5() {
   const [profile, setProfile] = useState<Profile["key"]>("moderate");

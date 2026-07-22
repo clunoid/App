@@ -26,7 +26,7 @@ const BENEFITS = [
   { t: "Protected on every trade", d: "Each position is sized to your balance with a hard stop set the moment it opens." },
   { t: "Balanced across the majors", d: "Trades a diversified basket of US500, US30, NAS100 and more to lower single-market risk." },
 ];
-const DISCLAIMER = "Trading involves substantial risk and past results never guarantee future outcomes. This is not financial advice; never risk more than you can afford to lose.";
+const DISCLAIMER = "Trading carries risk. This is an automated tool, not financial advice or a profit guarantee. Never risk more than you can afford to lose.";
 
 export function DipMt5() {
   const [profile, setProfile] = useState<Profile["key"]>("moderate");

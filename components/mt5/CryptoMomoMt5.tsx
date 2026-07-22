@@ -26,7 +26,7 @@ const BENEFITS = [
   { t: "Protected from the start", d: "Every position is sized to your balance and carries a hard stop the moment it opens." },
   { t: "Diversified across coins", d: "Risk is diversified across BTC, ETH, SOL, XRP and more, never riding on one coin." },
 ];
-const DISCLAIMER = "Trading carries risk and this is not financial advice; never risk more than you can afford to lose. Runs on your own MT5 terminal — you keep custody.";
+const DISCLAIMER = "Trading carries risk. This is an automated tool, not financial advice or a profit guarantee. Never risk more than you can afford to lose.";
 
 export function CryptoMomoMt5() {
   const [profile, setProfile] = useState<Profile["key"]>("moderate");

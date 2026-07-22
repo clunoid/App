@@ -15,10 +15,10 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Wallet, Plug, RefreshCw, Loader2, LogOut, KeyRound, ShieldCheck, Building2, Bot, LineChart, UserPlus, Gift, ChevronRight, X } from "lucide-react";
+import { ArrowLeft, Wallet, Plug, RefreshCw, Loader2, LogOut, KeyRound, ShieldCheck, Building2, Bot, LineChart, UserPlus, Gift, ChevronRight, X, ArrowDownToLine, ArrowUpFromLine } from "lucide-react";
 import { TC, DOT_GRID, monoFont, fmtBalance } from "@/lib/trading/theme";
 import type { ConnectedAccount } from "@/lib/trading/accounts";
-import { hasDerivApp, DERIV_AFFILIATE_URL } from "@/lib/deriv/config";
+import { hasDerivApp, DERIV_AFFILIATE_URL, DERIV_TRACKED_DEPOSIT_URL, DERIV_TRACKED_WITHDRAW_URL } from "@/lib/deriv/config";
 import { parseDerivRedirect, isDerivRedirect, isDerivCodeReturn, startDerivLogin, completeDerivLogin, saveDerivTokens, loadDerivTokens, clearDerivTokens, saveDerivAccess, loadDerivAccess, clearDerivAccess, type DerivToken } from "@/lib/deriv/oauth";
 import { fetchDerivPortfolio, type DerivPortfolio } from "@/lib/deriv/client";
 import { fetchDerivPortfolioREST } from "@/lib/deriv/api";
@@ -470,19 +470,22 @@ export function CommandCenter() {
               </div>
 
               {connected ? (
-                /* Automation entry points once an account is linked (both open to all;
-                   the MT5 EA download itself is gated to sign-ups on the MT5 page). */
+                /* Once linked: open the automations, or move money. Deposit and
+                   withdraw are affiliate-tracked so Deriv credits us. Four compact
+                   buttons in a 2×2 grid so they fit cleanly on any screen. */
                 <div className="mt-3 grid grid-cols-2 gap-2">
-                  <Link href="/trading/deriv/bots" className="flex flex-col items-start gap-1 rounded-xl px-3 py-2.5 transition hover:opacity-90" style={{ background: TC.profit, color: TC.ink }}>
-                    <Bot size={16} />
-                    <span className="text-[13px] font-bold leading-none">Deriv Bots</span>
-                    <span className="text-[10px] font-semibold leading-none opacity-75">AI automation</span>
+                  <Link href="/trading/deriv/bots" className="flex items-center gap-1.5 rounded-xl px-2.5 py-2 text-[12px] font-bold transition hover:opacity-90" style={{ background: TC.profit, color: TC.ink }}>
+                    <Bot size={14} /> Deriv Bots
                   </Link>
-                  <Link href="/trading/deriv/mt5" className="flex flex-col items-start gap-1 rounded-xl border px-3 py-2.5 transition hover:bg-white/5" style={{ borderColor: TC.line, color: TC.text }}>
-                    <LineChart size={16} style={{ color: TC.profit }} />
-                    <span className="text-[13px] font-bold leading-none">MT5</span>
-                    <span className="text-[10px] font-semibold leading-none" style={{ color: TC.faint }}>MT5 AI bots</span>
+                  <Link href="/trading/deriv/mt5" className="flex items-center gap-1.5 rounded-xl border px-2.5 py-2 text-[12px] font-bold transition hover:bg-white/5" style={{ borderColor: TC.line, color: TC.text }}>
+                    <LineChart size={14} style={{ color: TC.profit }} /> MT5
                   </Link>
+                  <a href={DERIV_TRACKED_DEPOSIT_URL} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 rounded-xl border px-2.5 py-2 text-[12px] font-bold transition hover:bg-white/5" style={{ borderColor: "rgba(52,211,153,0.45)", color: "#34d399" }}>
+                    <ArrowDownToLine size={14} /> Deposit
+                  </a>
+                  <a href={DERIV_TRACKED_WITHDRAW_URL} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 rounded-xl border px-2.5 py-2 text-[12px] font-bold transition hover:bg-white/5" style={{ borderColor: TC.line, color: TC.text }}>
+                    <ArrowUpFromLine size={14} /> Withdraw
+                  </a>
                 </div>
               ) : (
                 <>
@@ -492,15 +495,21 @@ export function CommandCenter() {
                   <a href={DERIV_AFFILIATE_URL} target="_blank" rel="noopener noreferrer" className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-[13.5px] font-semibold transition hover:bg-white/5" style={{ borderColor: TC.line, color: TC.text }}>
                     <UserPlus size={15} style={{ color: TC.profit }} /> Create a Deriv account
                   </a>
-                  <button onClick={() => setPasteOpen((v) => !v)} className="mt-2 flex w-full items-center justify-center gap-1.5 text-[12px] transition hover:opacity-80" style={{ color: TC.muted }}>
-                    <KeyRound size={12} /> or paste a Deriv API token
-                  </button>
-                  {pasteOpen && (
-                    <div className="mt-2 space-y-2">
-                      <input value={pasteVal} onChange={(e) => setPasteVal(e.target.value)} placeholder="Deriv API token" className="w-full rounded-lg border bg-transparent px-3 py-2 text-[13px] outline-none focus:border-white/25" style={{ borderColor: TC.line, color: TC.text }} />
-                      <button onClick={() => void connectWithToken()} className="w-full rounded-lg border px-3 py-2 text-[12.5px] font-medium transition hover:bg-white/5" style={{ borderColor: TC.line, color: TC.text }}>Connect with token</button>
-                      <p className="text-[11px] leading-relaxed" style={{ color: TC.faint }}>Create a token in your Deriv account (Settings → API token) with the <b>Read</b> scope.</p>
-                    </div>
+                  {/* API-token connect — hidden (OAuth is the path now, and it's
+                      not needed); kept in code as a fallback, not removed. */}
+                  {false && (
+                    <>
+                      <button onClick={() => setPasteOpen((v) => !v)} className="mt-2 flex w-full items-center justify-center gap-1.5 text-[12px] transition hover:opacity-80" style={{ color: TC.muted }}>
+                        <KeyRound size={12} /> or paste a Deriv API token
+                      </button>
+                      {pasteOpen && (
+                        <div className="mt-2 space-y-2">
+                          <input value={pasteVal} onChange={(e) => setPasteVal(e.target.value)} placeholder="Deriv API token" className="w-full rounded-lg border bg-transparent px-3 py-2 text-[13px] outline-none focus:border-white/25" style={{ borderColor: TC.line, color: TC.text }} />
+                          <button onClick={() => void connectWithToken()} className="w-full rounded-lg border px-3 py-2 text-[12.5px] font-medium transition hover:bg-white/5" style={{ borderColor: TC.line, color: TC.text }}>Connect with token</button>
+                          <p className="text-[11px] leading-relaxed" style={{ color: TC.faint }}>Create a token in your Deriv account (Settings → API token) with the <b>Read</b> scope.</p>
+                        </div>
+                      )}
+                    </>
                   )}
                 </>
               )}
