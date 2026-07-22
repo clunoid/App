@@ -92,6 +92,18 @@ export const MT5_AUTOS: Mt5Auto[] = [
     file: "/mt5/ClunoidCryptoTrendMT5.mq5",
   },
   {
+    id: "crypto-ls",
+    name: "Crypto Long-Short",
+    rating: 9.0,
+    chip: "Crypto · market-neutral",
+    tagline: "Win on which coins, not on the market",
+    blurb:
+      "Ranks a basket of coins by momentum each week, goes long the strongest few and short the weakest few — dollar-neutral. It bets on the spread between winners and losers, not on crypto rising, so it can profit even when the market falls. A genuinely different, market-neutral return.",
+    markets: "Long-short across major coins",
+    status: "available",
+    file: "/mt5/ClunoidCryptoLSMT5.mq5",
+  },
+  {
     id: "currency-trend",
     name: "Currency Trend",
     rating: 9.1,
