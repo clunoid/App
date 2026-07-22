@@ -1,6 +1,7 @@
 import type { MetadataRoute } from "next";
 import { MT5_BOTS } from "@/lib/deriv/mt5/registry";
 import { BOTS as DERIV_BOTS } from "@/lib/deriv/bots/registry";
+import { MT5_AUTOS } from "@/lib/mt5/registry";
 
 const BASE = "https://www.clunoid.com";
 
@@ -42,6 +43,15 @@ export default function sitemap(): MetadataRoute.Sitemap {
     })),
     ...DERIV_BOTS.map((b) => ({
       url: `${BASE}/trading/deriv/bots/${b.id}`,
+      lastModified: now,
+      changeFrequency: "weekly" as const,
+      priority: 0.8,
+    })),
+
+    // The standalone MetaTrader 5 platform + its available automations.
+    { url: `${BASE}/trading/mt5`, lastModified: now, changeFrequency: "weekly", priority: 0.9 },
+    ...MT5_AUTOS.filter((b) => b.status === "available").map((b) => ({
+      url: `${BASE}/trading/mt5/${b.id}`,
       lastModified: now,
       changeFrequency: "weekly" as const,
       priority: 0.8,

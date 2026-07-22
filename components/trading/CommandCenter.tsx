@@ -499,6 +499,16 @@ export function CommandCenter() {
               )}
             </div>
 
+            {/* MetaTrader 5 — a platform in its own right. Open it with no
+                connection: it leads to broker-agnostic MT5 automations. */}
+            <Link href="/trading/mt5" className="group mt-3 flex items-center gap-3 rounded-2xl border p-4 transition hover:-translate-y-0.5" style={{ borderColor: "rgba(52,211,153,0.35)", background: "linear-gradient(180deg, rgba(52,211,153,0.08), rgba(255,255,255,0.015))" }}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/logos/metatrader5.svg" alt="MetaTrader 5" className="h-4 w-auto shrink-0" style={{ maxWidth: 120 }} />
+              <div className="ml-auto flex items-center gap-1.5 text-[12px] font-semibold" style={{ color: "#34d399" }}>
+                Open automations <ChevronRight size={14} className="transition group-hover:translate-x-0.5" />
+              </div>
+            </Link>
+
             {/* coming soon — official logos */}
             <div className="mt-3 space-y-2">
               {[{ name: "Binance", logo: "/logos/binance.svg" }, { name: "cTrader", logo: "/logos/ctrader.svg" }, { name: "More brokers", logo: undefined as string | undefined }].map((p) => (
