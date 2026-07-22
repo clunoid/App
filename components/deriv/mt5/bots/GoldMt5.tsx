@@ -10,6 +10,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Bot, Shield, Zap, Gauge, Download, CheckCircle2, CircleDashed } from "lucide-react";
 import { TC, DOT_GRID, monoFont } from "@/lib/trading/theme";
+import { Mt5Download } from "@/components/deriv/mt5/Mt5Download";
 import { GOLD_PROFILES, type GoldProfile } from "@/lib/deriv/mt5/gold";
 
 const ACCENT = "#fcd34d";
@@ -45,9 +46,7 @@ export function GoldMt5() {
         <Section n={1} title="Get it running">
           <div className="rounded-2xl border p-5" style={{ borderColor: TC.line, background: TC.panel }}>
             <div className="flex flex-wrap items-center gap-3">
-              <a href="/deriv/ClunoidGoldMT5.mq5" download className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-[13px] font-semibold transition hover:opacity-90" style={{ background: ACCENT, color: TC.ink }}>
-                <Download size={15} /> Download Gold EA
-              </a>
+              <Mt5Download botId="gold" botName="Gold & Silver" accent={ACCENT} label="Download Gold EA" />
             </div>
 
             <ol className="mt-4 space-y-3">

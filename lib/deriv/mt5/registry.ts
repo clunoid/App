@@ -20,7 +20,12 @@ export type Mt5BotMeta = {
   tagline: string;
   blurb: string;
   markets: string; // display, e.g. "Forex · Volatility"
+  /** The general automation is free to download; the dedicated bots are paid. */
+  free?: boolean;
 };
+
+/** A rating this high renders in green — the standouts, not the whole list. */
+export const RATING_HOT = 8.7;
 
 export const MT5_BOTS: Mt5BotMeta[] = [
   {
@@ -32,11 +37,12 @@ export const MT5_BOTS: Mt5BotMeta[] = [
     blurb:
       "The all-in-one automation. Install it once on a single chart and it covers forex and Volatility indices together, sizing every position to your balance and protecting it the moment it opens. Pick a risk profile and it runs hands-free from there.",
     markets: "Forex · Volatility",
+    free: true,
   },
   {
     id: "gold",
     name: "Gold & Silver AI Automation",
-    rating: 7,
+    rating: 9.5,
     chip: "Gold + Silver",
     tagline: "Hands-free precious metals",
     blurb:

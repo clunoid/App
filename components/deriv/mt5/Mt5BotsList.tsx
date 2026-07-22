@@ -8,7 +8,7 @@
 import Link from "next/link";
 import { ArrowLeft, Bot, Star, ChevronRight, LineChart } from "lucide-react";
 import { TC, DOT_GRID, monoFont } from "@/lib/trading/theme";
-import { MT5_BOTS } from "@/lib/deriv/mt5/registry";
+import { MT5_BOTS, RATING_HOT } from "@/lib/deriv/mt5/registry";
 
 export function Mt5BotsList() {
   return (
@@ -31,14 +31,20 @@ export function Mt5BotsList() {
         </div>
 
         <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {MT5_BOTS.map((b) => (
+          {MT5_BOTS.map((b) => {
+            const hot = b.rating >= RATING_HOT; // the standout rating renders green
+            const ratingColor = hot ? "#34d399" : "#fcd34d";
+            return (
             <Link key={b.id} href={`/trading/deriv/mt5/${b.id}`}
               className="group relative flex flex-col rounded-2xl border p-5 transition hover:-translate-y-0.5"
               style={{ borderColor: TC.line, background: TC.panel }}>
               <div className="flex items-start gap-2">
                 <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider" style={{ background: "rgba(56,189,248,0.12)", color: TC.profit }}>{b.chip}</span>
-                <span className="ml-auto inline-flex items-center gap-1 text-[11px] font-bold" style={{ color: "#fcd34d" }}>
-                  <Star size={12} fill="#fcd34d" /> {b.rating}/10
+                {b.free && (
+                  <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider" style={{ background: "rgba(52,211,153,0.16)", color: "#34d399" }}>Free</span>
+                )}
+                <span className="ml-auto inline-flex items-center gap-1 text-[11px] font-bold" style={{ color: ratingColor }}>
+                  <Star size={12} fill={ratingColor} /> {b.rating}/10
                 </span>
               </div>
               <h3 className="mt-3 text-[16px] font-bold">{b.name}</h3>
@@ -53,7 +59,8 @@ export function Mt5BotsList() {
                 </span>
               </div>
             </Link>
-          ))}
+            );
+          })}
         </div>
 
         <p className="mt-6 text-[11px] leading-relaxed" style={{ color: TC.faint }}>

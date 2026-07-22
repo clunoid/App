@@ -21,8 +21,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const bot = getMt5Bot(botId);
   if (!bot) return { title: "MT5 bots", alternates: { canonical: "/trading/deriv/mt5" } };
 
-  const title = `${bot.name} — free MT5 Expert Advisor`;
-  const description = `${bot.blurb} Download the Expert Advisor, set your risk profile and run it on your own MetaTrader 5 terminal.`;
+  // Only the free general automation may say "free" — the rest are paid.
+  const title = bot.free ? `${bot.name} — free MT5 Expert Advisor` : `${bot.name} — MT5 Expert Advisor`;
+  const description = `${bot.blurb} ${bot.free ? "Download the Expert Advisor" : "Buy once, then download the Expert Advisor"}, set your risk profile and run it on your own MetaTrader 5 terminal.`;
   const url = `/trading/deriv/mt5/${bot.id}`;
   return {
     title,

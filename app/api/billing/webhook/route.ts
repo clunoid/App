@@ -4,6 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { planForProduct, grantForPlan, isCreditsProduct } from "@/lib/billing/polar";
 import { creditsForCents, MAX_TOPUP_CENTS } from "@/lib/billing/costs";
+import { botForProduct } from "@/lib/deriv/mt5/products";
 
 export const runtime = "nodejs";
 
@@ -69,6 +70,31 @@ export async function POST(req: NextRequest) {
     switch (event.type) {
       // ── credits are granted ONLY for a confirmed PAID order (idempotent per order id) ──
       case "order.paid": {
+        // A paid MT5 automation (one-time EA). Its identity is the checkout's
+        // external id — a user id for a signed-in buyer, or a "dev_" device token
+        // for a guest who will sign up later. Recorded ahead of the user guard
+        // because a guest purchase has no resolved user yet. Idempotent on order id.
+        const mt5Bot = botForProduct(d.productId);
+        if (mt5Bot && d.id) {
+          const ext = d.customer?.externalId ?? (typeof userId === "string" ? userId : null);
+          const isDeviceToken = typeof ext === "string" && ext.startsWith("dev_");
+          // ignoreDuplicates → ON CONFLICT DO NOTHING. order.paid is terminal and
+          // Polar delivers at-least-once; a redelivery must NOT overwrite the row,
+          // or it would reset a guest's user_id back to null AFTER the claim linked
+          // it, silently revoking a paid user's access.
+          await admin.from("mt5_purchases").upsert(
+            {
+              order_id: d.id,
+              bot_id: mt5Bot,
+              purchase_token: isDeviceToken ? ext : null,
+              user_id: isDeviceToken ? null : ext,
+              email: d.customer?.email ?? null,
+            },
+            { onConflict: "order_id", ignoreDuplicates: true },
+          );
+          break;
+        }
+
         if (!userId) {
           console.warn("[webhook] order.paid: unresolved user", d.id);
           break;
