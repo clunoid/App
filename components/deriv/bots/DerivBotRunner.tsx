@@ -31,7 +31,10 @@ export function DerivBotRunner({ botId }: { botId: string }) {
   const [ready, setReady] = useState(false);
   const [access, setAccess] = useState("");
   const [accounts, setAccounts] = useState<ConnectedAccount[]>([]);
-  const [mode, setMode] = useState<Mode>("demo");
+  // Default everyone to their REAL account (that's where the markup is). Demo is
+  // hidden until the secret is entered — a triple-click on the Real toggle.
+  const [mode, setMode] = useState<Mode>("real");
+  const [showDemo, setShowDemo] = useState(false);
 
   const [stake, setStake] = useState(String(BOT_DEFAULTS.initialStake));
   const [takeProfit, setTakeProfit] = useState(String(BOT_DEFAULTS.takeProfit));
@@ -66,7 +69,7 @@ export function DerivBotRunner({ botId }: { botId: string }) {
       const raw = localStorage.getItem(SNAP_KEY);
       if (raw) cached = onlyOptions((JSON.parse(raw) as { accounts?: ConnectedAccount[] }).accounts ?? []);
     } catch { /* ignore */ }
-    if (cached.length) { setAccounts(cached); setMode(cached.some((a) => a.isVirtual) ? "demo" : "real"); }
+    if (cached.length) { setAccounts(cached); setMode("real"); }
     setReady(true);
     void refreshAccounts(acc);
   }, [router, refreshAccounts, meta]);
@@ -158,11 +161,18 @@ export function DerivBotRunner({ botId }: { botId: string }) {
               <span style={{ ...monoFont }}>{fmtBalance(shownBalance.balance, shownBalance.currency)}</span>
             </span>
             <div className="inline-flex rounded-full border p-0.5" style={{ borderColor: TC.line, background: "rgba(0,0,0,0.2)" }}>
-              {(["demo", "real"] as const).map((m) => {
+              {(showDemo ? (["demo", "real"] as const) : (["real"] as const)).map((m) => {
                 const avail = m === "demo" ? !!demoAccount : !!realAccount;
                 const active = mode === m;
                 return (
-                  <button key={m} onClick={() => switchMode(m)} disabled={runningState || !avail}
+                  <button key={m}
+                    onClick={(e) => {
+                      // Secret: a triple-click on Real reveals the hidden Demo toggle.
+                      // Everyone stays on their real account otherwise — that's the point.
+                      if (m === "real" && e.detail === 3) { setShowDemo(true); return; }
+                      switchMode(m);
+                    }}
+                    disabled={runningState || !avail}
                     title={!avail ? `No ${m} account on your Deriv connection` : runningState ? "Stop the bot to switch accounts" : ""}
                     className="rounded-full px-2.5 py-1 text-[11px] font-semibold capitalize transition disabled:cursor-not-allowed disabled:opacity-40"
                     style={active ? { background: m === "real" ? TC.profit : "rgba(148,168,189,0.22)", color: m === "real" ? TC.ink : TC.text } : { color: TC.muted }}>
