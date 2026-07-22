@@ -16,15 +16,31 @@ export type PaidMt5 = {
   productId: string | undefined; // Polar product id (from env)
   priceUsd: number; // display price, tax handled by Polar (Merchant of Record)
   file: string; // the private .mq5 filename under content/mt5/
+  section: "deriv" | "mt5"; // which platform the bot lives under (drives the success URL)
 };
 
-/** Slug → paid product. Order matches the catalogue. */
+/**
+ * Slug → paid product. Two families share the exact same pay-then-signup gate:
+ *   - section "deriv" → the dedicated Deriv MT5 automations at /trading/deriv/mt5.
+ *   - section "mt5"   → the standalone MetaTrader 5 platform automations at /trading/mt5.
+ * The general (Deriv) and Aggressive (MT5-platform) automations are FREE and are
+ * not in here — they download with no gate. Order matches each catalogue.
+ */
 export const PAID_MT5: Record<string, PaidMt5> = {
-  gold: { botId: "gold", productId: process.env.POLAR_PRODUCT_MT5_GOLD, priceUsd: 297, file: "ClunoidGoldMT5.mq5" },
-  crypto: { botId: "crypto", productId: process.env.POLAR_PRODUCT_MT5_CRYPTO, priceUsd: 197, file: "ClunoidCryptoMT5.mq5" },
-  forex: { botId: "forex", productId: process.env.POLAR_PRODUCT_MT5_FOREX, priceUsd: 147, file: "ClunoidForexMT5.mq5" },
-  indices: { botId: "indices", productId: process.env.POLAR_PRODUCT_MT5_INDICES, priceUsd: 127, file: "ClunoidIndicesMT5.mq5" },
-  volatility: { botId: "volatility", productId: process.env.POLAR_PRODUCT_MT5_VOLATILITY, priceUsd: 99, file: "ClunoidVolatilityMT5.mq5" },
+  // Deriv MT5 dedicated automations
+  gold: { botId: "gold", productId: process.env.POLAR_PRODUCT_MT5_GOLD, priceUsd: 297, file: "ClunoidGoldMT5.mq5", section: "deriv" },
+  crypto: { botId: "crypto", productId: process.env.POLAR_PRODUCT_MT5_CRYPTO, priceUsd: 197, file: "ClunoidCryptoMT5.mq5", section: "deriv" },
+  forex: { botId: "forex", productId: process.env.POLAR_PRODUCT_MT5_FOREX, priceUsd: 147, file: "ClunoidForexMT5.mq5", section: "deriv" },
+  indices: { botId: "indices", productId: process.env.POLAR_PRODUCT_MT5_INDICES, priceUsd: 127, file: "ClunoidIndicesMT5.mq5", section: "deriv" },
+  volatility: { botId: "volatility", productId: process.env.POLAR_PRODUCT_MT5_VOLATILITY, priceUsd: 99, file: "ClunoidVolatilityMT5.mq5", section: "deriv" },
+
+  // Standalone MetaTrader 5 platform automations (/trading/mt5)
+  momentum: { botId: "momentum", productId: process.env.POLAR_PRODUCT_MT5P_MOMENTUM, priceUsd: 425, file: "ClunoidMomentumMT5.mq5", section: "mt5" },
+  "crypto-momentum": { botId: "crypto-momentum", productId: process.env.POLAR_PRODUCT_MT5P_CRYPTOMOMO, priceUsd: 349, file: "ClunoidCryptoTrendMT5.mq5", section: "mt5" },
+  "volatility-breakout": { botId: "volatility-breakout", productId: process.env.POLAR_PRODUCT_MT5P_VOLBREAK, priceUsd: 249, file: "ClunoidVolBreakoutMT5.mq5", section: "mt5" },
+  "crypto-ls": { botId: "crypto-ls", productId: process.env.POLAR_PRODUCT_MT5P_CRYPTOLS, priceUsd: 199, file: "ClunoidCryptoLSMT5.mq5", section: "mt5" },
+  "index-dip": { botId: "index-dip", productId: process.env.POLAR_PRODUCT_MT5P_INDEXDIP, priceUsd: 149, file: "ClunoidDipMT5.mq5", section: "mt5" },
+  orb: { botId: "orb", productId: process.env.POLAR_PRODUCT_MT5P_ORB, priceUsd: 99, file: "ClunoidORBMT5.mq5", section: "mt5" },
 };
 
 export const isPaidMt5 = (botId: string): boolean => botId in PAID_MT5;

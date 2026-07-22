@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { getMt5Auto } from "@/lib/mt5/registry";
+import { AggressiveMt5 } from "@/components/mt5/AggressiveMt5";
 import { MomentumMt5 } from "@/components/mt5/MomentumMt5";
 import { DipMt5 } from "@/components/mt5/DipMt5";
 import { VolBreakoutMt5 } from "@/components/mt5/VolBreakoutMt5";
@@ -15,14 +16,16 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { botId } = await params;
   const b = getMt5Auto(botId);
   if (!b) return { title: "MetaTrader 5 automations", alternates: { canonical: "/trading/mt5" } };
-  const title = `${b.name} — free MT5 automation`;
-  const description = `${b.blurb} Download the Expert Advisor and run it on your own MetaTrader 5 terminal, on any broker.`;
+  const title = b.free ? `${b.name} — free MT5 automation` : `${b.name} — MT5 automation`;
+  const buy = b.free ? "Download the Expert Advisor" : "A one-time purchase — download the Expert Advisor";
+  const description = `${b.blurb} ${buy} and run it on your own MetaTrader 5 terminal, on any broker.`;
   const url = `/trading/mt5/${b.id}`;
   return { title, description, alternates: { canonical: url }, openGraph: { type: "article", url, title: `${title} · Clunoid Trading`, description } };
 }
 
 /** Each available automation maps to its own page component. */
 const VIEWS: Record<string, React.ComponentType> = {
+  aggressive: AggressiveMt5,
   momentum: MomentumMt5,
   "index-dip": DipMt5,
   "volatility-breakout": VolBreakoutMt5,

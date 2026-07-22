@@ -1,14 +1,14 @@
 "use client";
 
 /**
- * Crypto Long-Short — a market-neutral relative-strength automation's page. Free
- * download, risk profiles, and TWO honest callouts: it needs a broker that lets
+ * Crypto Long-Short — a market-neutral relative-strength automation's page. A one-time purchase, risk profiles, and TWO honest callouts: it needs a broker that lets
  * you short coins, and the ~28% drawdown / funding drag are real.
  */
 import { useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Bot, Shield, Zap, Gauge, Download, CheckCircle2, CircleDashed, Scale, AlertTriangle } from "lucide-react";
+import { ArrowLeft, Bot, Shield, Zap, Gauge, CheckCircle2, CircleDashed, Scale, AlertTriangle } from "lucide-react";
 import { TC, DOT_GRID, monoFont } from "@/lib/trading/theme";
+import { Mt5Download } from "@/components/deriv/mt5/Mt5Download";
 
 const ACCENT = "#22d3ee";
 
@@ -88,9 +88,15 @@ export function CryptoLSMt5() {
         <Section n={2} title="Get it running">
           <div className="rounded-2xl border p-5" style={{ borderColor: TC.line, background: TC.panel }}>
             <div className="flex flex-wrap items-center gap-3">
-              <a href="/mt5/ClunoidCryptoLSMT5.mq5" download className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-[13px] font-semibold transition hover:opacity-90" style={{ background: ACCENT, color: TC.ink }}>
-                <Download size={15} /> Download EA — free
-              </a>
+              <Mt5Download
+                botId="crypto-ls"
+                botName="Crypto Long-Short"
+                accent={ACCENT}
+                label="Download EA"
+                freeHref="/trading/mt5"
+                freeLabel="Use the free automation instead."
+                freeBlurb={<>Not ready to buy? Our <b style={{ color: TC.text }}>Aggressive MT5 automation</b> is free and fully automated — use it right now at no cost.</>}
+              />
               <span className="text-[11.5px]" style={{ color: TC.faint }}>Add at least 8 shortable coins to Market Watch (BTC, ETH, SOL, XRP, LTC, BNB, ADA, DOGE…).</span>
             </div>
             <ol className="mt-4 space-y-3">

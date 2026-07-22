@@ -11,9 +11,13 @@
  *                       button flips to Download.
  *
  * The popup always offers the free way out — "use free bots instead." — which
- * sends them straight to the free Deriv bots.
+ * sends them straight to a free automation. Where that lands (and the wording)
+ * is set per platform via freeHref / freeLabel / freeBlurb: the Deriv MT5 pages
+ * point at the free Deriv bots; the standalone MT5 platform pages point at the
+ * free Aggressive automation.
  *
- * The free general automation does NOT use this; it keeps its plain public link.
+ * The free general/Aggressive automations do NOT use this; they keep their plain
+ * public links.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -23,7 +27,23 @@ import { useClunoid } from "@/lib/store/useClunoid";
 
 type Access = { paid: boolean; signedIn: boolean; owned: boolean; paidAsGuest: boolean; priceUsd: number | null };
 
-export function Mt5Download({ botId, botName, accent, label }: { botId: string; botName: string; accent: string; label: string }) {
+export function Mt5Download({
+  botId,
+  botName,
+  accent,
+  label,
+  freeHref = "/trading/deriv/bots",
+  freeLabel = "Use free bots instead.",
+  freeBlurb,
+}: {
+  botId: string;
+  botName: string;
+  accent: string;
+  label: string;
+  freeHref?: string;
+  freeLabel?: string;
+  freeBlurb?: React.ReactNode;
+}) {
   const isAuthed = useClunoid((s) => s.user.isAuthed);
   const openAuth = useClunoid((s) => s.openAuth);
   const router = useRouter();
@@ -165,11 +185,15 @@ export function Mt5Download({ botId, botName, accent, label }: { botId: string; 
 
             <div className="mt-4 rounded-xl border p-3.5" style={{ borderColor: TC.line, background: "rgba(52,211,153,0.06)" }}>
               <p className="text-[12px] leading-relaxed" style={{ color: TC.muted }}>
-                Not ready to buy? You can use our <b style={{ color: TC.text }}>free, powerful, fully automated AI bots</b> right
-                now — they trade your own Deriv account at no cost.
+                {freeBlurb ?? (
+                  <>
+                    Not ready to buy? You can use our <b style={{ color: TC.text }}>free, powerful, fully automated AI bots</b> right
+                    now — they trade your own account at no cost.
+                  </>
+                )}
               </p>
-              <button onClick={() => router.push("/trading/deriv/bots")} className="mt-2.5 flex w-full items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-[13px] font-semibold transition hover:bg-white/5" style={{ borderColor: "rgba(52,211,153,0.4)", color: "#34d399" }}>
-                Use free bots instead.
+              <button onClick={() => router.push(freeHref)} className="mt-2.5 flex w-full items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-[13px] font-semibold transition hover:bg-white/5" style={{ borderColor: "rgba(52,211,153,0.4)", color: "#34d399" }}>
+                {freeLabel}
               </button>
             </div>
 

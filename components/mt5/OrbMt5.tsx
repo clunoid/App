@@ -1,15 +1,16 @@
 "use client";
 
 /**
- * Opening Range Breakout — the fourth MT5 automation's page. Free download, risk
+ * Opening Range Breakout — the fourth MT5 automation's page. A one-time purchase, risk
  * profiles, and TWO honest callouts: the evidence base is shorter/hourly (not the
  * multi-year daily of the others), and the session hour MUST be set to the
  * broker's US-index open or the edge is lost.
  */
 import { useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Bot, Shield, Zap, Gauge, Download, CheckCircle2, CircleDashed, Clock, AlertTriangle } from "lucide-react";
+import { ArrowLeft, Bot, Shield, Zap, Gauge, CheckCircle2, CircleDashed, Clock, AlertTriangle } from "lucide-react";
 import { TC, DOT_GRID, monoFont } from "@/lib/trading/theme";
+import { Mt5Download } from "@/components/deriv/mt5/Mt5Download";
 
 const ACCENT = "#38bdf8";
 
@@ -89,9 +90,15 @@ export function OrbMt5() {
         <Section n={2} title="Get it running">
           <div className="rounded-2xl border p-5" style={{ borderColor: TC.line, background: TC.panel }}>
             <div className="flex flex-wrap items-center gap-3">
-              <a href="/mt5/ClunoidORBMT5.mq5" download className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-[13px] font-semibold transition hover:opacity-90" style={{ background: ACCENT, color: TC.ink }}>
-                <Download size={15} /> Download EA — free
-              </a>
+              <Mt5Download
+                botId="orb"
+                botName="Opening Range Breakout"
+                accent={ACCENT}
+                label="Download EA"
+                freeHref="/trading/mt5"
+                freeLabel="Use the free automation instead."
+                freeBlurb={<>Not ready to buy? Our <b style={{ color: TC.text }}>Aggressive MT5 automation</b> is free and fully automated — use it right now at no cost.</>}
+              />
               <span className="text-[11.5px]" style={{ color: TC.faint }}>Attach to a stock-index chart and add US500, US30, NAS100 to Market Watch.</span>
             </div>
             <ol className="mt-4 space-y-3">

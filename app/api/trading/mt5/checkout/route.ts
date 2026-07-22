@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
       products: [prod.productId],
       externalCustomerId,
       customerEmail: user?.email ?? undefined,
-      successUrl: `${origin}/trading/deriv/mt5/${botId}?purchased=1`,
+      successUrl: `${origin}/trading/${prod.section === "mt5" ? "mt5" : "deriv/mt5"}/${botId}?purchased=1`,
       metadata: { bot_id: botId },
     });
     return NextResponse.json({ url: checkout.url });

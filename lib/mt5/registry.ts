@@ -4,8 +4,8 @@
  * MetaTrader 5 is a platform in its own right, on essentially every broker. These
  * automations are broker-agnostic Expert Advisors: volatility-based sizing so they
  * fit any balance, universal instruments so they run on any MT5 account, a hard
- * stop on every trade, and a documented edge behind each one. Free to download,
- * no connection required.
+ * stop on every trade, and a documented edge behind each one. One (Aggressive) is
+ * free; the rest are one-time purchases. No connection required.
  *
  * Every automation here is grounded in an INDEPENDENTLY DOCUMENTED edge (academic
  * or widely-reproduced), not a curve-fit backtest — and the ratings reflect the
@@ -24,13 +24,28 @@ export type Mt5Auto = {
   blurb: string;
   markets: string;
   status: Mt5Status;
-  file?: string; // public download path when available
+  free?: boolean; // the Aggressive automation is free; the rest are one-time purchases
+  priceUsd?: number; // one-time price for a paid automation (mirrors lib/deriv/mt5/products.ts)
+  file?: string; // public download path — free automation only (paid ones stream via the gated route)
 };
 
 /** Any rating this high renders green — these are all top-tier by design. */
 export const RATING_HOT = 8.7;
 
 export const MT5_AUTOS: Mt5Auto[] = [
+  {
+    id: "aggressive",
+    name: "Aggressive MT5",
+    rating: 3,
+    chip: "Forex + Volatility",
+    tagline: "The free all-in-one, at full throttle",
+    blurb:
+      "The free all-in-one automation. One Expert Advisor covers forex majors and Volatility indices together, running its full analysis on your own terminal — no signal feed, no connection required. It trades in a single, aggressive risk mode: full position size and the widest open-risk cap, every trade sized to your balance and protected by a hard stop the moment it opens.",
+    markets: "Forex · Volatility",
+    status: "available",
+    free: true,
+    file: "/mt5/ClunoidAggressiveMT5.mq5",
+  },
   {
     id: "momentum",
     name: "Momentum Trend Breakout",
@@ -41,7 +56,7 @@ export const MT5_AUTOS: Mt5Auto[] = [
       "Trades breakouts in the direction of the 12-month trend across a diversified basket of indices, metals, currencies and crypto. Every position is volatility-sized to your balance and carries a hard stop from the second it opens; winners are added to and run, losers are cut small. Built on the single most independently documented edge in markets.",
     markets: "Indices · Metals · FX · Crypto",
     status: "available",
-    file: "/mt5/ClunoidMomentumMT5.mq5",
+    priceUsd: 425,
   },
   {
     id: "index-dip",
@@ -53,7 +68,7 @@ export const MT5_AUTOS: Mt5Auto[] = [
       "Buys short-term weakness in stock indices that are still in a long-term uptrend — the documented equity 'buy the dip' effect, filtered by a 200-day regime and protected by a hard stop. The mirror of the trend bot: a high win rate, holds only days, and trades most weeks.",
     markets: "US500 · US30 · NAS100 · indices",
     status: "available",
-    file: "/mt5/ClunoidDipMT5.mq5",
+    priceUsd: 149,
   },
   {
     id: "volatility-breakout",
@@ -65,7 +80,7 @@ export const MT5_AUTOS: Mt5Auto[] = [
       "A Keltner-band expansion breakout tuned for the markets that trend hardest — gold, silver, oil, copper and the major coins. When price thrusts beyond its volatility band with the trend, it rides the move on a wide trail. Volatility sizing, hard stop, let winners run.",
     markets: "Gold · Silver · Oil · Copper · Crypto",
     status: "available",
-    file: "/mt5/ClunoidVolBreakoutMT5.mq5",
+    priceUsd: 249,
   },
   {
     id: "orb",
@@ -77,7 +92,7 @@ export const MT5_AUTOS: Mt5Auto[] = [
       "The first hour of the session sets a range; a break of it tends to run for the rest of the day. Takes that break once a day per index with a stop at the range's far side, a 2R target, and always flat by the close. High-frequency and fully intraday — the active counterpart to the position bots.",
     markets: "US500 · US30 · NAS100 · indices",
     status: "available",
-    file: "/mt5/ClunoidORBMT5.mq5",
+    priceUsd: 99,
   },
   {
     id: "crypto-momentum",
@@ -89,7 +104,7 @@ export const MT5_AUTOS: Mt5Auto[] = [
       "A Bollinger-band breakout across a broad basket of major coins, taken only with the 100-day trend, then ridden on a wide trail. Crypto is the hardest-trending market there is and never sleeps — neither does this. Volatility sizing, a hard stop on every trade, winners added to and run.",
     markets: "BTC · ETH · SOL · XRP · and more",
     status: "available",
-    file: "/mt5/ClunoidCryptoTrendMT5.mq5",
+    priceUsd: 349,
   },
   {
     id: "crypto-ls",
@@ -101,7 +116,7 @@ export const MT5_AUTOS: Mt5Auto[] = [
       "Ranks a basket of coins by momentum each week, goes long the strongest few and short the weakest few — dollar-neutral. It bets on the spread between winners and losers, not on crypto rising, so it can profit even when the market falls. A genuinely different, market-neutral return.",
     markets: "Long-short across major coins",
     status: "available",
-    file: "/mt5/ClunoidCryptoLSMT5.mq5",
+    priceUsd: 199,
   },
   {
     id: "currency-trend",

@@ -1,14 +1,15 @@
 "use client";
 
 /**
- * Crypto Momentum — a dedicated 24/7 crypto automation's page. Free download,
+ * Crypto Momentum — a dedicated 24/7 crypto automation's page. A one-time purchase,
  * risk profiles, honest performance (very strong and robust, but crypto's
  * downside is brutal — the page says so).
  */
 import { useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Bot, Shield, Zap, Gauge, Download, CheckCircle2, CircleDashed, Clock } from "lucide-react";
+import { ArrowLeft, Bot, Shield, Zap, Gauge, CheckCircle2, CircleDashed, Clock } from "lucide-react";
 import { TC, DOT_GRID, monoFont } from "@/lib/trading/theme";
+import { Mt5Download } from "@/components/deriv/mt5/Mt5Download";
 
 const ACCENT = "#a78bfa";
 
@@ -78,9 +79,15 @@ export function CryptoMomoMt5() {
         <Section n={2} title="Get it running">
           <div className="rounded-2xl border p-5" style={{ borderColor: TC.line, background: TC.panel }}>
             <div className="flex flex-wrap items-center gap-3">
-              <a href="/mt5/ClunoidCryptoTrendMT5.mq5" download className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-[13px] font-semibold transition hover:opacity-90" style={{ background: ACCENT, color: TC.ink }}>
-                <Download size={15} /> Download EA — free
-              </a>
+              <Mt5Download
+                botId="crypto-momentum"
+                botName="Crypto Momentum"
+                accent={ACCENT}
+                label="Download EA"
+                freeHref="/trading/mt5"
+                freeLabel="Use the free automation instead."
+                freeBlurb={<>Not ready to buy? Our <b style={{ color: TC.text }}>Aggressive MT5 automation</b> is free and fully automated — use it right now at no cost.</>}
+              />
               <span className="text-[11.5px]" style={{ color: TC.faint }}>Add the coins your broker lists (BTC, ETH, SOL, XRP…) to Market Watch.</span>
             </div>
             <ol className="mt-4 space-y-3">

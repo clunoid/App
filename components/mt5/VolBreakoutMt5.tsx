@@ -1,14 +1,15 @@
 "use client";
 
 /**
- * Volatility Breakout — the third MT5 automation's page. Free download, risk
+ * Volatility Breakout — the third MT5 automation's page. A one-time purchase, risk
  * profiles, honest performance (a trend-family breakout on the hardest-trending
  * markets; low win rate, big runners, deep crypto drawdowns).
  */
 import { useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Bot, Shield, Zap, Gauge, Download, CheckCircle2, CircleDashed, Flame } from "lucide-react";
+import { ArrowLeft, Bot, Shield, Zap, Gauge, CheckCircle2, CircleDashed, Flame } from "lucide-react";
 import { TC, DOT_GRID, monoFont } from "@/lib/trading/theme";
+import { Mt5Download } from "@/components/deriv/mt5/Mt5Download";
 
 const ACCENT = "#fb923c";
 
@@ -75,9 +76,15 @@ export function VolBreakoutMt5() {
         <Section n={2} title="Get it running">
           <div className="rounded-2xl border p-5" style={{ borderColor: TC.line, background: TC.panel }}>
             <div className="flex flex-wrap items-center gap-3">
-              <a href="/mt5/ClunoidVolBreakoutMT5.mq5" download className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-[13px] font-semibold transition hover:opacity-90" style={{ background: ACCENT, color: TC.ink }}>
-                <Download size={15} /> Download EA — free
-              </a>
+              <Mt5Download
+                botId="volatility-breakout"
+                botName="Volatility Breakout"
+                accent={ACCENT}
+                label="Download EA"
+                freeHref="/trading/mt5"
+                freeLabel="Use the free automation instead."
+                freeBlurb={<>Not ready to buy? Our <b style={{ color: TC.text }}>Aggressive MT5 automation</b> is free and fully automated — use it right now at no cost.</>}
+              />
               <span className="text-[11.5px]" style={{ color: TC.faint }}>Add gold, silver, oil, copper and the major coins to Market Watch.</span>
             </div>
             <ol className="mt-4 space-y-3">

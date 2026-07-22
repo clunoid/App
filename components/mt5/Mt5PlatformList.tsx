@@ -31,7 +31,7 @@ export function Mt5PlatformList() {
           <p className="mt-1.5 text-[13.5px] leading-relaxed" style={{ color: TC.muted }}>
             Expert Advisors you run in your own MT5 terminal, on any broker. Each is built on a documented market
             edge — not a curve-fit backtest — with volatility-based sizing that fits any balance and a hard stop on
-            every trade. Free to download, no connection needed.
+            every trade. One is free; the rest are a one-time purchase — no subscriptions, no connection needed.
           </p>
           <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 text-[12px]" style={{ color: TC.faint }}>
             <span className="inline-flex items-center gap-1.5"><Wallet size={13} style={{ color: TC.profit }} /> Manages any balance</span>
@@ -60,15 +60,22 @@ export function Mt5PlatformList() {
                   <span className="inline-flex items-center gap-1 text-[10.5px] font-semibold uppercase tracking-wider" style={{ ...monoFont, color: TC.faint }}>
                     <LineChart size={12} /> {b.markets}
                   </span>
-                  {live ? (
-                    <span className="inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-[12px] font-semibold transition group-hover:opacity-90" style={{ background: TC.profit, color: TC.ink }}>
-                      Open <ChevronRight size={14} />
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1 rounded-lg border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider" style={{ borderColor: TC.line, color: TC.faint }}>
-                      In testing
-                    </span>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {b.free ? (
+                      <span className="inline-flex items-center rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider" style={{ background: "rgba(52,211,153,0.16)", color: "#34d399" }}>Free</span>
+                    ) : b.priceUsd ? (
+                      <span className="inline-flex items-center text-[12px] font-bold" style={{ ...monoFont, color: TC.text }}>${b.priceUsd}</span>
+                    ) : null}
+                    {live ? (
+                      <span className="inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-[12px] font-semibold transition group-hover:opacity-90" style={{ background: TC.profit, color: TC.ink }}>
+                        Open <ChevronRight size={14} />
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 rounded-lg border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider" style={{ borderColor: TC.line, color: TC.faint }}>
+                        In testing
+                      </span>
+                    )}
+                  </div>
                 </div>
               </>
             );
