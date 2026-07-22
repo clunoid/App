@@ -78,3 +78,12 @@ export const DERIV_REDIRECT_URI =
  *  account" button so new sign-ups are attributed to us (recurring commission). */
 export const DERIV_AFFILIATE_URL =
   process.env.NEXT_PUBLIC_DERIV_AFFILIATE_URL || "https://track.deriv.com/_30qaRjl291f1hit6RV3zsGNd7ZgqdRLk/1/";
+
+/** The Deriv cashier deposit page. */
+export const DERIV_DEPOSIT_URL =
+  "https://home.deriv.com/dashboard/deposit?from=portfolio&depositSheet=1&currency=USD";
+
+/** The deposit page routed THROUGH the affiliate tracker (?url=…) so the visit is
+ *  attributed to us — same partner token as the "create account" link. Deriv's
+ *  smart link sets the affiliate cookie, then forwards to the deposit page. */
+export const DERIV_TRACKED_DEPOSIT_URL = `${DERIV_AFFILIATE_URL}?url=${encodeURIComponent(DERIV_DEPOSIT_URL)}`;

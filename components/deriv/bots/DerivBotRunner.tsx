@@ -9,10 +9,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Play, Square, Loader2, TrendingUp, TrendingDown, Wallet, Star, Trophy, ShieldAlert, X } from "lucide-react";
+import { ArrowLeft, Play, Square, Loader2, TrendingUp, TrendingDown, Wallet, Star, Trophy, ShieldAlert, X, PiggyBank, Lightbulb, Check, ArrowDownToLine } from "lucide-react";
 import { TC, DOT_GRID, monoFont, fmtBalance } from "@/lib/trading/theme";
 import type { ConnectedAccount } from "@/lib/trading/accounts";
 import { loadDerivAccess } from "@/lib/deriv/oauth";
+import { DERIV_TRACKED_DEPOSIT_URL } from "@/lib/deriv/config";
 import { fetchDerivPortfolioREST } from "@/lib/deriv/api";
 import { BOT_DEFAULTS } from "@/lib/deriv/bots/config";
 import { DerivBot } from "@/lib/deriv/bots/engine";
@@ -23,6 +24,8 @@ type StatusKind = "info" | "success" | "warning" | "error";
 type Mode = "demo" | "real";
 const SNAP_KEY = "clunoid_deriv_portfolio";
 const onlyOptions = (accts: ConnectedAccount[]) => accts.filter((a) => a.kind === "options");
+/** The balance we suggest for a comfortable ride — recommended, never enforced. */
+const RECOMMENDED_BALANCE = 1000;
 
 export function DerivBotRunner({ botId }: { botId: string }) {
   const router = useRouter();
@@ -47,6 +50,9 @@ export function DerivBotRunner({ botId }: { botId: string }) {
   const [trades, setTrades] = useState<TradeRow[]>([]);
   const [liveBalance, setLiveBalance] = useState<{ balance: number | null; currency: string } | null>(null);
   const [finish, setFinish] = useState<{ kind: "take-profit" | "stop-loss"; summary: BotStats } | null>(null);
+  const [lowBalOpen, setLowBalOpen] = useState(false);   // recommendation on open (< $1000)
+  const [needDepOpen, setNeedDepOpen] = useState(false); // shown when a run can't afford the stake
+  const lowBalDecided = useRef(false);
   const botRef = useRef<DerivBot | null>(null);
 
   const refreshAccounts = useCallback(async (acc: string): Promise<ConnectedAccount[]> => {
@@ -82,6 +88,24 @@ export function DerivBotRunner({ botId }: { botId: string }) {
   const shownBalance = liveBalance ?? { balance: selected?.balance ?? null, currency: selected?.currency ?? "" };
   const switchMode = (m: Mode) => { if (runningState) return; setMode(m); setLiveBalance(null); };
 
+  // Recommend a healthier balance when the real account is under $1,000. It is a
+  // gentle nudge, not a wall: decided once the balance is known, and shown at most
+  // once a day per bot (or never, if the user ticks "don't show again").
+  useEffect(() => {
+    if (!ready || lowBalDecided.current) return;
+    const bal = realAccount?.balance;
+    if (bal == null) return; // wait until we actually know the balance
+    lowBalDecided.current = true;
+    if (bal >= RECOMMENDED_BALANCE) return;
+    const key = `clunoid_lowbal_${botId}`;
+    let stored = "";
+    try { stored = localStorage.getItem(key) || ""; } catch { /* ignore */ }
+    const today = new Date().toISOString().slice(0, 10);
+    if (stored === "never" || stored === today) return; // don't nag: once a day, per bot
+    try { localStorage.setItem(key, today); } catch { /* ignore */ }
+    setLowBalOpen(true);
+  }, [ready, realAccount, botId]);
+
   const validate = useCallback((): { ok: boolean; msg?: string } => {
     const s = parseFloat(stake), tp = parseFloat(takeProfit), sl = parseFloat(stopLoss), mg = parseFloat(martingale);
     if (!(s >= BOT_DEFAULTS.minStake)) return { ok: false, msg: `Stake must be at least ${BOT_DEFAULTS.minStake}.` };
@@ -97,6 +121,11 @@ export function DerivBotRunner({ botId }: { botId: string }) {
     if (!selected) { setStatus({ msg: `No ${mode} account found on your Deriv connection.`, kind: "error" }); return; }
     const v = validate();
     if (!v.ok) { setStatus({ msg: v.msg!, kind: "error" }); return; }
+
+    // Nothing to trade with, or not enough for this stake → invite a deposit
+    // instead of firing a doomed order.
+    const curBal = shownBalance.balance;
+    if (curBal != null && (curBal <= 0 || curBal < parseFloat(stake))) { setNeedDepOpen(true); return; }
 
     botRef.current?.stop("Restarting.", "info");
     botRef.current = null;
@@ -253,7 +282,142 @@ export function DerivBotRunner({ botId }: { botId: string }) {
       </div>
 
       {finish && <FinishModal finish={finish} onClose={() => setFinish(null)} />}
+
+      {lowBalOpen && (
+        <RecommendBalanceModal
+          balance={realAccount?.balance ?? null}
+          currency={realAccount?.currency || "USD"}
+          onClose={(dontShowAgain) => {
+            if (dontShowAgain) { try { localStorage.setItem(`clunoid_lowbal_${botId}`, "never"); } catch { /* ignore */ } }
+            setLowBalOpen(false);
+          }}
+        />
+      )}
+
+      {needDepOpen && (
+        <NeedDepositModal
+          balance={shownBalance.balance}
+          currency={shownBalance.currency || "USD"}
+          onClose={() => setNeedDepOpen(false)}
+        />
+      )}
     </main>
+  );
+}
+
+/**
+ * Shown once (per day, per bot) when the real account is under the recommended
+ * balance. A friendly nudge — deposit for a smoother ride, or keep trading —
+ * plus a couple of quick tips. Styled like the connect-account prompt.
+ */
+function RecommendBalanceModal({ balance, currency, onClose }: { balance: number | null; currency: string; onClose: (dontShowAgain: boolean) => void }) {
+  const [dontShow, setDontShow] = useState(false);
+  const downOnBackdrop = useRef(false);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(dontShow); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose, dontShow]);
+
+  const tips = [
+    "Start with a low stake.",
+    "Set a take profit so the bot doesn't run too long.",
+    "Let it run to your take profit — no need to stop it early.",
+  ];
+
+  return (
+    <div role="dialog" aria-modal="true" aria-labelledby="reco-bal-title"
+      className="fixed inset-0 z-50 grid place-items-center p-5"
+      style={{ background: "rgba(4,10,20,0.72)", backdropFilter: "blur(3px)" }}
+      onMouseDown={(e) => { downOnBackdrop.current = e.target === e.currentTarget; }}
+      onClick={(e) => { if (downOnBackdrop.current && e.target === e.currentTarget) onClose(dontShow); }}>
+      <div className="relative w-full max-w-[400px] rounded-2xl border p-5" style={{ borderColor: TC.line, background: TC.panel, boxShadow: "0 24px 60px rgba(0,0,0,0.55)" }}>
+        <button onClick={() => onClose(dontShow)} aria-label="Close" className="absolute right-3.5 top-3.5 rounded-lg p-1 transition hover:bg-white/10" style={{ color: TC.faint }}>
+          <X size={16} />
+        </button>
+
+        <span className="grid h-11 w-11 place-items-center rounded-xl" style={{ background: "rgba(52,211,153,0.14)" }}>
+          <PiggyBank size={20} style={{ color: TC.profit }} />
+        </span>
+        <h3 id="reco-bal-title" className="mt-3 text-[17px] font-bold">Trade with room to grow</h3>
+        <p className="mt-1.5 text-[12.5px] leading-relaxed" style={{ color: TC.muted }}>
+          Your balance is <b style={{ color: TC.text }}>{fmtBalance(balance, currency)}</b>. These bots trade on any
+          balance — but with <b style={{ color: TC.text }}>1,000 USD or more</b> profits add up faster, without long
+          waits for a target to hit.
+        </p>
+
+        <div className="mt-3 rounded-xl border p-3" style={{ borderColor: TC.line, background: "rgba(56,189,248,0.06)" }}>
+          <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider" style={{ color: TC.profit }}>
+            <Lightbulb size={13} /> A few tips
+          </div>
+          <ul className="mt-2 space-y-1.5">
+            {tips.map((t) => (
+              <li key={t} className="flex gap-1.5 text-[12px] leading-snug" style={{ color: TC.muted }}>
+                <Check size={13} className="mt-0.5 shrink-0" style={{ color: TC.profit }} /> {t}
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <a href={DERIV_TRACKED_DEPOSIT_URL} target="_blank" rel="noopener noreferrer" onClick={() => onClose(dontShow)}
+          className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-[13.5px] font-semibold transition hover:opacity-90" style={{ background: TC.profit, color: TC.ink }}>
+          <ArrowDownToLine size={15} /> Deposit funds
+        </a>
+        <button onClick={() => onClose(dontShow)} className="mt-2 w-full rounded-xl border px-4 py-2.5 text-[13px] font-semibold transition hover:bg-white/5" style={{ borderColor: TC.line, color: TC.text }}>
+          Continue trading
+        </button>
+
+        <label className="mt-3 flex cursor-pointer items-center justify-center gap-2 text-[11.5px]" style={{ color: TC.faint }}>
+          <input type="checkbox" checked={dontShow} onChange={(e) => setDontShow(e.target.checked)} className="h-3.5 w-3.5" style={{ accentColor: TC.profit }} />
+          Don&rsquo;t show this again
+        </label>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Shown when a run can't afford the stake (0 balance, or below the stake). Deposit
+ * now or later — same connect-prompt styling.
+ */
+function NeedDepositModal({ balance, currency, onClose }: { balance: number | null; currency: string; onClose: () => void }) {
+  const downOnBackdrop = useRef(false);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return (
+    <div role="dialog" aria-modal="true" aria-labelledby="need-dep-title"
+      className="fixed inset-0 z-50 grid place-items-center p-5"
+      style={{ background: "rgba(4,10,20,0.72)", backdropFilter: "blur(3px)" }}
+      onMouseDown={(e) => { downOnBackdrop.current = e.target === e.currentTarget; }}
+      onClick={(e) => { if (downOnBackdrop.current && e.target === e.currentTarget) onClose(); }}>
+      <div className="relative w-full max-w-[400px] rounded-2xl border p-5" style={{ borderColor: TC.line, background: TC.panel, boxShadow: "0 24px 60px rgba(0,0,0,0.55)" }}>
+        <button onClick={onClose} aria-label="Close" className="absolute right-3.5 top-3.5 rounded-lg p-1 transition hover:bg-white/10" style={{ color: TC.faint }}>
+          <X size={16} />
+        </button>
+
+        <span className="grid h-11 w-11 place-items-center rounded-xl" style={{ background: "rgba(52,211,153,0.14)" }}>
+          <Wallet size={20} style={{ color: TC.profit }} />
+        </span>
+        <h3 id="need-dep-title" className="mt-3 text-[17px] font-bold">Add funds to start</h3>
+        <p className="mt-1.5 text-[12.5px] leading-relaxed" style={{ color: TC.muted }}>
+          Your balance is <b style={{ color: TC.text }}>{fmtBalance(balance, currency)}</b> — not enough to place this
+          trade yet. You can deposit <b style={{ color: TC.text }}>any amount</b>, and we recommend{" "}
+          <b style={{ color: TC.text }}>1,000 USD or more</b> for the best results.
+        </p>
+
+        <a href={DERIV_TRACKED_DEPOSIT_URL} target="_blank" rel="noopener noreferrer" onClick={onClose}
+          className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-[13.5px] font-semibold transition hover:opacity-90" style={{ background: TC.profit, color: TC.ink }}>
+          <ArrowDownToLine size={15} /> Deposit funds
+        </a>
+        <button onClick={onClose} className="mt-2 w-full rounded-xl border px-4 py-2.5 text-[13px] font-semibold transition hover:bg-white/5" style={{ borderColor: TC.line, color: TC.text }}>
+          Later
+        </button>
+      </div>
+    </div>
   );
 }
 
