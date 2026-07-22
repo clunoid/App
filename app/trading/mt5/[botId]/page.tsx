@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { getMt5Auto } from "@/lib/mt5/registry";
 import { MomentumMt5 } from "@/components/mt5/MomentumMt5";
+import { DipMt5 } from "@/components/mt5/DipMt5";
 
 type Props = { params: Promise<{ botId: string }> };
 
@@ -19,6 +20,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 /** Each available automation maps to its own page component. */
 const VIEWS: Record<string, React.ComponentType> = {
   momentum: MomentumMt5,
+  "index-dip": DipMt5,
 };
 
 export default async function Mt5AutoPage({ params }: Props) {

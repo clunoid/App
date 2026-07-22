@@ -44,6 +44,18 @@ export const MT5_AUTOS: Mt5Auto[] = [
     file: "/mt5/ClunoidMomentumMT5.mq5",
   },
   {
+    id: "index-dip",
+    name: "Index Dip Reversion",
+    rating: 9.0,
+    chip: "Indices · mean reversion",
+    tagline: "Buy the dips the market pays for",
+    blurb:
+      "Buys short-term weakness in stock indices that are still in a long-term uptrend — the documented equity 'buy the dip' effect, filtered by a 200-day regime and protected by a hard stop. The mirror of the trend bot: a high win rate, holds only days, and trades most weeks.",
+    markets: "US500 · US30 · NAS100 · indices",
+    status: "available",
+    file: "/mt5/ClunoidDipMT5.mq5",
+  },
+  {
     id: "currency-trend",
     name: "Currency Trend",
     rating: 9.1,
@@ -52,17 +64,6 @@ export const MT5_AUTOS: Mt5Auto[] = [
     blurb:
       "A daily-timeframe trend system across the major currency pairs — the approach with the strongest documented persistence in FX. Low turnover by design, so spread never eats the edge, with volatility sizing and a disciplined exit.",
     markets: "EUR/USD · GBP/USD · USD/JPY · majors",
-    status: "building",
-  },
-  {
-    id: "index-dip",
-    name: "Index Dip Reversion",
-    rating: 9.0,
-    chip: "Indices · mean reversion",
-    tagline: "Buy the dips the market pays for",
-    blurb:
-      "Buys short-term weakness in stock indices that are still in a long-term uptrend — the documented equity 'buy the dip' effect, filtered by a 200-day regime and protected by a hard stop. Trades often, holds briefly.",
-    markets: "US500 · US30 · NAS100 · indices",
     status: "building",
   },
   {
