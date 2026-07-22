@@ -79,11 +79,24 @@ export const DERIV_REDIRECT_URI =
 export const DERIV_AFFILIATE_URL =
   process.env.NEXT_PUBLIC_DERIV_AFFILIATE_URL || "https://track.deriv.com/_30qaRjl291f1hit6RV3zsGNd7ZgqdRLk/1/";
 
-/** The Deriv cashier deposit page. */
+/** The Deriv cashier deposit page (Deriv TradersHub — lands straight on the
+ *  deposit sheet, the best UX; the bare affiliate smart link would dump the user
+ *  on the deriv.com homepage instead). */
 export const DERIV_DEPOSIT_URL =
   "https://home.deriv.com/dashboard/deposit?from=portfolio&depositSheet=1&currency=USD";
 
-/** The deposit page routed THROUGH the affiliate tracker (?url=…) so the visit is
- *  attributed to us — same partner token as the "create account" link. Deriv's
- *  smart link sets the affiliate cookie, then forwards to the deposit page. */
-export const DERIV_TRACKED_DEPOSIT_URL = `${DERIV_AFFILIATE_URL}?url=${encodeURIComponent(DERIV_DEPOSIT_URL)}`;
+/** The MyAffiliates click-tracking token (the `t=` value the smart link resolves
+ *  to) and the affiliate's utm identity. Deriv's own docs attribute TradersHub
+ *  deep links with `?t=<token>&utm_campaign=<campaign>` appended to the
+ *  destination — so the visitor lands directly on the page AND the referral is
+ *  still credited to us. Override via env if the affiliate token ever changes. */
+export const DERIV_AFFILIATE_TOKEN =
+  process.env.NEXT_PUBLIC_DERIV_AFFILIATE_TOKEN || "qNeBJf2u-UL0GKXG4_dSPmNd7ZgqdRLk";
+const DERIV_AFFILIATE_UTM =
+  process.env.NEXT_PUBLIC_DERIV_AFFILIATE_UTM ||
+  "utm_source=affiliate_265967&utm_medium=affiliate&utm_campaign=MyAffiliates";
+
+/** Deposit page, deep-linked directly but carrying the affiliate tracking token +
+ *  utm so Deriv attributes the visit to us (no homepage bounce). */
+export const DERIV_TRACKED_DEPOSIT_URL =
+  `${DERIV_DEPOSIT_URL}&t=${DERIV_AFFILIATE_TOKEN}&${DERIV_AFFILIATE_UTM}`;
