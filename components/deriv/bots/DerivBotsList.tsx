@@ -103,8 +103,10 @@ export function DerivBotsList() {
 
         <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {BOTS.map((b) => {
-            // 5.0 → green, 4.9 → blue, everything else keeps the gold star.
-            const ratingColor = b.rating === 5 ? "#34d399" : b.rating === 4.9 ? "#38bdf8" : "#fcd34d";
+            // Colour off the SHOWN rating so it matches what's on the card: a
+            // displayed 5.0 → green, 4.9 → blue, everything else keeps gold.
+            const shownRating = b.rating.toFixed(1);
+            const ratingColor = shownRating === "5.0" ? "#34d399" : shownRating === "4.9" ? "#38bdf8" : "#fcd34d";
             return (
             <Link key={b.id} href={`/trading/deriv/bots/${b.id}`}
               className="group relative flex flex-col rounded-2xl border p-5 transition hover:-translate-y-0.5"
@@ -115,7 +117,7 @@ export function DerivBotsList() {
                   <span key={bd} className="rounded-full px-2 py-0.5 text-[10px] font-bold" style={{ background: BADGE_STYLE[bd].bg, color: BADGE_STYLE[bd].color }}>{bd}</span>
                 ))}
                 <span className="ml-auto inline-flex items-center gap-1 text-[11px] font-bold" style={{ color: ratingColor }}>
-                  <Star size={12} fill={ratingColor} /> {b.rating.toFixed(1)}
+                  <Star size={12} fill={ratingColor} /> {shownRating}
                 </span>
               </div>
               <h3 className="mt-3 text-[16px] font-bold">{b.name}</h3>
