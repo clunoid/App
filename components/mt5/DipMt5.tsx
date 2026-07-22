@@ -71,7 +71,6 @@ export function DipMt5() {
                 botName="Index Dip Reversion"
                 accent={ACCENT}
                 label="Download EA"
-                freeHref="/trading/command"
                 freeLabel="Use our free trading bots instead."
                 freeBlurb={<>Not ready to buy? Use our <b style={{ color: TC.text }}>free, fully automated trading bots</b> at no cost — connect your account or create one to get started.</>}
               />

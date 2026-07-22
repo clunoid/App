@@ -10,11 +10,14 @@
  *                       after they sign up, we claim the device purchase and the
  *                       button flips to Download.
  *
- * The popup always offers the free way out — "use free bots instead." — which
- * sends them straight to a free automation. Where that lands (and the wording)
- * is set per platform via freeHref / freeLabel / freeBlurb: the Deriv MT5 pages
- * point at the free Deriv bots; the standalone MT5 platform pages point at the
- * free Aggressive automation.
+ * The popup always offers the free way out — "use free bots instead." — which is
+ * connection-aware: a buyer already linked to Deriv is sent straight to the free
+ * Deriv bots with a success confirmation; anyone not linked lands on Central
+ * Command with the connect-or-create prompt already open. Wording is set per
+ * platform via freeLabel / freeBlurb.
+ *
+ * Once a purchase succeeds and the buyer is authenticated + owns it, the download
+ * starts automatically — no extra click.
  *
  * The free general/Aggressive automations do NOT use this; they keep their plain
  * public links.
@@ -24,6 +27,7 @@ import { useRouter } from "next/navigation";
 import { Download, Loader2, Lock, X, Sparkles, ShieldCheck, CheckCircle2 } from "lucide-react";
 import { TC } from "@/lib/trading/theme";
 import { useClunoid } from "@/lib/store/useClunoid";
+import { loadDerivAccess } from "@/lib/deriv/oauth";
 
 type Access = { paid: boolean; signedIn: boolean; owned: boolean; paidAsGuest: boolean; priceUsd: number | null };
 
@@ -32,7 +36,6 @@ export function Mt5Download({
   botName,
   accent,
   label,
-  freeHref = "/trading/deriv/bots",
   freeLabel = "Use free bots instead.",
   freeBlurb,
 }: {
@@ -40,7 +43,6 @@ export function Mt5Download({
   botName: string;
   accent: string;
   label: string;
-  freeHref?: string;
   freeLabel?: string;
   freeBlurb?: React.ReactNode;
 }) {
@@ -52,7 +54,9 @@ export function Mt5Download({
   const [popup, setPopup] = useState(false);
   const [busy, setBusy] = useState(false);
   const [justPaid, setJustPaid] = useState(false);
+  const [dlStarted, setDlStarted] = useState(false);
   const claimed = useRef(false);
+  const autoDled = useRef(false);
   const downOnBackdrop = useRef(false);
   const polls = useRef(0);
   const checkoutAbort = useRef<AbortController | null>(null);
@@ -102,10 +106,31 @@ export function Mt5Download({
     return () => clearTimeout(t);
   }, [justPaid, access, load]);
 
+  // After a successful purchase, the moment the buyer is authenticated AND owns
+  // the automation, start the download automatically — no extra click. Gated to
+  // the post-purchase flow (justPaid) so a returning owner isn't force-downloaded,
+  // and fired once via the ref.
+  useEffect(() => {
+    if (!access?.owned || !justPaid || autoDled.current) return;
+    autoDled.current = true;
+    setDlStarted(true);
+    const t = setTimeout(() => { window.location.href = `/api/trading/mt5/download/${botId}`; }, 600);
+    return () => clearTimeout(t);
+  }, [access, justPaid, botId]);
+
   const closePopup = () => {
     checkoutAbort.current?.abort();
     setPopup(false);
     setBusy(false);
+  };
+
+  // The "free bots" way out is connection-aware: a buyer already linked to Deriv
+  // goes straight to the free Deriv bots with a success confirmation; anyone not
+  // linked lands on Command with the connect-or-create prompt already open.
+  const goFree = () => {
+    let connected = false;
+    try { connected = !!loadDerivAccess(); } catch { /* treat as not connected */ }
+    router.push(connected ? "/trading/deriv/bots?welcome=1" : "/trading/command?connect=1");
   };
 
   const startCheckout = async () => {
@@ -136,7 +161,16 @@ export function Mt5Download({
   if (!access) {
     control = <span className={btnBase} style={{ background: accent, color: TC.ink, opacity: 0.7 }}><Loader2 size={15} className="animate-spin" /> Loading…</span>;
   } else if (access.owned) {
-    control = <button onClick={download} className={btnBase} style={{ background: accent, color: TC.ink }}><Download size={15} /> {label}</button>;
+    control = (
+      <span className="inline-flex flex-col items-start gap-1.5">
+        <button onClick={download} className={btnBase} style={{ background: accent, color: TC.ink }}><Download size={15} /> {dlStarted ? "Download again" : label}</button>
+        {dlStarted && (
+          <span className="inline-flex items-center gap-1.5 text-[11.5px] font-medium" style={{ color: "#34d399" }}>
+            <CheckCircle2 size={13} /> Purchase complete — your download has started.
+          </span>
+        )}
+      </span>
+    );
   } else if ((access.paidAsGuest || justPaid) && !access.signedIn) {
     // Paid but not signed in yet (proof: the device token + ledger via paidAsGuest,
     // so this survives a reload). Signing up claims it and unlocks the download.
@@ -192,7 +226,7 @@ export function Mt5Download({
                   </>
                 )}
               </p>
-              <button onClick={() => router.push(freeHref)} className="mt-2.5 flex w-full items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-[13px] font-semibold transition hover:bg-white/5" style={{ borderColor: "rgba(52,211,153,0.4)", color: "#34d399" }}>
+              <button onClick={goFree} className="mt-2.5 flex w-full items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-[13px] font-semibold transition hover:bg-white/5" style={{ borderColor: "rgba(52,211,153,0.4)", color: "#34d399" }}>
                 {freeLabel}
               </button>
             </div>

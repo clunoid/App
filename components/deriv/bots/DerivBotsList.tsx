@@ -24,10 +24,19 @@ const BADGE_STYLE: Record<BotBadge, { bg: string; color: string }> = {
 export function DerivBotsList() {
   const router = useRouter();
   const [ready, setReady] = useState(false);
+  const [welcome, setWelcome] = useState(false);
 
   useEffect(() => {
     if (!loadDerivAccess()) { router.replace("/trading/command"); return; }
     setReady(true);
+    // Arriving here from a paid page's "use free bots" exit while linked: greet
+    // them with a success confirmation, then strip the flag so a refresh is clean.
+    if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("welcome") === "1") {
+      setWelcome(true);
+      const url = new URL(window.location.href);
+      url.searchParams.delete("welcome");
+      window.history.replaceState({}, "", url.pathname + url.search);
+    }
   }, [router]);
 
   if (!ready) {
@@ -43,6 +52,39 @@ export function DerivBotsList() {
   return (
     <main className="relative min-h-[100dvh] w-full overflow-x-hidden" style={{ background: TC.bg, color: TC.text }}>
       <div aria-hidden className="pointer-events-none absolute inset-0" style={DOT_GRID} />
+
+      {welcome && (
+        <div role="dialog" aria-modal="true" aria-labelledby="deriv-welcome-title"
+          className="fixed inset-0 z-50 grid place-items-center p-5"
+          style={{ background: "rgba(4,10,20,0.72)", backdropFilter: "blur(3px)" }}
+          onClick={() => setWelcome(false)}>
+          <div onClick={(e) => e.stopPropagation()} className="relative w-full max-w-[380px] rounded-2xl border p-6 text-center"
+            style={{ borderColor: "rgba(52,211,153,0.45)", background: TC.panel, boxShadow: "0 24px 60px rgba(0,0,0,0.55)" }}>
+            <style>{`
+              @keyframes clnPop { 0% { transform: scale(0.6); opacity: 0 } 60% { transform: scale(1.08) } 100% { transform: scale(1); opacity: 1 } }
+              @keyframes clnRing { 0% { transform: scale(0.7); opacity: 0.5 } 100% { transform: scale(1.6); opacity: 0 } }
+              @keyframes clnDraw { to { stroke-dashoffset: 0 } }
+            `}</style>
+            <div className="relative mx-auto grid h-16 w-16 place-items-center" style={{ animation: "clnPop 0.45s ease-out both" }}>
+              <span aria-hidden className="absolute inset-0 rounded-full" style={{ background: "rgba(52,211,153,0.28)", animation: "clnRing 0.9s ease-out 0.2s both" }} />
+              <span className="grid h-16 w-16 place-items-center rounded-full" style={{ background: "rgba(52,211,153,0.14)" }}>
+                <svg width="38" height="38" viewBox="0 0 52 52" aria-hidden>
+                  <circle cx="26" cy="26" r="23" fill="none" stroke="#34d399" strokeWidth="3" style={{ strokeDasharray: 145, strokeDashoffset: 145, animation: "clnDraw 0.5s ease-out 0.1s forwards" }} />
+                  <path d="M15 27 l7.5 7.5 L38 19" fill="none" stroke="#34d399" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" style={{ strokeDasharray: 40, strokeDashoffset: 40, animation: "clnDraw 0.35s ease-out 0.5s forwards" }} />
+                </svg>
+              </span>
+            </div>
+            <h3 id="deriv-welcome-title" className="mt-4 text-[18px] font-bold" style={{ color: "#34d399" }}>You&rsquo;re in — free bots unlocked</h3>
+            <p className="mt-1.5 text-[13px] leading-relaxed" style={{ color: TC.muted }}>
+              You&rsquo;ve successfully accessed our free, fully automated trading bots. Choose any one below to start.
+            </p>
+            <button onClick={() => setWelcome(false)} className="mt-4 w-full rounded-xl px-4 py-2.5 text-[13.5px] font-semibold transition hover:opacity-90" style={{ background: "#34d399", color: TC.ink }}>
+              Choose a bot
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="relative z-10 w-full px-6 py-5 sm:px-10 lg:px-16">
         <header className="flex flex-wrap items-center gap-3">
           <Link href="/trading/command" className="flex items-center gap-1.5 text-[13px] font-medium transition hover:opacity-80" style={{ color: TC.muted }}>

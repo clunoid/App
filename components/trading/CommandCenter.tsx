@@ -266,6 +266,13 @@ export function CommandCenter() {
     setSession(s);
     showSnapshot(s); // show the cached snapshot instantly, then refresh live
     void refresh(s);
+
+    // Arriving from a paid page's "use free bots" exit while NOT linked: open the
+    // connect-or-create prompt automatically so they can link or open an account.
+    if (qs.get("connect") === "1") {
+      if (!s) setGate("bots");
+      window.history.replaceState({}, "", "/trading/command");
+    }
   }, [refresh]);
 
   // Drop a pending gate the moment a connection lands. Without this, a tile
