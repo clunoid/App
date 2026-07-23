@@ -1,9 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { TC, monoFont } from "@/lib/trading/theme";
 import {
-  DEFAULT_SIM_BALANCE,
   dismissSimTutorial,
   getSimBalance,
   isSimTutorialDismissed,
@@ -11,7 +10,7 @@ import {
 } from "@/lib/deriv/bots/simBalance";
 
 type Props = {
-  onBalanceChange: (balance: number) => void;
+  onBalanceChange?: (balance: number) => void;
   className?: string;
 };
 
@@ -21,30 +20,36 @@ export function SimBalanceEditor({ onBalanceChange, className }: Props) {
   const [committed, setCommitted] = useState("");
   const [showApply, setShowApply] = useState(false);
   const [showTutorial, setShowTutorial] = useState(false);
+  const onBalanceChangeRef = useRef(onBalanceChange);
+  onBalanceChangeRef.current = onBalanceChange;
 
-  const syncCommitted = useCallback((value: number) => {
+  // Mount once — never tie this to onBalanceChange or parent re-renders will
+  // reset the field on every keystroke and can freeze the whole page.
+  useEffect(() => {
+    const value = getSimBalance();
     const s = value.toFixed(2);
     setCommitted(s);
     setInput(s);
-    setShowApply(false);
-    onBalanceChange(value);
-  }, [onBalanceChange]);
-
-  useEffect(() => {
-    syncCommitted(getSimBalance());
     setShowTutorial(!isSimTutorialDismissed());
-  }, [syncCommitted]);
+  }, []);
 
   const apply = () => {
     const n = parseFloat(input);
     if (!Number.isFinite(n) || n < 0) {
-      syncCommitted(getSimBalance());
+      const fallback = getSimBalance().toFixed(2);
+      setInput(fallback);
+      setCommitted(fallback);
+      setShowApply(false);
       return;
     }
     const value = setSimBalance(n);
-    syncCommitted(value);
+    const s = value.toFixed(2);
+    setCommitted(s);
+    setInput(s);
+    setShowApply(false);
     dismissSimTutorial();
     setShowTutorial(false);
+    onBalanceChangeRef.current?.(value);
   };
 
   const onInput = (raw: string) => {
@@ -75,23 +80,17 @@ export function SimBalanceEditor({ onBalanceChange, className }: Props) {
           value={input}
           aria-label="Balance in USD"
           onChange={(e) => onInput(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter" && showApply) apply(); }}
+          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); apply(); } }}
           className="w-[7.5rem] rounded-lg border bg-transparent px-2 py-1 text-[13px] outline-none focus:border-sky-400"
           style={{ ...monoFont, borderColor: TC.line, color: TC.text }}
         />
         <span className="text-[11px] font-semibold" style={{ color: TC.faint }}>USD</span>
-        {showApply && (
-          <button type="button" onClick={apply}
-            className="rounded-lg px-2.5 py-1 text-[11px] font-bold transition hover:opacity-90"
-            style={{ background: TC.profit, color: TC.ink }}>
-            Apply
-          </button>
-        )}
+        <button type="button" onClick={apply}
+          className="rounded-lg px-2.5 py-1 text-[11px] font-bold transition hover:opacity-90"
+          style={{ background: showApply ? TC.profit : "rgba(148,168,189,0.2)", color: showApply ? TC.ink : TC.faint }}>
+          Apply
+        </button>
       </div>
     </div>
   );
-}
-
-export function readSimBalanceOrDefault(): number {
-  return typeof window !== "undefined" ? getSimBalance() : DEFAULT_SIM_BALANCE;
 }

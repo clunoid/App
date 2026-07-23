@@ -9,7 +9,6 @@ import { ArrowLeft, Bot, Star, ChevronRight } from "lucide-react";
 import { TC, DOT_GRID, monoFont } from "@/lib/trading/theme";
 import { BOTS, type BotBadge } from "@/lib/deriv/bots/registry";
 import { SimBalanceEditor } from "@/components/deriv/bots/SimBalanceEditor";
-import { useState } from "react";
 
 const BADGE_STYLE: Record<BotBadge, { bg: string; color: string }> = {
   Recommended: { bg: "rgba(56,189,248,0.18)", color: "#38bdf8" },
@@ -20,8 +19,6 @@ const BADGE_STYLE: Record<BotBadge, { bg: string; color: string }> = {
 };
 
 export function DerivBotsSimList() {
-  const [, setBalTick] = useState(0);
-
   return (
     <main className="relative min-h-[100dvh] w-full overflow-x-hidden" style={{ background: TC.bg, color: TC.text }}>
       <div aria-hidden className="pointer-events-none absolute inset-0" style={DOT_GRID} />
@@ -34,7 +31,7 @@ export function DerivBotsSimList() {
           <span className="h-4 w-px" style={{ background: TC.line }} />
           <span className="inline-flex items-center gap-1.5 text-[14px] font-bold tracking-[0.14em]"><Bot size={16} style={{ color: TC.profit }} /> DERIV BOTS · SIM</span>
           <div className="ml-auto">
-            <SimBalanceEditor onBalanceChange={() => setBalTick((n) => n + 1)} />
+            <SimBalanceEditor />
           </div>
         </header>
 
