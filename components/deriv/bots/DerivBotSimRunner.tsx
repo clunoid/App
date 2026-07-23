@@ -144,7 +144,7 @@ export function DerivBotSimRunner({ botId }: { botId: string }) {
               <span style={{ ...monoFont }}>{fmtBalance(shownBalance.balance, shownBalance.currency)}</span>
             </span>
             <div className="inline-flex rounded-full border p-0.5" style={{ borderColor: TC.line, background: "rgba(0,0,0,0.2)" }}>
-              <span className="rounded-full px-2.5 py-1 text-[11px] font-semibold" style={{ background: TC.profit, color: TC.ink }}>Live</span>
+              <span className="rounded-full px-2.5 py-1 text-[11px] font-semibold capitalize" style={{ background: TC.profit, color: TC.ink }}>real</span>
             </div>
           </div>
         </header>
