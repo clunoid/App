@@ -522,7 +522,10 @@ export function CommandCenter() {
             {/* Exness — affiliate onboarding + Telegram community */}
             <Link href="/trading/exness" className="group mt-3 block rounded-2xl border p-4 transition hover:-translate-y-0.5" style={{ borderColor: TC.line, background: TC.panel }}>
               <div className="flex items-center gap-2.5">
-                <BrandLogo src="/logos/exness.svg" alt="Exness" size={26} />
+                <span className="grid shrink-0 place-items-center rounded-lg px-2.5 py-1.5" style={{ background: "rgba(0,0,0,0.5)", boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.1)" }}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src="/logos/exness.svg" alt="Exness" className="h-3.5 w-auto object-contain" style={{ maxWidth: 72 }} />
+                </span>
                 <div className="min-w-0 flex-1">
                   <div className="text-[13.5px] font-semibold">Exness</div>
                   <div className="text-[11.5px]" style={{ color: TC.faint }}>Forex &amp; MT5 · signals &amp; free bots</div>
