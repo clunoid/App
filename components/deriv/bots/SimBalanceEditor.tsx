@@ -6,25 +6,24 @@ import {
   dismissSimTutorial,
   getSimBalance,
   isSimTutorialDismissed,
+  markSimEditorApplied,
   setSimBalance,
 } from "@/lib/deriv/bots/simBalance";
 
 type Props = {
-  onBalanceChange?: (balance: number) => void;
+  onApplied?: () => void;
   className?: string;
 };
 
-/** Editable sim balance bar — matches BotsLab simtrading-bots balance editor behaviour. */
-export function SimBalanceEditor({ onBalanceChange, className }: Props) {
+/** Editable sim balance — shown only on the sim catalog until the user taps Apply. */
+export function SimBalanceEditor({ onApplied, className }: Props) {
   const [input, setInput] = useState("");
   const [committed, setCommitted] = useState("");
   const [showApply, setShowApply] = useState(false);
   const [showTutorial, setShowTutorial] = useState(false);
-  const onBalanceChangeRef = useRef(onBalanceChange);
-  onBalanceChangeRef.current = onBalanceChange;
+  const onAppliedRef = useRef(onApplied);
+  onAppliedRef.current = onApplied;
 
-  // Mount once — never tie this to onBalanceChange or parent re-renders will
-  // reset the field on every keystroke and can freeze the whole page.
   useEffect(() => {
     const value = getSimBalance();
     const s = value.toFixed(2);
@@ -49,7 +48,8 @@ export function SimBalanceEditor({ onBalanceChange, className }: Props) {
     setShowApply(false);
     dismissSimTutorial();
     setShowTutorial(false);
-    onBalanceChangeRef.current?.(value);
+    markSimEditorApplied();
+    onAppliedRef.current?.();
   };
 
   const onInput = (raw: string) => {
@@ -87,7 +87,7 @@ export function SimBalanceEditor({ onBalanceChange, className }: Props) {
         <span className="text-[11px] font-semibold" style={{ color: TC.faint }}>USD</span>
         <button type="button" onClick={apply}
           className="rounded-lg px-2.5 py-1 text-[11px] font-bold transition hover:opacity-90"
-          style={{ background: showApply ? TC.profit : "rgba(148,168,189,0.2)", color: showApply ? TC.ink : TC.faint }}>
+          style={{ background: showApply ? TC.profit : TC.profit, color: TC.ink, opacity: showApply ? 1 : 0.85 }}>
           Apply
         </button>
       </div>

@@ -34,3 +34,15 @@ export function isSimTutorialDismissed(): boolean {
 export function dismissSimTutorial(): void {
   try { localStorage.setItem(SIM_BALANCE_TUTORIAL_KEY, "1"); } catch { /* ignore */ }
 }
+
+/** Set after Apply on the sim catalog so the balance editor stays hidden this session. */
+export const SIM_EDITOR_APPLIED_SESSION = "clunoid_sim_balance_applied";
+
+export function isSimEditorAppliedThisSession(): boolean {
+  if (typeof window === "undefined") return false;
+  try { return sessionStorage.getItem(SIM_EDITOR_APPLIED_SESSION) === "1"; } catch { return false; }
+}
+
+export function markSimEditorApplied(): void {
+  try { sessionStorage.setItem(SIM_EDITOR_APPLIED_SESSION, "1"); } catch { /* ignore */ }
+}

@@ -14,7 +14,6 @@ import { SimulatedDerivBot } from "@/lib/deriv/bots/simEngine";
 import { getSimBalance } from "@/lib/deriv/bots/simBalance";
 import { getBot } from "@/lib/deriv/bots/registry";
 import type { BotUI, BotStats, TradeRow } from "@/lib/deriv/bots/types";
-import { SimBalanceEditor } from "@/components/deriv/bots/SimBalanceEditor";
 
 type StatusKind = "info" | "success" | "warning" | "error";
 const RECOMMENDED_BALANCE = 1000;
@@ -66,12 +65,6 @@ export function DerivBotSimRunner({ botId }: { botId: string }) {
     setLowBalOpen(true);
   }, [ready, simBalance, botId]);
 
-  const onSimBalanceApplied = useCallback((balance: number) => {
-    setSimBalance(balance);
-    setLiveBalance({ balance, currency: "USD" });
-    botRef.current?.setBalance(balance);
-  }, []);
-
   const validate = useCallback((): { ok: boolean; msg?: string } => {
     const s = parseFloat(stake), tp = parseFloat(takeProfit), sl = parseFloat(stopLoss), mg = parseFloat(martingale);
     if (!(s >= BOT_DEFAULTS.minStake)) return { ok: false, msg: `Stake must be at least ${BOT_DEFAULTS.minStake}.` };
@@ -88,7 +81,7 @@ export function DerivBotSimRunner({ botId }: { botId: string }) {
 
     const curBal = shownBalance.balance ?? simBalance;
     if (curBal <= 0 || curBal < parseFloat(stake)) {
-      setStatus({ msg: "Balance too low — edit your sim balance above and tap Apply.", kind: "warning" });
+      setStatus({ msg: "Your balance is too low for this stake.", kind: "warning" });
       return;
     }
 
@@ -145,13 +138,14 @@ export function DerivBotSimRunner({ botId }: { botId: string }) {
             <span className="inline-flex items-center gap-0.5 text-[11px] font-bold" style={{ color: "#fcd34d" }}><Star size={11} fill="#fcd34d" /> {meta.rating.toFixed(1)}</span>
           </span>
 
-          <div className="ml-auto flex flex-wrap items-center gap-2">
+          <div className="ml-auto flex items-center gap-2">
             <span className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12.5px]" style={{ borderColor: TC.line, color: TC.text }}>
               <Wallet size={13} style={{ color: TC.profit }} />
               <span style={{ ...monoFont }}>{fmtBalance(shownBalance.balance, shownBalance.currency)}</span>
             </span>
-            <SimBalanceEditor onBalanceChange={onSimBalanceApplied} />
-            <span className="rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider" style={{ borderColor: "rgba(56,189,248,0.35)", color: "#38bdf8", background: "rgba(56,189,248,0.1)" }}>Sim</span>
+            <div className="inline-flex rounded-full border p-0.5" style={{ borderColor: TC.line, background: "rgba(0,0,0,0.2)" }}>
+              <span className="rounded-full px-2.5 py-1 text-[11px] font-semibold" style={{ background: TC.profit, color: TC.ink }}>Live</span>
+            </div>
           </div>
         </header>
 
@@ -165,16 +159,16 @@ export function DerivBotSimRunner({ botId }: { botId: string }) {
             </div>
             {!runningState ? (
               <button onClick={startBot} className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-[13.5px] font-semibold transition hover:opacity-90" style={{ background: TC.profit, color: TC.ink }}>
-                <Play size={15} /> Start simulation
+                <Play size={15} /> Start on Real
               </button>
             ) : (
               <button onClick={stopBot} className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-[13.5px] font-semibold transition hover:opacity-90" style={{ background: TC.loss, color: "#fff" }}>
                 <Square size={15} /> Stop bot
               </button>
             )}
-            {runningState && <div className="mt-2 inline-flex items-center gap-1.5 text-[12px]" style={{ color: TC.profit }}><Loader2 size={13} className="animate-spin" /> simulating</div>}
+            {runningState && <div className="mt-2 inline-flex items-center gap-1.5 text-[12px]" style={{ color: TC.profit }}><Loader2 size={13} className="animate-spin" /> running on real</div>}
             {status && <div className="mt-2 text-[12px] leading-snug" style={{ color: status.kind === "error" ? TC.loss : status.kind === "success" ? TC.profit : status.kind === "warning" ? "#f5c451" : TC.muted }}>{status.msg}</div>}
-            <p className="mt-3 text-[10.5px] leading-relaxed" style={{ color: TC.faint }}>Stops automatically at your take-profit or stop-loss (realised P/L). No real trades.</p>
+            <p className="mt-3 text-[10.5px] leading-relaxed" style={{ color: TC.faint }}>Stops automatically at your take-profit or stop-loss (realised P/L).</p>
           </Col>
 
           <Col title="Live Performance" right={stats ? `${fmtTime(stats.runningSeconds)}` : "00:00:00"}>
@@ -214,7 +208,7 @@ export function DerivBotSimRunner({ botId }: { botId: string }) {
         </div>
 
         <p className="mt-5 text-[10.5px] leading-relaxed" style={{ color: TC.faint }}>
-          Simulation mode — no real trades. Trading carries risk. This is an automated tool, not financial advice or a profit guarantee.
+          Trading carries risk. This is an automated tool, not financial advice or a profit guarantee. Never risk more than you can afford to lose.
         </p>
       </div>
 
@@ -242,7 +236,7 @@ function RecommendBalanceModal({ balance, onClose }: { balance: number; onClose:
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose, dontShow]);
 
-  const tips = ["Start with a low stake.", "Set a take profit so the bot doesn't run too long.", "Edit your sim balance any time and tap Apply."];
+  const tips = ["Start with a low stake.", "Set a take profit so the bot doesn't run too long.", "Let it run to your take profit — no need to stop it early."];
 
   return (
     <div role="dialog" aria-modal="true" aria-labelledby="sim-reco-bal-title"
@@ -259,8 +253,9 @@ function RecommendBalanceModal({ balance, onClose }: { balance: number; onClose:
         </span>
         <h3 id="sim-reco-bal-title" className="mt-3 text-[21px] font-semibold tracking-tight" style={{ fontFamily: "var(--font-serif)" }}>Recommendation</h3>
         <p className="mt-1.5 text-[12.5px] leading-relaxed" style={{ color: TC.muted }}>
-          Your sim balance is <b style={{ color: TC.text }}>{fmtBalance(balance, "USD")}</b>. We recommend{" "}
-          <b style={{ color: TC.text }}>1,000 USD or more</b> for a smoother simulation run.
+          Your balance is <b style={{ color: TC.text }}>{fmtBalance(balance, "USD")}</b>. These bots trade on any
+          balance, but we recommend <b style={{ color: TC.text }}>1,000 USD or more</b> — profits add up faster,
+          without long waits for a target to hit.
         </p>
         <div className="mt-3 rounded-xl border p-3" style={{ borderColor: TC.line, background: "rgba(56,189,248,0.06)" }}>
           <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider" style={{ color: TC.profit }}>
