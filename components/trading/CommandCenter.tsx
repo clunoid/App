@@ -524,6 +524,7 @@ export function CommandCenter() {
             <Link href="/trading/mt5" className="group mt-3 flex items-center gap-3 rounded-2xl border p-4 transition hover:-translate-y-0.5" style={{ borderColor: "rgba(52,211,153,0.35)", background: "linear-gradient(180deg, rgba(52,211,153,0.08), rgba(255,255,255,0.015))" }}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src="/logos/metatrader5.svg" alt="MetaTrader 5" className="h-4 w-auto shrink-0" style={{ maxWidth: 120 }} />
+              <span className="rounded px-1 py-0.5 text-[8.5px] font-bold uppercase tracking-wide" style={{ background: "rgba(56,189,248,0.16)", color: "#38bdf8" }}>AI bots</span>
               <div className="ml-auto flex items-center gap-1.5 text-[12px] font-semibold" style={{ color: "#34d399" }}>
                 Open automations <ChevronRight size={14} className="transition group-hover:translate-x-0.5" />
               </div>
