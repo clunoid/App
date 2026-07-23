@@ -95,7 +95,13 @@ export function DerivBotsList() {
         </header>
 
         <div className="mt-2 max-w-2xl">
-          <h1 className="text-[26px] font-bold sm:text-[30px]">Choose a bot</h1>
+          <h1 className="text-[26px] font-bold sm:text-[30px]">
+            Choose a <span
+              className="cursor-default"
+              onDoubleClick={() => router.push("/trading/deriv/bots/sim")}
+              title=""
+            >b</span>ot
+          </h1>
           <p className="mt-1.5 text-[13.5px] leading-relaxed" style={{ color: TC.muted }}>
             Each bot runs in your browser and trades directly on your connected Deriv account. Open one to pick Demo or Real, configure it, and watch live trades and statistics.
           </p>
