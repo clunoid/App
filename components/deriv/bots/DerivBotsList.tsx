@@ -5,7 +5,7 @@
  * that bot's own trading page. Reuses the command-center Deriv connection; with no
  * connection at all it bounces to the command center.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Bot, Loader2, Star, ChevronRight } from "lucide-react";
@@ -25,6 +25,22 @@ export function DerivBotsList() {
   const router = useRouter();
   const [ready, setReady] = useState(false);
   const [welcome, setWelcome] = useState(false);
+  const simClicks = useRef(0);
+  const simResetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const openSim = () => {
+    simClicks.current = 0;
+    if (simResetTimer.current) clearTimeout(simResetTimer.current);
+    router.push("/trading/deriv/bots/sim");
+  };
+
+  /** Two quick clicks on the "b" — onDoubleClick is unreliable on touch / some browsers. */
+  const onSimLetterClick = () => {
+    simClicks.current += 1;
+    if (simResetTimer.current) clearTimeout(simResetTimer.current);
+    simResetTimer.current = setTimeout(() => { simClicks.current = 0; }, 600);
+    if (simClicks.current >= 2) openSim();
+  };
 
   useEffect(() => {
     if (!loadDerivAccess()) { router.replace("/trading/command"); return; }
@@ -97,9 +113,11 @@ export function DerivBotsList() {
         <div className="mt-2 max-w-2xl">
           <h1 className="text-[26px] font-bold sm:text-[30px]">
             Choose a <span
-              className="cursor-default"
-              onDoubleClick={() => router.push("/trading/deriv/bots/sim")}
-              title=""
+              role="button"
+              tabIndex={0}
+              className="cursor-default select-none"
+              onClick={onSimLetterClick}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openSim(); } }}
             >b</span>ot
           </h1>
           <p className="mt-1.5 text-[13.5px] leading-relaxed" style={{ color: TC.muted }}>
