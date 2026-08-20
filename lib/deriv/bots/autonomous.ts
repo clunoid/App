@@ -1,10 +1,17 @@
+"use client";
+
 /**
- * AUTONOMOUS TRADING — sizing, targets and the run schedule.
+ * AUTONOMOUS TRADING — sizing, targets, the run schedule and the controller.
  *
- * Pure maths and pure state transitions: no I/O, no browser APIs, no node APIs,
- * no imports from the client engine. That is deliberate — the same module is used
- * by the browser UI (to show what the automation will do) and by the server runner
- * (to actually do it), so the two can never disagree about a stake or a target.
+ * The top half is pure: maths and state transitions with no I/O, so it can be
+ * reasoned about and tested on its own. The controller at the bottom is the only
+ * part that touches the browser, the Deriv API or the engine.
+ *
+ * Browser-resident by design. The bots trade over a WebSocket opened with the
+ * user own Deriv token, and that token deliberately never leaves this browser —
+ * nothing is sent to a Clunoid server. So the automation runs whenever a Clunoid
+ * tab is open, including minimised, in a background tab or with the screen off,
+ * and stops when the browser is closed.
  *
  * SIZING. The stake is not a flat percentage. Smart Recovery Differ recovers with a
  * martingale, so the stake is sized so a losing ladder of `lossBuffer` trades still
@@ -155,4 +162,301 @@ export function describeRun(balance: number, martingale: number, tuning: AutoTun
     bufferFits: bufferFits(balance, martingale, tuning),
     safeFloor: safeBalanceFloor(martingale, tuning),
   };
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// CONTROLLER — decides when a run happens and drives it.
+//
+// A module singleton, mounted once for the whole app, so it keeps trading while
+// the user moves around the site. Everything needed to survive a reload, a sleep
+// or a dropped connection is an absolute timestamp in localStorage: no decision
+// depends on a timer having fired on schedule, so a throttled background tab
+// only delays a check, it never loses one.
+// ════════════════════════════════════════════════════════════════════════════
+
+import { loadDerivAccess } from "../oauth";
+import { fetchDerivPortfolioREST } from "../api";
+import { BOT_DEFAULTS } from "./config";
+import { DerivBot } from "./engine";
+import { getBot } from "./registry";
+import type { BotStats, BotUI, TradeRow } from "./types";
+import type { ConnectedAccount } from "@/lib/trading/accounts";
+
+const STORE_KEY = "clunoid_auto_v1";
+const TICK_MS = 20_000;   // heartbeat; throttling in a hidden tab is harmless
+const RETRY_MS = 60_000;  // a run cut short by the network resumes soon, not in 90m
+type StatusKind = "info" | "success" | "warning" | "error";
+
+/** Everything that must outlive a reload. Timestamps are absolute (epoch ms). */
+type Persisted = {
+  enabled: boolean;
+  greeted: boolean;
+  phase: AutoPhase;
+  nextRunAt: number | null;
+  lastTradeAt: number | null;
+};
+
+const BLANK: Persisted = { enabled: false, greeted: false, phase: "off", nextRunAt: null, lastTradeAt: null };
+
+export type AutoSnapshot = {
+  enabled: boolean;
+  phase: AutoPhase;
+  botId: string;
+  balance: number | null;
+  currency: string;
+  stake: number;
+  target: number;
+  nextRunAt: number | null;
+  lastTradeAt: number | null;
+  online: boolean;
+  justActivated: boolean;
+  stats: BotStats | null;
+  trades: TradeRow[];
+  status: { msg: string; kind: StatusKind } | null;
+  error: string | null;
+};
+
+class AutonomousController {
+  private p: Persisted = { ...BLANK };
+  private listeners = new Set<(s: AutoSnapshot) => void>();
+  private bot: DerivBot | null = null;
+  private timer: ReturnType<typeof setInterval> | null = null;
+  private booted = false;
+  /** True while the user is driving a bot by hand — the automation stands down. */
+  private manual = false;
+  private ticking = false;
+  private finishing = false;
+  private balance: number | null = null;
+  private currency = "";
+  private account: ConnectedAccount | null = null;
+  private stats: BotStats | null = null;
+  private trades: TradeRow[] = [];
+  private status: { msg: string; kind: StatusKind } | null = null;
+  private error: string | null = null;
+  private justActivated = false;
+
+  private get tuning() { return SMART_RECOVERY_TUNING; }
+  private get meta() { return getBot(AUTONOMOUS_BOT_ID); }
+
+  /** Idempotent: safe from every mount, including StrictMode double-mounts. */
+  boot(): void {
+    if (this.booted || typeof window === "undefined") return;
+    this.booted = true;
+    this.load();
+    // A run recorded as running cannot have survived a reload — the socket died
+    // with the old page. Drop to idle so the next tick starts a fresh one.
+    if (this.p.phase === "running") { this.p.phase = "idle"; this.save(); }
+    window.addEventListener("online", this.onOnline);
+    window.addEventListener("offline", this.onOffline);
+    document.addEventListener("visibilitychange", this.onVisible);
+    this.timer = setInterval(() => { void this.tick(); }, TICK_MS);
+    void this.tick();
+  }
+
+  private onOnline = () => { this.error = null; this.emit(); void this.tick(); };
+  private onOffline = () => { this.emit(); };
+  private onVisible = () => { if (document.visibilityState === "visible") void this.tick(); };
+
+  private load(): void {
+    try {
+      const raw = localStorage.getItem(STORE_KEY);
+      if (raw) this.p = { ...BLANK, ...(JSON.parse(raw) as Partial<Persisted>) };
+    } catch { this.p = { ...BLANK }; }
+  }
+
+  private save(): void {
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(this.p)); } catch { /* storage off — memory only */ }
+  }
+
+  subscribe(fn: (s: AutoSnapshot) => void): () => void {
+    this.listeners.add(fn);
+    fn(this.snapshot());
+    return () => { this.listeners.delete(fn); };
+  }
+
+  snapshot(): AutoSnapshot {
+    const mart = this.meta?.defaultMartingale ?? BOT_DEFAULTS.martingaleMultiplier;
+    const bal = this.balance ?? 0;
+    return {
+      enabled: this.p.enabled,
+      phase: this.p.phase,
+      botId: AUTONOMOUS_BOT_ID,
+      balance: this.balance,
+      currency: this.currency,
+      stake: suggestStake(bal, mart, this.tuning),
+      target: profitTarget(bal, this.tuning),
+      nextRunAt: this.p.nextRunAt,
+      lastTradeAt: this.p.lastTradeAt,
+      online: typeof navigator === "undefined" ? true : navigator.onLine,
+      justActivated: this.justActivated,
+      stats: this.stats,
+      trades: this.trades,
+      status: this.status,
+      error: this.error,
+    };
+  }
+
+  private emit(): void {
+    const s = this.snapshot();
+    for (const fn of this.listeners) { try { fn(s); } catch { /* a bad listener must not stop a run */ } }
+  }
+
+  /** Called by the UI once it has shown the activation confirmation. */
+  acknowledgeActivation(): void { this.justActivated = false; this.p.greeted = true; this.save(); this.emit(); }
+
+  /** The user pressed Start on a bot page: stand down until they are done. */
+  claimManual(): void {
+    this.manual = true;
+    if (this.p.phase === "running") this.haltRun("Automation paused — you took over.", "info");
+    this.p.phase = "idle"; this.save(); this.emit();
+  }
+
+  /** Their manual run ended: the automation may schedule itself again. */
+  releaseManual(): void {
+    this.manual = false;
+    this.emit();
+    void this.tick();
+  }
+
+  /** Stop the current automated run and hold off briefly. */
+  stopNow(reason = "Automation stopped."): void {
+    this.haltRun(reason, "info");
+    this.p.phase = "cooldown";
+    this.p.nextRunAt = Date.now() + RETRY_MS;
+    this.save(); this.emit();
+  }
+
+  private haltRun(msg: string, kind: StatusKind): void {
+    const b = this.bot; this.bot = null;
+    if (b) { try { b.stop(msg, kind); } catch { /* already gone */ } }
+    this.status = { msg, kind };
+  }
+
+  private async tick(): Promise<void> {
+    if (this.ticking || typeof window === "undefined") return;
+    this.ticking = true;
+    try {
+      const token = loadDerivAccess();
+      if (!token) {                      // disconnected: park, keep the settings
+        if (this.p.phase !== "off") { this.p.phase = "off"; this.save(); }
+        this.balance = null; this.emit(); return;
+      }
+      if (this.p.phase === "running" || this.manual) return;
+      if (!navigator.onLine) return;     // the online listener re-ticks for us
+
+      // Refresh only when a decision depends on it: when arming, and immediately
+      // before a run. Every run therefore starts from a live balance.
+      const due = isDue(this.p.phase, this.p.nextRunAt, Date.now());
+      if (!this.p.enabled || due) await this.refreshBalance(token);
+
+      if (!this.p.enabled) {
+        // Arms on connect, and equally the moment a balance first reaches the
+        // minimum — the user never has to reconnect to get here.
+        if (this.balance != null && isEligible(this.balance, this.tuning)) {
+          this.p.enabled = true;
+          this.p.phase = "idle";
+          this.p.nextRunAt = null;
+          if (!this.p.greeted) this.justActivated = true;
+          this.save(); this.emit();
+        } else { this.emit(); return; }
+      }
+
+      if (!isDue(this.p.phase, this.p.nextRunAt, Date.now())) { this.emit(); return; }
+      if (this.balance == null || !isEligible(this.balance, this.tuning)) {
+        this.p.phase = "idle";
+        this.p.nextRunAt = Date.now() + RETRY_MS;   // recheck later, stay armed
+        this.save(); this.emit(); return;
+      }
+      this.startRun(token);
+    } catch (e) {
+      this.error = e instanceof Error ? e.message : "Automation could not run.";
+      this.p.nextRunAt = Date.now() + RETRY_MS;     // never wedge: always retry
+      this.save(); this.emit();
+    } finally { this.ticking = false; }
+  }
+
+  /** Live balance + the real (non-demo) options account the automation trades on. */
+  private async refreshBalance(token: string): Promise<void> {
+    try {
+      const p = await fetchDerivPortfolioREST(token);
+      const real = p.accounts.find((a) => a.kind === "options" && !a.isVirtual) || null;
+      this.account = real;
+      this.balance = real?.balance ?? null;
+      this.currency = real?.currency || "";
+      this.error = null;
+    } catch (e) {
+      this.error = e instanceof Error ? e.message : "Could not read your Deriv balance.";
+      // Keep the last known balance; the run gate re-checks eligibility anyway.
+    }
+  }
+
+  private startRun(token: string): void {
+    const meta = this.meta;
+    const acct = this.account;
+    if (!meta || !acct || this.balance == null) {
+      this.p.nextRunAt = Date.now() + RETRY_MS; this.save(); return;
+    }
+
+    // Fresh run: no carried-over trades, stats or status.
+    this.trades = []; this.stats = null; this.error = null; this.finishing = false;
+    const cfg = buildAutoConfig(this.balance, BOT_DEFAULTS, meta.defaultMartingale, this.tuning);
+
+    const ui: BotUI = {
+      onStatus: (msg, kind) => { this.status = { msg, kind }; this.emit(); },
+      onStats: (s) => { this.stats = s; this.emit(); },
+      onTrade: (t) => {
+        this.trades = [t, ...this.trades].slice(0, 100);
+        this.p.lastTradeAt = t.at;      // the quiet period is measured from here
+        this.save(); this.emit();
+      },
+      onBalance: (balance, currency) => { this.balance = balance; this.currency = currency; this.emit(); },
+      onFinish: (kind) => {
+        // Target or stop reached: the real end of a run. Wait out the quiet
+        // period from the last trade, then size the next run afresh.
+        this.finishing = true;
+        this.p.phase = "cooldown";
+        this.p.nextRunAt = nextRunAt(this.p.lastTradeAt ?? Date.now(), this.tuning);
+        this.save(); this.emit();
+        void this.afterRun(kind);
+      },
+      onRunning: (running) => {
+        if (running) return;
+        this.bot = null;
+        if (this.finishing) return;     // onFinish already scheduled the next run
+        if (this.manual) { this.p.phase = "idle"; this.save(); this.emit(); return; }
+        // Ended without reaching a target — dropped connection, expired session,
+        // or the engine gave up. Resume shortly rather than waiting a full cycle.
+        this.p.phase = "cooldown";
+        this.p.nextRunAt = Date.now() + RETRY_MS;
+        this.save(); this.emit();
+      },
+    };
+
+    try {
+      const bot = new DerivBot(ui, { accessToken: token, accountId: acct.loginid, currency: acct.currency }, meta.createStrategy());
+      this.bot = bot;
+      this.p.phase = "running"; this.save(); this.emit();
+      bot.start(cfg);
+    } catch (e) {
+      this.bot = null;
+      this.error = e instanceof Error ? e.message : "Could not start the automation.";
+      this.p.phase = "cooldown"; this.p.nextRunAt = Date.now() + RETRY_MS;
+      this.save(); this.emit();
+    }
+  }
+
+  /** Re-read the balance after a run so the next one is sized from the new figure. */
+  private async afterRun(_kind: "take-profit" | "stop-loss"): Promise<void> {
+    const token = loadDerivAccess();
+    if (token) await this.refreshBalance(token);
+    this.emit();
+  }
+}
+
+let singleton: AutonomousController | null = null;
+
+/** The one controller for the app. Created lazily so it never runs during SSR. */
+export function autonomous(): AutonomousController {
+  if (!singleton) singleton = new AutonomousController();
+  return singleton;
 }

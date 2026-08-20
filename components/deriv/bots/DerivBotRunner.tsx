@@ -9,7 +9,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Play, Square, Loader2, TrendingUp, TrendingDown, Wallet, Star, Trophy, ShieldAlert, X, PiggyBank, Lightbulb, Check, ArrowDownToLine } from "lucide-react";
+import { ArrowLeft, Play, Square, Loader2, TrendingUp, TrendingDown, Wallet, Star, Trophy, ShieldAlert, X, PiggyBank, Lightbulb, Check, ArrowDownToLine, Bot } from "lucide-react";
 import { TC, DOT_GRID, monoFont, fmtBalance } from "@/lib/trading/theme";
 import type { ConnectedAccount } from "@/lib/trading/accounts";
 import { loadDerivAccess } from "@/lib/deriv/oauth";
@@ -19,6 +19,7 @@ import { fetchDerivPortfolioREST } from "@/lib/deriv/api";
 import { BOT_DEFAULTS } from "@/lib/deriv/bots/config";
 import { DerivBot } from "@/lib/deriv/bots/engine";
 import { getBot } from "@/lib/deriv/bots/registry";
+import { autonomous, msUntilDue, type AutoSnapshot } from "@/lib/deriv/bots/autonomous";
 import type { BotUI, BotStats, TradeRow } from "@/lib/deriv/bots/types";
 
 type StatusKind = "info" | "success" | "warning" | "error";
@@ -55,6 +56,10 @@ export function DerivBotRunner({ botId }: { botId: string }) {
   const [needDepOpen, setNeedDepOpen] = useState(false); // shown when a run can't afford the stake
   const lowBalDecided = useRef(false);
   const botRef = useRef<DerivBot | null>(null);
+  // Live view of the automation. When it is the one trading this bot, the three
+  // columns below read from it instead of this page's own engine instance.
+  const [auto, setAuto] = useState<AutoSnapshot | null>(null);
+  useEffect(() => autonomous().subscribe(setAuto), []);
 
   const refreshAccounts = useCallback(async (acc: string): Promise<ConnectedAccount[]> => {
     try {
@@ -86,8 +91,20 @@ export function DerivBotRunner({ botId }: { botId: string }) {
   const demoAccount = accounts.find((a) => a.isVirtual) || null;
   const realAccount = accounts.find((a) => !a.isVirtual) || null;
   const selected = mode === "demo" ? demoAccount : realAccount;
-  const shownBalance = liveBalance ?? { balance: selected?.balance ?? null, currency: selected?.currency ?? "" };
-  const switchMode = (m: Mode) => { if (runningState) return; setMode(m); setLiveBalance(null); };
+
+  // The automation is driving this bot right now: mirror its run rather than
+  // showing an empty page. A manual run always wins — starting one claims it.
+  const autoOwns = !runningState && auto?.phase === "running" && auto.botId === botId;
+  const autoWaiting = !runningState && !!auto?.enabled && auto.botId === botId && auto.phase === "cooldown";
+  const effStats = autoOwns ? auto!.stats : stats;
+  const effTrades = autoOwns ? auto!.trades : trades;
+  const effStatus = autoOwns ? auto!.status : status;
+  const busy = runningState || autoOwns;
+
+  const shownBalance = autoOwns && auto!.balance != null
+    ? { balance: auto!.balance, currency: auto!.currency }
+    : liveBalance ?? { balance: selected?.balance ?? null, currency: selected?.currency ?? "" };
+  const switchMode = (m: Mode) => { if (busy) return; setMode(m); setLiveBalance(null); };
 
   // Recommend a healthier balance when the real account is under $1,000. It is a
   // gentle nudge, not a wall: decided once the balance is known, and shown at most
@@ -128,6 +145,8 @@ export function DerivBotRunner({ botId }: { botId: string }) {
     const curBal = shownBalance.balance;
     if (curBal != null && (curBal <= 0 || curBal < parseFloat(stake))) { setNeedDepOpen(true); return; }
 
+    // Taking over by hand: the automation stands down until this run ends.
+    autonomous().claimManual();
     botRef.current?.stop("Restarting.", "info");
     botRef.current = null;
     setTrades([]); setStats(null); setStatus(null); setFinish(null);
@@ -139,10 +158,13 @@ export function DerivBotRunner({ botId }: { botId: string }) {
       onTrade: (t) => setTrades((prev) => [t, ...prev].slice(0, 100)),
       onRunning: (r) => {
         setRunning(r);
-        if (!r) void refreshAccounts(access).then((opts) => {
-          const acct = opts.find((a) => a.loginid === tradedId);
-          if (acct && acct.balance != null) setLiveBalance({ balance: acct.balance, currency: acct.currency });
-        });
+        if (!r) {
+          autonomous().releaseManual(); // hand control back to the automation
+          void refreshAccounts(access).then((opts) => {
+            const acct = opts.find((a) => a.loginid === tradedId);
+            if (acct && acct.balance != null) setLiveBalance({ balance: acct.balance, currency: acct.currency });
+          });
+        }
       },
       onBalance: (balance, currency) => setLiveBalance({ balance, currency }),
       onFinish: (kind, summary) => setFinish({ kind, summary }),
@@ -267,16 +289,21 @@ export function DerivBotRunner({ botId }: { botId: string }) {
 
           {/* Configuration */}
           <Col title="Configuration">
+            {(autoOwns || autoWaiting) && <AutoBanner auto={auto!} running={autoOwns} />}
             <div className="grid gap-3">
-              <Field label="Initial stake (USD)" value={stake} onChange={setStake} min={BOT_DEFAULTS.minStake} step={0.01} disabled={runningState} />
-              <Field label="Take profit (USD)" value={takeProfit} onChange={setTakeProfit} min={1} step={1} disabled={runningState} />
-              <Field label="Stop loss (USD)" value={stopLoss} onChange={setStopLoss} min={1} step={1} disabled={runningState} />
-              {meta.supportsMartingale && <Field label="Martingale ×" value={martingale} onChange={setMartingale} min={1} step={0.1} disabled={runningState} />}
+              <Field label="Initial stake (USD)" value={stake} onChange={setStake} min={BOT_DEFAULTS.minStake} step={0.01} disabled={busy} />
+              <Field label="Take profit (USD)" value={takeProfit} onChange={setTakeProfit} min={1} step={1} disabled={busy} />
+              <Field label="Stop loss (USD)" value={stopLoss} onChange={setStopLoss} min={1} step={1} disabled={busy} />
+              {meta.supportsMartingale && <Field label="Martingale ×" value={martingale} onChange={setMartingale} min={1} step={0.1} disabled={busy} />}
             </div>
             {/* action block sinks to the bottom of a tall card so the inputs stay
                 grouped at the top instead of everything floating mid-card */}
             <div className="lg:mt-auto">
-              {!runningState ? (
+              {autoOwns ? (
+                <button onClick={() => autonomous().stopNow("Automation stopped by you.")} className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-[13.5px] font-semibold transition hover:opacity-90" style={{ background: TC.loss, color: "#fff" }}>
+                  <Square size={15} /> Stop automation
+                </button>
+              ) : !runningState ? (
                 <button onClick={startBot} className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-[13.5px] font-semibold transition hover:opacity-90" style={{ background: TC.profit, color: TC.ink }}>
                   <Play size={15} /> Start on {mode === "demo" ? "Demo" : "Real"}
                 </button>
@@ -286,34 +313,39 @@ export function DerivBotRunner({ botId }: { botId: string }) {
                 </button>
               )}
               {runningState && <div className="mt-2 inline-flex items-center gap-1.5 text-[12px]" style={{ color: TC.profit }}><Loader2 size={13} className="animate-spin" /> running on {mode}</div>}
-              {status && <div className="mt-2 text-[12px] leading-snug" style={{ color: status.kind === "error" ? TC.loss : status.kind === "success" ? TC.profit : status.kind === "warning" ? "#f5c451" : TC.muted }}>{status.msg}</div>}
-              <p className="mt-3 text-[10.5px] leading-relaxed" style={{ color: TC.faint }}>Stops automatically at your take-profit or stop-loss (realised P/L).</p>
+              {autoOwns && <div className="mt-2 inline-flex items-center gap-1.5 text-[12px]" style={{ color: "#34d399" }}><Loader2 size={13} className="animate-spin" /> automation running</div>}
+              {effStatus && <div className="mt-2 text-[12px] leading-snug" style={{ color: effStatus.kind === "error" ? TC.loss : effStatus.kind === "success" ? TC.profit : effStatus.kind === "warning" ? "#f5c451" : TC.muted }}>{effStatus.msg}</div>}
+              <p className="mt-3 text-[10.5px] leading-relaxed" style={{ color: TC.faint }}>
+                {autoOwns || autoWaiting
+                  ? "Stop the automation to trade with your own settings."
+                  : "Stops automatically at your take-profit or stop-loss (realised P/L)."}
+              </p>
             </div>
           </Col>
 
           {/* Live Performance */}
-          <Col title="Live Performance" right={stats ? `${fmtTime(stats.runningSeconds)}` : "00:00:00"}>
+          <Col title="Live Performance" right={effStats ? `${fmtTime(effStats.runningSeconds)}` : "00:00:00"}>
             <div className="flex flex-col lg:flex-1">
-              <Stat label="Session P/L" value={stats ? `${stats.totalProfit >= 0 ? "+" : ""}${stats.totalProfit.toFixed(2)}` : "—"} tone={stats ? (stats.totalProfit >= 0 ? "profit" : "loss") : undefined} />
-              <Stat label="Win rate" value={stats ? `${stats.winRate.toFixed(1)}%` : "—"} sub={stats ? `${stats.wins}/${stats.totalTrades}` : undefined} />
-              <Stat label="Trades" value={stats ? String(stats.totalTrades) : "0"} />
-              <Stat label="Current stake" value={stats ? stats.currentStake.toFixed(2) : "—"} />
-              <Stat label="Loss streak" value={stats ? String(stats.consecutiveLosses) : "0"} tone={stats && stats.consecutiveLosses > 0 ? "loss" : undefined} />
-              <Stat label="Market" value={stats?.market ?? "—"} />
-              <Stat label="Target" value={stats?.target ?? "—"} />
+              <Stat label="Session P/L" value={effStats ? `${effStats.totalProfit >= 0 ? "+" : ""}${effStats.totalProfit.toFixed(2)}` : "—"} tone={effStats ? (effStats.totalProfit >= 0 ? "profit" : "loss") : undefined} />
+              <Stat label="Win rate" value={effStats ? `${effStats.winRate.toFixed(1)}%` : "—"} sub={effStats ? `${effStats.wins}/${effStats.totalTrades}` : undefined} />
+              <Stat label="Trades" value={effStats ? String(effStats.totalTrades) : "0"} />
+              <Stat label="Current stake" value={effStats ? effStats.currentStake.toFixed(2) : "—"} />
+              <Stat label="Loss streak" value={effStats ? String(effStats.consecutiveLosses) : "0"} tone={effStats && effStats.consecutiveLosses > 0 ? "loss" : undefined} />
+              <Stat label="Market" value={effStats?.market ?? "—"} />
+              <Stat label="Target" value={effStats?.target ?? "—"} />
               <Stat label="Balance" value={fmtBalance(shownBalance.balance, shownBalance.currency)} />
             </div>
           </Col>
 
           {/* Recent Trades */}
-          <Col title="Recent Trades" right={trades.length ? `${trades.length}` : undefined}>
-            {trades.length === 0 ? (
+          <Col title="Recent Trades" right={effTrades.length ? `${effTrades.length}` : undefined}>
+            {effTrades.length === 0 ? (
               <div className="grid place-items-center rounded-xl border border-dashed py-10 text-center lg:flex-1" style={{ borderColor: TC.line }}>
                 <span className="text-[12px]" style={{ color: TC.muted }}>No trades yet — start the bot.</span>
               </div>
             ) : (
               <div className="cln-trade-scroll flex max-h-[420px] flex-col gap-2 overflow-y-auto overflow-x-hidden pr-1 lg:max-h-none lg:min-h-0 lg:flex-1">
-                {trades.map((t) => (
+                {effTrades.map((t) => (
                   <div key={`${t.at}-${t.market}-${t.target}`} className="cln-trade-row flex items-center justify-between rounded-xl border px-3 py-2" style={{ borderColor: t.win ? "rgba(56,189,248,0.3)" : "rgba(242,96,125,0.3)", background: "rgba(255,255,255,0.02)", "--cln-glow": t.win ? "rgba(56,189,248,0.9)" : "rgba(242,96,125,0.9)", "--cln-ring": t.win ? "rgba(56,189,248,0.95)" : "rgba(242,96,125,0.95)" } as React.CSSProperties}>
                     <div className="min-w-0">
                       <div className="flex items-center gap-1 text-[12px] font-semibold" style={{ color: t.win ? TC.profit : TC.loss }}>
@@ -540,6 +572,47 @@ function MiniStat({ label, value }: { label: string; value: string }) {
     <div className="rounded-xl border p-2" style={{ borderColor: TC.line, background: "rgba(0,0,0,0.2)" }}>
       <div className="text-[9px] font-semibold uppercase tracking-wider" style={{ color: TC.faint }}>{label}</div>
       <div className="mt-0.5 text-[13px] font-bold" style={{ ...monoFont, color: TC.text }}>{value}</div>
+    </div>
+  );
+}
+
+/**
+ * Automation strip at the top of Configuration. Explains what the automation is
+ * doing right now — trading, or resting until the next run — and what it sized
+ * this run at, so the numbers on screen are never a mystery.
+ */
+function AutoBanner({ auto, running }: { auto: AutoSnapshot; running: boolean }) {
+  const [, force] = useState(0);
+  // Only tick while a countdown is on screen.
+  useEffect(() => {
+    if (running) return;
+    const t = setInterval(() => force((n) => n + 1), 1000);
+    return () => clearInterval(t);
+  }, [running]);
+
+  const cur = auto.currency || "USD";
+  const left = msUntilDue(auto.nextRunAt, Date.now());
+  const mm = Math.floor(left / 60000);
+  const ss = Math.floor((left % 60000) / 1000);
+
+  return (
+    <div className="mb-3 rounded-xl border p-3" style={{ borderColor: "rgba(52,211,153,0.35)", background: "rgba(52,211,153,0.06)" }}>
+      <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider" style={{ color: "#34d399" }}>
+        <Bot size={13} /> {running ? "Trading for you" : "Automated · resting"}
+      </div>
+      <p className="mt-1.5 text-[11.5px] leading-relaxed" style={{ color: TC.muted }}>
+        {running ? (
+          <>Staking <b style={{ color: TC.text }}>{auto.stake.toFixed(2)} {cur}</b> a trade, aiming for{" "}
+          <b style={{ color: TC.text }}>{auto.target.toFixed(2)} {cur}</b> this run.</>
+        ) : (
+          <>Next run in <b style={{ color: TC.text }}>{String(mm).padStart(2, "0")}:{String(ss).padStart(2, "0")}</b>,
+          sized from your balance at the time.</>
+        )}
+      </p>
+      {!auto.online && (
+        <p className="mt-1 text-[11px]" style={{ color: "#f5c451" }}>Offline — it resumes on its own when the connection is back.</p>
+      )}
+      {auto.error && <p className="mt-1 text-[11px]" style={{ color: TC.loss }}>{auto.error}</p>}
     </div>
   );
 }

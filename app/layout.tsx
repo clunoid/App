@@ -5,6 +5,7 @@ import { SpeedInsights } from "@vercel/speed-insights/next";
 import { SessionProvider } from "@/components/auth/SessionProvider";
 import { AuthPrompt } from "@/components/auth/AuthPrompt";
 import { BillingGate } from "@/components/billing/BillingGate";
+import { AutonomousTrading } from "@/components/deriv/bots/AutonomousTrading";
 import { ldJson } from "@/lib/marketing/content";
 import "./globals.css";
 
@@ -151,6 +152,9 @@ export default function RootLayout({
         {/* Auth + billing overlays, mounted once so they work on every page. */}
         <AuthPrompt />
         <BillingGate />
+        {/* Keeps autonomous trading running as the user moves around the site.
+            Renders nothing unless the automation has just armed. */}
+        <AutonomousTrading />
         <Analytics />
         <SpeedInsights />
       </body>
