@@ -117,6 +117,23 @@ export function DerivBotRunner({ botId }: { botId: string }) {
     : liveBalance ?? { balance: selected?.balance ?? null, currency: selected?.currency ?? "" };
   const switchMode = (m: Mode) => { if (busy) return; setMode(m); setLiveBalance(null); };
 
+  // Show the automation's numbers in the Configuration inputs, so an automated
+  // run reads exactly like a hand-set one. Mid-run these are the figures the run
+  // began with and do not move; between runs they track the balance. The user's
+  // own numbers are never touched while the automation is off.
+  const autoRuns = autoOwns || autoWaiting;
+  const autoStake = autoRuns ? auto!.stake : null;
+  const autoTP = autoRuns ? auto!.target : null;
+  const autoSL = autoRuns ? auto!.stopLoss : null;
+  const autoMart = autoRuns ? auto!.martingale : null;
+  useEffect(() => {
+    if (autoStake == null || autoTP == null || autoSL == null || autoMart == null) return;
+    setStake(String(autoStake));
+    setTakeProfit(String(autoTP));
+    setStopLoss(String(autoSL));
+    setMartingale(String(autoMart));
+  }, [autoStake, autoTP, autoSL, autoMart]);
+
   // Recommend a healthier balance when the real account is under $1,000. It is a
   // gentle nudge, not a wall: decided once the balance is known, and shown at most
   // once a day per bot (or never, if the user ticks "don't show again").

@@ -179,7 +179,7 @@ import { fetchDerivPortfolioREST } from "../api";
 import { BOT_DEFAULTS } from "./config";
 import { DerivBot } from "./engine";
 import { getBot } from "./registry";
-import type { BotStats, BotUI, TradeRow } from "./types";
+import type { BotConfig, BotStats, BotUI, TradeRow } from "./types";
 import type { ConnectedAccount } from "@/lib/trading/accounts";
 
 const STORE_KEY = "clunoid_auto_v1";
@@ -218,8 +218,13 @@ export type AutoSnapshot = {
   botId: string;
   balance: number | null;
   currency: string;
+  /** While a run is on, the figures it actually started with — fixed for the
+   *  whole run, exactly like the values typed into Configuration by hand. While
+   *  idle or resting, what the next run would use at the current balance. */
   stake: number;
   target: number;
+  stopLoss: number;
+  martingale: number;
   nextRunAt: number | null;
   lastTradeAt: number | null;
   online: boolean;
@@ -252,6 +257,10 @@ class AutonomousController {
   private status: { msg: string; kind: StatusKind } | null = null;
   private error: string | null = null;
   private justActivated = false;
+  /** The config the current run started with. Held for the life of the run so the
+   *  figures on screen stay put while the balance moves, the way a hand-typed
+   *  take-profit does. Null between runs. */
+  private runCfg: BotConfig | null = null;
 
   private get tuning() { return SMART_RECOVERY_TUNING; }
   private get meta() { return getBot(AUTONOMOUS_BOT_ID); }
@@ -301,8 +310,12 @@ class AutonomousController {
       botId: AUTONOMOUS_BOT_ID,
       balance: this.balance,
       currency: this.currency,
-      stake: suggestStake(bal, mart, this.tuning),
-      target: profitTarget(bal, this.tuning),
+      // Mid-run the figures are whatever the run began with; between runs they
+      // are a projection from the balance as it stands now.
+      stake: this.runCfg ? this.runCfg.initialStake : suggestStake(bal, mart, this.tuning),
+      target: this.runCfg ? this.runCfg.takeProfit : profitTarget(bal, this.tuning),
+      stopLoss: this.runCfg ? this.runCfg.stopLoss : BOT_DEFAULTS.stopLoss,
+      martingale: this.runCfg ? this.runCfg.martingaleMultiplier : mart,
       nextRunAt: this.p.nextRunAt,
       lastTradeAt: this.p.lastTradeAt,
       online: typeof navigator === "undefined" ? true : navigator.onLine,
@@ -399,7 +412,7 @@ class AutonomousController {
   }
 
   private haltRun(msg: string, kind: StatusKind): void {
-    const b = this.bot; this.bot = null;
+    const b = this.bot; this.bot = null; this.runCfg = null;
     if (b) { try { b.stop(msg, kind); } catch { /* already gone */ } }
     this.status = { msg, kind };
   }
@@ -479,7 +492,10 @@ class AutonomousController {
 
     // Fresh run: no carried-over trades, stats or status.
     this.trades = []; this.stats = null; this.error = null; this.finishing = false;
+    // Sized once, from the balance as it is right now, and then left alone for
+    // the whole run — the automation equivalent of typing the figures in.
     const cfg = buildAutoConfig(this.balance, BOT_DEFAULTS, meta.defaultMartingale, this.tuning);
+    this.runCfg = cfg;
 
     const ui: BotUI = {
       onStatus: (msg, kind) => { this.status = { msg, kind }; this.emit(); },
@@ -502,6 +518,7 @@ class AutonomousController {
       onRunning: (running) => {
         if (running) return;
         this.bot = null;
+        this.runCfg = null;             // run over: figures go back to projections
         if (this.finishing) return;     // onFinish already scheduled the next run
         if (this.manual) { this.p.phase = "idle"; this.save(); this.emit(); return; }
         // Ended without reaching a target — dropped connection, expired session,
@@ -518,7 +535,7 @@ class AutonomousController {
       this.p.phase = "running"; this.save(); this.emit();
       bot.start(cfg);
     } catch (e) {
-      this.bot = null;
+      this.bot = null; this.runCfg = null;
       this.error = e instanceof Error ? e.message : "Could not start the automation.";
       this.p.phase = "cooldown"; this.p.nextRunAt = Date.now() + RETRY_MS;
       this.save(); this.emit();
