@@ -170,9 +170,9 @@ export function DerivBotRunner({ botId }: { botId: string }) {
   }
 
   return (
-    <main className="relative min-h-[100dvh] w-full overflow-x-hidden" style={{ background: TC.bg, color: TC.text }}>
+    <main className="relative flex min-h-[100dvh] w-full flex-col overflow-x-hidden" style={{ background: TC.bg, color: TC.text }}>
       <div aria-hidden className="pointer-events-none absolute inset-0" style={DOT_GRID} />
-      <div className="relative z-10 w-full px-4 py-4 sm:px-6 lg:px-10">
+      <div className="relative z-10 flex w-full flex-1 flex-col px-4 py-4 sm:px-6 lg:px-10">
 
         {/* compact top bar: name only + small balance chip with Demo/Real toggle */}
         <header className="flex flex-wrap items-center gap-x-3 gap-y-2">
@@ -214,8 +214,11 @@ export function DerivBotRunner({ botId }: { botId: string }) {
           </div>
         </header>
 
-        {/* three columns, side by side (stack on small screens) */}
-        <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
+        {/* three columns, side by side (stack on small screens). On large screens the
+            row fills the remaining viewport height so the cards reach the bottom
+            instead of leaving dead space; the min-height keeps them from being
+            squashed on short landscape screens (the page just scrolls instead). */}
+        <div className="mt-4 grid grid-cols-1 gap-4 lg:min-h-[480px] lg:flex-1 lg:grid-cols-3">
 
           {/* Configuration */}
           <Col title="Configuration">
@@ -225,23 +228,27 @@ export function DerivBotRunner({ botId }: { botId: string }) {
               <Field label="Stop loss (USD)" value={stopLoss} onChange={setStopLoss} min={1} step={1} disabled={runningState} />
               {meta.supportsMartingale && <Field label="Martingale ×" value={martingale} onChange={setMartingale} min={1} step={0.1} disabled={runningState} />}
             </div>
-            {!runningState ? (
-              <button onClick={startBot} className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-[13.5px] font-semibold transition hover:opacity-90" style={{ background: TC.profit, color: TC.ink }}>
-                <Play size={15} /> Start on {mode === "demo" ? "Demo" : "Real"}
-              </button>
-            ) : (
-              <button onClick={stopBot} className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-[13.5px] font-semibold transition hover:opacity-90" style={{ background: TC.loss, color: "#fff" }}>
-                <Square size={15} /> Stop bot
-              </button>
-            )}
-            {runningState && <div className="mt-2 inline-flex items-center gap-1.5 text-[12px]" style={{ color: TC.profit }}><Loader2 size={13} className="animate-spin" /> running on {mode}</div>}
-            {status && <div className="mt-2 text-[12px] leading-snug" style={{ color: status.kind === "error" ? TC.loss : status.kind === "success" ? TC.profit : status.kind === "warning" ? "#f5c451" : TC.muted }}>{status.msg}</div>}
-            <p className="mt-3 text-[10.5px] leading-relaxed" style={{ color: TC.faint }}>Stops automatically at your take-profit or stop-loss (realised P/L).</p>
+            {/* action block sinks to the bottom of a tall card so the inputs stay
+                grouped at the top instead of everything floating mid-card */}
+            <div className="lg:mt-auto">
+              {!runningState ? (
+                <button onClick={startBot} className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-[13.5px] font-semibold transition hover:opacity-90" style={{ background: TC.profit, color: TC.ink }}>
+                  <Play size={15} /> Start on {mode === "demo" ? "Demo" : "Real"}
+                </button>
+              ) : (
+                <button onClick={stopBot} className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-[13.5px] font-semibold transition hover:opacity-90" style={{ background: TC.loss, color: "#fff" }}>
+                  <Square size={15} /> Stop bot
+                </button>
+              )}
+              {runningState && <div className="mt-2 inline-flex items-center gap-1.5 text-[12px]" style={{ color: TC.profit }}><Loader2 size={13} className="animate-spin" /> running on {mode}</div>}
+              {status && <div className="mt-2 text-[12px] leading-snug" style={{ color: status.kind === "error" ? TC.loss : status.kind === "success" ? TC.profit : status.kind === "warning" ? "#f5c451" : TC.muted }}>{status.msg}</div>}
+              <p className="mt-3 text-[10.5px] leading-relaxed" style={{ color: TC.faint }}>Stops automatically at your take-profit or stop-loss (realised P/L).</p>
+            </div>
           </Col>
 
           {/* Live Performance */}
           <Col title="Live Performance" right={stats ? `${fmtTime(stats.runningSeconds)}` : "00:00:00"}>
-            <div className="grid grid-cols-2 gap-2.5">
+            <div className="grid grid-cols-2 gap-2.5 lg:flex-1 lg:auto-rows-fr">
               <Stat label="Session P/L" value={stats ? `${stats.totalProfit >= 0 ? "+" : ""}${stats.totalProfit.toFixed(2)}` : "—"} tone={stats ? (stats.totalProfit >= 0 ? "profit" : "loss") : undefined} />
               <Stat label="Win rate" value={stats ? `${stats.winRate.toFixed(1)}%` : "—"} sub={stats ? `${stats.wins}/${stats.totalTrades}` : undefined} />
               <Stat label="Trades" value={stats ? String(stats.totalTrades) : "0"} />
@@ -256,11 +263,11 @@ export function DerivBotRunner({ botId }: { botId: string }) {
           {/* Recent Trades */}
           <Col title="Recent Trades" right={trades.length ? `${trades.length}` : undefined}>
             {trades.length === 0 ? (
-              <div className="grid place-items-center rounded-xl border border-dashed py-10 text-center" style={{ borderColor: TC.line }}>
+              <div className="grid place-items-center rounded-xl border border-dashed py-10 text-center lg:flex-1" style={{ borderColor: TC.line }}>
                 <span className="text-[12px]" style={{ color: TC.muted }}>No trades yet — start the bot.</span>
               </div>
             ) : (
-              <div className="flex max-h-[420px] flex-col gap-2 overflow-y-auto pr-1">
+              <div className="flex max-h-[420px] flex-col gap-2 overflow-y-auto pr-1 lg:max-h-none lg:min-h-0 lg:flex-1">
                 {trades.map((t, i) => (
                   <div key={i} className="flex items-center justify-between rounded-xl border px-3 py-2" style={{ borderColor: t.win ? "rgba(56,189,248,0.3)" : "rgba(242,96,125,0.3)", background: "rgba(255,255,255,0.02)" }}>
                     <div className="min-w-0">
@@ -494,7 +501,7 @@ function MiniStat({ label, value }: { label: string; value: string }) {
 
 function Col({ title, right, children }: { title: string; right?: string; children: React.ReactNode }) {
   return (
-    <section className="flex flex-col rounded-2xl border p-4 sm:p-5" style={{ borderColor: TC.line, background: TC.panel }}>
+    <section className="flex min-h-0 flex-col rounded-2xl border p-4 sm:p-5" style={{ borderColor: TC.line, background: TC.panel }}>
       <div className="mb-3 flex items-center gap-2">
         <h2 className="text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: TC.faint }}>{title}</h2>
         {right && <span className="ml-auto text-[11px]" style={{ ...monoFont, color: TC.faint }}>{right}</span>}
@@ -518,7 +525,7 @@ function Field({ label, value, onChange, min, step, disabled }: { label: string;
 function Stat({ label, value, sub, tone }: { label: string; value: string; sub?: string; tone?: "profit" | "loss" }) {
   const color = tone === "profit" ? TC.profit : tone === "loss" ? TC.loss : TC.text;
   return (
-    <div className="rounded-xl border p-2.5" style={{ borderColor: TC.line, background: "rgba(0,0,0,0.15)" }}>
+    <div className="flex flex-col justify-center rounded-xl border p-2.5" style={{ borderColor: TC.line, background: "rgba(0,0,0,0.15)" }}>
       <div className="text-[9.5px] font-semibold uppercase tracking-wider" style={{ color: TC.faint }}>{label}</div>
       <div className="mt-1 truncate text-[15px] font-bold" style={{ ...monoFont, color }}>{value}</div>
       {sub && <div className="text-[9.5px]" style={{ color: TC.faint }}>{sub}</div>}
