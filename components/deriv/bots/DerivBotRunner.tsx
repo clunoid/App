@@ -102,8 +102,11 @@ export function DerivBotRunner({ botId }: { botId: string }) {
 
   // The automation is driving this bot right now: mirror its run rather than
   // showing an empty page. A manual run always wins — starting one claims it.
-  const autoOwns = !runningState && auto?.phase === "running" && auto.botId === botId;
-  const autoWaiting = !runningState && !!auto?.enabled && auto.botId === botId && auto.phase === "cooldown";
+  // Switched off, the page shows no trace of the automation — exactly as it was
+  // before the feature existed.
+  const autoActive = !!auto?.active;
+  const autoOwns = !runningState && autoActive && auto?.phase === "running" && auto.botId === botId;
+  const autoWaiting = !runningState && autoActive && !!auto?.enabled && auto.botId === botId && auto.phase === "cooldown";
   const effStats = autoOwns ? auto!.stats : stats;
   const effTrades = autoOwns ? auto!.trades : trades;
   const effStatus = autoOwns ? auto!.status : status;
@@ -296,7 +299,12 @@ export function DerivBotRunner({ botId }: { botId: string }) {
         <div className="cln-dash-grid mt-4 grid grid-cols-1 gap-4 lg:min-h-[480px] lg:flex-1 lg:grid-cols-3">
 
           {/* Configuration */}
-          <Col title="Configuration">
+          <Col
+            title="Configuration"
+            // Only this bot is automated, and the switch hides itself while
+            // anything is running so it can never be flipped mid-trade.
+            action={!busy && botId === AUTONOMOUS_BOT_ID && auto ? <AutoToggle auto={auto} /> : undefined}
+          >
             {(autoOwns || autoWaiting) && <AutoBanner auto={auto!} running={autoOwns} />}
             <div className="grid gap-3">
               <Field label="Initial stake (USD)" value={stake} onChange={setStake} min={BOT_DEFAULTS.minStake} step={0.01} disabled={busy} />
@@ -626,15 +634,42 @@ function AutoBanner({ auto, running }: { auto: AutoSnapshot; running: boolean })
   );
 }
 
-function Col({ title, right, children }: { title: string; right?: string; children: React.ReactNode }) {
+function Col({ title, right, action, children }: { title: string; right?: string; action?: React.ReactNode; children: React.ReactNode }) {
   return (
     <section className="flex min-h-0 flex-col rounded-2xl border p-4 sm:p-5" style={{ borderColor: TC.line, background: TC.panel }}>
       <div className="mb-3 flex items-center gap-2">
         <h2 className="text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: TC.faint }}>{title}</h2>
+        {action}
         {right && <span className="ml-auto text-[11px]" style={{ ...monoFont, color: TC.faint }}>{right}</span>}
       </div>
       {children}
     </section>
+  );
+}
+
+/**
+ * The automation switch, sized to sit on the Configuration heading. Ticked green
+ * while the automation is on, plain grey while it is off. Off is temporary by
+ * design — an hour to trade by hand, then it comes back on its own.
+ */
+function AutoToggle({ auto }: { auto: AutoSnapshot }) {
+  const on = auto.active;
+  const back = auto.optedOutUntil
+    ? new Date(auto.optedOutUntil).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+    : null;
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      aria-label="Automated trading"
+      title={on ? "Automated trading is on — switch off to trade by hand for an hour" : `Automated trading is off — back on at ${back}`}
+      onClick={() => autonomous().setActive(!on)}
+      className="grid h-[15px] w-[15px] shrink-0 place-items-center rounded-[5px] border transition hover:opacity-80"
+      style={on ? { background: "#34d399", borderColor: "#34d399" } : { background: "transparent", borderColor: TC.line }}
+    >
+      {on && <Check size={10} strokeWidth={3.5} style={{ color: TC.ink }} />}
+    </button>
   );
 }
 

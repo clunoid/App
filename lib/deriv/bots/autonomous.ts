@@ -196,6 +196,9 @@ type Persisted = {
   lastTradeAt: number | null;
   /** Trade the Demo account instead of the real one — for verifying the cycle. */
   demo: boolean;
+  /** Switched off by the user until this moment, then it comes back by itself.
+   *  Null means on, which is the default and what a cleared store falls back to. */
+  optedOutUntil: number | null;
   /** The real-account schedule, parked while demo is on so testing cannot
    *  shorten (or extend) the quiet period that applies to real money. */
   savedNextRunAt: number | null;
@@ -203,8 +206,11 @@ type Persisted = {
 
 const BLANK: Persisted = {
   enabled: false, greeted: false, phase: "off", nextRunAt: null, lastTradeAt: null,
-  demo: false, savedNextRunAt: null,
+  demo: false, savedNextRunAt: null, optedOutUntil: null,
 };
+
+/** How long switching the automation off lasts before it turns itself back on. */
+const OPT_OUT_MS = 60 * 60 * 1000;
 
 export type AutoSnapshot = {
   enabled: boolean;
@@ -218,6 +224,9 @@ export type AutoSnapshot = {
   lastTradeAt: number | null;
   online: boolean;
   demo: boolean;
+  /** False only while the user has switched it off; it returns on its own. */
+  active: boolean;
+  optedOutUntil: number | null;
   justActivated: boolean;
   stats: BotStats | null;
   trades: TradeRow[];
@@ -298,6 +307,8 @@ class AutonomousController {
       lastTradeAt: this.p.lastTradeAt,
       online: typeof navigator === "undefined" ? true : navigator.onLine,
       demo: this.p.demo,
+      active: this.p.optedOutUntil == null || Date.now() >= this.p.optedOutUntil,
+      optedOutUntil: this.p.optedOutUntil,
       justActivated: this.justActivated,
       stats: this.stats,
       trades: this.trades,
@@ -326,6 +337,27 @@ class AutonomousController {
     this.manual = false;
     this.emit();
     void this.tick();
+  }
+
+  /**
+   * Switch the automation on or off from the bot page.
+   *
+   * Off is deliberately temporary: it lasts an hour, which is long enough to
+   * trade by hand without the automation stepping in, then it turns itself back
+   * on. On is the default, so a fresh browser is always automated.
+   */
+  setActive(on: boolean): void {
+    if (on) {
+      if (this.p.optedOutUntil == null) return;
+      this.p.optedOutUntil = null;
+      this.save(); this.emit(); void this.tick();
+      return;
+    }
+    if (this.p.optedOutUntil != null) return;
+    this.p.optedOutUntil = Date.now() + OPT_OUT_MS;
+    if (this.p.phase === "running") this.haltRun("Automation switched off.", "info");
+    this.p.phase = "idle";
+    this.save(); this.emit();
   }
 
   /**
@@ -380,6 +412,11 @@ class AutonomousController {
       if (!token) {                      // disconnected: park, keep the settings
         if (this.p.phase !== "off") { this.p.phase = "off"; this.save(); }
         this.balance = null; this.emit(); return;
+      }
+      // Switched off by hand: stay quiet until the hour is up, then come back.
+      if (this.p.optedOutUntil != null) {
+        if (Date.now() < this.p.optedOutUntil) { this.emit(); return; }
+        this.p.optedOutUntil = null; this.save();
       }
       if (this.p.phase === "running" || this.manual) return;
       if (!navigator.onLine) return;     // the online listener re-ticks for us
