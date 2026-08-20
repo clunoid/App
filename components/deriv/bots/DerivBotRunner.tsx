@@ -172,6 +172,32 @@ export function DerivBotRunner({ botId }: { botId: string }) {
   return (
     <main className="relative flex min-h-[100dvh] w-full flex-col overflow-x-hidden" style={{ background: TC.bg, color: TC.text }}>
       <div aria-hidden className="pointer-events-none absolute inset-0" style={DOT_GRID} />
+      {/* Recent Trades entry animation. A settled trade is prepended, so the new row
+          bounces into place at the top while a short colour-matched glow blooms and
+          fades — enough to catch the eye without pulling focus off the numbers.
+          The bounce is vertical only (scale never exceeds 1): the list is
+          overflow-y-auto, which computes overflow-x to auto, so a horizontal
+          overshoot would flash a scrollbar. */}
+      <style>{`
+        @keyframes clnTradeIn {
+          0%   { opacity: 0; transform: translate3d(0,-10px,0) scale(0.97); }
+          55%  { opacity: 1; transform: translate3d(0,3px,0) scale(1); }
+          78%  { transform: translate3d(0,-1.5px,0) scale(1); }
+          100% { opacity: 1; transform: translate3d(0,0,0) scale(1); }
+        }
+        @keyframes clnTradeGlow {
+          0%   { box-shadow: 0 0 0 0 rgba(0,0,0,0); }
+          30%  { box-shadow: 0 10px 24px -10px var(--cln-glow); }
+          100% { box-shadow: 0 0 0 0 rgba(0,0,0,0); }
+        }
+        .cln-trade-row {
+          animation: clnTradeIn 460ms cubic-bezier(0.22,0.8,0.3,1) both,
+                     clnTradeGlow 1000ms ease-out both;
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .cln-trade-row { animation: none; }
+        }
+      `}</style>
       <div className="relative z-10 flex w-full flex-1 flex-col px-4 py-4 sm:px-6 lg:px-10">
 
         {/* compact top bar: name only + small balance chip with Demo/Real toggle */}
@@ -268,8 +294,8 @@ export function DerivBotRunner({ botId }: { botId: string }) {
               </div>
             ) : (
               <div className="flex max-h-[420px] flex-col gap-2 overflow-y-auto pr-1 lg:max-h-none lg:min-h-0 lg:flex-1">
-                {trades.map((t, i) => (
-                  <div key={i} className="flex items-center justify-between rounded-xl border px-3 py-2" style={{ borderColor: t.win ? "rgba(56,189,248,0.3)" : "rgba(242,96,125,0.3)", background: "rgba(255,255,255,0.02)" }}>
+                {trades.map((t) => (
+                  <div key={`${t.at}-${t.market}-${t.target}`} className="cln-trade-row flex items-center justify-between rounded-xl border px-3 py-2" style={{ borderColor: t.win ? "rgba(56,189,248,0.3)" : "rgba(242,96,125,0.3)", background: "rgba(255,255,255,0.02)", "--cln-glow": t.win ? "rgba(56,189,248,0.55)" : "rgba(242,96,125,0.55)" } as React.CSSProperties}>
                     <div className="min-w-0">
                       <div className="flex items-center gap-1 text-[12px] font-semibold" style={{ color: t.win ? TC.profit : TC.loss }}>
                         {t.win ? <TrendingUp size={12} /> : <TrendingDown size={12} />} {t.target}
