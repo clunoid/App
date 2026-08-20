@@ -194,9 +194,17 @@ type Persisted = {
   phase: AutoPhase;
   nextRunAt: number | null;
   lastTradeAt: number | null;
+  /** Trade the Demo account instead of the real one — for verifying the cycle. */
+  demo: boolean;
+  /** The real-account schedule, parked while demo is on so testing cannot
+   *  shorten (or extend) the quiet period that applies to real money. */
+  savedNextRunAt: number | null;
 };
 
-const BLANK: Persisted = { enabled: false, greeted: false, phase: "off", nextRunAt: null, lastTradeAt: null };
+const BLANK: Persisted = {
+  enabled: false, greeted: false, phase: "off", nextRunAt: null, lastTradeAt: null,
+  demo: false, savedNextRunAt: null,
+};
 
 export type AutoSnapshot = {
   enabled: boolean;
@@ -209,6 +217,7 @@ export type AutoSnapshot = {
   nextRunAt: number | null;
   lastTradeAt: number | null;
   online: boolean;
+  demo: boolean;
   justActivated: boolean;
   stats: BotStats | null;
   trades: TradeRow[];
@@ -288,6 +297,7 @@ class AutonomousController {
       nextRunAt: this.p.nextRunAt,
       lastTradeAt: this.p.lastTradeAt,
       online: typeof navigator === "undefined" ? true : navigator.onLine,
+      demo: this.p.demo,
       justActivated: this.justActivated,
       stats: this.stats,
       trades: this.trades,
@@ -315,6 +325,36 @@ class AutonomousController {
   releaseManual(): void {
     this.manual = false;
     this.emit();
+    void this.tick();
+  }
+
+  /**
+   * Point the automation at the Demo or the real account.
+   *
+   * For verifying the whole cycle — sizing, configuration, trading, the quiet
+   * period — with fake money, on an account that behaves exactly like the real
+   * one. Turning demo on clears the schedule so a run starts on the next tick
+   * instead of waiting out a quiet period; the real schedule is parked and put
+   * back on the way out, so testing can never bring a real run forward.
+   *
+   * Only meaningful while nothing is running: the bot page disables the account
+   * toggle during a run, so an account can never change mid-trade.
+   */
+  setDemo(on: boolean): void {
+    if (this.p.demo === on) return;
+    if (on) {
+      this.p.savedNextRunAt = this.p.nextRunAt;
+      this.p.nextRunAt = null;              // due immediately, so testing is quick
+    } else {
+      this.p.nextRunAt = this.p.savedNextRunAt;
+      this.p.savedNextRunAt = null;
+    }
+    this.p.demo = on;
+    // Re-arm from scratch: eligibility is judged on the account now selected.
+    this.p.enabled = false;
+    if (this.p.phase !== "off") this.p.phase = "idle";
+    this.balance = null; this.account = null;
+    this.save(); this.emit();
     void this.tick();
   }
 
@@ -375,14 +415,17 @@ class AutonomousController {
     } finally { this.ticking = false; }
   }
 
-  /** Live balance + the real (non-demo) options account the automation trades on. */
+  /** Live balance + the options account the automation trades on (real, or Demo
+   *  while testing). The account id is what makes the trade demo or real, so a
+   *  demo run exercises exactly the same path as a real one. */
   private async refreshBalance(token: string): Promise<void> {
     try {
       const p = await fetchDerivPortfolioREST(token);
-      const real = p.accounts.find((a) => a.kind === "options" && !a.isVirtual) || null;
-      this.account = real;
-      this.balance = real?.balance ?? null;
-      this.currency = real?.currency || "";
+      const want = this.p.demo;
+      const acct = p.accounts.find((a) => a.kind === "options" && a.isVirtual === want) || null;
+      this.account = acct;
+      this.balance = acct?.balance ?? null;
+      this.currency = acct?.currency || "";
       this.error = null;
     } catch (e) {
       this.error = e instanceof Error ? e.message : "Could not read your Deriv balance.";

@@ -19,7 +19,7 @@ import { fetchDerivPortfolioREST } from "@/lib/deriv/api";
 import { BOT_DEFAULTS } from "@/lib/deriv/bots/config";
 import { DerivBot } from "@/lib/deriv/bots/engine";
 import { getBot } from "@/lib/deriv/bots/registry";
-import { autonomous, msUntilDue, type AutoSnapshot } from "@/lib/deriv/bots/autonomous";
+import { autonomous, msUntilDue, AUTONOMOUS_BOT_ID, type AutoSnapshot } from "@/lib/deriv/bots/autonomous";
 import type { BotUI, BotStats, TradeRow } from "@/lib/deriv/bots/types";
 
 type StatusKind = "info" | "success" | "warning" | "error";
@@ -60,6 +60,14 @@ export function DerivBotRunner({ botId }: { botId: string }) {
   // columns below read from it instead of this page's own engine instance.
   const [auto, setAuto] = useState<AutoSnapshot | null>(null);
   useEffect(() => autonomous().subscribe(setAuto), []);
+
+  // Point the automation at whichever account this page is showing, so the whole
+  // cycle can be watched on Demo before it is trusted with real money. Only this
+  // bot is automated, so other bot pages leave the setting alone.
+  useEffect(() => {
+    if (!ready || botId !== AUTONOMOUS_BOT_ID) return;
+    autonomous().setDemo(mode === "demo");
+  }, [ready, botId, mode]);
 
   const refreshAccounts = useCallback(async (acc: string): Promise<ConnectedAccount[]> => {
     try {
@@ -599,6 +607,7 @@ function AutoBanner({ auto, running }: { auto: AutoSnapshot; running: boolean })
     <div className="mb-3 rounded-xl border p-3" style={{ borderColor: "rgba(52,211,153,0.35)", background: "rgba(52,211,153,0.06)" }}>
       <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider" style={{ color: "#34d399" }}>
         <Bot size={13} /> {running ? "Trading for you" : "Automated · resting"}
+        {auto.demo && <span className="rounded px-1.5 py-0.5 text-[9.5px]" style={{ background: "rgba(148,168,189,0.22)", color: TC.text }}>Demo</span>}
       </div>
       <p className="mt-1.5 text-[11.5px] leading-relaxed" style={{ color: TC.muted }}>
         {running ? (

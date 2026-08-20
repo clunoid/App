@@ -68,9 +68,11 @@ export function AutonomousTrading() {
           <Bot size={18} style={{ color: "#34d399" }} />
         </span>
         <div className="min-w-0">
-          <h3 className="text-[14px] font-bold" style={{ color: "#34d399" }}>Automated trading is on</h3>
+          <h3 className="text-[14px] font-bold" style={{ color: "#34d399" }}>
+            Automated trading is on{snap.demo ? " (Demo)" : ""}
+          </h3>
           <p className="mt-1 text-[12px] leading-relaxed" style={{ color: TC.muted }}>
-            Smart Recovery Differ will place real trades on your Deriv account for you — sizing each
+            Smart Recovery Differ will place {snap.demo ? "Demo" : "real"} trades on your Deriv account for you — sizing each
             run from your balance, aiming for {Math.round(SMART_RECOVERY_TUNING.profitTargetPct * 100)}%,
             then resting 90 minutes before the next one.
             {snap.balance != null && (
