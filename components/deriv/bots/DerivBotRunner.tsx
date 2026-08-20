@@ -170,25 +170,26 @@ export function DerivBotRunner({ botId }: { botId: string }) {
   }
 
   return (
-    <main className="relative flex min-h-[100dvh] w-full flex-col overflow-x-hidden" style={{ background: TC.bg, color: TC.text }}>
+    <main className="cln-dash relative flex min-h-[100dvh] w-full flex-col overflow-x-hidden" style={{ background: TC.bg, color: TC.text }}>
       <div aria-hidden className="pointer-events-none absolute inset-0" style={DOT_GRID} />
       {/* Recent Trades entry animation. A settled trade is prepended, so the new row
-          bounces into place at the top while a short colour-matched glow blooms and
-          fades — enough to catch the eye without pulling focus off the numbers.
-          The bounce is vertical only (scale never exceeds 1): the list is
-          overflow-y-auto, which computes overflow-x to auto, so a horizontal
-          overshoot would flash a scrollbar. */}
+          slides in from the left, overshoots, and settles, while a bright
+          colour-matched ring + glow blooms and fades — the newest trade is
+          unmistakable without pulling focus off the numbers.
+          The list pins overflow-x to hidden: it is overflow-y-auto, which would
+          otherwise compute overflow-x to auto and flash a scrollbar as the row
+          overshoots past its resting position. */}
       <style>{`
         @keyframes clnTradeIn {
-          0%   { opacity: 0; transform: translate3d(0,-10px,0) scale(0.97); }
-          55%  { opacity: 1; transform: translate3d(0,3px,0) scale(1); }
-          78%  { transform: translate3d(0,-1.5px,0) scale(1); }
-          100% { opacity: 1; transform: translate3d(0,0,0) scale(1); }
+          0%   { opacity: 0; transform: translate3d(-28px,0,0); }
+          55%  { opacity: 1; transform: translate3d(4px,0,0); }
+          78%  { transform: translate3d(-2px,0,0); }
+          100% { opacity: 1; transform: translate3d(0,0,0); }
         }
         @keyframes clnTradeGlow {
-          0%   { box-shadow: 0 0 0 0 rgba(0,0,0,0); }
-          30%  { box-shadow: 0 10px 24px -10px var(--cln-glow); }
-          100% { box-shadow: 0 0 0 0 rgba(0,0,0,0); }
+          0%   { box-shadow: 0 0 0 0 rgba(0,0,0,0), 0 0 0 0 rgba(0,0,0,0); }
+          25%  { box-shadow: 0 0 0 1.5px var(--cln-ring), 0 4px 26px 3px var(--cln-glow); }
+          100% { box-shadow: 0 0 0 0 rgba(0,0,0,0), 0 0 0 0 rgba(0,0,0,0); }
         }
         .cln-trade-row {
           animation: clnTradeIn 460ms cubic-bezier(0.22,0.8,0.3,1) both,
@@ -197,8 +198,26 @@ export function DerivBotRunner({ botId }: { botId: string }) {
         @media (prefers-reduced-motion: reduce) {
           .cln-trade-row { animation: none; }
         }
+        /* Give the card row a definite height on large, tall screens: min-height
+           alone lets a long Recent Trades list grow the card, the grid and the
+           page. With a real height (and min-height:0 down the chain) the list
+           scrolls inside its card and every card fits the space exactly.
+           Guarded on height so short landscape screens keep normal page flow.
+           Element-qualified so these beat the lg: utilities they replace. */
+        @media (min-width: 1024px) and (min-height: 640px) {
+          main.cln-dash { height: 100dvh; }
+          div.cln-dash-inner { min-height: 0; }
+          div.cln-dash-grid { min-height: 0; grid-auto-rows: minmax(0, 1fr); }
+        }
+        /* Short landscape screens keep normal page flow (locking to 100dvh there
+           would squeeze the Configuration card), so cap the list itself instead —
+           otherwise a long list stretches the card the same way. Below lg the
+           max-h-[420px] utility already does this. */
+        @media (min-width: 1024px) and (max-height: 639px) {
+          div.cln-trade-scroll { max-height: 55dvh; }
+        }
       `}</style>
-      <div className="relative z-10 flex w-full flex-1 flex-col px-4 py-4 sm:px-6 lg:px-10">
+      <div className="cln-dash-inner relative z-10 flex w-full flex-1 flex-col px-4 py-4 sm:px-6 lg:px-10">
 
         {/* compact top bar: name only + small balance chip with Demo/Real toggle */}
         <header className="flex flex-wrap items-center gap-x-3 gap-y-2">
@@ -244,7 +263,7 @@ export function DerivBotRunner({ botId }: { botId: string }) {
             row fills the remaining viewport height so the cards reach the bottom
             instead of leaving dead space; the min-height keeps them from being
             squashed on short landscape screens (the page just scrolls instead). */}
-        <div className="mt-4 grid grid-cols-1 gap-4 lg:min-h-[480px] lg:flex-1 lg:grid-cols-3">
+        <div className="cln-dash-grid mt-4 grid grid-cols-1 gap-4 lg:min-h-[480px] lg:flex-1 lg:grid-cols-3">
 
           {/* Configuration */}
           <Col title="Configuration">
@@ -274,7 +293,7 @@ export function DerivBotRunner({ botId }: { botId: string }) {
 
           {/* Live Performance */}
           <Col title="Live Performance" right={stats ? `${fmtTime(stats.runningSeconds)}` : "00:00:00"}>
-            <div className="grid grid-cols-2 gap-2.5 lg:flex-1 lg:auto-rows-fr">
+            <div className="flex flex-col lg:flex-1">
               <Stat label="Session P/L" value={stats ? `${stats.totalProfit >= 0 ? "+" : ""}${stats.totalProfit.toFixed(2)}` : "—"} tone={stats ? (stats.totalProfit >= 0 ? "profit" : "loss") : undefined} />
               <Stat label="Win rate" value={stats ? `${stats.winRate.toFixed(1)}%` : "—"} sub={stats ? `${stats.wins}/${stats.totalTrades}` : undefined} />
               <Stat label="Trades" value={stats ? String(stats.totalTrades) : "0"} />
@@ -293,9 +312,9 @@ export function DerivBotRunner({ botId }: { botId: string }) {
                 <span className="text-[12px]" style={{ color: TC.muted }}>No trades yet — start the bot.</span>
               </div>
             ) : (
-              <div className="flex max-h-[420px] flex-col gap-2 overflow-y-auto pr-1 lg:max-h-none lg:min-h-0 lg:flex-1">
+              <div className="cln-trade-scroll flex max-h-[420px] flex-col gap-2 overflow-y-auto overflow-x-hidden pr-1 lg:max-h-none lg:min-h-0 lg:flex-1">
                 {trades.map((t) => (
-                  <div key={`${t.at}-${t.market}-${t.target}`} className="cln-trade-row flex items-center justify-between rounded-xl border px-3 py-2" style={{ borderColor: t.win ? "rgba(56,189,248,0.3)" : "rgba(242,96,125,0.3)", background: "rgba(255,255,255,0.02)", "--cln-glow": t.win ? "rgba(56,189,248,0.55)" : "rgba(242,96,125,0.55)" } as React.CSSProperties}>
+                  <div key={`${t.at}-${t.market}-${t.target}`} className="cln-trade-row flex items-center justify-between rounded-xl border px-3 py-2" style={{ borderColor: t.win ? "rgba(56,189,248,0.3)" : "rgba(242,96,125,0.3)", background: "rgba(255,255,255,0.02)", "--cln-glow": t.win ? "rgba(56,189,248,0.9)" : "rgba(242,96,125,0.9)", "--cln-ring": t.win ? "rgba(56,189,248,0.95)" : "rgba(242,96,125,0.95)" } as React.CSSProperties}>
                     <div className="min-w-0">
                       <div className="flex items-center gap-1 text-[12px] font-semibold" style={{ color: t.win ? TC.profit : TC.loss }}>
                         {t.win ? <TrendingUp size={12} /> : <TrendingDown size={12} />} {t.target}
@@ -551,10 +570,12 @@ function Field({ label, value, onChange, min, step, disabled }: { label: string;
 function Stat({ label, value, sub, tone }: { label: string; value: string; sub?: string; tone?: "profit" | "loss" }) {
   const color = tone === "profit" ? TC.profit : tone === "loss" ? TC.loss : TC.text;
   return (
-    <div className="flex flex-col justify-center rounded-xl border p-2.5" style={{ borderColor: TC.line, background: "rgba(0,0,0,0.15)" }}>
-      <div className="text-[9.5px] font-semibold uppercase tracking-wider" style={{ color: TC.faint }}>{label}</div>
-      <div className="mt-1 truncate text-[15px] font-bold" style={{ ...monoFont, color }}>{value}</div>
-      {sub && <div className="text-[9.5px]" style={{ color: TC.faint }}>{sub}</div>}
+    <div className="flex items-center justify-between gap-3 border-b py-2.5 last:border-b-0 lg:flex-1" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
+      <span className="shrink-0 text-[11px] font-medium uppercase tracking-[0.06em]" style={{ color: TC.muted }}>{label}</span>
+      <span className="flex min-w-0 items-baseline gap-1.5">
+        <span className="truncate text-[15px] font-bold" style={{ ...monoFont, color }}>{value}</span>
+        {sub && <span className="shrink-0 text-[10px] font-medium" style={{ color: TC.faint }}>{sub}</span>}
+      </span>
     </div>
   );
 }
