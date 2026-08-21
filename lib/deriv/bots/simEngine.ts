@@ -93,7 +93,9 @@ export class SimulatedDerivBot {
     this.startTime = Date.now();
     this.ui.onRunning(true);
     this.ui.onBalance(this.balance, this.currency);
-    this.ui.onStatus("Simulation running…", "success");
+    // No "running" status: the page already shows a spinner and a running label,
+    // so it only repeated what was on screen. Warnings and the stop message still
+    // come through onStatus.
     this.startTickLoop();
     this.startStatsTimer();
     this.scheduleAttempt(400);
