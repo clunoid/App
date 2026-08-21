@@ -56,6 +56,9 @@ export function DerivBotRunner({ botId }: { botId: string }) {
   const [needDepOpen, setNeedDepOpen] = useState(false); // shown when a run can't afford the stake
   const lowBalDecided = useRef(false);
   const botRef = useRef<DerivBot | null>(null);
+  /** True once the automation has written into the inputs, so we know there is
+   *  something of its own to undo when it stands down. */
+  const autoFilled = useRef(false);
   // Live view of the automation. When it is the one trading this bot, the three
   // columns below read from it instead of this page's own engine instance.
   const [auto, setAuto] = useState<AutoSnapshot | null>(null);
@@ -121,18 +124,32 @@ export function DerivBotRunner({ botId }: { botId: string }) {
   // run reads exactly like a hand-set one. Mid-run these are the figures the run
   // began with and do not move; between runs they track the balance. The user's
   // own numbers are never touched while the automation is off.
-  const autoRuns = autoOwns || autoWaiting;
-  const autoStake = autoRuns ? auto!.stake : null;
-  const autoTP = autoRuns ? auto!.target : null;
-  const autoSL = autoRuns ? auto!.stopLoss : null;
-  const autoMart = autoRuns ? auto!.martingale : null;
+  // Only while it is actually trading. Resting between runs the card goes back to
+  // the bot's own defaults, so the figures on screen always belong to a live run.
+  const autoStake = autoOwns ? auto!.stake : null;
+  const autoTP = autoOwns ? auto!.target : null;
+  const autoSL = autoOwns ? auto!.stopLoss : null;
+  const autoMart = autoOwns ? auto!.martingale : null;
   useEffect(() => {
     if (autoStake == null || autoTP == null || autoSL == null || autoMart == null) return;
     setStake(String(autoStake));
     setTakeProfit(String(autoTP));
     setStopLoss(String(autoSL));
     setMartingale(String(autoMart));
+    autoFilled.current = true;
   }, [autoStake, autoTP, autoSL, autoMart]);
+
+  // Once the automation is out of the picture, put the bot's own defaults back so
+  // the card never sits on figures that were sized for a run that is over. Only
+  // undoes what the automation itself wrote — numbers typed by hand are left be.
+  useEffect(() => {
+    if (autoOwns || !autoFilled.current) return;
+    autoFilled.current = false;
+    setStake(String(BOT_DEFAULTS.initialStake));
+    setTakeProfit(String(BOT_DEFAULTS.takeProfit));
+    setStopLoss(String(BOT_DEFAULTS.stopLoss));
+    setMartingale(String(meta?.defaultMartingale ?? BOT_DEFAULTS.martingaleMultiplier));
+  }, [autoOwns, meta]);
 
   // Recommend a healthier balance when the real account is under $1,000. It is a
   // gentle nudge, not a wall: decided once the balance is known, and shown at most
@@ -386,7 +403,10 @@ export function DerivBotRunner({ botId }: { botId: string }) {
                       </div>
                       <div className="truncate text-[10.5px]" style={{ color: TC.faint }}>{t.market} · ${t.stake.toFixed(2)}</div>
                     </div>
-                    <div className="text-[12.5px] font-bold" style={{ ...monoFont, color: t.win ? TC.profit : TC.loss }}>{t.profit >= 0 ? "+" : ""}{t.profit.toFixed(2)}</div>
+                    {/* Sized up so the figure still reads clearly in a screenshot.
+                        The row height is set by the two lines on the left, so this
+                        grows without changing the row. */}
+                    <div className="shrink-0 pl-2 text-[18px] font-bold leading-none tracking-tight" style={{ ...monoFont, color: t.win ? TC.profit : TC.loss }}>{t.profit >= 0 ? "+" : ""}{t.profit.toFixed(2)}</div>
                   </div>
                 ))}
               </div>
