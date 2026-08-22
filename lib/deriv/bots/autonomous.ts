@@ -227,7 +227,13 @@ export type AutoSnapshot = {
   online: boolean;
   demo: boolean;
   /** False only while the user has switched it off; it returns on its own. */
+  /** On unless the user has switched it off — the automation is on by default.
+   *  Being on is not the same as being cleared to trade: the first run still
+   *  waits for the user to allow it. */
   active: boolean;
+  /** unasked → on by default but yet to be allowed; allowed → cleared to trade;
+   *  off → switched off by the user, and it stays off. */
+  consent: "unasked" | "allowed" | "off";
   /** True when the automation is ready and waiting for the user to say yes. */
   needsConsent: boolean;
   stats: BotStats | null;
@@ -320,7 +326,8 @@ class AutonomousController {
       lastTradeAt: this.p.lastTradeAt,
       online: typeof navigator === "undefined" ? true : navigator.onLine,
       demo: this.p.demo,
-      active: this.p.allowed === true,
+      active: this.p.allowed !== false,
+      consent: this.p.allowed === true ? "allowed" : this.p.allowed === false ? "off" : "unasked",
       needsConsent: this.needsConsent,
       stats: this.stats,
       trades: this.trades,

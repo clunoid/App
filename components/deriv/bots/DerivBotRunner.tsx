@@ -672,13 +672,16 @@ function AutoToggle({ auto }: { auto: AutoSnapshot }) {
         </span>
       </button>
 
-      {/* Says what the control does, on hover or keyboard focus. */}
+      {/* Says what the control does, on hover or keyboard focus. Three states,
+          because on-by-default and cleared-to-trade are not the same thing. */}
       <span role="tooltip"
         className="pointer-events-none absolute left-0 top-[calc(100%+6px)] z-30 hidden w-[236px] rounded-lg border p-2.5 text-[11px] leading-relaxed shadow-xl group-hover:block group-focus-within:block"
         style={{ borderColor: TC.line, background: TC.panel, color: TC.muted }}>
-        {on
+        {auto.consent === "allowed"
           ? "Automated trading is on. The bot sizes each run from your balance and stops on its own when the profit target is reached. Switch off to trade by hand — it stays off until you turn it back on."
-          : "Automated trading is off, and stays off until you turn it back on. Switch on and the bot sizes a run from your balance and stops when its profit target is reached."}
+          : auto.consent === "unasked"
+            ? "Automated trading is on by default, but it will ask your go-ahead before its first trade. Once you allow it, it sizes each run from your balance and stops on its own when the profit target is reached."
+            : "Automated trading is off, and stays off until you turn it back on. Switch on and the bot sizes a run from your balance and stops when its profit target is reached."}
       </span>
     </span>
   );
