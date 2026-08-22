@@ -190,27 +190,24 @@ type StatusKind = "info" | "success" | "warning" | "error";
 /** Everything that must outlive a reload. Timestamps are absolute (epoch ms). */
 type Persisted = {
   enabled: boolean;
-  greeted: boolean;
+  /** The user's answer to "may I trade for you": null until asked, true once
+   *  allowed, false once switched off. False is permanent — it only becomes true
+   *  again when the user switches it back on themselves. */
+  allowed: boolean | null;
   phase: AutoPhase;
   nextRunAt: number | null;
   lastTradeAt: number | null;
   /** Trade the Demo account instead of the real one — for verifying the cycle. */
   demo: boolean;
-  /** Switched off by the user until this moment, then it comes back by itself.
-   *  Null means on, which is the default and what a cleared store falls back to. */
-  optedOutUntil: number | null;
   /** The real-account schedule, parked while demo is on so testing cannot
    *  shorten (or extend) the quiet period that applies to real money. */
   savedNextRunAt: number | null;
 };
 
 const BLANK: Persisted = {
-  enabled: false, greeted: false, phase: "off", nextRunAt: null, lastTradeAt: null,
-  demo: false, savedNextRunAt: null, optedOutUntil: null,
+  enabled: false, allowed: null, phase: "off", nextRunAt: null, lastTradeAt: null,
+  demo: false, savedNextRunAt: null,
 };
-
-/** How long switching the automation off lasts before it turns itself back on. */
-const OPT_OUT_MS = 60 * 60 * 1000;
 
 export type AutoSnapshot = {
   enabled: boolean;
@@ -231,8 +228,8 @@ export type AutoSnapshot = {
   demo: boolean;
   /** False only while the user has switched it off; it returns on its own. */
   active: boolean;
-  optedOutUntil: number | null;
-  justActivated: boolean;
+  /** True when the automation is ready and waiting for the user to say yes. */
+  needsConsent: boolean;
   stats: BotStats | null;
   trades: TradeRow[];
   status: { msg: string; kind: StatusKind } | null;
@@ -256,7 +253,10 @@ class AutonomousController {
   private trades: TradeRow[] = [];
   private status: { msg: string; kind: StatusKind } | null = null;
   private error: string | null = null;
-  private justActivated = false;
+  /** Waiting on the user's answer right now. */
+  private needsConsent = false;
+  /** They chose Not now: stay quiet for this visit, ask again next time. */
+  private dismissed = false;
   /** The config the current run started with. Held for the life of the run so the
    *  figures on screen stay put while the balance moves, the way a hand-typed
    *  take-profit does. Null between runs. */
@@ -320,9 +320,8 @@ class AutonomousController {
       lastTradeAt: this.p.lastTradeAt,
       online: typeof navigator === "undefined" ? true : navigator.onLine,
       demo: this.p.demo,
-      active: this.p.optedOutUntil == null || Date.now() >= this.p.optedOutUntil,
-      optedOutUntil: this.p.optedOutUntil,
-      justActivated: this.justActivated,
+      active: this.p.allowed === true,
+      needsConsent: this.needsConsent,
       stats: this.stats,
       trades: this.trades,
       status: this.status,
@@ -336,7 +335,21 @@ class AutonomousController {
   }
 
   /** Called by the UI once it has shown the activation confirmation. */
-  acknowledgeActivation(): void { this.justActivated = false; this.p.greeted = true; this.save(); this.emit(); }
+  /** The user said yes: from here the automation may trade for them. */
+  allow(): void {
+    this.needsConsent = false;
+    this.dismissed = false;
+    this.p.allowed = true;
+    this.save(); this.emit(); void this.tick();
+  }
+
+  /** Not now: nothing is switched on, and we ask again on their next visit
+   *  rather than recording a refusal they did not give. */
+  declineForNow(): void {
+    this.needsConsent = false;
+    this.dismissed = true;
+    this.emit();
+  }
 
   /** The user pressed Start on a bot page: stand down until they are done. */
   claimManual(): void {
@@ -355,20 +368,22 @@ class AutonomousController {
   /**
    * Switch the automation on or off from the bot page.
    *
-   * Off is deliberately temporary: it lasts an hour, which is long enough to
-   * trade by hand without the automation stepping in, then it turns itself back
-   * on. On is the default, so a fresh browser is always automated.
+   * Off stays off. Nothing turns it back on but the user switching it on again,
+   * so anyone who wants the bot to leave their account alone can rely on it.
    */
   setActive(on: boolean): void {
     if (on) {
-      if (this.p.optedOutUntil == null) return;
-      this.p.optedOutUntil = null;
+      if (this.p.allowed === true) return;
+      this.needsConsent = false;
+      this.dismissed = false;
+      this.p.allowed = true;
       this.save(); this.emit(); void this.tick();
       return;
     }
-    if (this.p.optedOutUntil != null) return;
-    this.p.optedOutUntil = Date.now() + OPT_OUT_MS;
+    if (this.p.allowed === false) return;
+    this.p.allowed = false;
     if (this.p.phase === "running") this.haltRun("Automation switched off.", "info");
+    this.needsConsent = false;
     this.p.phase = "idle";
     this.save(); this.emit();
   }
@@ -426,13 +441,21 @@ class AutonomousController {
         if (this.p.phase !== "off") { this.p.phase = "off"; this.save(); }
         this.balance = null; this.emit(); return;
       }
-      // Switched off by hand: stay quiet until the hour is up, then come back.
-      if (this.p.optedOutUntil != null) {
-        if (Date.now() < this.p.optedOutUntil) { this.emit(); return; }
-        this.p.optedOutUntil = null; this.save();
-      }
+      // Switched off by hand: nothing brings it back but the user.
+      if (this.p.allowed === false) { this.emit(); return; }
       if (this.p.phase === "running" || this.manual) return;
       if (!navigator.onLine) return;     // the online listener re-ticks for us
+
+      // Not yet allowed: work out what a run would look like and ask, once the
+      // balance is there. Nothing trades until the user says yes. Keep checking
+      // the balance while it is short, then stop — the figures for the ask are
+      // already in hand.
+      if (this.p.allowed !== true) {
+        if (this.balance == null || !isEligible(this.balance, this.tuning)) await this.refreshBalance(token);
+        if (!this.dismissed && this.balance != null && isEligible(this.balance, this.tuning)) this.needsConsent = true;
+        this.emit();
+        return;
+      }
 
       // Refresh only when a decision depends on it: when arming, and immediately
       // before a run. Every run therefore starts from a live balance.
@@ -440,13 +463,12 @@ class AutonomousController {
       if (!this.p.enabled || due) await this.refreshBalance(token);
 
       if (!this.p.enabled) {
-        // Arms on connect, and equally the moment a balance first reaches the
-        // minimum — the user never has to reconnect to get here.
+        // Allowed and funded: arm, and equally the moment a balance first reaches
+        // the minimum — the user never has to reconnect to get here.
         if (this.balance != null && isEligible(this.balance, this.tuning)) {
           this.p.enabled = true;
           this.p.phase = "idle";
           this.p.nextRunAt = null;
-          if (!this.p.greeted) this.justActivated = true;
           this.save(); this.emit();
         } else { this.emit(); return; }
       }

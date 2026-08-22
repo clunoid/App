@@ -648,22 +648,39 @@ function Col({ title, right, action, children }: { title: string; right?: string
  */
 function AutoToggle({ auto }: { auto: AutoSnapshot }) {
   const on = auto.active;
-  const back = auto.optedOutUntil
-    ? new Date(auto.optedOutUntil).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-    : null;
+  // Hover/focus handled in CSS rather than state: no re-render, and it works for
+  // keyboard users through focus-within too.
   return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={on}
-      aria-label="Automated trading"
-      title={on ? "Automated trading is on — switch off to trade by hand for an hour" : `Automated trading is off — back on at ${back}`}
-      onClick={() => autonomous().setActive(!on)}
-      className="grid h-[15px] w-[15px] shrink-0 place-items-center rounded-[5px] border transition hover:opacity-80"
-      style={on ? { background: "#34d399", borderColor: "#34d399" } : { background: "transparent", borderColor: TC.line }}
-    >
-      {on && <Check size={10} strokeWidth={3.5} style={{ color: TC.ink }} />}
-    </button>
+    <span className="group relative inline-flex">
+      <button
+        type="button"
+        role="switch"
+        aria-checked={on}
+        aria-label="Automated trading"
+        onClick={() => autonomous().setActive(!on)}
+        className="inline-flex shrink-0 items-center gap-1.5 rounded-full border py-0.5 pl-1 pr-2 transition hover:opacity-80"
+        style={on
+          ? { borderColor: "rgba(52,211,153,0.45)", background: "rgba(52,211,153,0.1)" }
+          : { borderColor: TC.line, background: "transparent" }}
+      >
+        <span className="grid h-[15px] w-[15px] place-items-center rounded-[5px] border transition"
+          style={on ? { background: "#34d399", borderColor: "#34d399" } : { background: "transparent", borderColor: TC.line }}>
+          {on && <Check size={10} strokeWidth={3.5} style={{ color: TC.ink }} />}
+        </span>
+        <span className="text-[9.5px] font-bold uppercase tracking-[0.1em]" style={{ color: on ? "#34d399" : TC.faint }}>
+          Auto
+        </span>
+      </button>
+
+      {/* Says what the control does, on hover or keyboard focus. */}
+      <span role="tooltip"
+        className="pointer-events-none absolute left-0 top-[calc(100%+6px)] z-30 hidden w-[236px] rounded-lg border p-2.5 text-[11px] leading-relaxed shadow-xl group-hover:block group-focus-within:block"
+        style={{ borderColor: TC.line, background: TC.panel, color: TC.muted }}>
+        {on
+          ? "Automated trading is on. The bot sizes each run from your balance and stops on its own when the profit target is reached. Switch off to trade by hand — it stays off until you turn it back on."
+          : "Automated trading is off, and stays off until you turn it back on. Switch on and the bot sizes a run from your balance and stops when its profit target is reached."}
+      </span>
+    </span>
   );
 }
 
