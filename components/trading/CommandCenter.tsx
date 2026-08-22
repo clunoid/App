@@ -15,7 +15,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Wallet, Plug, RefreshCw, Loader2, LogOut, KeyRound, ShieldCheck, Building2, Bot, LineChart, UserPlus, Gift, ChevronRight, X, ArrowDownToLine, ArrowUpFromLine } from "lucide-react";
+import { ArrowLeft, Wallet, Plug, RefreshCw, Loader2, LogOut, KeyRound, ShieldCheck, Building2, Bot, LineChart, UserPlus, Gift, ChevronRight, X, ArrowDownToLine, ArrowUpFromLine, Clapperboard } from "lucide-react";
 import { TC, DOT_GRID, monoFont, fmtBalance } from "@/lib/trading/theme";
 import type { ConnectedAccount } from "@/lib/trading/accounts";
 import { hasDerivApp, DERIV_AFFILIATE_URL, DERIV_TRACKED_DEPOSIT_URL, DERIV_TRACKED_WITHDRAW_URL } from "@/lib/deriv/config";
@@ -563,6 +563,27 @@ export function CommandCenter() {
                   <div className="text-[11.5px]" style={{ color: TC.faint }}>Charts &amp; analysis · screener, alerts</div>
                 </div>
                 <span className="inline-flex items-center gap-1 text-[12px] font-semibold transition group-hover:opacity-90" style={{ color: TC.profit }}>
+                  Open <ChevronRight size={14} className="transition group-hover:translate-x-0.5" />
+                </span>
+              </div>
+            </Link>
+
+            {/* Creator Program — get paid monthly to make short videos about
+                Clunoid and post them on your own accounts. Not a broker, so it
+                opens with no connection required. */}
+            <Link href="/trading/creators" className="group mt-3 block rounded-2xl border p-4 transition hover:-translate-y-0.5" style={{ borderColor: "rgba(167,139,250,0.35)", background: "linear-gradient(180deg, rgba(167,139,250,0.08), rgba(255,255,255,0.015))" }}>
+              <div className="flex items-center gap-2.5">
+                <span className="grid shrink-0 place-items-center rounded-lg px-2.5 py-1.5" style={{ background: "rgba(0,0,0,0.5)", boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.1)" }}>
+                  <Clapperboard size={16} style={{ color: "#a78bfa" }} />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[13.5px] font-semibold">Creator Program</span>
+                    <span className="rounded px-1 py-0.5 text-[8.5px] font-bold uppercase tracking-wide" style={{ background: "rgba(167,139,250,0.16)", color: "#a78bfa" }}>Get paid</span>
+                  </div>
+                  <div className="text-[11.5px]" style={{ color: TC.faint }}>Clip &amp; post about Clunoid · earn monthly</div>
+                </div>
+                <span className="inline-flex items-center gap-1 text-[12px] font-semibold transition group-hover:opacity-90" style={{ color: "#a78bfa" }}>
                   Open <ChevronRight size={14} className="transition group-hover:translate-x-0.5" />
                 </span>
               </div>
