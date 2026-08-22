@@ -547,6 +547,24 @@ export function CommandCenter() {
               </div>
             </Link>
 
+            {/* TradingView — charting rather than execution. Opens with no
+                connection: it leads to charts, screener and Pine Script. */}
+            <Link href="/trading/tradingview" className="group mt-3 block rounded-2xl border p-4 transition hover:-translate-y-0.5" style={{ borderColor: TC.line, background: TC.panel }}>
+              <div className="flex items-center gap-2.5">
+                <span className="grid shrink-0 place-items-center rounded-lg px-2.5 py-1.5" style={{ background: "rgba(0,0,0,0.5)", boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.1)" }}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src="/logos/tradingview.svg" alt="TradingView" className="h-3.5 w-auto object-contain" style={{ maxWidth: 92 }} />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="text-[13.5px] font-semibold">TradingView</div>
+                  <div className="text-[11.5px]" style={{ color: TC.faint }}>Charts &amp; analysis · screener, alerts</div>
+                </div>
+                <span className="inline-flex items-center gap-1 text-[12px] font-semibold transition group-hover:opacity-90" style={{ color: TC.profit }}>
+                  Open <ChevronRight size={14} className="transition group-hover:translate-x-0.5" />
+                </span>
+              </div>
+            </Link>
+
             {/* coming soon — official logos */}
             <div className="mt-3 space-y-2">
               {[{ name: "Binance", logo: "/logos/binance.svg" }, { name: "cTrader", logo: "/logos/ctrader.svg" }, { name: "More brokers", logo: undefined as string | undefined }].map((p) => (
