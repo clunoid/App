@@ -132,7 +132,7 @@ export function CreatorsHub() {
     <main className="relative min-h-[100dvh] w-full overflow-x-hidden" style={{ background: TC.bg, color: TC.text }}>
       <div aria-hidden className="pointer-events-none absolute inset-0" style={DOT_GRID} />
 
-      <div className="relative z-10 mx-auto w-full max-w-6xl px-5 py-5 sm:px-8 lg:px-12">
+      <div className="relative z-10 w-full px-5 py-5 sm:px-8 lg:px-12 xl:px-16">
         <header className="flex w-full flex-wrap items-center gap-3">
           <Link href="/trading/command" className="flex items-center gap-1.5 text-[13px] font-medium transition hover:opacity-80" style={{ color: TC.muted }}>
             <ArrowLeft size={15} /> Command
@@ -149,7 +149,7 @@ export function CreatorsHub() {
           <h1 className="text-[28px] font-bold leading-tight sm:text-[36px] lg:text-[40px]">
             Get paid every month to post about Clunoid
           </h1>
-          <p className="mt-3 max-w-3xl text-[14px] leading-relaxed sm:text-[15.5px]" style={{ color: TC.muted }}>
+          <p className="mt-3 max-w-4xl text-[14px] leading-relaxed sm:text-[15.5px]" style={{ color: TC.muted }}>
             Make short videos, post them on your own TikTok, Instagram and YouTube, and get paid at the end of
             every 30 days. <b style={{ color: TC.text }}>Views are not required to get paid</b> — posting every day is.
             Views are how you earn more.
