@@ -556,7 +556,10 @@ export function CommandCenter() {
                   <img src="/logos/tradingview.svg" alt="TradingView" className="h-3.5 w-auto object-contain" style={{ maxWidth: 92 }} />
                 </span>
                 <div className="min-w-0 flex-1">
-                  <div className="text-[13.5px] font-semibold">TradingView</div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[13.5px] font-semibold">TradingView</span>
+                    <span className="rounded px-1 py-0.5 text-[8.5px] font-bold uppercase tracking-wide" style={{ background: "rgba(56,189,248,0.16)", color: "#38bdf8" }}>AI bots</span>
+                  </div>
                   <div className="text-[11.5px]" style={{ color: TC.faint }}>Charts &amp; analysis · screener, alerts</div>
                 </div>
                 <span className="inline-flex items-center gap-1 text-[12px] font-semibold transition group-hover:opacity-90" style={{ color: TC.profit }}>
