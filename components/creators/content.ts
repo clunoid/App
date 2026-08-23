@@ -166,6 +166,9 @@ export const TEMPLATES = [
   },
 ];
 
+/** The footer line, identical on the sign-up page and the dashboard. */
+export const DISCLAIMER = "Payouts depend on meeting the terms in Rules. This is promotion work";
+
 export const addDays = (d: Date, n: number) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
 export const fmt = (d: Date | string) =>
   (typeof d === "string" ? new Date(d + (d.length === 10 ? "T00:00:00" : "")) : d)

@@ -25,8 +25,11 @@ import {
 import { TC, DOT_GRID, monoFont } from "@/lib/trading/theme";
 import { CountryPicker } from "./CountryPicker";
 import { CreatorDashboard, type Me } from "./CreatorDashboard";
+import { PayoutPicker } from "./PayoutPicker";
+import { FieldOk, useToast } from "./Feedback";
 import {
   A, GOOD, BAD, SOCIALS, PAYOUTS, LADDER, STEPS, DO, DONT, IDEAS, AI_PROMPTS, addDays, fmt,
+  DISCLAIMER,
 } from "./content";
 
 /** Where this browser remembers which creator it belongs to. */
@@ -40,6 +43,7 @@ export function CreatorsHub() {
   const [payout, setPayout] = useState("");
   const [newAccounts, setNewAccounts] = useState(false);
   const [agreed, setAgreed] = useState(false);
+  const { show, node: toast } = useToast();
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -51,6 +55,9 @@ export function CreatorsHub() {
   // HTML. Only a browser that already holds a token blanks to a spinner, and it
   // does that after mount, so hydration still matches.
   const [checking, setChecking] = useState(false);
+  // The welcome belongs on the dashboard: this component unmounts the moment the
+  // dashboard takes over, so a toast raised here would never be seen.
+  const [justRegistered, setJustRegistered] = useState(false);
 
   const load = useCallback(async (t: string) => {
     try {
@@ -108,18 +115,21 @@ export function CreatorsHub() {
       if (t) window.localStorage.setItem(TOKEN_KEY, t);
       setToken(t);
       window.scrollTo({ top: 0 });
+      setJustRegistered(true);
       await load(t);
     } catch {
       setErr("Could not reach us just now. Please try again.");
     } finally { setBusy(false); }
   }
 
+  const handlesAdded = SOCIALS.filter((sc) => f[sc.key].trim().length > 0).length;
+
   const field = "rounded-xl border px-3 py-2.5 text-[13.5px] outline-none transition focus:border-violet-400";
   const fieldStyle = { borderColor: TC.line, background: "rgba(0,0,0,0.25)", color: TC.text } as const;
   const label = "text-[10.5px] font-semibold uppercase tracking-wider";
 
   // Already a creator → the dashboard is the page.
-  if (me) return <CreatorDashboard me={me} token={token} onRefresh={refresh} />;
+  if (me) return <CreatorDashboard me={me} token={token} onRefresh={refresh} justRegistered={justRegistered} />;
 
   if (checking) {
     return (
@@ -137,11 +147,14 @@ export function CreatorsHub() {
       <div className="relative z-10 w-full px-5 py-5 sm:px-8 lg:px-12 xl:px-16">
         <header className="flex w-full flex-wrap items-center gap-3">
           <Link href="/trading/command" className="flex items-center gap-1.5 text-[13px] font-medium transition hover:opacity-80" style={{ color: TC.muted }}>
-            <ArrowLeft size={15} /> Command
+            <ArrowLeft size={15} /> <span className="hidden sm:inline">Command</span>
           </Link>
-          <span className="h-4 w-px" style={{ background: TC.line }} />
+          {/* On a phone the arrow alone is enough — the label and the programme
+              chip are the first things to go so the rest of the row fits. */}
+          <span className="hidden h-4 w-px sm:block" style={{ background: TC.line }} />
           <span className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5" style={{ background: "rgba(0,0,0,0.45)", boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.08)" }}>
-            <Clapperboard size={14} style={{ color: A }} />
+            {/* The mark is the first thing to drop on a phone — the name carries it. */}
+            <Clapperboard size={14} className="hidden sm:block" style={{ color: A }} />
             <span className="text-[12.5px] font-bold tracking-tight">Creator Program</span>
           </span>
         </header>
@@ -193,7 +206,8 @@ export function CreatorsHub() {
                 </label>
                 <div className="flex flex-col gap-1.5">
                   <span className={label} style={{ color: TC.faint }}>Country</span>
-                  <CountryPicker value={f.country} onChange={(v) => setF((p) => ({ ...p, country: v }))} accent={A} />
+                  <CountryPicker value={f.country} onChange={(v) => { setF((p) => ({ ...p, country: v })); show(v + " selected"); }} accent={A} />
+                  {f.country && <FieldOk>{f.country} selected</FieldOk>}
                 </div>
               </div>
 
@@ -207,50 +221,52 @@ export function CreatorsHub() {
                   </span>
                 </div>
                 <div className="mt-2.5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                  {SOCIALS.map((s) => (
-                    <label key={s.key} className="flex items-center gap-2.5 rounded-xl border px-3 py-2" style={{ borderColor: TC.line, background: "rgba(0,0,0,0.25)" }}>
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={s.logo} alt={s.label} className="h-5 w-5 shrink-0" />
-                      <input
-                        value={f[s.key]}
-                        onChange={set(s.key)}
-                        placeholder={s.ph}
-                        aria-label={s.label}
-                        className="w-full bg-transparent text-[13.5px] outline-none"
-                        style={{ color: TC.text }}
-                      />
-                    </label>
-                  ))}
-                </div>
-              </div>
-
-              {/* payout rail */}
-              <div className="mt-6">
-                <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-                  <span className={label} style={{ color: TC.faint }}>How would you like to be paid?</span>
-                  <span className="text-[11.5px]" style={{ color: TC.muted }}>
-                    Pick one now — <b style={{ color: TC.text }}>you set up the account details after your first
-                    30 days</b>, when there is a payment to make.
-                  </span>
-                </div>
-                <div className="mt-2.5 grid gap-2.5 sm:grid-cols-3 lg:grid-cols-4">
-                  {PAYOUTS.map((p) => {
-                    const on = payout === p.key;
+                  {SOCIALS.map((sc) => {
+                    const filled = f[sc.key].trim().length > 0;
                     return (
-                      <label key={p.key} className="flex cursor-pointer items-center gap-2.5 rounded-xl border px-3 py-2.5 transition"
-                        style={on
-                          ? { borderColor: A, background: `${A}1f` }
-                          : { borderColor: TC.line, background: "rgba(0,0,0,0.25)" }}>
-                        <input type="radio" name="payout" value={p.key} checked={on}
-                          onChange={() => setPayout(p.key)} className="sr-only" />
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={p.logo} alt="" aria-hidden className="h-5 w-5 shrink-0" />
-                        <span className="text-[12.5px] font-medium" style={{ color: on ? TC.text : TC.muted }}>{p.label}</span>
-                        {on && <Check size={14} className="ml-auto shrink-0" style={{ color: A }} />}
-                      </label>
+                      <div key={sc.key} className="flex flex-col gap-1.5">
+                        <label className="flex items-center gap-2.5 rounded-xl border px-3 py-2 transition"
+                          style={{ borderColor: filled ? `${A}66` : TC.line, background: "rgba(0,0,0,0.25)" }}>
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={sc.logo} alt={sc.label} className="h-5 w-5 shrink-0" />
+                          <input
+                            value={f[sc.key]}
+                            onChange={set(sc.key)}
+                            placeholder={sc.ph}
+                            aria-label={sc.label}
+                            className="w-full bg-transparent text-[13.5px] outline-none"
+                            style={{ color: TC.text }}
+                          />
+                          {filled && <Check size={14} className="shrink-0" style={{ color: A }} />}
+                        </label>
+                        {filled && <FieldOk>{sc.label} added</FieldOk>}
+                      </div>
                     );
                   })}
                 </div>
+                {handlesAdded > 0 && (
+                  <div className="mt-2.5">
+                    <FieldOk>{handlesAdded} of 3 accounts added{handlesAdded === 3 ? " — all set" : ", the rest can wait"}</FieldOk>
+                  </div>
+                )}
+              </div>
+
+              {/* payout rail — one dropdown at every width, and optional here */}
+              <div className="mt-6 sm:max-w-md">
+                <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                  <span className={label} style={{ color: TC.faint }}>How would you like to be paid?</span>
+                  <span className="text-[11.5px]" style={{ color: TC.muted }}>
+                    Optional — you can set this later on your dashboard, and change it any time.
+                  </span>
+                </div>
+                <div className="mt-2.5">
+                  <PayoutPicker value={payout} onChange={(v) => { setPayout(v); show((PAYOUTS.find((p) => p.key === v)?.label ?? "Payout method") + " selected"); }} accent={A} />
+                </div>
+                {payout && (
+                  <div className="mt-2">
+                    <FieldOk>Payouts will go out by {PAYOUTS.find((p) => p.key === payout)?.label}. Account details come after your first 30 days.</FieldOk>
+                  </div>
+                )}
               </div>
 
               <div className="mt-6 flex items-center gap-2 text-[12.5px] font-medium" style={{ color: A }}>
@@ -465,11 +481,11 @@ export function CreatorsHub() {
               <h2 className="text-[18px] font-bold sm:text-[20px]">Now you have read it, start creating</h2>
               <div className="mt-4 space-y-3">
                 <label className="flex cursor-pointer items-start gap-2.5 text-[13px] leading-relaxed" style={{ color: TC.muted }}>
-                  <input type="checkbox" checked={newAccounts} onChange={(e) => setNewAccounts(e.target.checked)} className="mt-0.5 h-4 w-4 shrink-0" style={{ accentColor: A }} />
+                  <input type="checkbox" checked={newAccounts} onChange={(e) => { setNewAccounts(e.target.checked); if (e.target.checked) show("Noted — month 1 pays $50 for new accounts"); }} className="mt-0.5 h-4 w-4 shrink-0" style={{ accentColor: A }} />
                   <span>These accounts are brand new. <span style={{ color: TC.faint }}>First month pays $50 instead of $100, because new accounts have no reach yet.</span></span>
                 </label>
                 <label className="flex cursor-pointer items-start gap-2.5 text-[13px] leading-relaxed" style={{ color: TC.muted }}>
-                  <input required type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} className="mt-0.5 h-4 w-4 shrink-0" style={{ accentColor: A }} />
+                  <input required type="checkbox" checked={agreed} onChange={(e) => { setAgreed(e.target.checked); if (e.target.checked) show("Thanks — you can register now"); }} className="mt-0.5 h-4 w-4 shrink-0" style={{ accentColor: A }} />
                   <span>I have read the rules on this page and I will follow them. <span style={{ color: TC.faint }}>Breaking them cancels the month.</span></span>
                 </label>
               </div>
@@ -490,11 +506,11 @@ export function CreatorsHub() {
 
         <p className="mt-10 flex items-start gap-1.5 text-[11px] leading-relaxed" style={{ color: TC.faint }}>
           <ShieldCheck size={13} className="mt-0.5 shrink-0" style={{ color: A }} />
-          Trading carries risk, and so does talking about it online. You are responsible for your own accounts and
-          for following each platform&rsquo;s rules. Payouts depend on meeting the terms above. This is promotion
-          work, not financial advice, and nothing here is a promise of trading results.
+          {DISCLAIMER}
         </p>
       </div>
+
+      {toast}
     </main>
   );
 }

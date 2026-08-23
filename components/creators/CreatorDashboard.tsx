@@ -24,8 +24,10 @@ import {
 import { TC, DOT_GRID, monoFont } from "@/lib/trading/theme";
 import {
   A, GOOD, BAD, SOCIALS, PAYOUTS, LADDER, DO, DONT, IDEAS, AI_PROMPTS,
-  PHASES, phaseFor, TEMPLATES, fmt, fmtShort,
+  PHASES, phaseFor, TEMPLATES, fmt, fmtShort, DISCLAIMER,
 } from "./content";
+import { PayoutPicker } from "./PayoutPicker";
+import { FieldOk, useToast } from "./Feedback";
 import { computeProgress, PLATFORMS, GRACE_DAYS, QUALIFYING_DAYS_NEEDED, type Progress } from "@/lib/creators/progress";
 
 // ── the shape /api/creators/me returns ──────────────────────────────────────
@@ -52,6 +54,8 @@ export type Me = {
   serverTime: string;
 };
 
+type Show = (text: string, tone?: "ok" | "bad") => void;
+
 const TABS = [
   { key: "overview", label: "Overview", icon: LayoutDashboard },
   { key: "plan", label: "My 30 days", icon: CalendarRange },
@@ -68,9 +72,10 @@ const cardStyle = { borderColor: TC.line, background: TC.panel } as const;
 const labelCls = "text-[10.5px] font-semibold uppercase tracking-wider";
 const money = (n: number) => `$${n.toFixed(n % 1 === 0 ? 0 : 2)}`;
 
-export function CreatorDashboard({ me, token, onRefresh }: { me: Me; token: string; onRefresh: () => Promise<void> }) {
+export function CreatorDashboard({ me, token, onRefresh, justRegistered = false }: { me: Me; token: string; onRefresh: () => Promise<void>; justRegistered?: boolean }) {
   const [tab, setTab] = useState<TabKey>("overview");
   const { creator } = me;
+  const { show, node: toast } = useToast();
 
   // Recompute locally each second so the countdown moves without polling.
   const [now, setNow] = useState(() => new Date());
@@ -83,6 +88,12 @@ export function CreatorDashboard({ me, token, onRefresh }: { me: Me; token: stri
     [creator.first_post_at, me.posts, now],
   );
 
+  // Welcome them once, on the render that follows registering.
+  const welcomed = useRef(false);
+  useEffect(() => {
+    if (justRegistered && !welcomed.current) { welcomed.current = true; show("You are in. Welcome aboard."); }
+  }, [justRegistered, show]);
+
   const started = progress.phase !== "awaiting_first_post";
 
   return (
@@ -92,15 +103,18 @@ export function CreatorDashboard({ me, token, onRefresh }: { me: Me; token: stri
       <div className="relative z-10 w-full px-5 py-5 sm:px-8 lg:px-12 xl:px-16">
         <header className="flex w-full flex-wrap items-center gap-3">
           <Link href="/trading/command" className="flex items-center gap-1.5 text-[13px] font-medium transition hover:opacity-80" style={{ color: TC.muted }}>
-            <ArrowLeft size={15} /> Command
+            <ArrowLeft size={15} /> <span className="hidden sm:inline">Command</span>
           </Link>
-          <span className="h-4 w-px" style={{ background: TC.line }} />
+          {/* A phone has room for the back arrow, the name and the day badge —
+              the label and the programme chip are what give way. */}
+          <span className="hidden h-4 w-px sm:block" style={{ background: TC.line }} />
           <span className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5" style={{ background: "rgba(0,0,0,0.45)", boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.08)" }}>
-            <Clapperboard size={14} style={{ color: A }} />
+            {/* The mark is the first thing to drop on a phone — the name carries it. */}
+            <Clapperboard size={14} className="hidden sm:block" style={{ color: A }} />
             <span className="text-[12.5px] font-bold tracking-tight">Creator Program</span>
           </span>
-          <span className="ml-auto flex items-center gap-2">
-            <span className="hidden text-[12.5px] sm:inline" style={{ color: TC.muted }}>{creator.name}</span>
+          <span className="ml-auto flex min-w-0 items-center gap-2">
+            <span className="min-w-0 truncate text-[12.5px]" style={{ color: TC.muted }}>{creator.name}</span>
             <span className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11.5px] font-semibold"
               style={started
                 ? { background: `${GOOD}1f`, color: GOOD, boxShadow: `inset 0 0 0 1px ${GOOD}55` }
@@ -115,23 +129,23 @@ export function CreatorDashboard({ me, token, onRefresh }: { me: Me; token: stri
           <Sidebar tab={tab} setTab={setTab} progress={progress} started={started} />
 
           <div className="min-w-0 flex-1">
-            {tab === "overview" && <Overview me={me} progress={progress} token={token} onRefresh={onRefresh} now={now} setTab={setTab} />}
+            {tab === "overview" && <Overview me={me} progress={progress} token={token} onRefresh={onRefresh} now={now} setTab={setTab} show={show} />}
             {tab === "plan" && <PlanPanel progress={progress} />}
-            {tab === "posts" && <PostsPanel me={me} progress={progress} token={token} onRefresh={onRefresh} />}
+            {tab === "posts" && <PostsPanel me={me} progress={progress} token={token} onRefresh={onRefresh} show={show} />}
             {tab === "payouts" && <PayoutsPanel me={me} progress={progress} />}
             {tab === "ideas" && <IdeasPanel />}
             {tab === "rules" && <RulesPanel />}
-            {tab === "details" && <DetailsPanel me={me} token={token} onRefresh={onRefresh} />}
+            {tab === "details" && <DetailsPanel me={me} token={token} onRefresh={onRefresh} show={show} />}
           </div>
         </div>
 
         <p className="mt-10 flex items-start gap-1.5 text-[11px] leading-relaxed" style={{ color: TC.faint }}>
           <ShieldCheck size={13} className="mt-0.5 shrink-0" style={{ color: A }} />
-          Trading carries risk, and so does talking about it online. You are responsible for your own accounts and
-          for following each platform&rsquo;s rules. Payouts depend on meeting the terms in Rules. This is promotion
-          work, not financial advice, and nothing here is a promise of trading results.
+          {DISCLAIMER}
         </p>
       </div>
+
+      {toast}
     </main>
   );
 }
@@ -175,13 +189,18 @@ function Sidebar({ tab, setTab, progress, started }: { tab: TabKey; setTab: (t: 
 
 /* ── overview ─────────────────────────────────────────────────────────────── */
 
-function Overview({ me, progress, token, onRefresh, now, setTab }: {
-  me: Me; progress: Progress; token: string; onRefresh: () => Promise<void>; now: Date; setTab: (t: TabKey) => void;
+function Overview({ me, progress, token, onRefresh, now, setTab, show }: {
+  me: Me; progress: Progress; token: string; onRefresh: () => Promise<void>; now: Date; setTab: (t: TabKey) => void; show: Show;
 }) {
   const { creator, totals, nextPayout } = me;
 
   if (progress.phase === "awaiting_first_post") {
-    return <StartCard me={me} token={token} onRefresh={onRefresh} setTab={setTab} />;
+    return (
+      <div className="space-y-4">
+        <PayoutReminder creator={creator} setTab={setTab} />
+        <StartCard me={me} token={token} onRefresh={onRefresh} setTab={setTab} show={show} />
+      </div>
+    );
   }
 
   const phase = phaseFor(progress.day);
@@ -189,6 +208,8 @@ function Overview({ me, progress, token, onRefresh, now, setTab }: {
 
   return (
     <div className="space-y-4">
+      <PayoutReminder creator={creator} setTab={setTab} />
+
       {/* headline */}
       <section className={card} style={{ borderColor: `${A}55`, background: `linear-gradient(180deg, ${A}10, rgba(255,255,255,0.015))` }}>
         <div className="flex flex-wrap items-start justify-between gap-4">
@@ -312,6 +333,32 @@ function Overview({ me, progress, token, onRefresh, now, setTab }: {
   );
 }
 
+/**
+ * Nags — gently, and only while it is true — for a payout rail. Choosing one is
+ * optional at sign-up, so this is where it gets asked for, on every visit until
+ * it is set. Once set it disappears; My details is where it gets changed.
+ */
+function PayoutReminder({ creator, setTab }: { creator: Creator; setTab: (t: TabKey) => void }) {
+  if (creator.payout_method) return null;
+  return (
+    <section className="flex flex-wrap items-center gap-3 rounded-2xl border p-4"
+      style={{ borderColor: `${A}66`, background: `linear-gradient(180deg, ${A}14, rgba(255,255,255,0.015))` }}>
+      <Wallet size={17} className="shrink-0" style={{ color: A }} />
+      <div className="min-w-0 flex-1">
+        <div className="text-[13.5px] font-bold">Choose how you want to be paid</div>
+        <p className="mt-0.5 text-[12px] leading-relaxed" style={{ color: TC.muted }}>
+          Not urgent — nothing is owed yet — but it has to be set before your first payout. You can change it any time.
+        </p>
+      </div>
+      <button type="button" onClick={() => setTab("details")}
+        className="shrink-0 rounded-xl px-3.5 py-2 text-[12.5px] font-semibold transition hover:opacity-90"
+        style={{ background: A, color: "#12091f" }}>
+        Set it now
+      </button>
+    </section>
+  );
+}
+
 function Stat({ label, value, sub, tone }: { label: string; value: string; sub: string; tone: string }) {
   return (
     <div className="rounded-2xl border p-4" style={cardStyle}>
@@ -362,7 +409,7 @@ function Countdown({ to, now, label }: { to: string | null; now: Date; label: st
 
 /* ── the gate: confirming the first post starts everything ────────────────── */
 
-function StartCard({ me, token, onRefresh, setTab }: { me: Me; token: string; onRefresh: () => Promise<void>; setTab: (t: TabKey) => void }) {
+function StartCard({ me, token, onRefresh, setTab, show }: { me: Me; token: string; onRefresh: () => Promise<void>; setTab: (t: TabKey) => void; show: Show }) {
   const { creator } = me;
   const [handles, setHandles] = useState({
     tiktok: creator.tiktok ?? "", instagram: creator.instagram ?? "", youtube: creator.youtube ?? "",
@@ -393,6 +440,7 @@ function StartCard({ me, token, onRefresh, setTab }: { me: Me; token: string; on
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) { setErr(data.error || "Could not start. Please try again."); return; }
+      show("Day 1 has begun. Your countdown is running.");
       await onRefresh();
     } catch {
       setErr("Could not reach us just now. Please try again.");
@@ -439,6 +487,11 @@ function StartCard({ me, token, onRefresh, setTab }: { me: Me; token: string; on
             </label>
           ))}
         </div>
+        {allHandles && (
+          <div className="mt-2.5">
+            <FieldOk>All three accounts added — confirm your first video below</FieldOk>
+          </div>
+        )}
       </section>
 
       {/* step 2 — confirm the post */}
@@ -457,7 +510,7 @@ function StartCard({ me, token, onRefresh, setTab }: { me: Me; token: string; on
               <label key={s.key} className="flex cursor-pointer items-center gap-2.5 rounded-xl border px-3 py-2.5 transition"
                 style={on ? { borderColor: GOOD, background: `${GOOD}1a` } : { borderColor: TC.line, background: "rgba(0,0,0,0.25)" }}>
                 <input type="checkbox" className="sr-only" checked={on}
-                  onChange={() => setChecked((p) => (on ? p.filter((x) => x !== s.key) : [...p, s.key]))} />
+                  onChange={() => { setChecked((p) => (on ? p.filter((x) => x !== s.key) : [...p, s.key])); if (!on) show(s.label + " confirmed"); }} />
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={s.logo} alt="" aria-hidden className="h-5 w-5 shrink-0" />
                 <span className="text-[13px] font-medium" style={{ color: on ? TC.text : TC.muted }}>{s.label}</span>
@@ -466,6 +519,11 @@ function StartCard({ me, token, onRefresh, setTab }: { me: Me; token: string; on
             );
           })}
         </div>
+        {allPlatforms && (
+          <div className="mt-2.5">
+            <FieldOk>All three confirmed — press start and your 30 days begin</FieldOk>
+          </div>
+        )}
 
         <label className="mt-3 flex flex-col gap-1.5">
           <span className={labelCls} style={{ color: TC.faint }}>Link to the video (optional)</span>
@@ -588,12 +646,16 @@ function Legend({ c, t }: { c: string; t: string }) {
 
 /* ── post log ─────────────────────────────────────────────────────────────── */
 
-function PostsPanel({ me, progress, token, onRefresh }: { me: Me; progress: Progress; token: string; onRefresh: () => Promise<void> }) {
+function PostsPanel({ me, progress, token, onRefresh, show }: { me: Me; progress: Progress; token: string; onRefresh: () => Promise<void>; show: Show }) {
   const [checked, setChecked] = useState<string[]>([]);
   const [link, setLink] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [ok, setOk] = useState(false);
+  // Which row is asking "are you sure?". Deleting a logged day can cost a
+  // qualifying day, so it never happens on one click.
+  const [confirming, setConfirming] = useState<string | null>(null);
+  const [undoing, setUndoing] = useState<string | null>(null);
 
   const started = progress.phase !== "awaiting_first_post";
   const allPlatforms = PLATFORMS.every((p) => checked.includes(p));
@@ -610,17 +672,28 @@ function PostsPanel({ me, progress, token, onRefresh }: { me: Me; progress: Prog
       const data = await res.json().catch(() => ({}));
       if (!res.ok) { setErr(data.error || "Could not save that."); return; }
       setChecked([]); setLink(""); setOk(true);
+      show("Logged. Day " + progress.day + " is recorded.");
       await onRefresh();
     } catch { setErr("Could not reach us just now."); }
     finally { setBusy(false); }
   }
 
   async function undo(id: string) {
-    await fetch("/api/creators/posts", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token, action: "undo", id }),
-    });
-    await onRefresh();
+    if (undoing) return;
+    setUndoing(id);
+    try {
+      const res = await fetch("/api/creators/posts", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token, action: "undo", id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { show(data.error || "Could not remove that.", "bad"); return; }
+      show(data.restarted ? "Removed. Your clock is stopped until you log a first post again." : "Entry removed.");
+      setConfirming(null);
+      await onRefresh();
+    } catch {
+      show("Could not reach us just now.", "bad");
+    } finally { setUndoing(null); }
   }
 
   if (!started) {
@@ -658,7 +731,7 @@ function PostsPanel({ me, progress, token, onRefresh }: { me: Me; progress: Prog
                   <label key={s.key} className="flex cursor-pointer items-center gap-2.5 rounded-xl border px-3 py-2.5 transition"
                     style={on ? { borderColor: GOOD, background: `${GOOD}1a` } : { borderColor: TC.line, background: "rgba(0,0,0,0.25)" }}>
                     <input type="checkbox" className="sr-only" checked={on}
-                      onChange={() => setChecked((p) => (on ? p.filter((x) => x !== s.key) : [...p, s.key]))} />
+                      onChange={() => { setChecked((p) => (on ? p.filter((x) => x !== s.key) : [...p, s.key])); if (!on) show(s.label + " confirmed"); }} />
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={s.logo} alt="" aria-hidden className="h-5 w-5 shrink-0" />
                     <span className="text-[13px] font-medium" style={{ color: on ? TC.text : TC.muted }}>{s.label}</span>
@@ -667,6 +740,11 @@ function PostsPanel({ me, progress, token, onRefresh }: { me: Me; progress: Prog
                 );
               })}
             </div>
+            {allPlatforms && (
+              <div className="mt-2.5">
+                <FieldOk>All three confirmed — this will count as one post</FieldOk>
+              </div>
+            )}
             <label className="mt-3 flex flex-col gap-1.5">
               <span className={labelCls} style={{ color: TC.faint }}>Link (optional)</span>
               <input value={link} onChange={(e) => setLink(e.target.value)} placeholder="https://…"
@@ -693,6 +771,9 @@ function PostsPanel({ me, progress, token, onRefresh }: { me: Me; progress: Prog
         <h2 className={`flex items-center gap-2 ${labelCls}`} style={{ color: TC.faint }}>
           <ListChecks size={14} style={{ color: A }} /> Everything you have posted ({me.posts.length})
         </h2>
+        <p className="mt-1.5 text-[11.5px] leading-relaxed" style={{ color: TC.faint }}>
+          Undo is for something logged by mistake. Removing an entry can cost you the qualifying day, so it asks first.
+        </p>
         {me.posts.length === 0 ? (
           <p className="mt-3 text-[12.5px]" style={{ color: TC.faint }}>Nothing logged yet.</p>
         ) : (
@@ -729,10 +810,26 @@ function PostsPanel({ me, progress, token, onRefresh }: { me: Me; progress: Prog
                         ) : <span style={{ color: TC.faint }}>—</span>}
                       </td>
                       <td className="py-2 text-right">
-                        <button type="button" onClick={() => undo(p.id)} title="Remove this entry"
-                          className="inline-flex items-center gap-1 text-[11.5px] transition hover:opacity-80" style={{ color: TC.faint }}>
-                          <Undo2 size={12} /> Undo
-                        </button>
+                        {confirming === p.id ? (
+                          <span className="inline-flex flex-wrap items-center justify-end gap-1.5">
+                            <span className="text-[11px]" style={{ color: BAD }}>Remove it?</span>
+                            <button type="button" onClick={() => undo(p.id)} disabled={undoing === p.id}
+                              className="rounded-lg px-2 py-1 text-[11px] font-semibold transition hover:opacity-85 disabled:opacity-50"
+                              style={{ background: `${BAD}26`, color: BAD }}>
+                              {undoing === p.id ? "Removing…" : "Yes, remove"}
+                            </button>
+                            <button type="button" onClick={() => setConfirming(null)}
+                              className="rounded-lg px-2 py-1 text-[11px] font-medium transition hover:opacity-85"
+                              style={{ background: "rgba(255,255,255,0.07)", color: TC.muted }}>
+                              Keep
+                            </button>
+                          </span>
+                        ) : (
+                          <button type="button" onClick={() => setConfirming(p.id)} title="Remove this entry"
+                            className="inline-flex items-center gap-1 text-[11.5px] transition hover:opacity-80" style={{ color: TC.faint }}>
+                            <Undo2 size={12} /> Undo
+                          </button>
+                        )}
                       </td>
                     </tr>
                   );
@@ -1012,7 +1109,7 @@ function RulesPanel() {
 
 /* ── my details ───────────────────────────────────────────────────────────── */
 
-function DetailsPanel({ me, token, onRefresh }: { me: Me; token: string; onRefresh: () => Promise<void> }) {
+function DetailsPanel({ me, token, onRefresh, show }: { me: Me; token: string; onRefresh: () => Promise<void>; show: Show }) {
   const { creator } = me;
   const [handles, setHandles] = useState({
     tiktok: creator.tiktok ?? "", instagram: creator.instagram ?? "", youtube: creator.youtube ?? "",
@@ -1030,10 +1127,11 @@ function DetailsPanel({ me, token, onRefresh }: { me: Me; token: string; onRefre
         body: JSON.stringify({ token, ...handles, payoutMethod: payout || undefined }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) { setMsg({ ok: false, text: data.error || "Could not save." }); return; }
+      if (!res.ok) { setMsg({ ok: false, text: data.error || "Could not save." }); show(data.error || "Could not save.", "bad"); return; }
       setMsg({ ok: true, text: "Saved." });
+      show("Saved. Your details are up to date.");
       await onRefresh();
-    } catch { setMsg({ ok: false, text: "Could not reach us just now." }); }
+    } catch { setMsg({ ok: false, text: "Could not reach us just now." }); show("Could not reach us just now.", "bad"); }
     finally { setBusy(false); }
   }
 
@@ -1060,15 +1158,22 @@ function DetailsPanel({ me, token, onRefresh }: { me: Me; token: string; onRefre
           All three must be filled in and correct before your first payout — this is what we check your posts against.
         </p>
         <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {SOCIALS.map((s) => (
-            <label key={s.key} className="flex items-center gap-2.5 rounded-xl border px-3 py-2" style={{ borderColor: handles[s.key] ? `${A}55` : TC.line, background: "rgba(0,0,0,0.25)" }}>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={s.logo} alt={s.label} className="h-5 w-5 shrink-0" />
-              <input value={handles[s.key]} onChange={(e) => setHandles((p) => ({ ...p, [s.key]: e.target.value }))}
-                placeholder={s.ph} aria-label={s.label}
-                className="w-full bg-transparent text-[13.5px] outline-none" style={{ color: TC.text }} />
-            </label>
-          ))}
+          {SOCIALS.map((sc) => {
+            const saved = handles[sc.key].trim().length > 0 && handles[sc.key].trim() === (creator[sc.key] ?? "");
+            return (
+              <div key={sc.key} className="flex flex-col gap-1.5">
+                <label className="flex items-center gap-2.5 rounded-xl border px-3 py-2" style={{ borderColor: handles[sc.key] ? `${A}55` : TC.line, background: "rgba(0,0,0,0.25)" }}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={sc.logo} alt={sc.label} className="h-5 w-5 shrink-0" />
+                  <input value={handles[sc.key]} onChange={(e) => setHandles((p) => ({ ...p, [sc.key]: e.target.value }))}
+                    placeholder={sc.ph} aria-label={sc.label}
+                    className="w-full bg-transparent text-[13.5px] outline-none" style={{ color: TC.text }} />
+                  {saved && <Check size={14} className="shrink-0" style={{ color: GOOD }} />}
+                </label>
+                {handles[sc.key].trim() && !saved && <FieldOk tone="bad">Not saved yet</FieldOk>}
+              </div>
+            );
+          })}
         </div>
       </section>
 
@@ -1077,21 +1182,18 @@ function DetailsPanel({ me, token, onRefresh }: { me: Me; token: string; onRefre
         <p className="mt-1.5 text-[12.5px] leading-relaxed" style={{ color: TC.muted }}>
           You set up the account details after your first 30 days, when there is a payment to make.
         </p>
-        <div className="mt-3 grid gap-2.5 sm:grid-cols-3 xl:grid-cols-4">
-          {PAYOUTS.map((p) => {
-            const on = payout === p.key;
-            return (
-              <label key={p.key} className="flex cursor-pointer items-center gap-2.5 rounded-xl border px-3 py-2.5 transition"
-                style={on ? { borderColor: A, background: `${A}1f` } : { borderColor: TC.line, background: "rgba(0,0,0,0.25)" }}>
-                <input type="radio" name="payout-method" className="sr-only" checked={on} onChange={() => setPayout(p.key)} />
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={p.logo} alt="" aria-hidden className="h-5 w-5 shrink-0" />
-                <span className="text-[12.5px] font-medium" style={{ color: on ? TC.text : TC.muted }}>{p.label}</span>
-                {on && <Check size={14} className="ml-auto shrink-0" style={{ color: A }} />}
-              </label>
-            );
-          })}
+        <div className="mt-3 sm:max-w-md">
+          <PayoutPicker value={payout} onChange={(v) => { setPayout(v); show((PAYOUTS.find((p) => p.key === v)?.label ?? "Payout method") + " chosen — press save to keep it"); }} accent={A} />
         </div>
+        {payout && (
+          <div className="mt-2">
+            <FieldOk>
+              {payout === creator.payout_method
+                ? "Saved — you will be paid by " + (PAYOUTS.find((p) => p.key === payout)?.label ?? "")
+                : "Not saved yet — press Save changes below"}
+            </FieldOk>
+          </div>
+        )}
 
         {msg && <p className="mt-4 text-[12.5px] font-medium" style={{ color: msg.ok ? GOOD : BAD }}>{msg.text}</p>}
 

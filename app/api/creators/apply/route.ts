@@ -51,10 +51,14 @@ export async function POST(req: NextRequest) {
   if (!country) return NextResponse.json({ error: "Please tell us your country." }, { status: 400 });
   // Handles are optional at this stage — they are required before the first
   // payout, not before applying, so someone can join while an account is new.
-  const payoutMethod = trim(body.payoutMethod).toLowerCase();
-  if (!isPayoutMethod(payoutMethod)) {
-    return NextResponse.json({ error: "Choose how you would like to be paid." }, { status: 400 });
+  // Optional at sign-up. A payout rail matters when there is money to send, and
+  // the dashboard keeps asking until it is set — so it must not block joining.
+  // Anything sent must still be one we can actually pay on.
+  const rawPayout = trim(body.payoutMethod).toLowerCase();
+  if (rawPayout && !isPayoutMethod(rawPayout)) {
+    return NextResponse.json({ error: "Pick one of the payout methods listed." }, { status: 400 });
   }
+  const payoutMethod = rawPayout || null;
   if (!body.agreed) {
     return NextResponse.json({ error: "Please confirm you have read the rules." }, { status: 400 });
   }
