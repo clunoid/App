@@ -26,6 +26,7 @@ import { TC, DOT_GRID, monoFont } from "@/lib/trading/theme";
 import { CountryPicker } from "./CountryPicker";
 import { CreatorDashboard, type Me } from "./CreatorDashboard";
 import { PayoutPicker } from "./PayoutPicker";
+import { Reminders } from "./Reminders";
 import { FieldOk, useToast } from "./Feedback";
 import {
   A, GOOD, BAD, SOCIALS, PAYOUTS, LADDER, STEPS, DO, DONT, IDEAS, AI_PROMPTS, addDays, fmt,
@@ -166,14 +167,16 @@ export function CreatorsHub() {
           </h1>
           <p className="mt-3 max-w-4xl text-[14px] leading-relaxed sm:text-[15.5px]" style={{ color: TC.muted }}>
             Make short videos, post them on your own TikTok, Instagram and YouTube, and get paid at the end of
-            every 30 days. <b style={{ color: TC.text }}>Views are not required to get paid</b> — posting every day
-            is. Views are how you earn more. <b style={{ color: TC.text }}>You start the day you register</b> —
-            there is no approval to wait for.
+            every 30 days. <b style={{ color: TC.text }}>You do not need views to get paid</b> — you need to post
+            every day. Views are how you earn more. Use accounts you already have and month one pays{" "}
+            <b style={{ color: TC.text }}>$100</b>; make new ones for this and month one pays{" "}
+            <b style={{ color: TC.text }}>$50</b>. <b style={{ color: TC.text }}>You start the day you register</b> —
+            there is nothing to wait for.
           </p>
           <div className="mt-5 flex flex-wrap gap-2.5">
             {[
-              { v: "$100", l: "first month" },
-              { v: "+$50", l: "every month after" },
+              { v: "$100", l: "first month on accounts you have" },
+              { v: "+$50", l: "more every month after" },
               { v: "$750", l: "monthly ceiling" },
               { v: "+$500", l: "bonus for 10k+ views" },
             ].map((c) => (
@@ -295,6 +298,11 @@ export function CreatorsHub() {
             </ol>
           </section>
 
+          {/* ── the reminders, in point form ───────────────────────────────── */}
+          <div className="mt-12">
+            <Reminders title="Reminders for every creator" />
+          </div>
+
           {/* ── posting rhythm ─────────────────────────────────────────────── */}
           <section className="mt-12">
             <h2 className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: TC.faint }}>
@@ -322,7 +330,7 @@ export function CreatorsHub() {
           <section className="mt-12 grid gap-4 lg:grid-cols-[1.1fr,0.9fr]">
             <div className="rounded-2xl border p-4 sm:p-5" style={{ borderColor: TC.line, background: TC.panel }}>
               <h2 className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: TC.faint }}>
-                <Wallet size={14} style={{ color: A }} /> What you get paid
+                <Wallet size={14} style={{ color: A }} /> How much you earn each month
               </h2>
               <div className="mt-3 overflow-x-auto">
                 <table className="w-full min-w-[320px] border-collapse text-left">
@@ -335,7 +343,7 @@ export function CreatorsHub() {
                   </thead>
                   <tbody>
                     {LADDER.map((r) => (
-                      <tr key={r.m} className="border-t" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
+                      <tr key={r.m + r.note} className="border-t" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
                         <td className="py-2 text-[13px] font-medium">{r.m}</td>
                         <td className="py-2 text-right text-[14px] font-bold" style={{ ...monoFont, color: r.pay ? A : TC.faint }}>{r.pay ? `$${r.pay}` : "…"}</td>
                         <td className="py-2 pl-3 text-[11.5px]" style={{ color: TC.faint }}>{r.note}</td>
@@ -348,11 +356,11 @@ export function CreatorsHub() {
 
             <div className="rounded-2xl border p-4 sm:p-5" style={{ borderColor: `${GOOD}55`, background: `linear-gradient(180deg, ${GOOD}14, rgba(255,255,255,0.015))` }}>
               <h2 className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: TC.faint }}>
-                <TrendingUp size={14} style={{ color: GOOD }} /> The $500 bonus
+                <TrendingUp size={14} style={{ color: GOOD }} /> Earn $500 more
               </h2>
               <p className="mt-3 text-[13px] leading-relaxed" style={{ color: TC.muted }}>
-                Get <b style={{ color: TC.text }}>$500 on top</b> of your monthly payout in any month where your
-                videos consistently pass <b style={{ color: TC.text }}>10,000 views</b>.
+You get <b style={{ color: TC.text }}>$500 on top</b> of what you already earn, in any month where your videos
+                keep passing <b style={{ color: TC.text }}>10,000 views</b>.
               </p>
               <div className="mt-3 rounded-xl border p-3" style={{ borderColor: `${GOOD}44`, background: "rgba(0,0,0,0.2)" }}>
                 <div className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: GOOD }}>What counts as consistent</div>
@@ -383,7 +391,7 @@ export function CreatorsHub() {
                 <div className="mt-4 grid gap-3 sm:grid-cols-3">
                   {[
                     { k: "Day 15 — go to 2 a day", v: fmt(dates.switchDay), c: A },
-                    { k: "Day 30 — request payout", v: fmt(dates.finish), c: GOOD },
+                    { k: "Day 30 — ask to be paid", v: fmt(dates.finish), c: GOOD },
                     { k: "Paid by", v: fmt(dates.paidBy), c: GOOD },
                   ].map((d) => (
                     <div key={d.k} className="rounded-xl border p-3" style={{ borderColor: TC.line, background: "rgba(0,0,0,0.2)" }}>
@@ -394,8 +402,8 @@ export function CreatorsHub() {
                 </div>
               )}
               <p className="mt-3 text-[11.5px] leading-relaxed" style={{ color: TC.faint }}>
-                You have 2 grace days each month — 28 qualifying days out of 30 is a pass. Payment is within 7 days
-                of your request, after a 3 working-day check.
+                You can miss 2 days a month — you need 28 days out of 30 to get paid. We check your posts for 3
+                working days, then pay you within 7.
               </p>
             </div>
           </section>
@@ -481,8 +489,8 @@ export function CreatorsHub() {
               <h2 className="text-[18px] font-bold sm:text-[20px]">Now you have read it, start creating</h2>
               <div className="mt-4 space-y-3">
                 <label className="flex cursor-pointer items-start gap-2.5 text-[13px] leading-relaxed" style={{ color: TC.muted }}>
-                  <input type="checkbox" checked={newAccounts} onChange={(e) => { setNewAccounts(e.target.checked); if (e.target.checked) show("Noted — month 1 pays $50 for new accounts"); }} className="mt-0.5 h-4 w-4 shrink-0" style={{ accentColor: A }} />
-                  <span>These accounts are brand new. <span style={{ color: TC.faint }}>First month pays $50 instead of $100, because new accounts have no reach yet.</span></span>
+                  <input type="checkbox" checked={newAccounts} onChange={(e) => { setNewAccounts(e.target.checked); if (e.target.checked) show("Noted — month 1 pays $50 for brand-new accounts"); }} className="mt-0.5 h-4 w-4 shrink-0" style={{ accentColor: A }} />
+                  <span>I made these accounts brand new for this. <span style={{ color: TC.faint }}>Leave this unticked if you are using accounts you already had — those pay <b style={{ color: TC.text }}>$100</b> in month one. Brand-new accounts pay <b style={{ color: TC.text }}>$50</b> in month one because they have no reach yet. From month two everyone is the same.</span></span>
                 </label>
                 <label className="flex cursor-pointer items-start gap-2.5 text-[13px] leading-relaxed" style={{ color: TC.muted }}>
                   <input required type="checkbox" checked={agreed} onChange={(e) => { setAgreed(e.target.checked); if (e.target.checked) show("Thanks — you can register now"); }} className="mt-0.5 h-4 w-4 shrink-0" style={{ accentColor: A }} />

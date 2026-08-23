@@ -27,6 +27,7 @@ import {
   PHASES, phaseFor, TEMPLATES, fmt, fmtShort, DISCLAIMER,
 } from "./content";
 import { PayoutPicker } from "./PayoutPicker";
+import { Reminders } from "./Reminders";
 import { FieldOk, useToast } from "./Feedback";
 import { computeProgress, PLATFORMS, GRACE_DAYS, QUALIFYING_DAYS_NEEDED, type Progress } from "@/lib/creators/progress";
 
@@ -219,10 +220,15 @@ function Overview({ me, progress, token, onRefresh, now, setTab, show }: {
               Day {progress.day} <span className="text-[18px] font-semibold" style={{ color: TC.faint }}>of 30</span>
             </div>
             <div className="mt-2 text-[13px]" style={{ color: TC.muted }}>
-              {phase.title} — {phase.aim}
+              Finish these 30 days and you get <b style={{ color: GOOD }}>{nextPayout ? money(nextPayout.baseUsd) : "paid"}</b>
+              {nextPayout && nextPayout.baseUsd < 750 ? (
+                <> — then <b style={{ color: TC.text }}>{money(nextPayout.baseUsd + 50)}</b> the month after, and $50 more every month after that.</>
+              ) : (
+                <> — the top of the ladder.</>
+              )}
             </div>
           </div>
-          <Countdown to={progress.payoutOpensAt} now={now} label="Until you can request payout" />
+          <Countdown to={progress.payoutOpensAt} now={now} label="Until you can ask to be paid" />
         </div>
 
         <div className="mt-4 h-2 w-full overflow-hidden rounded-full" style={{ background: "rgba(255,255,255,0.08)" }}>
@@ -256,12 +262,14 @@ function Overview({ me, progress, token, onRefresh, now, setTab, show }: {
         </div>
       </section>
 
+      <Reminders title="Reminders for every creator" />
+
       {/* the numbers */}
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <Stat label="Qualifying days" value={`${progress.qualifyingDays}`} sub={`${QUALIFYING_DAYS_NEEDED} needed to pass`} tone={progress.onTrack ? A : BAD} />
-        <Stat label="Grace days left" value={`${progress.graceLeft}`} sub={`${GRACE_DAYS} allowed each month`} tone={progress.graceLeft > 0 ? A : BAD} />
-        <Stat label="Videos logged" value={`${progress.postsLogged}`} sub="Since your first post" tone={A} />
-        <Stat label="Paid to you" value={money(totals.paidUsd)} sub={totals.pendingUsd > 0 ? `${money(totals.pendingUsd)} on the way` : "Across all months"} tone={GOOD} />
+        <Stat label="Days done" value={`${progress.qualifyingDays}`} sub={`You need ${QUALIFYING_DAYS_NEEDED} to get paid`} tone={progress.onTrack ? A : BAD} />
+        <Stat label="Days you can still miss" value={`${progress.graceLeft}`} sub={`${GRACE_DAYS} a month, no more`} tone={progress.graceLeft > 0 ? A : BAD} />
+        <Stat label="Videos posted" value={`${progress.postsLogged}`} sub="Since you started" tone={A} />
+        <Stat label="Your total earnings" value={money(totals.paidUsd)} sub={totals.pendingUsd > 0 ? `${money(totals.pendingUsd)} coming to you` : "Money already paid to you"} tone={GOOD} />
       </section>
 
       {!progress.onTrack && (
@@ -281,19 +289,19 @@ function Overview({ me, progress, token, onRefresh, now, setTab, show }: {
       <section className="grid gap-3 lg:grid-cols-2">
         <div className={card} style={cardStyle}>
           <h2 className={`flex items-center gap-2 ${labelCls}`} style={{ color: TC.faint }}>
-            <Wallet size={14} style={{ color: A }} /> This month
+            <Wallet size={14} style={{ color: A }} /> What this month pays
           </h2>
           <div className="mt-3 flex items-end gap-2">
             <span className="text-[30px] font-bold leading-none" style={{ ...monoFont, color: A }}>
               {nextPayout ? money(nextPayout.baseUsd) : "—"}
             </span>
             <span className="pb-0.5 text-[12px]" style={{ color: TC.faint }}>
-              base for month {nextPayout?.month ?? 1}{creator.new_accounts && nextPayout?.month === 1 ? " (new accounts)" : ""}
+              for your month {nextPayout?.month ?? 1}{nextPayout?.month === 1 ? (creator.new_accounts ? " — brand-new accounts" : " — accounts you already had") : ""}
             </span>
           </div>
           <p className="mt-2 text-[12.5px] leading-relaxed" style={{ color: TC.muted }}>
-            Plus up to <b style={{ color: GOOD }}>$500</b> if at least 75% of the month&rsquo;s posts pass 10,000
-            views on any one platform.
+            You can earn <b style={{ color: GOOD }}>$500</b> on top if at least 75% of this month&rsquo;s posts pass
+            10,000 views on any one platform.
           </p>
         </div>
 
@@ -474,6 +482,8 @@ function StartCard({ me, token, onRefresh, setTab, show }: { me: Me; token: stri
         </h2>
         <p className="mt-1.5 text-[12.5px] leading-relaxed" style={{ color: TC.muted }}>
           These are what we check your posts against, so all three are required before the clock starts.
+          Put <b style={{ color: TC.text }}>clunoid.com</b> in the bio of each one before you post, so &ldquo;link in
+          bio&rdquo; is true from day one.
         </p>
         <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {SOCIALS.map((s) => (
@@ -543,6 +553,8 @@ function StartCard({ me, token, onRefresh, setTab, show }: { me: Me; token: stri
         {!allHandles && <p className="mt-2 text-[11.5px]" style={{ color: TC.faint }}>Add all three handles first.</p>}
         {allHandles && !allPlatforms && <p className="mt-2 text-[11.5px]" style={{ color: TC.faint }}>Tick all three platforms once the video is up on each.</p>}
       </section>
+
+      <Reminders title="Read this before your first post" />
 
       <section className={card} style={cardStyle}>
         <h2 className={`flex items-center gap-2 ${labelCls}`} style={{ color: TC.faint }}>
@@ -852,14 +864,14 @@ function PayoutsPanel({ me, progress }: { me: Me; progress: Progress }) {
   return (
     <div className="space-y-4">
       <section className="grid gap-3 sm:grid-cols-3">
-        <Stat label="Total received" value={money(totals.paidUsd)} sub={`${totals.monthsPaid} month${totals.monthsPaid === 1 ? "" : "s"} paid`} tone={GOOD} />
-        <Stat label="On the way" value={money(totals.pendingUsd)} sub="Requested or approved" tone={A} />
-        <Stat label="This month's base" value={nextPayout ? money(nextPayout.baseUsd) : "—"} sub={`Month ${nextPayout?.month ?? 1} of the ladder`} tone={A} />
+        <Stat label="Your total earnings" value={money(totals.paidUsd)} sub={`${totals.monthsPaid} month${totals.monthsPaid === 1 ? "" : "s"} paid so far`} tone={GOOD} />
+        <Stat label="Coming to you" value={money(totals.pendingUsd)} sub="Asked for, not paid yet" tone={A} />
+        <Stat label="This month you earn" value={nextPayout ? money(nextPayout.baseUsd) : "—"} sub={`Your month ${nextPayout?.month ?? 1}`} tone={A} />
       </section>
 
       <section className={card} style={cardStyle}>
         <h2 className={`flex items-center gap-2 ${labelCls}`} style={{ color: TC.faint }}>
-          <Wallet size={14} style={{ color: A }} /> How you get paid
+          <Wallet size={14} style={{ color: A }} /> How your money reaches you
         </h2>
         <div className="mt-3 flex flex-wrap items-center gap-3">
           {rail ? (
@@ -877,19 +889,19 @@ function PayoutsPanel({ me, progress }: { me: Me; progress: Progress }) {
         </div>
         {progress.finishDate && (
           <p className="mt-3 text-[12.5px] leading-relaxed" style={{ color: TC.muted }}>
-            Request payout on <b style={{ color: TC.text }}>{fmt(progress.finishDate)}</b>. We check for 3 working
-            days, then pay within 7 — so the money is with you by <b style={{ color: GOOD }}>{fmt(progress.paidByDate!)}</b>.
+            Ask to be paid on <b style={{ color: TC.text }}>{fmt(progress.finishDate)}</b>. We check your posts for 3
+            working days, then pay within 7 — so the money is with you by <b style={{ color: GOOD }}>{fmt(progress.paidByDate!)}</b>.
           </p>
         )}
       </section>
 
       <section className={card} style={cardStyle}>
         <h2 className={`flex items-center gap-2 ${labelCls}`} style={{ color: TC.faint }}>
-          <TrendingUp size={14} style={{ color: A }} /> Payout history
+          <TrendingUp size={14} style={{ color: A }} /> Money paid to you
         </h2>
         {payouts.length === 0 ? (
           <p className="mt-3 text-[12.5px] leading-relaxed" style={{ color: TC.faint }}>
-            Nothing yet — your first payout appears here once your first 30 days are complete and checked.
+            Nothing yet. Your first payment shows up here once you finish 30 days and we have checked your posts.
           </p>
         ) : (
           <div className="mt-3 overflow-x-auto">
@@ -930,7 +942,7 @@ function PayoutsPanel({ me, progress }: { me: Me; progress: Progress }) {
 
       <section className={card} style={cardStyle}>
         <h2 className={`flex items-center gap-2 ${labelCls}`} style={{ color: TC.faint }}>
-          <TrendingUp size={14} style={{ color: A }} /> The ladder
+          <TrendingUp size={14} style={{ color: A }} /> How much you earn each month
         </h2>
         <div className="mt-3 overflow-x-auto">
           <table className="w-full min-w-[320px] border-collapse text-left">
@@ -943,7 +955,7 @@ function PayoutsPanel({ me, progress }: { me: Me; progress: Progress }) {
             </thead>
             <tbody>
               {LADDER.map((r) => (
-                <tr key={r.m} className="border-t" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
+                <tr key={r.m + r.note} className="border-t" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
                   <td className="py-2 text-[13px] font-medium">{r.m}</td>
                   <td className="py-2 text-right text-[14px] font-bold" style={{ ...monoFont, color: r.pay ? A : TC.faint }}>{r.pay ? `$${r.pay}` : "…"}</td>
                   <td className="py-2 pl-3 text-[11.5px]" style={{ color: TC.faint }}>{r.note}</td>
