@@ -11,7 +11,7 @@
 -- Handles are stored without the leading @ and lowercased by the API, so the
 -- unique index below actually catches someone applying twice with @Name/name.
 
-create table if not exists public.creator_applications (
+create table if not exists public.trading_creator_applications (
   id            uuid primary key default gen_random_uuid(),
 
   -- who
@@ -39,18 +39,18 @@ create table if not exists public.creator_applications (
 
 -- One application per email, and one per handle, so the same person cannot
 -- occupy several seats. Partial indexes skip the nulls.
-create unique index if not exists creator_applications_email_key
-  on public.creator_applications (lower(email));
-create unique index if not exists creator_applications_tiktok_key
-  on public.creator_applications (tiktok) where tiktok is not null;
-create unique index if not exists creator_applications_instagram_key
-  on public.creator_applications (instagram) where instagram is not null;
-create unique index if not exists creator_applications_youtube_key
-  on public.creator_applications (youtube) where youtube is not null;
+create unique index if not exists trading_creator_applications_email_key
+  on public.trading_creator_applications (lower(email));
+create unique index if not exists trading_creator_applications_tiktok_key
+  on public.trading_creator_applications (tiktok) where tiktok is not null;
+create unique index if not exists trading_creator_applications_instagram_key
+  on public.trading_creator_applications (instagram) where instagram is not null;
+create unique index if not exists trading_creator_applications_youtube_key
+  on public.trading_creator_applications (youtube) where youtube is not null;
 
-create index if not exists creator_applications_status
-  on public.creator_applications (status, applied_at desc);
+create index if not exists trading_creator_applications_status
+  on public.trading_creator_applications (status, applied_at desc);
 
-alter table public.creator_applications enable row level security;
+alter table public.trading_creator_applications enable row level security;
 -- (No policies on purpose — deny all to non-service-role. All access is
 --  server-side through /api/creators/apply and the admin tooling.)

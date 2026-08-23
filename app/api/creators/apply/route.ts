@@ -69,7 +69,7 @@ export async function POST(req: NextRequest) {
   // does not require it.
   const user = await requireUser().catch(() => null);
 
-  const { error } = await db.from("creator_applications").insert({
+  const { error } = await db.from("trading_creator_applications").insert({
     name,
     email,
     country,
