@@ -153,7 +153,7 @@ export const PHASES = [
 export const REMINDERS = [
   {
     t: "Views are not required. Posting every day is.",
-    d: "You get paid for showing up, not for going viral. Post every day and your payout is yours even if every video is quiet. Views only decide whether you earn the extra $500 on top — they are never what decides if you get paid.",
+    d: "Post decent videos every day, follow the rules, and you get paid. That is the whole deal. Get 10,000 views consistently and you earn an extra $500 on top of your monthly payout.",
   },
   {
     t: "Use English, or the language people speak where you are",

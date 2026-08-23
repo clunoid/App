@@ -168,7 +168,7 @@ export function CreatorsHub() {
           <p className="mt-3 max-w-4xl text-[14px] leading-relaxed sm:text-[15.5px]" style={{ color: TC.muted }}>
             Make short videos, post them on your own TikTok, Instagram and YouTube, and get paid at the end of
             every 30 days. <b style={{ color: TC.text }}>You do not need views to get paid</b> — you need to post
-            every day. Views are how you earn more. Use accounts you already have and month one pays{" "}
+            every day. Get <b style={{ color: TC.text }}>10,000 views</b> consistently and you earn <b style={{ color: TC.text }}>$500</b> on top. Use accounts you already have and month one pays{" "}
             <b style={{ color: TC.text }}>$100</b>; make new ones for this and month one pays{" "}
             <b style={{ color: TC.text }}>$50</b>. <b style={{ color: TC.text }}>You start the day you register</b> —
             there is nothing to wait for.

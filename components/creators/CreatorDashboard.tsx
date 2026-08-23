@@ -162,9 +162,9 @@ export function PostDailyBanner() {
         style={{ borderColor: `${GOOD}66`, background: `linear-gradient(180deg, ${GOOD}16, rgba(255,255,255,0.015))` }}>
         <CalendarCheck size={18} className="mt-0.5 shrink-0" style={{ color: GOOD }} />
         <p className="text-[13px] leading-relaxed sm:text-[13.5px]" style={{ color: TC.muted }}>
-          <b style={{ color: TC.text }}>Post every day. You do not need views to get paid.</b> A quiet video counts
-          exactly the same as one that takes off — showing up is the whole job. Views only decide the extra $500 on
-          top. So post, and stop worrying about the numbers.
+          <b style={{ color: TC.text }}>Post every day. You do not need views to get paid.</b> Post decent videos
+          every day, follow the rules, and you get paid. Get <b style={{ color: TC.text }}>10,000 views</b>{" "}
+          consistently and you earn <b style={{ color: GOOD }}>$500</b> on top.
         </p>
       </section>
   );
