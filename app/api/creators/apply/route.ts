@@ -23,9 +23,13 @@ type Body = {
   tiktok?: string;
   instagram?: string;
   youtube?: string;
+  payoutMethod?: string;
   newAccounts?: boolean;
   agreed?: boolean;
 };
+
+/** The rails we can actually pay on. Details are collected after month one. */
+const PAYOUT_METHODS = ["usdt", "paypal", "venmo", "cashapp", "mpesa", "wise", "payoneer"];
 
 const MAX = 120;
 const trim = (v: unknown) => (typeof v === "string" ? v.trim().slice(0, MAX) : "");
@@ -55,8 +59,13 @@ export async function POST(req: NextRequest) {
   if (!name) return NextResponse.json({ error: "Please give us your name." }, { status: 400 });
   if (!EMAIL_RE.test(email)) return NextResponse.json({ error: "That email does not look right." }, { status: 400 });
   if (!country) return NextResponse.json({ error: "Please tell us your country." }, { status: 400 });
-  if (!tiktok && !instagram && !youtube) {
-    return NextResponse.json({ error: "Add at least one account — TikTok, Instagram or YouTube." }, { status: 400 });
+  // Handles are optional at this stage — they are required before the first
+  // payout, not before applying, so someone can join while an account is new.
+  const payoutMethod = PAYOUT_METHODS.includes(trim(body.payoutMethod).toLowerCase())
+    ? trim(body.payoutMethod).toLowerCase()
+    : null;
+  if (!payoutMethod) {
+    return NextResponse.json({ error: "Choose how you would like to be paid." }, { status: 400 });
   }
   if (!body.agreed) {
     return NextResponse.json({ error: "Please confirm you have read the rules." }, { status: 400 });
@@ -77,6 +86,7 @@ export async function POST(req: NextRequest) {
     tiktok,
     instagram,
     youtube,
+    payout_method: payoutMethod,
     new_accounts: !!body.newAccounts,
   });
 

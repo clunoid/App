@@ -1,28 +1,42 @@
 "use client";
 
 /**
- * CREATOR PROGRAM — the guide creators read before and during their 30 days.
+ * CREATOR PROGRAM — explainer, application, then the rules.
  *
- * Written to be followed, not admired: the money is stated first, then the five
- * steps, then the rules that keep accounts alive. Plain language throughout,
- * because a rule nobody understands is a payout argument later.
- *
- * The date planner is deliberately client-side only — it turns a start date into
- * the three dates a creator cares about without needing an account.
+ * Ordered the way someone actually uses it: what this is, then the form while
+ * they are still interested, then everything they need to know, and only at the
+ * very bottom the two confirmations and the send button. The whole page is one
+ * form, so nobody has to scroll back up to submit what they filled in.
  */
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import {
   ArrowLeft, Clapperboard, CalendarDays, Check, X, Sparkles, Wallet,
-  TrendingUp, ShieldCheck, Clock, Rocket, Loader2,
+  TrendingUp, ShieldCheck, Clock, Rocket, Loader2, ArrowDown,
 } from "lucide-react";
 import { TC, DOT_GRID, monoFont } from "@/lib/trading/theme";
+import { COUNTRIES } from "./countries";
 
-const A = "#a78bfa";          // programme accent
+const A = "#a78bfa";
 const GOOD = "#34d399";
 const BAD = "#f2607d";
 
-/** Base ladder: $100 to start, +$50 for each month completed, capped at $750. */
+const SOCIALS = [
+  { key: "tiktok", label: "TikTok", logo: "/logos/tiktok.svg", ph: "@yourhandle" },
+  { key: "instagram", label: "Instagram", logo: "/logos/instagram.svg", ph: "@yourhandle" },
+  { key: "youtube", label: "YouTube", logo: "/logos/youtube.svg", ph: "@yourchannel" },
+] as const;
+
+const PAYOUTS = [
+  { key: "usdt", label: "USDT (Tether)", logo: "/logos/tether.svg" },
+  { key: "paypal", label: "PayPal", logo: "/logos/paypal.svg" },
+  { key: "venmo", label: "Venmo", logo: "/logos/venmo.svg" },
+  { key: "cashapp", label: "Cash App", logo: "/logos/cashapp.svg" },
+  { key: "mpesa", label: "M-Pesa", logo: "/logos/mpesa.svg" },
+  { key: "wise", label: "Wise", logo: "/logos/wise.svg" },
+  { key: "payoneer", label: "Payoneer", logo: "/logos/payoneer.svg" },
+] as const;
+
 const LADDER = [
   { m: "Month 1", pay: 100, note: "New account: $50" },
   { m: "Month 2", pay: 150, note: "" },
@@ -35,36 +49,11 @@ const LADDER = [
 ];
 
 const STEPS = [
-  {
-    n: 1,
-    icon: Rocket,
-    title: "Apply and get your start date",
-    body: "Send us your TikTok, Instagram and YouTube handles. We check the accounts are yours and real. Your 30 days begin the day you are approved — that is your start date.",
-  },
-  {
-    n: 2,
-    icon: Clock,
-    title: "Days 1–14: post once a day",
-    body: "One video per day. Post that same video to TikTok, Instagram Reels and YouTube Shorts — all three together count as one post. Going slower at the start is on purpose: it builds reach and keeps new accounts out of trouble.",
-  },
-  {
-    n: 3,
-    icon: TrendingUp,
-    title: "Days 15–30: post twice a day",
-    body: "Two videos per day, each one posted to all three platforms. From month two onward this is your normal pace, every day.",
-  },
-  {
-    n: 4,
-    icon: CalendarDays,
-    title: "Finish 30 days, then request payout",
-    body: "You get 2 grace days per month, so you need 28 qualifying days out of 30. Leave every video up. Deleting them before payout cancels the month.",
-  },
-  {
-    n: 5,
-    icon: Wallet,
-    title: "We check, then we pay",
-    body: "We review for 3 working days — posts still live, made by you, following the rules, views genuine. You are paid within 7 days of requesting.",
-  },
+  { n: 1, icon: Rocket, title: "Apply and get your start date", body: "Send the form above. We check the accounts are yours. Your 30 days begin the day you are approved — that is your start date." },
+  { n: 2, icon: Clock, title: "Days 1–14: post once a day", body: "One video per day. Post that same video to TikTok, Instagram Reels and YouTube Shorts — all three together count as one post. Going slower at the start is on purpose: it builds reach and keeps accounts out of trouble." },
+  { n: 3, icon: TrendingUp, title: "Days 15–30: post twice a day", body: "Two videos per day, each one posted to all three platforms. From month two onward this is your normal pace, every day." },
+  { n: 4, icon: CalendarDays, title: "Finish 30 days, then request payout", body: "You get 2 grace days per month, so you need 28 qualifying days out of 30. Leave every video up. Deleting them before payout cancels the month." },
+  { n: 5, icon: Wallet, title: "We check, then we pay", body: "We review for 3 working days — posts still live, made by you, following the rules, views genuine. You are paid within 7 days of requesting." },
 ];
 
 const DO = [
@@ -105,13 +94,15 @@ const AI_PROMPTS = [
   "List 5 myths about trading bots I can correct in a 45-second video.",
 ];
 
-/**
- * The application. Deliberately short — name, email, country, whichever accounts
- * they have, and one confirmation that they read the rules. Anything more and
- * people abandon it, and everything else we need we can ask once they are in.
- */
-function ApplyForm() {
+const addDays = (d: Date, n: number) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
+const fmt = (d: Date) => d.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short", year: "numeric" });
+
+export function CreatorsHub() {
+  const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
+  const [start, setStart] = useState(today);
+
   const [f, setF] = useState({ name: "", email: "", country: "", tiktok: "", instagram: "", youtube: "" });
+  const [payout, setPayout] = useState("");
   const [newAccounts, setNewAccounts] = useState(false);
   const [agreed, setAgreed] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -120,6 +111,12 @@ function ApplyForm() {
 
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setF((p) => ({ ...p, [k]: e.target.value }));
+
+  const dates = useMemo(() => {
+    const d = new Date(start + "T00:00:00");
+    if (Number.isNaN(d.getTime())) return null;
+    return { switchDay: addDays(d, 14), finish: addDays(d, 29), paidBy: addDays(d, 39) };
+  }, [start]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -130,124 +127,20 @@ function ApplyForm() {
       const res = await fetch("/api/creators/apply", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...f, newAccounts, agreed }),
+        body: JSON.stringify({ ...f, payoutMethod: payout, newAccounts, agreed }),
       });
       const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
       if (!res.ok || !data.ok) { setErr(data.error || "Something went wrong. Please try again."); return; }
       setDone(true);
+      window.scrollTo({ top: 0, behavior: "smooth" });
     } catch {
       setErr("Could not reach us just now. Please try again.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  if (done) {
-    return (
-      <div className="rounded-2xl border p-5 sm:p-6" style={{ borderColor: `${GOOD}55`, background: `linear-gradient(180deg, ${GOOD}14, rgba(255,255,255,0.015))` }}>
-        <div className="flex items-start gap-3">
-          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl" style={{ background: `${GOOD}22` }}>
-            <Check size={18} style={{ color: GOOD }} />
-          </span>
-          <div>
-            <h2 className="text-[18px] font-bold sm:text-[20px]">Application received</h2>
-            <p className="mt-2 max-w-2xl text-[13px] leading-relaxed" style={{ color: TC.muted }}>
-              We check that the accounts are yours, then email you a start date. Your 30 days begin the day you
-              are approved — not today — so nothing is running yet.
-            </p>
-            <p className="mt-2 max-w-2xl text-[12.5px] leading-relaxed" style={{ color: TC.faint }}>
-              While you wait: read the do and do-not lists above, and get a few video ideas ready.
-            </p>
-          </div>
-        </div>
-      </div>
-    );
+    } finally { setBusy(false); }
   }
 
   const field = "rounded-xl border px-3 py-2.5 text-[13.5px] outline-none transition focus:border-violet-400";
   const fieldStyle = { borderColor: TC.line, background: "rgba(0,0,0,0.25)", color: TC.text } as const;
-
-  return (
-    <form onSubmit={submit} className="rounded-2xl border p-5 sm:p-6" style={{ borderColor: `${A}55`, background: `linear-gradient(180deg, ${A}10, rgba(255,255,255,0.015))` }}>
-      <h2 className="text-[18px] font-bold sm:text-[20px]">Apply to join</h2>
-      <p className="mt-2 max-w-2xl text-[13px] leading-relaxed" style={{ color: TC.muted }}>
-        Give us your accounts. We check they are yours, then send you a start date. Places are limited so every
-        creator gets proper support.
-      </p>
-
-      <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        <label className="flex flex-col gap-1.5">
-          <span className="text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: TC.faint }}>Your name</span>
-          <input required value={f.name} onChange={set("name")} className={field} style={fieldStyle} placeholder="Jane Doe" />
-        </label>
-        <label className="flex flex-col gap-1.5">
-          <span className="text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: TC.faint }}>Email</span>
-          <input required type="email" value={f.email} onChange={set("email")} className={field} style={fieldStyle} placeholder="you@email.com" />
-        </label>
-        <label className="flex flex-col gap-1.5">
-          <span className="text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: TC.faint }}>Country</span>
-          <input required value={f.country} onChange={set("country")} className={field} style={fieldStyle} placeholder="Kenya" />
-        </label>
-        <label className="flex flex-col gap-1.5">
-          <span className="text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: TC.faint }}>TikTok</span>
-          <input value={f.tiktok} onChange={set("tiktok")} className={field} style={fieldStyle} placeholder="@yourhandle" />
-        </label>
-        <label className="flex flex-col gap-1.5">
-          <span className="text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: TC.faint }}>Instagram</span>
-          <input value={f.instagram} onChange={set("instagram")} className={field} style={fieldStyle} placeholder="@yourhandle" />
-        </label>
-        <label className="flex flex-col gap-1.5">
-          <span className="text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: TC.faint }}>YouTube</span>
-          <input value={f.youtube} onChange={set("youtube")} className={field} style={fieldStyle} placeholder="@yourchannel" />
-        </label>
-      </div>
-      <p className="mt-2 text-[11.5px]" style={{ color: TC.faint }}>Add at least one. Leave the rest blank if you do not have them yet.</p>
-
-      <div className="mt-4 space-y-2.5">
-        <label className="flex cursor-pointer items-start gap-2.5 text-[12.5px] leading-relaxed" style={{ color: TC.muted }}>
-          <input type="checkbox" checked={newAccounts} onChange={(e) => setNewAccounts(e.target.checked)} className="mt-0.5 h-4 w-4 shrink-0" style={{ accentColor: A }} />
-          <span>These accounts are brand new. <span style={{ color: TC.faint }}>First month pays $50 instead of $100, because new accounts have no reach yet.</span></span>
-        </label>
-        <label className="flex cursor-pointer items-start gap-2.5 text-[12.5px] leading-relaxed" style={{ color: TC.muted }}>
-          <input required type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} className="mt-0.5 h-4 w-4 shrink-0" style={{ accentColor: A }} />
-          <span>I have read the rules on this page and I will follow them. <span style={{ color: TC.faint }}>Breaking them cancels the month.</span></span>
-        </label>
-      </div>
-
-      {err && <p className="mt-3 text-[12.5px] font-medium" style={{ color: BAD }}>{err}</p>}
-
-      <button type="submit" disabled={busy}
-        className="mt-5 inline-flex items-center justify-center gap-2 rounded-xl px-5 py-3 text-[14px] font-semibold transition hover:opacity-90 disabled:opacity-60"
-        style={{ background: A, color: "#12091f" }}>
-        {busy ? <Loader2 size={16} className="animate-spin" /> : <Clapperboard size={16} />}
-        {busy ? "Sending…" : "Send application"}
-      </button>
-    </form>
-  );
-}
-
-function addDays(d: Date, n: number) {
-  const x = new Date(d);
-  x.setDate(x.getDate() + n);
-  return x;
-}
-const fmt = (d: Date) =>
-  d.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short", year: "numeric" });
-
-export function CreatorsHub() {
-  const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
-  const [start, setStart] = useState(today);
-
-  const dates = useMemo(() => {
-    const d = new Date(start + "T00:00:00");
-    if (Number.isNaN(d.getTime())) return null;
-    return {
-      start: d,
-      switchDay: addDays(d, 14),   // day 15 — pace doubles
-      finish: addDays(d, 29),      // day 30 — request payout
-      paidBy: addDays(d, 39),      // 3 working days review + 7 to pay
-    };
-  }, [start]);
+  const label = "text-[10.5px] font-semibold uppercase tracking-wider";
 
   return (
     <main className="relative min-h-[100dvh] w-full overflow-x-hidden" style={{ background: TC.bg, color: TC.text }}>
@@ -265,251 +158,372 @@ export function CreatorsHub() {
           </span>
         </header>
 
-        {/* ── the offer, first ───────────────────────────────────────────── */}
+        {/* ── what this is, in four lines ────────────────────────────────── */}
         <section className="mt-8">
-          <h1 className="text-[28px] font-bold leading-tight sm:text-[36px] lg:text-[40px]">
+          <h1 className="text-[27px] font-bold leading-tight sm:text-[34px] lg:text-[38px]">
             Get paid every month to post about Clunoid
           </h1>
           <p className="mt-3 max-w-4xl text-[14px] leading-relaxed sm:text-[15.5px]" style={{ color: TC.muted }}>
             Make short videos, post them on your own TikTok, Instagram and YouTube, and get paid at the end of
-            every 30 days. <b style={{ color: TC.text }}>Views are not required to get paid</b> — posting every day is.
-            Views are how you earn more.
+            every 30 days. <b style={{ color: TC.text }}>Views are not required to get paid</b> — posting every day
+            is. Views are how you earn more.
           </p>
-
-          <div className="mt-6 grid gap-3 sm:grid-cols-3">
+          <div className="mt-5 flex flex-wrap gap-2.5">
             {[
-              { v: "$100", l: "Your first month", s: "$50 if the account is brand new" },
-              { v: "+$50", l: "Every month you finish", s: "Rising to $750 a month" },
-              { v: "+$500", l: "Bonus for 10k+ view videos", s: "Any month you qualify" },
+              { v: "$100", l: "first month" },
+              { v: "+$50", l: "every month after" },
+              { v: "$750", l: "monthly ceiling" },
+              { v: "+$500", l: "bonus for 10k+ views" },
             ].map((c) => (
-              <div key={c.l} className="rounded-2xl border p-4 sm:p-5" style={{ borderColor: "rgba(167,139,250,0.35)", background: "linear-gradient(180deg, rgba(167,139,250,0.09), rgba(255,255,255,0.015))" }}>
-                <div className="text-[28px] font-bold leading-none sm:text-[32px]" style={{ ...monoFont, color: A }}>{c.v}</div>
-                <div className="mt-2 text-[13px] font-semibold">{c.l}</div>
-                <div className="mt-0.5 text-[11.5px] leading-snug" style={{ color: TC.faint }}>{c.s}</div>
+              <div key={c.l} className="rounded-xl border px-3.5 py-2.5" style={{ borderColor: "rgba(167,139,250,0.35)", background: "rgba(167,139,250,0.08)" }}>
+                <span className="text-[18px] font-bold" style={{ ...monoFont, color: A }}>{c.v}</span>
+                <span className="ml-1.5 text-[11.5px]" style={{ color: TC.muted }}>{c.l}</span>
               </div>
             ))}
           </div>
-          <p className="mt-3 text-[12px] leading-relaxed" style={{ color: TC.faint }}>
-            Most you can earn in one month: <b style={{ color: TC.muted }}>$750 base + $500 bonus = $1,250</b>.
-          </p>
         </section>
 
-        {/* ── the five steps ─────────────────────────────────────────────── */}
-        <section className="mt-12">
-          <h2 className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: TC.faint }}>
-            <Check size={14} style={{ color: A }} /> What to do, step by step
-          </h2>
-          <ol className="mt-4 grid gap-3 lg:grid-cols-2">
-            {STEPS.map(({ n, icon: Icon, title, body }) => (
-              <li key={n} className="flex gap-3.5 rounded-2xl border p-4 sm:p-5" style={{ borderColor: TC.line, background: TC.panel }}>
-                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl text-[14px] font-bold" style={{ background: `${A}22`, color: A, boxShadow: `inset 0 0 0 1px ${A}55` }}>{n}</span>
-                <div className="min-w-0">
-                  <div className="flex items-center gap-1.5">
-                    <Icon size={14} style={{ color: A }} />
-                    <h3 className="text-[14.5px] font-bold">{title}</h3>
-                  </div>
-                  <p className="mt-1.5 text-[13px] leading-relaxed" style={{ color: TC.muted }}>{body}</p>
-                </div>
-              </li>
-            ))}
-          </ol>
-        </section>
-
-        {/* ── posting rhythm ─────────────────────────────────────────────── */}
-        <section className="mt-12">
-          <h2 className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: TC.faint }}>
-            <Clock size={14} style={{ color: A }} /> How often to post
-          </h2>
-          <div className="mt-4 grid gap-3 sm:grid-cols-3">
-            {[
-              { k: "Days 1–14", v: "1 video a day", s: "Slow start builds reach and protects the account" },
-              { k: "Days 15–30", v: "2 videos a day", s: "Same for every month after this one" },
-              { k: "Each video", v: "All 3 platforms", s: "TikTok + Reels + Shorts together = one post" },
-            ].map((c) => (
-              <div key={c.k} className="rounded-2xl border p-4 sm:p-5" style={{ borderColor: TC.line, background: TC.panel }}>
-                <div className="text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: TC.faint }}>{c.k}</div>
-                <div className="mt-1.5 text-[17px] font-bold" style={{ color: A }}>{c.v}</div>
-                <div className="mt-1 text-[11.5px] leading-snug" style={{ color: TC.muted }}>{c.s}</div>
+        {done ? (
+          <section className="mt-8 rounded-2xl border p-5 sm:p-6" style={{ borderColor: `${GOOD}55`, background: `linear-gradient(180deg, ${GOOD}14, rgba(255,255,255,0.015))` }}>
+            <div className="flex items-start gap-3">
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl" style={{ background: `${GOOD}22` }}>
+                <Check size={18} style={{ color: GOOD }} />
+              </span>
+              <div>
+                <h2 className="text-[18px] font-bold sm:text-[20px]">Application received</h2>
+                <p className="mt-2 max-w-2xl text-[13px] leading-relaxed" style={{ color: TC.muted }}>
+                  We check that the accounts are yours, then email you a start date. Your 30 days begin the day you
+                  are approved — not today — so nothing is running yet.
+                </p>
+                <p className="mt-2 max-w-2xl text-[12.5px] leading-relaxed" style={{ color: TC.faint }}>
+                  While you wait: read the rules below and get a few video ideas ready.
+                </p>
               </div>
-            ))}
-          </div>
-          <p className="mt-3 text-[12px] leading-relaxed" style={{ color: TC.faint }}>
-            Videos should be 30 seconds to 2 minutes. Longer is fine when the content is worth it — never pad it out.
-          </p>
-        </section>
-
-        {/* ── money detail ───────────────────────────────────────────────── */}
-        <section className="mt-12 grid gap-4 lg:grid-cols-[1.1fr,0.9fr]">
-          <div className="rounded-2xl border p-4 sm:p-5" style={{ borderColor: TC.line, background: TC.panel }}>
-            <h2 className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: TC.faint }}>
-              <Wallet size={14} style={{ color: A }} /> What you get paid
-            </h2>
-            <div className="mt-3 overflow-x-auto">
-              <table className="w-full min-w-[320px] border-collapse text-left">
-                <thead>
-                  <tr>
-                    <th className="pb-2 text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: TC.faint }}>Month finished</th>
-                    <th className="pb-2 text-right text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: TC.faint }}>You get</th>
-                    <th className="pb-2 pl-3 text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: TC.faint }}>Note</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {LADDER.map((r) => (
-                    <tr key={r.m} className="border-t" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
-                      <td className="py-2 text-[13px] font-medium">{r.m}</td>
-                      <td className="py-2 text-right text-[14px] font-bold" style={{ ...monoFont, color: r.pay ? A : TC.faint }}>
-                        {r.pay ? `$${r.pay}` : "…"}
-                      </td>
-                      <td className="py-2 pl-3 text-[11.5px]" style={{ color: TC.faint }}>{r.note}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
             </div>
-          </div>
+          </section>
+        ) : null}
 
-          <div className="rounded-2xl border p-4 sm:p-5" style={{ borderColor: `${GOOD}55`, background: `linear-gradient(180deg, ${GOOD}14, rgba(255,255,255,0.015))` }}>
-            <h2 className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: TC.faint }}>
-              <TrendingUp size={14} style={{ color: GOOD }} /> The $500 bonus
-            </h2>
-            <p className="mt-3 text-[13px] leading-relaxed" style={{ color: TC.muted }}>
-              Get <b style={{ color: TC.text }}>$500 on top</b> of your monthly payout in any month where
-              your videos consistently pass <b style={{ color: TC.text }}>10,000 views</b>.
-            </p>
-            <div className="mt-3 rounded-xl border p-3" style={{ borderColor: `${GOOD}44`, background: "rgba(0,0,0,0.2)" }}>
-              <div className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: GOOD }}>What counts as consistent</div>
-              <p className="mt-1.5 text-[12.5px] leading-relaxed" style={{ color: TC.muted }}>
-                At least <b style={{ color: TC.text }}>75% of your posts that month</b> reached 10,000+ views
-                on at least one platform. Highest count across TikTok, Instagram or YouTube is the one we use.
+        {/* One form from here to the bottom, so nothing has to be scrolled back to. */}
+        <form onSubmit={submit}>
+          {/* ── the application ──────────────────────────────────────────── */}
+          {!done && (
+            <section id="apply" className="mt-8 rounded-2xl border p-5 sm:p-6" style={{ borderColor: `${A}55`, background: `linear-gradient(180deg, ${A}10, rgba(255,255,255,0.015))` }}>
+              <h2 className="text-[18px] font-bold sm:text-[20px]">Apply to join</h2>
+              <p className="mt-1.5 max-w-2xl text-[12.5px] leading-relaxed" style={{ color: TC.muted }}>
+                Fill this in, read the rules below, then confirm and send at the bottom of the page.
               </p>
+
+              <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                <label className="flex flex-col gap-1.5">
+                  <span className={label} style={{ color: TC.faint }}>Your name</span>
+                  <input required value={f.name} onChange={set("name")} className={field} style={fieldStyle} placeholder="Jane Doe" />
+                </label>
+                <label className="flex flex-col gap-1.5">
+                  <span className={label} style={{ color: TC.faint }}>Email</span>
+                  <input required type="email" value={f.email} onChange={set("email")} className={field} style={fieldStyle} placeholder="you@email.com" />
+                </label>
+                <label className="flex flex-col gap-1.5">
+                  <span className={label} style={{ color: TC.faint }}>Country</span>
+                  <input required list="cln-countries" value={f.country} onChange={set("country")} className={field} style={fieldStyle} placeholder="Type or pick your country" />
+                  <datalist id="cln-countries">
+                    {COUNTRIES.map((c) => <option key={c} value={c} />)}
+                  </datalist>
+                </label>
+              </div>
+
+              {/* social handles — optional now, required before the first payout */}
+              <div className="mt-6">
+                <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                  <span className={label} style={{ color: TC.faint }}>Your accounts</span>
+                  <span className="text-[11.5px]" style={{ color: TC.muted }}>
+                    Add what you have now — you can fill the rest later, but
+                    <b style={{ color: TC.text }}> all three must be added before you request your first payout.</b>
+                  </span>
+                </div>
+                <div className="mt-2.5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {SOCIALS.map((s) => (
+                    <label key={s.key} className="flex items-center gap-2.5 rounded-xl border px-3 py-2" style={{ borderColor: TC.line, background: "rgba(0,0,0,0.25)" }}>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={s.logo} alt={s.label} className="h-5 w-5 shrink-0" />
+                      <input
+                        value={f[s.key]}
+                        onChange={set(s.key)}
+                        placeholder={s.ph}
+                        aria-label={s.label}
+                        className="w-full bg-transparent text-[13.5px] outline-none"
+                        style={{ color: TC.text }}
+                      />
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {/* payout rail */}
+              <div className="mt-6">
+                <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                  <span className={label} style={{ color: TC.faint }}>How would you like to be paid?</span>
+                  <span className="text-[11.5px]" style={{ color: TC.muted }}>
+                    Pick one now — <b style={{ color: TC.text }}>you set up the account details after your first
+                    30 days</b>, when there is a payment to make.
+                  </span>
+                </div>
+                <div className="mt-2.5 grid gap-2.5 sm:grid-cols-3 lg:grid-cols-4">
+                  {PAYOUTS.map((p) => {
+                    const on = payout === p.key;
+                    return (
+                      <label key={p.key} className="flex cursor-pointer items-center gap-2.5 rounded-xl border px-3 py-2.5 transition"
+                        style={on
+                          ? { borderColor: A, background: `${A}1f` }
+                          : { borderColor: TC.line, background: "rgba(0,0,0,0.25)" }}>
+                        <input type="radio" name="payout" value={p.key} checked={on}
+                          onChange={() => setPayout(p.key)} className="sr-only" />
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={p.logo} alt="" aria-hidden className="h-5 w-5 shrink-0" />
+                        <span className="text-[12.5px] font-medium" style={{ color: on ? TC.text : TC.muted }}>{p.label}</span>
+                        {on && <Check size={14} className="ml-auto shrink-0" style={{ color: A }} />}
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="mt-6 flex items-center gap-2 text-[12.5px] font-medium" style={{ color: A }}>
+                <ArrowDown size={15} /> Read the rules below, then confirm and send at the bottom.
+              </div>
+            </section>
+          )}
+
+          {/* ── the five steps ─────────────────────────────────────────────── */}
+          <section className="mt-12">
+            <h2 className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: TC.faint }}>
+              <Check size={14} style={{ color: A }} /> What to do, step by step
+            </h2>
+            <ol className="mt-4 grid gap-3 lg:grid-cols-2">
+              {STEPS.map(({ n, icon: Icon, title, body }) => (
+                <li key={n} className="flex gap-3.5 rounded-2xl border p-4 sm:p-5" style={{ borderColor: TC.line, background: TC.panel }}>
+                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl text-[14px] font-bold" style={{ background: `${A}22`, color: A, boxShadow: `inset 0 0 0 1px ${A}55` }}>{n}</span>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <Icon size={14} style={{ color: A }} />
+                      <h3 className="text-[14.5px] font-bold">{title}</h3>
+                    </div>
+                    <p className="mt-1.5 text-[13px] leading-relaxed" style={{ color: TC.muted }}>{body}</p>
+                  </div>
+                </li>
+              ))}
+            </ol>
+          </section>
+
+          {/* ── posting rhythm ─────────────────────────────────────────────── */}
+          <section className="mt-12">
+            <h2 className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: TC.faint }}>
+              <Clock size={14} style={{ color: A }} /> How often to post
+            </h2>
+            <div className="mt-4 grid gap-3 sm:grid-cols-3">
+              {[
+                { k: "Days 1–14", v: "1 video a day", s: "Slow start builds reach and protects the account" },
+                { k: "Days 15–30", v: "2 videos a day", s: "Same for every month after this one" },
+                { k: "Each video", v: "All 3 platforms", s: "TikTok + Reels + Shorts together = one post" },
+              ].map((c) => (
+                <div key={c.k} className="rounded-2xl border p-4 sm:p-5" style={{ borderColor: TC.line, background: TC.panel }}>
+                  <div className="text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: TC.faint }}>{c.k}</div>
+                  <div className="mt-1.5 text-[17px] font-bold" style={{ color: A }}>{c.v}</div>
+                  <div className="mt-1 text-[11.5px] leading-snug" style={{ color: TC.muted }}>{c.s}</div>
+                </div>
+              ))}
             </div>
             <p className="mt-3 text-[12px] leading-relaxed" style={{ color: TC.faint }}>
-              You can earn this in any month, more than once, and it does not affect your base ladder.
+              Videos should be 30 seconds to 2 minutes. Longer is fine when the content is worth it — never pad it out.
             </p>
-          </div>
-        </section>
+          </section>
 
-        {/* ── date planner ───────────────────────────────────────────────── */}
-        <section className="mt-12">
-          <h2 className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: TC.faint }}>
-            <CalendarDays size={14} style={{ color: A }} /> Your dates
-          </h2>
-          <div className="mt-4 rounded-2xl border p-4 sm:p-5" style={{ borderColor: TC.line, background: TC.panel }}>
-            <label className="flex flex-col gap-1.5 sm:max-w-xs">
-              <span className="text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: TC.faint }}>The day you start</span>
-              <input
-                type="date"
-                value={start}
-                onChange={(e) => setStart(e.target.value)}
-                className="rounded-xl border px-3 py-2 text-[13.5px] outline-none transition focus:border-violet-400"
-                style={{ ...monoFont, borderColor: TC.line, background: "rgba(0,0,0,0.25)", color: TC.text, colorScheme: "dark" }}
-              />
-            </label>
+          {/* ── money detail ───────────────────────────────────────────────── */}
+          <section className="mt-12 grid gap-4 lg:grid-cols-[1.1fr,0.9fr]">
+            <div className="rounded-2xl border p-4 sm:p-5" style={{ borderColor: TC.line, background: TC.panel }}>
+              <h2 className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: TC.faint }}>
+                <Wallet size={14} style={{ color: A }} /> What you get paid
+              </h2>
+              <div className="mt-3 overflow-x-auto">
+                <table className="w-full min-w-[320px] border-collapse text-left">
+                  <thead>
+                    <tr>
+                      <th className="pb-2 text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: TC.faint }}>Month finished</th>
+                      <th className="pb-2 text-right text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: TC.faint }}>You get</th>
+                      <th className="pb-2 pl-3 text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: TC.faint }}>Note</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {LADDER.map((r) => (
+                      <tr key={r.m} className="border-t" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
+                        <td className="py-2 text-[13px] font-medium">{r.m}</td>
+                        <td className="py-2 text-right text-[14px] font-bold" style={{ ...monoFont, color: r.pay ? A : TC.faint }}>{r.pay ? `$${r.pay}` : "…"}</td>
+                        <td className="py-2 pl-3 text-[11.5px]" style={{ color: TC.faint }}>{r.note}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
 
-            {dates && (
-              <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                {[
-                  { k: "Day 15 — go to 2 a day", v: fmt(dates.switchDay), c: A },
-                  { k: "Day 30 — request payout", v: fmt(dates.finish), c: GOOD },
-                  { k: "Paid by", v: fmt(dates.paidBy), c: GOOD },
-                ].map((d) => (
-                  <div key={d.k} className="rounded-xl border p-3" style={{ borderColor: TC.line, background: "rgba(0,0,0,0.2)" }}>
-                    <div className="text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: TC.faint }}>{d.k}</div>
-                    <div className="mt-1 text-[14px] font-bold" style={{ ...monoFont, color: d.c }}>{d.v}</div>
-                  </div>
+            <div className="rounded-2xl border p-4 sm:p-5" style={{ borderColor: `${GOOD}55`, background: `linear-gradient(180deg, ${GOOD}14, rgba(255,255,255,0.015))` }}>
+              <h2 className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: TC.faint }}>
+                <TrendingUp size={14} style={{ color: GOOD }} /> The $500 bonus
+              </h2>
+              <p className="mt-3 text-[13px] leading-relaxed" style={{ color: TC.muted }}>
+                Get <b style={{ color: TC.text }}>$500 on top</b> of your monthly payout in any month where your
+                videos consistently pass <b style={{ color: TC.text }}>10,000 views</b>.
+              </p>
+              <div className="mt-3 rounded-xl border p-3" style={{ borderColor: `${GOOD}44`, background: "rgba(0,0,0,0.2)" }}>
+                <div className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: GOOD }}>What counts as consistent</div>
+                <p className="mt-1.5 text-[12.5px] leading-relaxed" style={{ color: TC.muted }}>
+                  At least <b style={{ color: TC.text }}>75% of your posts that month</b> reached 10,000+ views on at
+                  least one platform. Highest count across TikTok, Instagram or YouTube is the one we use.
+                </p>
+              </div>
+              <p className="mt-3 text-[12px] leading-relaxed" style={{ color: TC.faint }}>
+                You can earn this in any month, more than once, and it does not affect your base ladder.
+              </p>
+            </div>
+          </section>
+
+          {/* ── date planner ───────────────────────────────────────────────── */}
+          <section className="mt-12">
+            <h2 className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: TC.faint }}>
+              <CalendarDays size={14} style={{ color: A }} /> Your dates
+            </h2>
+            <div className="mt-4 rounded-2xl border p-4 sm:p-5" style={{ borderColor: TC.line, background: TC.panel }}>
+              <label className="flex flex-col gap-1.5 sm:max-w-xs">
+                <span className={label} style={{ color: TC.faint }}>The day you start</span>
+                <input type="date" value={start} onChange={(e) => setStart(e.target.value)}
+                  className="rounded-xl border px-3 py-2 text-[13.5px] outline-none transition focus:border-violet-400"
+                  style={{ ...monoFont, borderColor: TC.line, background: "rgba(0,0,0,0.25)", color: TC.text, colorScheme: "dark" }} />
+              </label>
+              {dates && (
+                <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                  {[
+                    { k: "Day 15 — go to 2 a day", v: fmt(dates.switchDay), c: A },
+                    { k: "Day 30 — request payout", v: fmt(dates.finish), c: GOOD },
+                    { k: "Paid by", v: fmt(dates.paidBy), c: GOOD },
+                  ].map((d) => (
+                    <div key={d.k} className="rounded-xl border p-3" style={{ borderColor: TC.line, background: "rgba(0,0,0,0.2)" }}>
+                      <div className="text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: TC.faint }}>{d.k}</div>
+                      <div className="mt-1 text-[14px] font-bold" style={{ ...monoFont, color: d.c }}>{d.v}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <p className="mt-3 text-[11.5px] leading-relaxed" style={{ color: TC.faint }}>
+                You have 2 grace days each month — 28 qualifying days out of 30 is a pass. Payment is within 7 days
+                of your request, after a 3 working-day check.
+              </p>
+            </div>
+          </section>
+
+          {/* ── do / don't ─────────────────────────────────────────────────── */}
+          <section className="mt-12 grid gap-4 lg:grid-cols-2">
+            <div className="rounded-2xl border p-4 sm:p-5" style={{ borderColor: `${GOOD}55`, background: `linear-gradient(180deg, ${GOOD}12, rgba(255,255,255,0.015))` }}>
+              <h2 className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: GOOD }}>
+                <Check size={14} /> Always do this
+              </h2>
+              <ul className="mt-3 space-y-2">
+                {DO.map((t) => (
+                  <li key={t} className="flex gap-2 text-[13px] leading-relaxed" style={{ color: TC.muted }}>
+                    <Check size={14} className="mt-0.5 shrink-0" style={{ color: GOOD }} /> {t}
+                  </li>
                 ))}
-              </div>
-            )}
-            <p className="mt-3 text-[11.5px] leading-relaxed" style={{ color: TC.faint }}>
-              You have 2 grace days each month — 28 qualifying days out of 30 is a pass. Payment is within 7 days
-              of your request, after a 3 working-day check.
-            </p>
-          </div>
-        </section>
+              </ul>
+            </div>
+            <div className="rounded-2xl border p-4 sm:p-5" style={{ borderColor: `${BAD}55`, background: `linear-gradient(180deg, ${BAD}12, rgba(255,255,255,0.015))` }}>
+              <h2 className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: BAD }}>
+                <X size={14} /> Never do this
+              </h2>
+              <ul className="mt-3 space-y-2">
+                {DONT.map((t) => (
+                  <li key={t} className="flex gap-2 text-[13px] leading-relaxed" style={{ color: TC.muted }}>
+                    <X size={14} className="mt-0.5 shrink-0" style={{ color: BAD }} /> {t}
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-3 text-[11.5px] leading-relaxed" style={{ color: TC.faint }}>
+                These are not house rules for their own sake. Profit claims and copied clips are exactly what gets
+                accounts restricted or banned in this subject. Breaking them cancels the month.
+              </p>
+            </div>
+          </section>
 
-        {/* ── do / don't ─────────────────────────────────────────────────── */}
-        <section className="mt-12 grid gap-4 lg:grid-cols-2">
-          <div className="rounded-2xl border p-4 sm:p-5" style={{ borderColor: `${GOOD}55`, background: `linear-gradient(180deg, ${GOOD}12, rgba(255,255,255,0.015))` }}>
-            <h2 className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: GOOD }}>
-              <Check size={14} /> Always do this
+          {/* ── what to make ───────────────────────────────────────────────── */}
+          <section className="mt-12">
+            <h2 className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: TC.faint }}>
+              <Sparkles size={14} style={{ color: A }} /> Videos that actually work
             </h2>
-            <ul className="mt-3 space-y-2">
-              {DO.map((t) => (
-                <li key={t} className="flex gap-2 text-[13px] leading-relaxed" style={{ color: TC.muted }}>
-                  <Check size={14} className="mt-0.5 shrink-0" style={{ color: GOOD }} /> {t}
-                </li>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {IDEAS.map((i) => (
+                <div key={i.t} className="rounded-2xl border p-4" style={{ borderColor: TC.line, background: TC.panel }}>
+                  <div className="text-[13.5px] font-bold">{i.t}</div>
+                  <p className="mt-1.5 text-[12.5px] leading-relaxed" style={{ color: TC.muted }}>{i.d}</p>
+                </div>
               ))}
-            </ul>
-          </div>
+            </div>
+            <div className="mt-4 rounded-2xl border p-4 sm:p-5" style={{ borderColor: TC.line, background: "rgba(255,255,255,0.02)" }}>
+              <div className="text-[13.5px] font-bold">Use AI to find ideas</div>
+              <p className="mt-1.5 text-[12.5px] leading-relaxed" style={{ color: TC.muted }}>
+                Ask an AI for angles, hooks and simpler explanations — then film it yourself, in your own words. Try these:
+              </p>
+              <ul className="mt-3 space-y-1.5">
+                {AI_PROMPTS.map((p) => (
+                  <li key={p} className="rounded-lg border px-3 py-2 text-[12px] leading-relaxed" style={{ borderColor: TC.line, background: "rgba(0,0,0,0.2)", color: TC.muted }}>
+                    &ldquo;{p}&rdquo;
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-3 text-[11.5px] leading-relaxed" style={{ color: TC.faint }}>
+                Do not post AI-generated video with no face or voice of your own. It performs badly and platforms
+                increasingly label it.
+              </p>
+            </div>
+          </section>
 
-          <div className="rounded-2xl border p-4 sm:p-5" style={{ borderColor: `${BAD}55`, background: `linear-gradient(180deg, ${BAD}12, rgba(255,255,255,0.015))` }}>
-            <h2 className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: BAD }}>
-              <X size={14} /> Never do this
-            </h2>
-            <ul className="mt-3 space-y-2">
-              {DONT.map((t) => (
-                <li key={t} className="flex gap-2 text-[13px] leading-relaxed" style={{ color: TC.muted }}>
-                  <X size={14} className="mt-0.5 shrink-0" style={{ color: BAD }} /> {t}
-                </li>
-              ))}
-            </ul>
-            <p className="mt-3 text-[11.5px] leading-relaxed" style={{ color: TC.faint }}>
-              These are not house rules for their own sake. Profit claims and copied clips are exactly what gets
-              accounts restricted or banned in this subject. Breaking them cancels the month.
-            </p>
-          </div>
-        </section>
+          {/* ── the one rule that voids everything ─────────────────────────── */}
+          <section className="mt-12">
+            <div className="rounded-2xl border p-5" style={{ borderColor: `${A}55`, background: `linear-gradient(180deg, ${A}12, rgba(255,255,255,0.015))` }}>
+              <h2 className="text-[15px] font-bold">Every video must show Clunoid</h2>
+              <p className="mt-2 max-w-3xl text-[13px] leading-relaxed" style={{ color: TC.muted }}>
+                A video that does not clearly feature or mention the platform does not count towards your 30 days —
+                even if it did well. Show the site, show a bot running, or say the name clearly. If someone watches
+                your video and cannot tell what you are talking about, it will not be counted.
+              </p>
+            </div>
+          </section>
 
-        {/* ── what to make ───────────────────────────────────────────────── */}
-        <section className="mt-12">
-          <h2 className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: TC.faint }}>
-            <Sparkles size={14} style={{ color: A }} /> Videos that actually work
-          </h2>
-          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {IDEAS.map((i) => (
-              <div key={i.t} className="rounded-2xl border p-4" style={{ borderColor: TC.line, background: TC.panel }}>
-                <div className="text-[13.5px] font-bold">{i.t}</div>
-                <p className="mt-1.5 text-[12.5px] leading-relaxed" style={{ color: TC.muted }}>{i.d}</p>
+          {/* ── confirm and send, once they have read it all ───────────────── */}
+          {!done && (
+            <section className="mt-12 rounded-2xl border p-5 sm:p-6" style={{ borderColor: `${A}55`, background: `linear-gradient(180deg, ${A}12, rgba(255,255,255,0.015))` }}>
+              <h2 className="text-[18px] font-bold sm:text-[20px]">Now you have read it, send your application</h2>
+              <div className="mt-4 space-y-3">
+                <label className="flex cursor-pointer items-start gap-2.5 text-[13px] leading-relaxed" style={{ color: TC.muted }}>
+                  <input type="checkbox" checked={newAccounts} onChange={(e) => setNewAccounts(e.target.checked)} className="mt-0.5 h-4 w-4 shrink-0" style={{ accentColor: A }} />
+                  <span>These accounts are brand new. <span style={{ color: TC.faint }}>First month pays $50 instead of $100, because new accounts have no reach yet.</span></span>
+                </label>
+                <label className="flex cursor-pointer items-start gap-2.5 text-[13px] leading-relaxed" style={{ color: TC.muted }}>
+                  <input required type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} className="mt-0.5 h-4 w-4 shrink-0" style={{ accentColor: A }} />
+                  <span>I have read the rules on this page and I will follow them. <span style={{ color: TC.faint }}>Breaking them cancels the month.</span></span>
+                </label>
               </div>
-            ))}
-          </div>
 
-          <div className="mt-4 rounded-2xl border p-4 sm:p-5" style={{ borderColor: TC.line, background: "rgba(255,255,255,0.02)" }}>
-            <div className="text-[13.5px] font-bold">Use AI to find ideas</div>
-            <p className="mt-1.5 text-[12.5px] leading-relaxed" style={{ color: TC.muted }}>
-              Ask an AI for angles, hooks and simpler explanations — then film it yourself, in your own words.
-              Try these:
-            </p>
-            <ul className="mt-3 space-y-1.5">
-              {AI_PROMPTS.map((p) => (
-                <li key={p} className="rounded-lg border px-3 py-2 text-[12px] leading-relaxed" style={{ borderColor: TC.line, background: "rgba(0,0,0,0.2)", color: TC.muted }}>
-                  &ldquo;{p}&rdquo;
-                </li>
-              ))}
-            </ul>
-            <p className="mt-3 text-[11.5px] leading-relaxed" style={{ color: TC.faint }}>
-              Do not post AI-generated video with no face or voice of your own. It performs badly and platforms
-              increasingly label it.
-            </p>
-          </div>
-        </section>
+              {err && <p className="mt-4 text-[12.5px] font-medium" style={{ color: BAD }}>{err}</p>}
 
-        {/* ── the one rule that voids everything ─────────────────────────── */}
-        <section className="mt-12">
-          <div className="rounded-2xl border p-5" style={{ borderColor: `${A}55`, background: `linear-gradient(180deg, ${A}12, rgba(255,255,255,0.015))` }}>
-            <h2 className="text-[15px] font-bold">Every video must show Clunoid</h2>
-            <p className="mt-2 max-w-3xl text-[13px] leading-relaxed" style={{ color: TC.muted }}>
-              A video that does not clearly feature or mention the platform does not count towards your 30 days —
-              even if it did well. Show the site, show a bot running, or say the name clearly. If someone watches
-              your video and cannot tell what you are talking about, it will not be counted.
-            </p>
-          </div>
-        </section>
-
-        {/* ── apply ──────────────────────────────────────────────────────── */}
-        <section id="apply" className="mt-12">
-          <ApplyForm />
-        </section>
+              <button type="submit" disabled={busy}
+                className="mt-5 inline-flex items-center justify-center gap-2 rounded-xl px-5 py-3 text-[14px] font-semibold transition hover:opacity-90 disabled:opacity-60"
+                style={{ background: A, color: "#12091f" }}>
+                {busy ? <Loader2 size={16} className="animate-spin" /> : <Clapperboard size={16} />}
+                {busy ? "Sending…" : "Send application"}
+              </button>
+              <p className="mt-2.5 text-[11.5px]" style={{ color: TC.faint }}>
+                Places are limited so every creator gets proper support.
+              </p>
+            </section>
+          )}
+        </form>
 
         <p className="mt-10 flex items-start gap-1.5 text-[11px] leading-relaxed" style={{ color: TC.faint }}>
           <ShieldCheck size={13} className="mt-0.5 shrink-0" style={{ color: A }} />

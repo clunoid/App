@@ -1,0 +1,5 @@
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Payoneer">
+<rect x="2" y="2" width="20" height="20" rx="4.5" fill="#FF4800"/>
+<path d="M6.2 18V6h4.6c2.6 0 4.2 1.4 4.2 3.8 0 2.5-1.7 3.9-4.4 3.9H8.6V18zm2.4-6.3h1.9c1.3 0 2-.6 2-1.8s-.7-1.8-2-1.8H8.6z" fill="#fff"/>
+<path d="M14.6 17.4c1.6-1.2 2.9-2.9 3.6-4.9l1.6.7c-.9 2.3-2.4 4.2-4.3 5.6z" fill="#fff" opacity=".85"/>
+</svg>
