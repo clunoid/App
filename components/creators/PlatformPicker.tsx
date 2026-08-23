@@ -8,9 +8,14 @@
  * them is banned has to be able to swap it out rather than be locked out.
  *
  * The layout follows from that: the three you picked are rows you can type into,
- * and everything you did not pick sits in one dropdown. Remove a row and that
- * platform goes back into the dropdown; pick from the dropdown and it becomes a
- * row. There is never a wall of ten options to scan.
+ * and everything you did not pick sits in one dropdown that is always there.
+ * Remove a row and that platform goes back into the dropdown; pick from the
+ * dropdown and it becomes a row. There is never a wall of ten options to scan,
+ * and changing your mind never means hunting for a way to do it.
+ *
+ * Picking a fourth while three are chosen swaps rather than refuses. It drops a
+ * platform with no handle typed in first, so a swap never quietly throws away
+ * something the creator filled in.
  */
 
 import { useEffect, useRef, useState } from "react";
@@ -54,9 +59,16 @@ export function PlatformPicker({
   }, [open]);
 
   function add(key: string) {
-    if (full) return;
-    onPlatforms([...platforms, key]);
     setOpen(false);
+    if (!full) {
+      onPlatforms([...platforms, key]);
+      return;
+    }
+    // Already at three: swap. Drop one they have not typed a handle for, and
+    // only fall back to the last row when every one of them is filled in.
+    const empty = platforms.find((p) => !(handles[p] ?? "").trim());
+    const victim = empty ?? platforms[platforms.length - 1];
+    onPlatforms(platforms.map((p) => (p === victim ? key : p)));
   }
 
   function remove(key: string) {
@@ -111,8 +123,8 @@ export function PlatformPicker({
         );
       })}
 
-      {/* ── everything else, tucked away ──────────────────────────────────── */}
-      {!full && (
+      {/* ── everything else, always one tap away ──────────────────────────── */}
+      {available.length > 0 && (
         <div ref={boxRef} className="relative">
           <button
             type="button"
@@ -124,7 +136,9 @@ export function PlatformPicker({
           >
             <Plus size={15} className="shrink-0" />
             <span className="min-w-0 flex-1">
-              Add a platform — {PLATFORMS_REQUIRED - platforms.length} more to pick
+              {full
+                ? "Change a platform"
+                : `Add a platform — ${PLATFORMS_REQUIRED - platforms.length} more to pick`}
             </span>
             <ChevronDown size={15} className="shrink-0 transition" style={{ transform: open ? "rotate(180deg)" : undefined }} />
           </button>
@@ -160,11 +174,11 @@ export function PlatformPicker({
         </div>
       )}
 
-      {full && available.length > 0 && (
-        <p className="pl-1 text-[11px]" style={{ color: TC.faint }}>
-          That is your {PLATFORMS_REQUIRED}. Remove one to swap in another.
-        </p>
-      )}
+      <p className="pl-1 text-[11px]" style={{ color: TC.faint }}>
+        {full
+          ? `That is your ${PLATFORMS_REQUIRED}. Pick another to swap one out, or use the × on a row.`
+          : `Pick ${PLATFORMS_REQUIRED} in total. You can change them whenever you like.`}
+      </p>
     </div>
   );
 }

@@ -1127,8 +1127,7 @@ function RulesPanel() {
             ))}
           </ul>
           <p className="mt-3 text-[11.5px] leading-relaxed" style={{ color: TC.faint }}>
-            These are not house rules for their own sake. Copied clips are exactly what gets accounts restricted or
-            banned. Breaking them cancels the month.
+            Copied clips are exactly what gets social media accounts restricted or banned.
           </p>
         </section>
       </div>
@@ -1166,6 +1165,7 @@ function DetailsPanel({ me, token, onRefresh, show }: { me: Me; token: string; o
   const [platforms, setPlatforms] = useState<string[]>(creator.platforms);
   const [handles, setHandles] = useState<Record<string, string>>(() => handleMap(creator));
   const [payout, setPayout] = useState(creator.payout_method ?? "");
+  const [newAccounts, setNewAccounts] = useState(creator.new_accounts);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
@@ -1175,7 +1175,7 @@ function DetailsPanel({ me, token, onRefresh, show }: { me: Me; token: string; o
     try {
       const res = await fetch("/api/creators/profile", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token, platforms, handles, payoutMethod: payout || undefined }),
+        body: JSON.stringify({ token, platforms, handles, newAccounts, payoutMethod: payout || undefined }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) { setMsg({ ok: false, text: data.error || "Could not save." }); show(data.error || "Could not save.", "bad"); return; }
@@ -1196,7 +1196,7 @@ function DetailsPanel({ me, token, onRefresh, show }: { me: Me; token: string; o
           <Field k="Country" v={creator.country} />
           <Field k="Registered" v={fmt(creator.applied_at)} />
           <Field k="First post" v={creator.first_post_at ? fmt(creator.first_post_at) : "Not started"} />
-          <Field k="Account age" v={creator.new_accounts ? "Brand new — month 1 pays $50" : "Established — month 1 pays $100"} />
+
         </div>
         <p className="mt-3 text-[11.5px]" style={{ color: TC.faint }}>
           Name, email and country are fixed at registration. Email us if one of them is wrong.
@@ -1220,6 +1220,35 @@ function DetailsPanel({ me, token, onRefresh, show }: { me: Me; token: string; o
             savedHandles={savedMap(creator)}
           />
         </div>
+      </section>
+
+      <section className={card} style={cardStyle}>
+        <h2 className="text-[16px] font-bold">Are these accounts brand new?</h2>
+        <p className="mt-1.5 text-[12.5px] leading-relaxed" style={{ color: TC.muted }}>
+          This only changes your first month: accounts you already had pay{" "}
+          <b style={{ color: TC.text }}>$100</b>, accounts made new for this pay <b style={{ color: TC.text }}>$50</b>,
+          because they have no reach yet. From month two everyone is on the same ladder.
+        </p>
+
+        <label className="mt-3 flex cursor-pointer items-start gap-2.5 text-[13px] leading-relaxed" style={{ color: TC.muted }}>
+          <input type="checkbox" checked={newAccounts}
+            onChange={(e) => setNewAccounts(e.target.checked)}
+            className="mt-0.5 h-4 w-4 shrink-0" style={{ accentColor: A }} />
+          <span>I made these accounts brand new for this.</span>
+        </label>
+
+        <p className="mt-3 flex items-start gap-1.5 text-[11.5px] leading-relaxed" style={{ color: TC.faint }}>
+          <ShieldCheck size={13} className="mt-0.5 shrink-0" style={{ color: GOOD }} />
+          Ticked this by mistake? It does not matter. <b style={{ color: TC.muted }}>We check every account ourselves
+          before we pay you</b>, so what is set here never decides it on its own — and you can change it whenever you
+          like.
+        </p>
+
+        {newAccounts !== creator.new_accounts && (
+          <div className="mt-2">
+            <FieldOk tone="bad">Not saved yet — press Save changes below</FieldOk>
+          </div>
+        )}
       </section>
 
       <section className={card} style={cardStyle}>

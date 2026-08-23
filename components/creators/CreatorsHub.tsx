@@ -236,11 +236,11 @@ export function CreatorsHub() {
                     platforms={platforms}
                     handles={handles}
                     onPlatforms={(next) => {
+                      // Works for a swap as well as an add: whatever is in the
+                      // new list and was not in the old one is what they picked.
+                      const added = next.find((k) => !platforms.includes(k));
                       setPlatforms(next);
-                      if (next.length > platforms.length) {
-                        const added = next[next.length - 1];
-                        show((platformInfo(added)?.label ?? "Platform") + " added");
-                      }
+                      if (added) show((platformInfo(added)?.label ?? "Platform") + " added");
                     }}
                     onHandle={(k, v) => setHandles((p) => ({ ...p, [k]: v }))}
                     accent={A}
@@ -440,8 +440,7 @@ You get <b style={{ color: TC.text }}>$500 on top</b> of what you already earn, 
                 ))}
               </ul>
               <p className="mt-3 text-[11.5px] leading-relaxed" style={{ color: TC.faint }}>
-                These are not house rules for their own sake. Copied clips are exactly what gets accounts restricted
-                or banned. Breaking them cancels the month.
+                Copied clips are exactly what gets social media accounts restricted or banned.
               </p>
             </div>
           </section>
@@ -498,7 +497,7 @@ You get <b style={{ color: TC.text }}>$500 on top</b> of what you already earn, 
               <div className="mt-4 space-y-3">
                 <label className="flex cursor-pointer items-start gap-2.5 text-[13px] leading-relaxed" style={{ color: TC.muted }}>
                   <input type="checkbox" checked={newAccounts} onChange={(e) => { setNewAccounts(e.target.checked); if (e.target.checked) show("Noted — month 1 pays $50 for brand-new accounts"); }} className="mt-0.5 h-4 w-4 shrink-0" style={{ accentColor: A }} />
-                  <span>I made these accounts brand new for this. <span style={{ color: TC.faint }}>Leave this unticked if you are using accounts you already had — those pay <b style={{ color: TC.text }}>$100</b> in month one. Brand-new accounts pay <b style={{ color: TC.text }}>$50</b> in month one because they have no reach yet. From month two everyone is the same.</span></span>
+                  <span>I made these accounts brand new for this. <span style={{ color: TC.faint }}>Leave this unticked if you are using accounts you already had — those pay <b style={{ color: TC.text }}>$100</b> in month one. Brand-new accounts pay <b style={{ color: TC.text }}>$50</b> in month one because they have no reach yet. From month two everyone is the same. <b style={{ color: TC.text }}>Do not worry about getting this wrong</b> — we check your accounts ourselves, and you can change it on your dashboard any time.</span></span>
                 </label>
                 <label className="flex cursor-pointer items-start gap-2.5 text-[13px] leading-relaxed" style={{ color: TC.muted }}>
                   <input required type="checkbox" checked={agreed} onChange={(e) => { setAgreed(e.target.checked); if (e.target.checked) show("Thanks — you can register now"); }} className="mt-0.5 h-4 w-4 shrink-0" style={{ accentColor: A }} />

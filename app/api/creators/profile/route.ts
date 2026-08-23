@@ -8,9 +8,9 @@ export const dynamic = "force-dynamic";
 /**
  * CREATOR PROGRAM — update the things a creator is allowed to change.
  *
- * Handles and payout rail only. Name, email, country and the dates are set at
- * registration and by us; letting the browser rewrite them would let someone
- * move their own start date.
+ * Platforms, handles, the payout rail, and whether the accounts are brand new.
+ * Name, email, country and the dates are set at registration and by us; letting
+ * the browser rewrite them would let someone move their own start date.
  *
  * Handles are unique across the programme, so the same account cannot be used to
  * hold two seats — a clash comes back as a plain 409, not a database error.
@@ -20,6 +20,7 @@ type Body = {
   token?: string;
   platforms?: string[];
   handles?: Record<string, string>;
+  newAccounts?: boolean;
   payoutMethod?: string;
 };
 
@@ -73,7 +74,11 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const patch: Record<string, string | null> = {};
+  const patch: Record<string, string | boolean | null> = {};
+
+  // Brand-new accounts change the first month's rate. We verify it ourselves
+  // before paying, so a creator correcting their own tick costs nothing.
+  if (typeof body.newAccounts === "boolean") patch.new_accounts = body.newAccounts;
 
   if (body.payoutMethod !== undefined) {
     const m = trim(body.payoutMethod).toLowerCase();
