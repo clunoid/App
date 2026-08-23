@@ -75,8 +75,8 @@ export const LADDER = [
 
 export const STEPS = [
   { n: 1, icon: Rocket, title: "Register and start today", body: "Fill in the form above. There is nothing to wait for and nobody to approve you — you get your dashboard straight away, and your first video can go up the same day." },
-  { n: 2, icon: Clock, title: "Days 1–14: post once a day", body: "One video per day. Post that same video to all three of the platforms you chose — the three together count as one post. Going slower at the start is on purpose: it builds reach and keeps accounts out of trouble." },
-  { n: 3, icon: TrendingUp, title: "Days 15–30: post twice a day", body: "Two videos per day, each one posted to all three of your platforms. From month two onward this is your normal pace, every day." },
+  { n: 2, icon: Clock, title: "Posted days 1–14: post once a day", body: "One video per day. Post that same video to all three of the platforms you chose — the three together count as one post. Going slower at the start is on purpose: it builds reach and keeps accounts out of trouble." },
+  { n: 3, icon: TrendingUp, title: "Posted days 15–28: post twice a day", body: "Two videos per day, each one posted to all three of your platforms. This counts in days you posted, so a day you miss delays the change rather than skipping past it. From month two onward this is your normal pace." },
   { n: 4, icon: CalendarDays, title: "Reach 28 posted days, then ask to be paid", body: "A month is 28 days you actually posted, not 28 dates on a calendar. Miss a day and nothing is lost — your finish line just moves out by a day. Tap the days you posted on your dashboard calendar and it keeps count for you. Leave every video up; deleting them before you are paid cancels the month." },
   { n: 5, icon: Wallet, title: "We check, then we pay you", body: "We spend 3 working days checking: posts still up, made by you, following the rules, views real. You get your money within 7 days of asking. Every month after your first adds $50 — month two is $150." },
 ];
