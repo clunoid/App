@@ -46,7 +46,11 @@ export function CreatorsHub() {
   // Session: null while we are still asking, false once we know there is none.
   const [me, setMe] = useState<Me | null>(null);
   const [token, setToken] = useState("");
-  const [checking, setChecking] = useState(true);
+  // Starts false so the server, and the very first client render, both emit the
+  // marketing page — this is a public landing page and its copy has to be in the
+  // HTML. Only a browser that already holds a token blanks to a spinner, and it
+  // does that after mount, so hydration still matches.
+  const [checking, setChecking] = useState(false);
 
   const load = useCallback(async (t: string) => {
     try {
@@ -69,6 +73,9 @@ export function CreatorsHub() {
     let live = true;
     const stored = typeof window !== "undefined" ? window.localStorage.getItem(TOKEN_KEY) ?? "" : "";
     setToken(stored);
+    // A known creator should never see the sign-up page flash past; a first-time
+    // visitor should never see a spinner over content that is already correct.
+    if (stored) setChecking(true);
     load(stored).finally(() => { if (live) setChecking(false); });
     return () => { live = false; };
   }, [load]);
