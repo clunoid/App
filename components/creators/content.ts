@@ -15,22 +15,23 @@ export const BAD = "#f2607d";
  * Every platform a creator may post to.
  *
  * Three of these, chosen by the creator. Instagram, TikTok and YouTube are the
- * recommended set and are picked by default — they have the reach. The rest are
- * here because a recommended one is not always usable: TikTok is banned in
- * India, blocked or restricted in other places, and someone who cannot open it
- * should not be shut out of the programme over it.
+ * recommended set and are picked by default — they have the reach. Facebook
+ * Reels and Snapchat Spotlight are here because a recommended one is not always
+ * usable: TikTok is banned in India and restricted elsewhere, and someone who
+ * cannot open it should not be shut out of the programme over it.
+ *
+ * The bar for being on this list is that we can stand behind it: globally
+ * available, a real short-video surface, and somewhere finance content actually
+ * runs. Regional apps were tried and dropped — we could not verify their rules
+ * on trading content, and a creator following our advice into a ban is worse
+ * than a shorter list.
  */
 export const PLATFORM_CATALOGUE = [
-  { key: "tiktok",    label: "TikTok",           logo: "/logos/tiktok.svg",    ph: "@handle or paste your link", main: true },
-  { key: "instagram", label: "Instagram Reels",  logo: "/logos/instagram.svg", ph: "@handle or paste your link", main: true },
-  { key: "youtube",   label: "YouTube Shorts",   logo: "/logos/youtube.svg",   ph: "@channel or paste your link", main: true },
-  { key: "facebook",  label: "Facebook Reels",   logo: "/logos/facebook.svg",  ph: "@page or paste your link",   main: false, note: "Link it to Instagram and one upload posts to both" },
-  { key: "rednote",   label: "RedNote",          logo: "/logos/rednote.svg",   ph: "@handle or paste your link", main: false, note: "Xiaohongshu — big in China and among Chinese speakers" },
-  { key: "snapchat",  label: "Snapchat Spotlight", logo: "/logos/snapchat.svg", ph: "@handle or paste your link", main: false },
-  { key: "josh",      label: "Josh",             logo: "/logos/josh.svg",      ph: "@handle or paste your link", main: false, note: "India" },
-  { key: "moj",       label: "Moj",              logo: "/logos/moj.svg",       ph: "@handle or paste your link", main: false, note: "India" },
-  { key: "kwai",      label: "Kwai",             logo: "/logos/kwai.svg",      ph: "@handle or paste your link", main: false, note: "Brazil and Latin America" },
-  { key: "likee",     label: "Likee",            logo: "/logos/likee.svg",     ph: "@handle or paste your link", main: false },
+  { key: "tiktok",    label: "TikTok",             logo: "/logos/tiktok.svg",    ph: "@handle or paste your link",  main: true },
+  { key: "instagram", label: "Instagram Reels",    logo: "/logos/instagram.svg", ph: "@handle or paste your link",  main: true },
+  { key: "youtube",   label: "YouTube Shorts",     logo: "/logos/youtube.svg",   ph: "@channel or paste your link", main: true },
+  { key: "facebook",  label: "Facebook Reels",     logo: "/logos/facebook.svg",  ph: "@page or paste your link",    main: false, note: "Link it to Instagram and one upload posts to both" },
+  { key: "snapchat",  label: "Snapchat Spotlight", logo: "/logos/snapchat.svg",  ph: "@handle or paste your link",  main: false },
 ] as const;
 
 export type PlatformKey = (typeof PLATFORM_CATALOGUE)[number]["key"];
@@ -97,19 +98,209 @@ export const DONT = [
   "No speaking as Clunoid. Say “I use this”, never “we offer”.",
 ];
 
+/**
+ * WHAT CLUNOID ACTUALLY IS — the facts every script here is built on.
+ *
+ * Written down because a creator repeating something that is not true is worse
+ * than a creator saying nothing. Bots run on Deriv (in the browser) and on MT5
+ * (Expert Advisors you download). TradingView is charts, screener, alerts and
+ * Pine Script — analysis, not bots. Nobody should be saying otherwise on camera.
+ */
+export const TRUE_ABOUT_CLUNOID = [
+  "Clunoid is a website. You do not install anything to use the Deriv bots — they run in your browser.",
+  "The Deriv bots are fully automated and free. You connect your own Deriv account and they place the trades.",
+  "The MT5 side is free Expert Advisors you download and drop into MetaTrader 5. They work on any MT5 broker.",
+  "TradingView on Clunoid is charts, screener, alerts and Pine Script — for analysis. It is not a bot.",
+  "Central Command is where you connect a broker and see every account and balance in one place.",
+  "It costs nothing to look. clunoid.com.",
+];
+
+/**
+ * HOW TO MAKE ONE — the production recipe.
+ *
+ * Most people stall on "what do I actually film". They do not have to film
+ * anything: capture the screen, talk over it, post. This is that, in order.
+ */
+export const SHOT_LIST = [
+  {
+    t: "1 · Get the app on screen",
+    d: "Open Deriv, MetaTrader 5 or TradingView — whichever you are talking about. Download MT5 if you do not have it; it is free. You do not need money in an account to show what the platform looks like.",
+  },
+  {
+    t: "2 · Screen record the bot working",
+    d: "Go to clunoid.com, open a bot and let it run. Record 20–40 seconds of it actually placing trades. This is the shot everything else hangs off — people have genuinely never seen it. Keep your balance off screen or blur it.",
+  },
+  {
+    t: "3 · Grab a shot of the site itself",
+    d: "Search \u201Cclunoid\u201D in Google and screen-record the result being tapped, or just record yourself typing clunoid.com into the address bar. It proves the thing is real and tells viewers exactly where to go.",
+  },
+  {
+    t: "4 · Talk over it",
+    d: "Record a voice-over on your phone. Say what is on screen as it happens — \u201Cthis is a bot placing a trade by itself\u201D — then say what it is and where to get it. Your normal voice beats a presenter voice.",
+  },
+  {
+    t: "5 · Cut it to length",
+    d: "Trim dead air so the first 2 seconds already show the bot moving. Add captions — most people watch with the sound off, so the words have to be on screen too. 30 seconds to 2 minutes.",
+  },
+  {
+    t: "6 · Post it to your three",
+    d: "Re-export before each upload so the file is not identical, change the hook slightly per platform, and put it up on all three of your accounts. That is one post.",
+  },
+];
+
+/**
+ * HOOKS — the first two seconds.
+ *
+ * The single biggest lever on reach. Nothing else in the video matters if the
+ * opener does not stop the scroll.
+ */
+export const HOOKS = [
+  "You have probably never seen a trading bot actually place a trade. Watch.",
+  "This is running by itself. I have not touched it.",
+  "Everyone says trading bots are a scam. Some are. Here is how to tell.",
+  "I used to sit and watch charts for hours. Now I do this instead.",
+  "Nobody explains what a synthetic index is, so I will.",
+  "This took me 90 seconds to set up. Let me show you.",
+  "If you have MetaTrader 5 on your phone, you can do this today.",
+  "Somebody asked me how the bots actually decide when to trade. Here.",
+  "Free. That is the part people do not believe.",
+  "Stop paying for signal groups. Watch this first.",
+];
+
+/**
+ * PIVOTS — how to get from the video to Clunoid without it feeling like an ad.
+ *
+ * The pivot is the whole job. Say it too early and people leave; never say it
+ * and the video does not count. These land it naturally, in the middle or just
+ * after the thing they came to see.
+ */
+export const PIVOTS = [
+  {
+    t: "The name-drop mid-shot",
+    d: "\u201CThis is Clunoid — clunoid.com. It is a site with free automated trading bots. The ones for Deriv run right in your browser, and there are free Expert Advisors for MetaTrader 5 as well. Link is in my bio.\u201D",
+  },
+  {
+    t: "The answer to \u201Cwhat am I looking at\u201D",
+    d: "\u201CBefore you ask what this is — it is Clunoid. Free trading bots you connect to your own Deriv account, or download for MT5. Nothing to pay, nothing to install for the Deriv ones. clunoid.com.\u201D",
+  },
+  {
+    t: "The sceptic pivot",
+    d: "\u201CI know how this looks. So go and check it yourself — clunoid.com, it is free, you connect your own broker account and you can watch the bots run before you risk anything.\u201D",
+  },
+  {
+    t: "The teaching pivot",
+    d: "\u201CThat is what a stop loss does. If you want to see it working instead of just hearing about it, the bots on clunoid.com use one on every trade, and they are free to use.\u201D",
+  },
+  {
+    t: "The lazy pivot",
+    d: "\u201CI am not sitting in front of charts for this. Clunoid does it — free bots for Deriv in the browser, free Expert Advisors for MT5, plus TradingView charts if I want to look at something myself. clunoid.com.\u201D",
+  },
+  {
+    t: "The closing line",
+    d: "\u201CIt is clunoid.com. Free, no download for the Deriv bots. Go and look at it before you take my word for anything.\u201D",
+  },
+];
+
+/**
+ * IDEAS — the videos, with the hook, the shot and the pivot already worked out.
+ *
+ * A creator should be able to open this on day 9, pick one, and go and make it
+ * without inventing anything.
+ */
 export const IDEAS = [
-  { t: "Show it working", d: "Screen record a bot placing trades. No balance on screen. Let people watch the thing do its job." },
-  { t: "Explain one word", d: "Pick one term — synthetic index, martingale, stop loss — and explain it in 45 seconds." },
-  { t: "Bust a myth", d: "“Why most trading bots fail.” Honest takes travel further than hype." },
-  { t: "Before and after", d: "How you used to do it by hand, and what changed." },
-  { t: "Answer a real question", d: "Take a comment you actually got and answer it properly on camera." },
+  {
+    t: "Show a bot placing trades",
+    d: "The one that always works. People have not seen this before.",
+    hook: "You have probably never seen a trading bot actually place a trade. Watch.",
+    show: "Screen recording of a bot running on clunoid.com, trades appearing one by one. Balance off screen.",
+    pivot: "\u201CThis is Clunoid. Free automated bots — these ones run in your browser on Deriv, and there are Expert Advisors for MT5 too. clunoid.com, link in bio.\u201D",
+  },
+  {
+    t: "Explain one word in 45 seconds",
+    d: "Pick a single term and make it obvious. Synthetic index, martingale, stop loss, lot size, drawdown.",
+    hook: "Nobody explains what a synthetic index actually is, so I will.",
+    show: "The chart on screen while you explain, then the bot trading it.",
+    pivot: "\u201CIf you want to watch one being traded instead of just hearing about it, the free bots on clunoid.com do exactly that.\u201D",
+  },
+  {
+    t: "Bust the scam myth",
+    d: "Honest takes travel further than hype. Say out loud that most bots are rubbish, then show one that is not.",
+    hook: "Everyone says trading bots are a scam. Some are. Here is how to tell.",
+    show: "You talking, then cut to a bot running with its stop loss and take profit visible.",
+    pivot: "\u201CThe test is whether you can see what it is doing and whether it costs you anything to look. Clunoid is free and you connect your own account — clunoid.com.\u201D",
+  },
+  {
+    t: "Before and after",
+    d: "How you used to do it by hand versus what changed. Everyone who has traded manually recognises this.",
+    hook: "I used to sit and watch charts for hours. Now I do this instead.",
+    show: "Split it: a busy chart with you clicking, then the bot doing it alone.",
+    pivot: "\u201CSame trades, I am just not the one placing them. Free at clunoid.com.\u201D",
+  },
+  {
+    t: "The 90-second setup",
+    d: "Start to finish, sped up. Removes the excuse that it looks complicated.",
+    hook: "This took me 90 seconds to set up. Let me show you.",
+    show: "Screen record: open clunoid.com, connect a Deriv account, open a bot, press start. Speed it up 2–4x.",
+    pivot: "\u201CThat is the whole thing. clunoid.com, free, nothing to install.\u201D",
+  },
+  {
+    t: "Install an MT5 Expert Advisor",
+    d: "Genuinely useful, and MT5 people search for this. Works on any MT5 broker.",
+    hook: "If you have MetaTrader 5 on your phone or laptop, you can do this today.",
+    show: "Download the file from clunoid.com, drop it into MT5, attach it to a chart, show it armed.",
+    pivot: "\u201CThe Expert Advisors are free on clunoid.com — they work on any MT5 broker, you do not have to switch.\u201D",
+  },
+  {
+    t: "Answer a real comment",
+    d: "Take a question you actually got and answer it properly. The best-performing videos are usually replies.",
+    hook: "Somebody asked me how the bots actually decide when to trade. Here.",
+    show: "The comment on screen, then the bot's settings, then it trading.",
+    pivot: "\u201CIt is all visible before you run anything — go and look, clunoid.com.\u201D",
+  },
+  {
+    t: "Why is it free?",
+    d: "Answer the objection out loud instead of waiting for it in the comments.",
+    hook: "Free. That is the part people do not believe.",
+    show: "You talking to camera, or the site with the bots listed.",
+    pivot: "\u201CYou connect your own broker account, so nobody is holding your money. That is why looking costs nothing. clunoid.com.\u201D",
+  },
+  {
+    t: "Charts without the bot",
+    d: "For the audience that wants to analyse first. Shows the site is more than one thing.",
+    hook: "Stop paying for signal groups. Watch this first.",
+    show: "TradingView charts and screener open from Clunoid, filtering for something.",
+    pivot: "\u201CCharts, screener and alerts, then you place the trade on your own broker. Same place as the bots — clunoid.com.\u201D",
+  },
+  {
+    t: "One mistake you made",
+    d: "Vulnerability performs. Pick a real mistake: no stop loss, revenge trading, oversized lots.",
+    hook: "I blew an account because of this one habit.",
+    show: "You talking, then the bot's stop loss on screen.",
+    pivot: "\u201CThe reason I use the bots now is that they do not get emotional. clunoid.com, free.\u201D",
+  },
+  {
+    t: "Everything in one place",
+    d: "The Central Command angle — for people juggling several accounts.",
+    hook: "I have accounts on three brokers and I stopped logging into all of them.",
+    show: "Central Command with accounts and balances listed (blur the numbers).",
+    pivot: "\u201COne page, every account. It is on clunoid.com with the bots.\u201D",
+  },
+  {
+    t: "Two bots, side by side",
+    d: "Comparison videos hold attention. Run two and talk about the difference.",
+    hook: "These two bots trade completely differently. Watch.",
+    show: "Two bots running, or one after the other, with their settings shown.",
+    pivot: "\u201CBoth free on clunoid.com. Pick whichever suits how you think.\u201D",
+  },
 ];
 
 export const AI_PROMPTS = [
-  "Give me 10 short-video hooks about automated trading that make no income claims.",
+  "Give me 10 short-video hooks about automated trading that would stop someone scrolling.",
   "Explain what a synthetic index is, in 60 seconds, for a total beginner.",
-  "Rewrite this caption so it is honest and has no guarantees.",
+  "Rewrite this caption so it sounds like a person, not an advert.",
   "List 5 myths about trading bots I can correct in a 45-second video.",
+  "Write a 30-second voice-over for a screen recording of a trading bot placing trades, that ends by telling people it is free at clunoid.com.",
+  "Turn this into a script where the pivot to the product happens halfway, not at the end.",
 ];
 
 /**
@@ -222,7 +413,7 @@ export const REMINDERS = [
   },
   {
     t: "Pick three platforms, post to all three",
-    d: "Instagram, TikTok and YouTube Shorts are the ones we recommend — they have the reach. If one of them is banned or unusable where you live, swap it for Facebook Reels, RedNote, Snapchat, Josh, Moj, Kwai or Likee. Your three together count as one post. Pick Facebook and you can link it to Instagram so one upload lands on both.",
+    d: "Instagram, TikTok and YouTube Shorts are the ones we recommend — they have the reach. If one of them is banned or unusable where you live, swap it for Facebook Reels or Snapchat Spotlight. Your three together count as one post. Pick Facebook and you can link it to Instagram so one upload lands on both.",
   },
   {
     t: "Leave everything up until you are paid",
@@ -238,19 +429,27 @@ export function phaseFor(day: number) {
 export const TEMPLATES = [
   {
     t: "The explainer",
-    body: "Most people have never seen a bot actually place a trade. Here is what it looks like.\n\nI use Clunoid for this — link in bio.",
+    body: "Most people have never seen a bot actually place a trade. Here is what it looks like.\n\nI use Clunoid for this — it is a site with free fully automated trading bots. The Deriv ones run right in your browser, and there are free Expert Advisors for MetaTrader 5 too. There are TradingView charts and a screener on there as well if you would rather analyse it yourself first.\n\nGo to clunoid.com — link in bio — and watch the bots trade.",
   },
   {
     t: "The myth",
-    body: "“Trading bots are a scam.” Some are. Here is how to tell the difference in 30 seconds.\n\nI use Clunoid — clunoid.com",
+    body: "\u201CTrading bots are a scam.\u201D Some are. Here is how to tell the difference in 30 seconds.\n\nThe one I use is Clunoid. It is free, you connect your own broker account so nobody else is holding your money, and you can watch the bots run before you risk anything.\n\nclunoid.com — link in bio.",
   },
   {
     t: "The one term",
-    body: "Nobody explains what a synthetic index actually is, so here it is in plain English.\n\nMore on clunoid.com",
+    body: "Nobody explains what a synthetic index actually is, so here it is in plain English.\n\nIf you want to see one being traded instead of just hearing about it, Clunoid has free automated bots that do exactly that — in your browser on Deriv, or as Expert Advisors on MetaTrader 5.\n\nclunoid.com",
   },
   {
     t: "The honest take",
-    body: "I am not going to tell you this makes money while you sleep. Here is what it actually does.\n\nclunoid.com",
+    body: "I am not going to tell you this makes money while you sleep. Here is what it actually does.\n\nClunoid is a site with free trading bots. You connect your own account, pick a bot, and it places the trades instead of you. There are charts and a screener on there too.\n\nHave a look yourself: clunoid.com",
+  },
+  {
+    t: "The MT5 one",
+    body: "If you have MetaTrader 5, you can do this today.\n\nClunoid has free Expert Advisors you download and drop straight into MT5 — they work on any MT5 broker, so you do not have to switch anything. There are browser bots for Deriv on there too.\n\nclunoid.com — link in bio.",
+  },
+  {
+    t: "The setup",
+    body: "This took 90 seconds start to finish.\n\nclunoid.com, connect your own broker account, pick a bot, press start. Nothing to install for the Deriv ones. It is free.\n\nLink in bio.",
   },
 ];
 

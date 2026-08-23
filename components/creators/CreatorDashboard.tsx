@@ -25,7 +25,7 @@ import { TC, DOT_GRID, monoFont } from "@/lib/trading/theme";
 import {
   A, GOOD, BAD, PAYOUTS, LADDER, DO, DONT, IDEAS, AI_PROMPTS,
   PHASES, phaseFor, TEMPLATES, fmt, fmtShort, DISCLAIMER,
-  PLATFORMS_REQUIRED, platformInfo, platformSentence,
+  PLATFORMS_REQUIRED, platformInfo, platformSentence, TRUE_ABOUT_CLUNOID, SHOT_LIST, HOOKS, PIVOTS,
 } from "./content";
 import { PlatformPicker } from "./PlatformPicker";
 import { PayoutPicker } from "./PayoutPicker";
@@ -1031,18 +1031,109 @@ function IdeasPanel() {
 
   return (
     <div className="space-y-4">
+      {/* ── the facts, so nobody says something untrue on camera ──────────── */}
+      <section className={card} style={{ borderColor: `${GOOD}55`, background: `linear-gradient(180deg, ${GOOD}12, rgba(255,255,255,0.015))` }}>
+        <h2 className="flex items-center gap-2 text-[16px] font-bold">
+          <ShieldCheck size={16} style={{ color: GOOD }} /> What Clunoid actually is
+        </h2>
+        <p className="mt-1.5 text-[12.5px] leading-relaxed" style={{ color: TC.muted }}>
+          Say these and you are on solid ground. Do not promise anything beyond them — a wrong claim in your video is
+          worse than no video.
+        </p>
+        <ul className="mt-3 space-y-2">
+          {TRUE_ABOUT_CLUNOID.map((t) => (
+            <li key={t} className="flex gap-2 text-[13px] leading-relaxed" style={{ color: TC.muted }}>
+              <Check size={14} className="mt-0.5 shrink-0" style={{ color: GOOD }} /> {t}
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      {/* ── how to physically make one ────────────────────────────────────── */}
+      <section className={card} style={cardStyle}>
+        <h2 className="text-[17px] font-bold">How to make one, start to finish</h2>
+        <p className="mt-1.5 max-w-3xl text-[12.5px] leading-relaxed" style={{ color: TC.muted }}>
+          You do not have to be on camera and you do not need a studio. Screen recording, your voice, and a cut. That
+          is the whole format, and it is the one that performs best in this niche.
+        </p>
+        <ol className="mt-4 grid gap-3 lg:grid-cols-2">
+          {SHOT_LIST.map((sh) => (
+            <li key={sh.t} className="rounded-xl border p-3.5" style={{ borderColor: TC.line, background: "rgba(0,0,0,0.22)" }}>
+              <div className="text-[13.5px] font-bold" style={{ color: A }}>{sh.t}</div>
+              <p className="mt-1.5 text-[12.5px] leading-relaxed" style={{ color: TC.muted }}>{sh.d}</p>
+            </li>
+          ))}
+        </ol>
+      </section>
+
+      {/* ── the videos ────────────────────────────────────────────────────── */}
       <section className={card} style={cardStyle}>
         <h2 className="text-[17px] font-bold">Videos that actually work</h2>
-        <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        <p className="mt-1.5 max-w-3xl text-[12.5px] leading-relaxed" style={{ color: TC.muted }}>
+          Each one has the opening line, what to put on screen, and how to bring Clunoid in without it feeling like
+          an advert. Say them in your own words — the wording here is a starting point, not a script to read out.
+        </p>
+        <div className="mt-4 grid gap-3 lg:grid-cols-2">
           {IDEAS.map((i) => (
-            <div key={i.t} className="rounded-xl border p-3.5" style={{ borderColor: TC.line, background: "rgba(0,0,0,0.22)" }}>
-              <div className="text-[13.5px] font-bold">{i.t}</div>
-              <p className="mt-1.5 text-[12.5px] leading-relaxed" style={{ color: TC.muted }}>{i.d}</p>
+            <div key={i.t} className="rounded-xl border p-4" style={{ borderColor: TC.line, background: "rgba(0,0,0,0.22)" }}>
+              <div className="text-[14px] font-bold">{i.t}</div>
+              <p className="mt-1 text-[12px] leading-relaxed" style={{ color: TC.faint }}>{i.d}</p>
+
+              <div className="mt-3 space-y-2.5">
+                <Beat label="Open with" tone={A}>{i.hook}</Beat>
+                <Beat label="On screen" tone={TC.muted}>{i.show}</Beat>
+                <Beat label="Bring in Clunoid" tone={GOOD}>{i.pivot}</Beat>
+              </div>
             </div>
           ))}
         </div>
       </section>
 
+      {/* ── hooks ─────────────────────────────────────────────────────────── */}
+      <section className={card} style={cardStyle}>
+        <h2 className={`flex items-center gap-2 ${labelCls}`} style={{ color: TC.faint }}>
+          <Sparkles size={14} style={{ color: A }} /> Openers you can steal
+        </h2>
+        <p className="mt-2 text-[12.5px] leading-relaxed" style={{ color: TC.muted }}>
+          The first two seconds decide whether anyone sees the rest. Start with the point, never with an introduction.
+        </p>
+        <ul className="mt-3 grid gap-2 lg:grid-cols-2">
+          {HOOKS.map((hk) => (
+            <li key={hk} className="rounded-lg border px-3 py-2 text-[12.5px] leading-relaxed"
+              style={{ borderColor: TC.line, background: "rgba(0,0,0,0.2)", color: TC.muted }}>
+              &ldquo;{hk}&rdquo;
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      {/* ── pivots ────────────────────────────────────────────────────────── */}
+      <section className={card} style={cardStyle}>
+        <h2 className={`flex items-center gap-2 ${labelCls}`} style={{ color: TC.faint }}>
+          <TrendingUp size={14} style={{ color: A }} /> How to bring Clunoid in
+        </h2>
+        <p className="mt-2 max-w-3xl text-[12.5px] leading-relaxed" style={{ color: TC.muted }}>
+          This is the part that decides whether the video counts. Do it in the middle or straight after the thing
+          people came to watch — not tacked on at the end, where most of them have already gone.
+        </p>
+        <div className="mt-3 grid gap-3 lg:grid-cols-2">
+          {PIVOTS.map((p) => (
+            <div key={p.t} className="rounded-xl border p-3.5" style={{ borderColor: TC.line, background: "rgba(0,0,0,0.22)" }}>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[13px] font-bold">{p.t}</span>
+                <button type="button" onClick={() => copy(p.t, p.d)}
+                  className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-[11.5px] font-medium transition hover:opacity-80"
+                  style={{ background: copied === p.t ? `${GOOD}22` : "rgba(255,255,255,0.06)", color: copied === p.t ? GOOD : TC.muted }}>
+                  {copied === p.t ? <Check size={12} /> : <Copy size={12} />} {copied === p.t ? "Copied" : "Copy"}
+                </button>
+              </div>
+              <p className="mt-2 text-[12.5px] leading-relaxed" style={{ color: TC.muted }}>{p.d}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* ── captions ──────────────────────────────────────────────────────── */}
       <section className={card} style={cardStyle}>
         <h2 className={`flex items-center gap-2 ${labelCls}`} style={{ color: TC.faint }}>
           <Copy size={14} style={{ color: A }} /> Caption templates
@@ -1067,6 +1158,7 @@ function IdeasPanel() {
         </div>
       </section>
 
+      {/* ── ai ────────────────────────────────────────────────────────────── */}
       <section className={card} style={cardStyle}>
         <h2 className={`flex items-center gap-2 ${labelCls}`} style={{ color: TC.faint }}>
           <Sparkles size={14} style={{ color: A }} /> Use AI to find ideas
@@ -1086,6 +1178,16 @@ function IdeasPanel() {
           increasingly label it.
         </p>
       </section>
+    </div>
+  );
+}
+
+/** One labelled line inside an idea card — hook, shot, pivot. */
+function Beat({ label, tone, children }: { label: string; tone: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <div className="text-[10px] font-bold uppercase tracking-wider" style={{ color: tone }}>{label}</div>
+      <p className="mt-0.5 text-[12.5px] leading-relaxed" style={{ color: TC.muted }}>{children}</p>
     </div>
   );
 }

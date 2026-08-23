@@ -11,12 +11,7 @@ export const PLATFORM_KEYS = [
   "instagram",
   "youtube",
   "facebook",
-  "rednote",
   "snapchat",
-  "josh",
-  "moj",
-  "kwai",
-  "likee",
 ] as const;
 
 export type PlatformKey = (typeof PLATFORM_KEYS)[number];
