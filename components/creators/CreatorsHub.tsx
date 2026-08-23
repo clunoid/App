@@ -14,7 +14,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import {
   ArrowLeft, Clapperboard, CalendarDays, Check, X, Sparkles, Wallet,
-  TrendingUp, ShieldCheck, Clock, Rocket,
+  TrendingUp, ShieldCheck, Clock, Rocket, Loader2,
 } from "lucide-react";
 import { TC, DOT_GRID, monoFont } from "@/lib/trading/theme";
 
@@ -104,6 +104,127 @@ const AI_PROMPTS = [
   "Rewrite this caption so it is honest and has no guarantees.",
   "List 5 myths about trading bots I can correct in a 45-second video.",
 ];
+
+/**
+ * The application. Deliberately short — name, email, country, whichever accounts
+ * they have, and one confirmation that they read the rules. Anything more and
+ * people abandon it, and everything else we need we can ask once they are in.
+ */
+function ApplyForm() {
+  const [f, setF] = useState({ name: "", email: "", country: "", tiktok: "", instagram: "", youtube: "" });
+  const [newAccounts, setNewAccounts] = useState(false);
+  const [agreed, setAgreed] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
+
+  const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement>) =>
+    setF((p) => ({ ...p, [k]: e.target.value }));
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (busy) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      const res = await fetch("/api/creators/apply", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...f, newAccounts, agreed }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      if (!res.ok || !data.ok) { setErr(data.error || "Something went wrong. Please try again."); return; }
+      setDone(true);
+    } catch {
+      setErr("Could not reach us just now. Please try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (done) {
+    return (
+      <div className="rounded-2xl border p-5 sm:p-6" style={{ borderColor: `${GOOD}55`, background: `linear-gradient(180deg, ${GOOD}14, rgba(255,255,255,0.015))` }}>
+        <div className="flex items-start gap-3">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl" style={{ background: `${GOOD}22` }}>
+            <Check size={18} style={{ color: GOOD }} />
+          </span>
+          <div>
+            <h2 className="text-[18px] font-bold sm:text-[20px]">Application received</h2>
+            <p className="mt-2 max-w-2xl text-[13px] leading-relaxed" style={{ color: TC.muted }}>
+              We check that the accounts are yours, then email you a start date. Your 30 days begin the day you
+              are approved — not today — so nothing is running yet.
+            </p>
+            <p className="mt-2 max-w-2xl text-[12.5px] leading-relaxed" style={{ color: TC.faint }}>
+              While you wait: read the do and do-not lists above, and get a few video ideas ready.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const field = "rounded-xl border px-3 py-2.5 text-[13.5px] outline-none transition focus:border-violet-400";
+  const fieldStyle = { borderColor: TC.line, background: "rgba(0,0,0,0.25)", color: TC.text } as const;
+
+  return (
+    <form onSubmit={submit} className="rounded-2xl border p-5 sm:p-6" style={{ borderColor: `${A}55`, background: `linear-gradient(180deg, ${A}10, rgba(255,255,255,0.015))` }}>
+      <h2 className="text-[18px] font-bold sm:text-[20px]">Apply to join</h2>
+      <p className="mt-2 max-w-2xl text-[13px] leading-relaxed" style={{ color: TC.muted }}>
+        Give us your accounts. We check they are yours, then send you a start date. Places are limited so every
+        creator gets proper support.
+      </p>
+
+      <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <label className="flex flex-col gap-1.5">
+          <span className="text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: TC.faint }}>Your name</span>
+          <input required value={f.name} onChange={set("name")} className={field} style={fieldStyle} placeholder="Jane Doe" />
+        </label>
+        <label className="flex flex-col gap-1.5">
+          <span className="text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: TC.faint }}>Email</span>
+          <input required type="email" value={f.email} onChange={set("email")} className={field} style={fieldStyle} placeholder="you@email.com" />
+        </label>
+        <label className="flex flex-col gap-1.5">
+          <span className="text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: TC.faint }}>Country</span>
+          <input required value={f.country} onChange={set("country")} className={field} style={fieldStyle} placeholder="Kenya" />
+        </label>
+        <label className="flex flex-col gap-1.5">
+          <span className="text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: TC.faint }}>TikTok</span>
+          <input value={f.tiktok} onChange={set("tiktok")} className={field} style={fieldStyle} placeholder="@yourhandle" />
+        </label>
+        <label className="flex flex-col gap-1.5">
+          <span className="text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: TC.faint }}>Instagram</span>
+          <input value={f.instagram} onChange={set("instagram")} className={field} style={fieldStyle} placeholder="@yourhandle" />
+        </label>
+        <label className="flex flex-col gap-1.5">
+          <span className="text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: TC.faint }}>YouTube</span>
+          <input value={f.youtube} onChange={set("youtube")} className={field} style={fieldStyle} placeholder="@yourchannel" />
+        </label>
+      </div>
+      <p className="mt-2 text-[11.5px]" style={{ color: TC.faint }}>Add at least one. Leave the rest blank if you do not have them yet.</p>
+
+      <div className="mt-4 space-y-2.5">
+        <label className="flex cursor-pointer items-start gap-2.5 text-[12.5px] leading-relaxed" style={{ color: TC.muted }}>
+          <input type="checkbox" checked={newAccounts} onChange={(e) => setNewAccounts(e.target.checked)} className="mt-0.5 h-4 w-4 shrink-0" style={{ accentColor: A }} />
+          <span>These accounts are brand new. <span style={{ color: TC.faint }}>First month pays $50 instead of $100, because new accounts have no reach yet.</span></span>
+        </label>
+        <label className="flex cursor-pointer items-start gap-2.5 text-[12.5px] leading-relaxed" style={{ color: TC.muted }}>
+          <input required type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} className="mt-0.5 h-4 w-4 shrink-0" style={{ accentColor: A }} />
+          <span>I have read the rules on this page and I will follow them. <span style={{ color: TC.faint }}>Breaking them cancels the month.</span></span>
+        </label>
+      </div>
+
+      {err && <p className="mt-3 text-[12.5px] font-medium" style={{ color: BAD }}>{err}</p>}
+
+      <button type="submit" disabled={busy}
+        className="mt-5 inline-flex items-center justify-center gap-2 rounded-xl px-5 py-3 text-[14px] font-semibold transition hover:opacity-90 disabled:opacity-60"
+        style={{ background: A, color: "#12091f" }}>
+        {busy ? <Loader2 size={16} className="animate-spin" /> : <Clapperboard size={16} />}
+        {busy ? "Sending…" : "Send application"}
+      </button>
+    </form>
+  );
+}
 
 function addDays(d: Date, n: number) {
   const x = new Date(d);
@@ -386,17 +507,8 @@ export function CreatorsHub() {
         </section>
 
         {/* ── apply ──────────────────────────────────────────────────────── */}
-        <section className="mt-12">
-          <div className="rounded-2xl border p-5 sm:p-6" style={{ borderColor: TC.line, background: TC.panel }}>
-            <h2 className="text-[18px] font-bold sm:text-[20px]">Ready to start?</h2>
-            <p className="mt-2 max-w-2xl text-[13px] leading-relaxed" style={{ color: TC.muted }}>
-              Send your TikTok, Instagram and YouTube handles. We check the accounts are yours, then give you a
-              start date. Places are limited so each creator gets proper support.
-            </p>
-            <div className="mt-4 inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-[13.5px] font-semibold" style={{ background: `${A}22`, color: A, boxShadow: `inset 0 0 0 1px ${A}55` }}>
-              <Clapperboard size={15} /> Applications open soon
-            </div>
-          </div>
+        <section id="apply" className="mt-12">
+          <ApplyForm />
         </section>
 
         <p className="mt-10 flex items-start gap-1.5 text-[11px] leading-relaxed" style={{ color: TC.faint }}>
