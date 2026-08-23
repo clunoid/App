@@ -5,11 +5,14 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 export const runtime = "nodejs";
 
 /**
- * CREATOR PROGRAM — take an application.
+ * CREATOR PROGRAM — register a creator.
  *
- * Open to anyone: the whole point is that people anywhere can apply, so this
- * does not require a Clunoid account. If the applicant happens to be signed in
- * we stamp their user id, which makes paying them later easier.
+ * Open to anyone: the whole point is that people anywhere can join, so this
+ * does not require a Clunoid account. If they happen to be signed in we stamp
+ * their user id, which makes paying them later easier.
+ *
+ * There is no approval gate. The row goes in 'active' with started_at = now, so
+ * the creator's 30 days begin the second this returns and they can post today.
  *
  * The row is written with the service role because the table denies everything
  * to anon clients. Duplicate email or handle comes back as a friendly 409 rather
@@ -88,13 +91,16 @@ export async function POST(req: NextRequest) {
     youtube,
     payout_method: payoutMethod,
     new_accounts: !!body.newAccounts,
+    // No waiting on us: the clock starts now.
+    status: 'active',
+    started_at: new Date().toISOString(),
   });
 
   if (error) {
     // 23505 = unique violation: same email or same handle already applied.
     if (error.code === "23505") {
       return NextResponse.json(
-        { error: "You have already applied with that email or account. We will be in touch." },
+        { error: "You are already registered with that email or account — just keep posting." },
         { status: 409 },
       );
     }

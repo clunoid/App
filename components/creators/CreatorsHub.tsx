@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * CREATOR PROGRAM — explainer, application, then the rules.
+ * CREATOR PROGRAM — explainer, registration, then the rules.
  *
  * Ordered the way someone actually uses it: what this is, then the form while
  * they are still interested, then everything they need to know, and only at the
@@ -15,7 +15,7 @@ import {
   TrendingUp, ShieldCheck, Clock, Rocket, Loader2, ArrowDown,
 } from "lucide-react";
 import { TC, DOT_GRID, monoFont } from "@/lib/trading/theme";
-import { COUNTRIES } from "./countries";
+import { CountryPicker } from "./CountryPicker";
 
 const A = "#a78bfa";
 const GOOD = "#34d399";
@@ -49,7 +49,7 @@ const LADDER = [
 ];
 
 const STEPS = [
-  { n: 1, icon: Rocket, title: "Apply and get your start date", body: "Send the form above. We check the accounts are yours. Your 30 days begin the day you are approved — that is your start date." },
+  { n: 1, icon: Rocket, title: "Register and start today", body: "Fill in the form above. There is nothing to wait for and nobody to approve you — your 30 days begin the moment you register, and your first video can go up the same day." },
   { n: 2, icon: Clock, title: "Days 1–14: post once a day", body: "One video per day. Post that same video to TikTok, Instagram Reels and YouTube Shorts — all three together count as one post. Going slower at the start is on purpose: it builds reach and keeps accounts out of trouble." },
   { n: 3, icon: TrendingUp, title: "Days 15–30: post twice a day", body: "Two videos per day, each one posted to all three platforms. From month two onward this is your normal pace, every day." },
   { n: 4, icon: CalendarDays, title: "Finish 30 days, then request payout", body: "You get 2 grace days per month, so you need 28 qualifying days out of 30. Leave every video up. Deleting them before payout cancels the month." },
@@ -166,7 +166,8 @@ export function CreatorsHub() {
           <p className="mt-3 max-w-4xl text-[14px] leading-relaxed sm:text-[15.5px]" style={{ color: TC.muted }}>
             Make short videos, post them on your own TikTok, Instagram and YouTube, and get paid at the end of
             every 30 days. <b style={{ color: TC.text }}>Views are not required to get paid</b> — posting every day
-            is. Views are how you earn more.
+            is. Views are how you earn more. <b style={{ color: TC.text }}>You start the day you register</b> —
+            there is no approval to wait for.
           </p>
           <div className="mt-5 flex flex-wrap gap-2.5">
             {[
@@ -190,13 +191,13 @@ export function CreatorsHub() {
                 <Check size={18} style={{ color: GOOD }} />
               </span>
               <div>
-                <h2 className="text-[18px] font-bold sm:text-[20px]">Application received</h2>
+                <h2 className="text-[18px] font-bold sm:text-[20px]">You are in — day 1 is today</h2>
                 <p className="mt-2 max-w-2xl text-[13px] leading-relaxed" style={{ color: TC.muted }}>
-                  We check that the accounts are yours, then email you a start date. Your 30 days begin the day you
-                  are approved — not today — so nothing is running yet.
+                  Nothing to wait for. Your 30 days have started, so post your first video today and keep going
+                  once a day until day 14.
                 </p>
                 <p className="mt-2 max-w-2xl text-[12.5px] leading-relaxed" style={{ color: TC.faint }}>
-                  While you wait: read the rules below and get a few video ideas ready.
+                  Use the dates below to see when your pace doubles and when you can request payout.
                 </p>
               </div>
             </div>
@@ -208,9 +209,10 @@ export function CreatorsHub() {
           {/* ── the application ──────────────────────────────────────────── */}
           {!done && (
             <section id="apply" className="mt-8 rounded-2xl border p-5 sm:p-6" style={{ borderColor: `${A}55`, background: `linear-gradient(180deg, ${A}10, rgba(255,255,255,0.015))` }}>
-              <h2 className="text-[18px] font-bold sm:text-[20px]">Apply to join</h2>
+              <h2 className="text-[18px] font-bold sm:text-[20px]">Register and start today</h2>
               <p className="mt-1.5 max-w-2xl text-[12.5px] leading-relaxed" style={{ color: TC.muted }}>
-                Fill this in, read the rules below, then confirm and send at the bottom of the page.
+                Fill this in, read the rules below, then confirm at the bottom. Your 30 days start the moment you
+                register — no waiting, no approval.
               </p>
 
               <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -222,13 +224,10 @@ export function CreatorsHub() {
                   <span className={label} style={{ color: TC.faint }}>Email</span>
                   <input required type="email" value={f.email} onChange={set("email")} className={field} style={fieldStyle} placeholder="you@email.com" />
                 </label>
-                <label className="flex flex-col gap-1.5">
+                <div className="flex flex-col gap-1.5">
                   <span className={label} style={{ color: TC.faint }}>Country</span>
-                  <input required list="cln-countries" value={f.country} onChange={set("country")} className={field} style={fieldStyle} placeholder="Type or pick your country" />
-                  <datalist id="cln-countries">
-                    {COUNTRIES.map((c) => <option key={c} value={c} />)}
-                  </datalist>
-                </label>
+                  <CountryPicker value={f.country} onChange={(v) => setF((p) => ({ ...p, country: v }))} accent={A} />
+                </div>
               </div>
 
               {/* social handles — optional now, required before the first payout */}
@@ -393,7 +392,7 @@ export function CreatorsHub() {
             </h2>
             <div className="mt-4 rounded-2xl border p-4 sm:p-5" style={{ borderColor: TC.line, background: TC.panel }}>
               <label className="flex flex-col gap-1.5 sm:max-w-xs">
-                <span className={label} style={{ color: TC.faint }}>The day you start</span>
+                <span className={label} style={{ color: TC.faint }}>The day you registered</span>
                 <input type="date" value={start} onChange={(e) => setStart(e.target.value)}
                   className="rounded-xl border px-3 py-2 text-[13.5px] outline-none transition focus:border-violet-400"
                   style={{ ...monoFont, borderColor: TC.line, background: "rgba(0,0,0,0.25)", color: TC.text, colorScheme: "dark" }} />
@@ -498,7 +497,7 @@ export function CreatorsHub() {
           {/* ── confirm and send, once they have read it all ───────────────── */}
           {!done && (
             <section className="mt-12 rounded-2xl border p-5 sm:p-6" style={{ borderColor: `${A}55`, background: `linear-gradient(180deg, ${A}12, rgba(255,255,255,0.015))` }}>
-              <h2 className="text-[18px] font-bold sm:text-[20px]">Now you have read it, send your application</h2>
+              <h2 className="text-[18px] font-bold sm:text-[20px]">Now you have read it, start creating</h2>
               <div className="mt-4 space-y-3">
                 <label className="flex cursor-pointer items-start gap-2.5 text-[13px] leading-relaxed" style={{ color: TC.muted }}>
                   <input type="checkbox" checked={newAccounts} onChange={(e) => setNewAccounts(e.target.checked)} className="mt-0.5 h-4 w-4 shrink-0" style={{ accentColor: A }} />
@@ -516,10 +515,10 @@ export function CreatorsHub() {
                 className="mt-5 inline-flex items-center justify-center gap-2 rounded-xl px-5 py-3 text-[14px] font-semibold transition hover:opacity-90 disabled:opacity-60"
                 style={{ background: A, color: "#12091f" }}>
                 {busy ? <Loader2 size={16} className="animate-spin" /> : <Clapperboard size={16} />}
-                {busy ? "Sending…" : "Send application"}
+                {busy ? "Registering…" : "Register and start today"}
               </button>
               <p className="mt-2.5 text-[11.5px]" style={{ color: TC.faint }}>
-                Places are limited so every creator gets proper support.
+                Day 1 is today. Post your first video as soon as you have registered.
               </p>
             </section>
           )}
