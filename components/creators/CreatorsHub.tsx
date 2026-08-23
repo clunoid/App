@@ -227,8 +227,9 @@ export function CreatorsHub() {
                 <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
                   <span className={label} style={{ color: TC.faint }}>Where will you post?</span>
                   <span className="text-[11.5px]" style={{ color: TC.muted }}>
-                    Pick {PLATFORMS_REQUIRED}. Instagram, TikTok and YouTube are the ones we recommend — swap any of
-                    them if it is banned or unusable where you live.
+                    Pick {PLATFORMS_REQUIRED} — that is the minimum, not a limit, so post on more if you want to.
+                    Instagram, TikTok and YouTube are the ones we recommend; swap any of them if it is banned or
+                    unusable where you live.
                   </span>
                 </div>
                 <div className="mt-2.5">
@@ -316,9 +317,9 @@ export function CreatorsHub() {
             </h2>
             <div className="mt-4 grid gap-3 sm:grid-cols-3">
               {[
-                { k: "Days 1–14", v: "1 video a day", s: "Slow start builds reach and protects the account" },
-                { k: "Days 15–30", v: "2 videos a day", s: "Same for every month after this one" },
-                { k: "Each video", v: "Your 3 platforms", s: "The same video on all three = one post" },
+                { k: "Posted days 1–14", v: "1 video a day", s: "Slow start builds reach and protects the account" },
+                { k: "Posted days 15–28", v: "2 videos a day", s: "Same for every month after this one" },
+                { k: "Each video", v: "3 platforms minimum", s: "Same video on your three = one post. More is fine." },
               ].map((c) => (
                 <div key={c.k} className="rounded-2xl border p-4 sm:p-5" style={{ borderColor: TC.line, background: TC.panel }}>
                   <div className="text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: TC.faint }}>{c.k}</div>
@@ -396,8 +397,8 @@ You get <b style={{ color: TC.text }}>$500 on top</b> of what you already earn, 
               {dates && (
                 <div className="mt-4 grid gap-3 sm:grid-cols-3">
                   {[
-                    { k: "Day 15 — go to 2 a day", v: fmt(dates.switchDay), c: A },
-                    { k: "Day 30 — ask to be paid", v: fmt(dates.finish), c: GOOD },
+                    { k: "Posted day 15 — go to 2 a day", v: fmt(dates.switchDay), c: A },
+                    { k: "28 posted days — ask to be paid", v: fmt(dates.finish), c: GOOD },
                     { k: "Paid by", v: fmt(dates.paidBy), c: GOOD },
                   ].map((d) => (
                     <div key={d.k} className="rounded-xl border p-3" style={{ borderColor: TC.line, background: "rgba(0,0,0,0.2)" }}>
@@ -408,8 +409,9 @@ You get <b style={{ color: TC.text }}>$500 on top</b> of what you already earn, 
                 </div>
               )}
               <p className="mt-3 text-[11.5px] leading-relaxed" style={{ color: TC.faint }}>
-                You can miss 2 days a month — you need 28 days out of 30 to get paid. We check your posts for 3
-                working days, then pay you within 7.
+                A month is 28 days you actually posted, not 28 dates — miss one and your finish moves out a day
+                instead of the month being lost. You tick the days you posted on your dashboard calendar. We check
+                your posts for 3 working days, then pay you within 7.
               </p>
             </div>
           </section>

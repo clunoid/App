@@ -77,7 +77,7 @@ export const STEPS = [
   { n: 1, icon: Rocket, title: "Register and start today", body: "Fill in the form above. There is nothing to wait for and nobody to approve you — you get your dashboard straight away, and your first video can go up the same day." },
   { n: 2, icon: Clock, title: "Days 1–14: post once a day", body: "One video per day. Post that same video to all three of the platforms you chose — the three together count as one post. Going slower at the start is on purpose: it builds reach and keeps accounts out of trouble." },
   { n: 3, icon: TrendingUp, title: "Days 15–30: post twice a day", body: "Two videos per day, each one posted to all three of your platforms. From month two onward this is your normal pace, every day." },
-  { n: 4, icon: CalendarDays, title: "Finish 30 days, then ask to be paid", body: "You can miss 2 days a month, so you need 28 days out of 30. Leave every video up — deleting them before you are paid cancels the month." },
+  { n: 4, icon: CalendarDays, title: "Reach 28 posted days, then ask to be paid", body: "A month is 28 days you actually posted, not 28 dates on a calendar. Miss a day and nothing is lost — your finish line just moves out by a day. Tap the days you posted on your dashboard calendar and it keeps count for you. Leave every video up; deleting them before you are paid cancels the month." },
   { n: 5, icon: Wallet, title: "We check, then we pay you", body: "We spend 3 working days checking: posts still up, made by you, following the rules, views real. You get your money within 7 days of asking. Every month after your first adds $50 — month two is $150." },
 ];
 
@@ -107,13 +107,14 @@ export const DONT = [
  * Pine Script — analysis, not bots. Nobody should be saying otherwise on camera.
  */
 export const TRUE_ABOUT_CLUNOID = [
-  "Clunoid is a website. You do not install anything to use the Deriv bots — they run in your browser.",
-  "The Deriv bots are fully automated and free. You connect your own Deriv account and they place the trades.",
-  "The MT5 side is free Expert Advisors you download and drop into MetaTrader 5. They work on any MT5 broker.",
-  "TradingView on Clunoid is charts, screener, alerts and Pine Script — for analysis. It is not a bot.",
-  "Central Command is where you connect a broker and see every account and balance in one place.",
-  "It costs nothing to look. clunoid.com.",
-];
+  "All the trading bots are 100% free.",
+  "They are fully automated — you pick a bot and it places the trades.",
+  "The bots stop by themselves once the profit target for the run is reached.",
+  "Easy to set up. The Deriv bots run in your browser, nothing to install.",
+  "For MetaTrader 5 there are free Expert Advisors you download — any MT5 broker works.",
+  "Trade from anywhere, at any time.",
+  "They run at the weekend too — crypto and synthetic indices stay open.",
+]
 
 /**
  * HOW TO MAKE ONE — the production recipe.
@@ -128,7 +129,7 @@ export const SHOT_LIST = [
   },
   {
     t: "2 · Screen record the bot working",
-    d: "Go to clunoid.com, open a bot and let it run. Record 20–40 seconds of it actually placing trades. This is the shot everything else hangs off — people have genuinely never seen it. Keep your balance off screen or blur it.",
+    d: "Go to clunoid.com, open a bot and let it run. Record 20–40 seconds of it actually placing trades. This is the shot everything else hangs off — people have genuinely never seen it.",
   },
   {
     t: "3 · Grab a shot of the site itself",
@@ -212,7 +213,7 @@ export const IDEAS = [
     t: "Show a bot placing trades",
     d: "The one that always works. People have not seen this before.",
     hook: "You have probably never seen a trading bot actually place a trade. Watch.",
-    show: "Screen recording of a bot running on clunoid.com, trades appearing one by one. Balance off screen.",
+    show: "Screen recording of a bot running on clunoid.com, trades appearing one by one.",
     pivot: "\u201CThis is Clunoid. Free automated bots — these ones run in your browser on Deriv, and there are Expert Advisors for MT5 too. clunoid.com, link in bio.\u201D",
   },
   {
@@ -282,7 +283,7 @@ export const IDEAS = [
     t: "Everything in one place",
     d: "The Central Command angle — for people juggling several accounts.",
     hook: "I have accounts on three brokers and I stopped logging into all of them.",
-    show: "Central Command with accounts and balances listed (blur the numbers).",
+    show: "Central Command with every account and balance listed in one place.",
     pivot: "\u201COne page, every account. It is on clunoid.com with the bots.\u201D",
   },
   {
@@ -352,11 +353,11 @@ export const PHASES = [
   {
     from: 22, to: 30,
     title: "Finish clean",
-    aim: "Land all 30 days and get ready to be paid.",
+    aim: "Land your last posted days and get ready to be paid.",
     todo: [
       "Do not delete or archive anything — every video must still be live when we check.",
       "Make sure all three handles on your dashboard are correct.",
-      "On day 30, ask to be paid. The money follows within 7 days of our check.",
+      "On your 28th posted day, ask to be paid. The money follows within 7 days of our check.",
     ],
   },
 ] as const;
@@ -413,7 +414,7 @@ export const REMINDERS = [
   },
   {
     t: "Pick three platforms, post to all three",
-    d: "Instagram, TikTok and YouTube Shorts are the ones we recommend — they have the reach. If one of them is banned or unusable where you live, swap it for Facebook Reels or Snapchat Spotlight. Your three together count as one post. Pick Facebook and you can link it to Instagram so one upload lands on both.",
+    d: "Three is what is required, not a limit — post on more if you want to, it can only help. Instagram, TikTok and YouTube Shorts are the ones we recommend. If one of them is banned or unusable where you live, swap it for Facebook Reels or Snapchat Spotlight. Your three together count as one post. Pick Facebook and you can link it to Instagram so one upload lands on both.",
   },
   {
     t: "Leave everything up until you are paid",

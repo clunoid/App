@@ -133,7 +133,7 @@ export function CreatorDashboard({ me, token, onRefresh, justRegistered = false 
                 ? { background: `${GOOD}1f`, color: GOOD, boxShadow: `inset 0 0 0 1px ${GOOD}55` }
                 : { background: `${A}1f`, color: A, boxShadow: `inset 0 0 0 1px ${A}55` }}>
               <span className="h-1.5 w-1.5 rounded-full" style={{ background: started ? GOOD : A }} />
-              {started ? `Day ${progress.day} of 30` : "Not started"}
+              {started ? `Day ${progress.day} of ${QUALIFYING_DAYS_NEEDED}` : "Not started"}
             </span>
           </span>
         </header>
@@ -143,7 +143,7 @@ export function CreatorDashboard({ me, token, onRefresh, justRegistered = false 
 
           <div className="min-w-0 flex-1">
             {tab === "overview" && <Overview me={me} progress={progress} token={token} onRefresh={onRefresh} now={now} setTab={setTab} show={show} />}
-            {tab === "plan" && <PlanPanel progress={progress} />}
+            {tab === "plan" && <PlanPanel progress={progress} token={token} onRefresh={onRefresh} show={show} />}
             {tab === "posts" && <PostsPanel me={me} progress={progress} token={token} onRefresh={onRefresh} show={show} />}
             {tab === "payouts" && <PayoutsPanel me={me} progress={progress} />}
             {tab === "ideas" && <IdeasPanel />}
@@ -211,7 +211,7 @@ function Sidebar({ tab, setTab, progress, started }: { tab: TabKey; setTab: (t: 
             <div className="h-full rounded-full transition-all" style={{ width: `${progress.percent}%`, background: A }} />
           </div>
           <div className="mt-2 text-[11.5px]" style={{ color: TC.muted }}>
-            <b style={{ color: TC.text }}>{progress.qualifyingDays}</b> of {QUALIFYING_DAYS_NEEDED} days needed
+            <b style={{ color: TC.text }}>{progress.qualifyingDays}</b> of {QUALIFYING_DAYS_NEEDED} days posted
           </div>
         </div>
       )}
@@ -250,7 +250,7 @@ function Overview({ me, progress, token, onRefresh, now, setTab, show }: {
           <div className="min-w-0">
             <div className={labelCls} style={{ color: TC.faint }}>You are on</div>
             <div className="mt-1 text-[30px] font-bold leading-none sm:text-[36px]">
-              Day {progress.day} <span className="text-[18px] font-semibold" style={{ color: TC.faint }}>of 30</span>
+              Day {progress.day} <span className="text-[18px] font-semibold" style={{ color: TC.faint }}>of {QUALIFYING_DAYS_NEEDED}</span>
             </div>
             <div className="mt-2 text-[13px]" style={{ color: TC.muted }}>
               Finish these 30 days and you get <b style={{ color: GOOD }}>{nextPayout ? money(nextPayout.baseUsd) : "paid"}</b>
@@ -269,7 +269,7 @@ function Overview({ me, progress, token, onRefresh, now, setTab, show }: {
         </div>
         <div className="mt-1.5 flex flex-wrap justify-between gap-2 text-[11.5px]" style={{ color: TC.faint }}>
           <span>{progress.percent}% of the month&rsquo;s videos delivered</span>
-          <span>Finishes {progress.finishDate ? fmt(progress.finishDate) : "—"}</span>
+          <span>{progress.daysLeft > 0 ? "Finishes" : "Finished"} {progress.finishDate ? fmt(progress.finishDate) : "—"}</span>
         </div>
       </section>
 
@@ -295,26 +295,15 @@ function Overview({ me, progress, token, onRefresh, now, setTab, show }: {
         </div>
       </section>
 
+      <DayGrid progress={progress} token={token} onRefresh={onRefresh} show={show} title="Your calendar — tap the days you posted" />
+
       {/* the numbers */}
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <Stat label="Days done" value={`${progress.qualifyingDays}`} sub={`You need ${QUALIFYING_DAYS_NEEDED} to get paid`} tone={progress.onTrack ? A : BAD} />
-        <Stat label="Days you can still miss" value={`${progress.graceLeft}`} sub={`${GRACE_DAYS} a month, no more`} tone={progress.graceLeft > 0 ? A : BAD} />
+        <Stat label="Days done" value={`${progress.qualifyingDays}`} sub={`You need ${QUALIFYING_DAYS_NEEDED} to get paid`} tone={A} />
+        <Stat label="Days to go" value={`${progress.daysLeft}`} sub="Posted days, not dates" tone={progress.daysLeft === 0 ? GOOD : A} />
         <Stat label="Videos posted" value={`${progress.postsLogged}`} sub="Since you started" tone={A} />
         <Stat label="Your total earnings" value={money(totals.paidUsd)} sub={totals.pendingUsd > 0 ? `${money(totals.pendingUsd)} coming to you` : "Money already paid to you"} tone={GOOD} />
       </section>
-
-      {!progress.onTrack && (
-        <section className={card} style={{ borderColor: `${BAD}55`, background: `linear-gradient(180deg, ${BAD}12, rgba(255,255,255,0.015))` }}>
-          <h2 className="flex items-center gap-2 text-[14px] font-bold" style={{ color: BAD }}>
-            <CircleAlert size={15} /> This month can no longer reach 28 days
-          </h2>
-          <p className="mt-1.5 text-[12.5px] leading-relaxed" style={{ color: TC.muted }}>
-            You have missed {progress.missedDays} days and only {GRACE_DAYS} are allowed. Keep posting — the habit is
-            what carries into next month, and your ladder position is unaffected — but this month will not qualify
-            for payout.
-          </p>
-        </section>
-      )}
 
       {/* what this month pays */}
       <section className="grid gap-3 lg:grid-cols-2">
@@ -342,8 +331,8 @@ function Overview({ me, progress, token, onRefresh, now, setTab, show }: {
           </h2>
           <div className="mt-3 space-y-2">
             <DateRow k="Day 1 — first post" v={progress.startDate} />
-            <DateRow k="Day 15 — go to 2 a day" v={progress.paceChangeDate} tone={progress.day < 15 ? A : undefined} />
-            <DateRow k="Day 30 — request payout" v={progress.finishDate} tone={GOOD} />
+            <DateRow k="Posted day 15 — go to 2 a day" v={progress.paceChangeDate} tone={progress.day < 15 ? A : undefined} />
+            <DateRow k={`Day ${QUALIFYING_DAYS_NEEDED} — ask to be paid`} v={progress.finishDate} tone={GOOD} />
             <DateRow k="Paid by" v={progress.paidByDate} tone={GOOD} />
           </div>
         </div>
@@ -611,15 +600,20 @@ function StartCard({ me, token, onRefresh, setTab, show }: { me: Me; token: stri
 
 /* ── my 30 days ───────────────────────────────────────────────────────────── */
 
-function PlanPanel({ progress }: { progress: Progress }) {
+function PlanPanel({ progress, token, onRefresh, show }: {
+  progress: Progress; token: string; onRefresh: () => Promise<void>; show: Show;
+}) {
   const started = progress.phase !== "awaiting_first_post";
   return (
     <div className="space-y-4">
+      {started && <DayGrid progress={progress} token={token} onRefresh={onRefresh} show={show} />}
+
       <section className={card} style={cardStyle}>
         <h2 className="text-[17px] font-bold">Your first month, phase by phase</h2>
         <p className="mt-1.5 max-w-3xl text-[12.5px] leading-relaxed" style={{ color: TC.muted }}>
-          The pace is deliberately slow for two weeks. Posting once a day builds reach and keeps a new account out of
-          trouble; doubling too early is what gets people throttled.
+          The pace is deliberately slow for your first two weeks. Posting once a day builds reach and keeps a new
+          account out of trouble; doubling too early is what gets people throttled. It counts in posted days, so a
+          day you miss delays the change rather than skipping it.
         </p>
       </section>
 
@@ -656,36 +650,97 @@ function PlanPanel({ progress }: { progress: Progress }) {
         })}
       </div>
 
-      {started && <DayGrid progress={progress} />}
     </div>
   );
 }
 
-function DayGrid({ progress }: { progress: Progress }) {
+/**
+ * The calendar, and the main way a month gets recorded.
+ *
+ * Tapping a date fills in that day's videos against the platforms already on
+ * file — no ticking platforms, no re-entering handles. That matters because
+ * creators post for days without opening this page, and the alternative is
+ * losing those days over paperwork.
+ */
+function DayGrid({ progress, token, onRefresh, show, title = "Your calendar" }: {
+  progress: Progress; token: string; onRefresh: () => Promise<void>; show: Show; title?: string;
+}) {
+  const [busy, setBusy] = useState<string | null>(null);
+
+  async function toggle(d: DayStateLike) {
+    if (d.isFuture || busy) return;
+    setBusy(d.date);
+    try {
+      const res = await fetch("/api/creators/posts", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token, action: "day", date: d.date, done: !d.qualified }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { show(data.error || "Could not update that day.", "bad"); return; }
+      show(d.qualified ? `${fmtShort(d.date)} cleared` : `${fmtShort(d.date)} marked as posted`);
+      await onRefresh();
+    } catch {
+      show("Could not reach us just now.", "bad");
+    } finally { setBusy(null); }
+  }
+
   return (
     <section className={card} style={cardStyle}>
-      <h2 className={`flex items-center gap-2 ${labelCls}`} style={{ color: TC.faint }}>
-        <CalendarRange size={14} style={{ color: A }} /> All 30 days
-      </h2>
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h2 className={`flex items-center gap-2 ${labelCls}`} style={{ color: TC.faint }}>
+          <CalendarRange size={14} style={{ color: A }} /> {title}
+        </h2>
+        <span className="text-[12px]" style={{ ...monoFont, color: A }}>
+          {progress.qualifyingDays} / {QUALIFYING_DAYS_NEEDED} days done
+        </span>
+      </div>
+
+      <p className="mt-1.5 text-[12.5px] leading-relaxed" style={{ color: TC.muted }}>
+        <b style={{ color: TC.text }}>Tap every day you posted.</b> Missed opening the dashboard for a week? Tap
+        those days now — nothing is lost, your finish line just moves out. Tapping a day logs it for you, so you
+        never have to tick platforms or type a handle again.
+      </p>
+
       <div className="mt-3 grid grid-cols-6 gap-1.5 sm:grid-cols-10">
         {progress.days.map((d) => {
-          const bg = d.qualified ? `${GOOD}26` : d.missed ? `${BAD}22` : d.isToday ? `${A}26` : "rgba(255,255,255,0.04)";
+          const bg = d.qualified ? `${GOOD}26` : d.missed ? `${BAD}1c` : d.isToday ? `${A}26` : "rgba(255,255,255,0.04)";
           const fg = d.qualified ? GOOD : d.missed ? BAD : d.isToday ? A : TC.faint;
+          const working = busy === d.date;
           return (
-            <div key={d.day} title={`Day ${d.day} · ${fmtShort(d.date)} · ${d.done}/${d.required} posted`}
-              className="rounded-lg py-2 text-center"
-              style={{ background: bg, boxShadow: d.isToday ? `inset 0 0 0 1px ${A}` : undefined }}>
-              <div className="text-[12px] font-bold" style={{ ...monoFont, color: fg }}>{d.day}</div>
+            <button
+              key={d.date}
+              type="button"
+              disabled={d.isFuture || !!busy}
+              onClick={() => toggle(d)}
+              title={`${fmtShort(d.date)} · ${d.done}/${d.required} posted${d.isFuture ? "" : d.qualified ? " · tap to clear" : " · tap to mark posted"}`}
+              className="rounded-lg py-2 text-center transition disabled:cursor-not-allowed enabled:hover:brightness-125"
+              style={{
+                background: bg,
+                opacity: working ? 0.5 : d.isFuture ? 0.45 : 1,
+                boxShadow: d.isToday ? `inset 0 0 0 1px ${A}` : undefined,
+              }}
+            >
+              <div className="text-[12px] font-bold" style={{ ...monoFont, color: fg }}>
+                {d.qualified ? <Check size={12} className="mx-auto" /> : fmtDayNum(d.date)}
+              </div>
               <div className="text-[9.5px]" style={{ color: fg, opacity: 0.85 }}>{d.done}/{d.required}</div>
-            </div>
+            </button>
           );
         })}
       </div>
+
       <div className="mt-3 flex flex-wrap gap-3 text-[11px]" style={{ color: TC.faint }}>
-        <Legend c={GOOD} t="Qualified" /><Legend c={A} t="Today" /><Legend c={BAD} t="Missed" /><Legend c="rgba(255,255,255,0.25)" t="Ahead" />
+        <Legend c={GOOD} t="Posted" /><Legend c={A} t="Today" /><Legend c={BAD} t="Not marked" /><Legend c="rgba(255,255,255,0.25)" t="Ahead" />
       </div>
     </section>
   );
+}
+
+type DayStateLike = Progress["days"][number];
+
+/** Just the day-of-month, so a 30-square grid stays readable. */
+function fmtDayNum(date: string) {
+  return String(Number(date.slice(8, 10)));
 }
 
 function Legend({ c, t }: { c: string; t: string }) {
@@ -1037,8 +1092,7 @@ function IdeasPanel() {
           <ShieldCheck size={16} style={{ color: GOOD }} /> What Clunoid actually is
         </h2>
         <p className="mt-1.5 text-[12.5px] leading-relaxed" style={{ color: TC.muted }}>
-          Say these and you are on solid ground. Do not promise anything beyond them — a wrong claim in your video is
-          worse than no video.
+          Say these and you are on solid ground.
         </p>
         <ul className="mt-3 space-y-2">
           {TRUE_ABOUT_CLUNOID.map((t) => (
@@ -1240,9 +1294,9 @@ function RulesPanel() {
         </h2>
         <div className="mt-3 grid gap-3 sm:grid-cols-3">
           {[
-            { k: "Days 1–14", v: "1 video a day", s: "Slow start builds reach and protects the account" },
-            { k: "Days 15–30", v: "2 videos a day", s: "Same for every month after this one" },
-            { k: "Each video", v: "Your 3 platforms", s: "The same video on all three = one post" },
+            { k: "Posted days 1–14", v: "1 video a day", s: "Slow start builds reach and protects the account" },
+            { k: "Posted days 15–28", v: "2 videos a day", s: "Same for every month after this one" },
+            { k: "Each video", v: "3 platforms minimum", s: "Same video on your three = one post. More is fine." },
           ].map((c) => (
             <div key={c.k} className="rounded-xl border p-3.5" style={{ borderColor: TC.line, background: "rgba(0,0,0,0.22)" }}>
               <div className={labelCls} style={{ color: TC.faint }}>{c.k}</div>
@@ -1252,8 +1306,9 @@ function RulesPanel() {
           ))}
         </div>
         <p className="mt-3 text-[12px] leading-relaxed" style={{ color: TC.faint }}>
-          Videos should be 30 seconds to 2 minutes. You have {GRACE_DAYS} grace days each month —{" "}
-          {QUALIFYING_DAYS_NEEDED} qualifying days out of 30 is a pass.
+          Videos should be 30 seconds to 2 minutes. A month is {QUALIFYING_DAYS_NEEDED} days you actually posted —
+          30 days with {GRACE_DAYS} grace days, counted the honest way. Miss one and the finish moves out a day
+          rather than the month being lost.
         </p>
       </section>
     </div>
