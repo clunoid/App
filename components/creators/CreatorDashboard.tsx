@@ -19,7 +19,7 @@ import Link from "next/link";
 import {
   ArrowLeft, Clapperboard, LayoutDashboard, CalendarRange, ListChecks, Wallet, Sparkles,
   BookOpen, UserRound, Check, X, Loader2, Rocket, TrendingUp, Clock, ShieldCheck,
-  CircleAlert, PartyPopper, Copy, ExternalLink, Undo2,
+  CircleAlert, PartyPopper, Copy, ExternalLink, Undo2, CalendarCheck,
 } from "lucide-react";
 import { TC, DOT_GRID, monoFont } from "@/lib/trading/theme";
 import {
@@ -151,6 +151,25 @@ export function CreatorDashboard({ me, token, onRefresh, justRegistered = false 
   );
 }
 
+/**
+ * The single most important thing to understand about this programme, so it goes
+ * first on both pages: consistency is what gets paid, views are only the bonus.
+ * People throttle themselves worrying about reach — this is here to stop that.
+ */
+export function PostDailyBanner() {
+  return (
+      <section className="flex items-start gap-3 rounded-2xl border p-4"
+        style={{ borderColor: `${GOOD}66`, background: `linear-gradient(180deg, ${GOOD}16, rgba(255,255,255,0.015))` }}>
+        <CalendarCheck size={18} className="mt-0.5 shrink-0" style={{ color: GOOD }} />
+        <p className="text-[13px] leading-relaxed sm:text-[13.5px]" style={{ color: TC.muted }}>
+          <b style={{ color: TC.text }}>Post every day. You do not need views to get paid.</b> A quiet video counts
+          exactly the same as one that takes off — showing up is the whole job. Views only decide the extra $500 on
+          top. So post, and stop worrying about the numbers.
+        </p>
+      </section>
+  );
+}
+
 /* ── sidebar ──────────────────────────────────────────────────────────────── */
 
 function Sidebar({ tab, setTab, progress, started }: { tab: TabKey; setTab: (t: TabKey) => void; progress: Progress; started: boolean }) {
@@ -198,6 +217,7 @@ function Overview({ me, progress, token, onRefresh, now, setTab, show }: {
   if (progress.phase === "awaiting_first_post") {
     return (
       <div className="space-y-4">
+        <PostDailyBanner />
         <PayoutReminder creator={creator} setTab={setTab} />
         <StartCard me={me} token={token} onRefresh={onRefresh} setTab={setTab} show={show} />
       </div>
@@ -209,6 +229,7 @@ function Overview({ me, progress, token, onRefresh, now, setTab, show }: {
 
   return (
     <div className="space-y-4">
+      <PostDailyBanner />
       <PayoutReminder creator={creator} setTab={setTab} />
 
       {/* headline */}
@@ -261,8 +282,6 @@ function Overview({ me, progress, token, onRefresh, now, setTab, show }: {
           </button>
         </div>
       </section>
-
-      <Reminders title="Reminders for every creator" />
 
       {/* the numbers */}
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -337,6 +356,8 @@ function Overview({ me, progress, token, onRefresh, now, setTab, show }: {
           ))}
         </ul>
       </section>
+
+      <Reminders title="Reminders for every creator" />
     </div>
   );
 }
@@ -481,8 +502,9 @@ function StartCard({ me, token, onRefresh, setTab, show }: { me: Me; token: stri
           Add your three accounts
         </h2>
         <p className="mt-1.5 text-[12.5px] leading-relaxed" style={{ color: TC.muted }}>
-          These are what we check your posts against, so all three are required before the clock starts.
-          Put <b style={{ color: TC.text }}>clunoid.com</b> in the bio of each one before you post, so &ldquo;link in
+          Paste the link to each profile, or just type the handle — either works. All three are needed before the
+          clock starts, because they are what we check your posts against. Put{" "}
+          <b style={{ color: TC.text }}>clunoid.com</b> in the bio of each one before you post, so &ldquo;link in
           bio&rdquo; is true from day one.
         </p>
         <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -1009,8 +1031,7 @@ function IdeasPanel() {
           <Copy size={14} style={{ color: A }} /> Caption templates
         </h2>
         <p className="mt-2 text-[12.5px] leading-relaxed" style={{ color: TC.muted }}>
-          Each one already carries the paid disclosure and the risk line. Change the wording to sound like you — just
-          keep those two parts.
+          Starting points, not scripts. Change the wording so it sounds like you, and keep clunoid.com in there.
         </p>
         <div className="mt-3 grid gap-3 lg:grid-cols-2">
           {TEMPLATES.map((t) => (
@@ -1167,7 +1188,8 @@ function DetailsPanel({ me, token, onRefresh, show }: { me: Me; token: string; o
       <section className={card} style={cardStyle}>
         <h2 className="text-[16px] font-bold">Your accounts</h2>
         <p className="mt-1.5 text-[12.5px] leading-relaxed" style={{ color: TC.muted }}>
-          All three must be filled in and correct before your first payout — this is what we check your posts against.
+          Paste the link to each profile, or just type the handle — either works. All three must be filled in and
+          correct before you can be paid, because this is what we check your posts against.
         </p>
         <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {SOCIALS.map((sc) => {

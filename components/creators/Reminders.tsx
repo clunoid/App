@@ -21,7 +21,7 @@ export function Reminders({ title = "Read this before you post", className = "" 
         <AlertCircle size={16} style={{ color: A }} /> {title}
       </h2>
       <p className="mt-1.5 text-[12.5px] leading-relaxed" style={{ color: TC.muted }}>
-        Ten things. Get these right and the rest takes care of itself.
+        {REMINDERS.length} things. Get these right and the rest takes care of itself.
       </p>
 
       <ol className="mt-4 space-y-3">

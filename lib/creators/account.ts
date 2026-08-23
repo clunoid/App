@@ -25,12 +25,27 @@ export function isPayoutMethod(v: unknown): v is PayoutMethod {
 const MAX = 120;
 export const trim = (v: unknown) => (typeof v === "string" ? v.trim().slice(0, MAX) : "");
 
-/** Strip @, any full URL wrapper, and case — so one person cannot hold two seats. */
+/**
+ * Reduce whatever someone pastes to one canonical handle.
+ *
+ * People give us a handle, an @handle, or the whole address bar — all three are
+ * the same account, and all three must reduce to the same stored value or the
+ * uniqueness index stops catching one person taking two seats.
+ *
+ *   https://www.tiktok.com/@JaneDoe?lang=en  ->  janedoe
+ *   youtube.com/channel/UC123/               ->  uc123
+ *   @JaneDoe                                 ->  janedoe
+ */
 export function normaliseHandle(v: unknown): string | null {
   let s = trim(v);
   if (!s) return null;
-  s = s.replace(/^https?:\/\/(www\.)?[^/]+\//i, ""); // a pasted profile URL
-  s = s.replace(/^@+/, "").replace(/\/+$/, "").trim();
+
+  s = s.split(/[?#]/)[0];                                     // drop query and fragment
+  s = s.replace(/^https?:\/\//i, "").replace(/^www\./i, "");   // drop scheme and www
+  s = s.replace(/^[^/\s]+\.[a-z]{2,}\//i, "");                 // drop the domain, keep the path
+  s = s.replace(/^(@|c\/|channel\/|user\/)+/i, "");            // youtube path styles, and the @
+  s = s.replace(/\/+$/, "").trim();
+
   if (!s) return null;
   return s.toLowerCase();
 }

@@ -24,7 +24,7 @@ import {
 } from "lucide-react";
 import { TC, DOT_GRID, monoFont } from "@/lib/trading/theme";
 import { CountryPicker } from "./CountryPicker";
-import { CreatorDashboard, type Me } from "./CreatorDashboard";
+import { CreatorDashboard, PostDailyBanner, type Me } from "./CreatorDashboard";
 import { PayoutPicker } from "./PayoutPicker";
 import { Reminders } from "./Reminders";
 import { FieldOk, useToast } from "./Feedback";
@@ -188,6 +188,10 @@ export function CreatorsHub() {
           </div>
         </section>
 
+        <div className="mt-6">
+          <PostDailyBanner />
+        </div>
+
         {/* One form from here to the bottom, so nothing has to be scrolled back to. */}
         <form onSubmit={submit}>
           {/* ── the application ──────────────────────────────────────────── */}
@@ -219,8 +223,8 @@ export function CreatorsHub() {
                 <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
                   <span className={label} style={{ color: TC.faint }}>Your accounts</span>
                   <span className="text-[11.5px]" style={{ color: TC.muted }}>
-                    Add what you have now — you can fill the rest later, but
-                    <b style={{ color: TC.text }}> all three must be added before you request your first payout.</b>
+                    Paste the link to each profile, or just type the handle — either works. Add what you have now;
+                    <b style={{ color: TC.text }}> all three must be there before you can be paid.</b>
                   </span>
                 </div>
                 <div className="mt-2.5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">

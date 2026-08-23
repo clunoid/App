@@ -12,9 +12,9 @@ export const GOOD = "#34d399";
 export const BAD = "#f2607d";
 
 export const SOCIALS = [
-  { key: "tiktok", label: "TikTok", logo: "/logos/tiktok.svg", ph: "@yourhandle" },
-  { key: "instagram", label: "Instagram", logo: "/logos/instagram.svg", ph: "@yourhandle" },
-  { key: "youtube", label: "YouTube", logo: "/logos/youtube.svg", ph: "@yourchannel" },
+  { key: "tiktok", label: "TikTok", logo: "/logos/tiktok.svg", ph: "@handle or paste your link" },
+  { key: "instagram", label: "Instagram", logo: "/logos/instagram.svg", ph: "@handle or paste your link" },
+  { key: "youtube", label: "YouTube", logo: "/logos/youtube.svg", ph: "@channel or paste your link" },
 ] as const;
 
 export const PAYOUTS = [
@@ -55,10 +55,9 @@ export const DO = [
   "Keep videos 30 seconds to 2 minutes. Go longer only if the content earns it.",
   "Re-export each video before posting so the three platforms do not get an identical file.",
   "Change the hook and caption for each platform.",
-  "Add “Trading carries risk. Not financial advice.” to every caption.",
-  "Mark it as paid: use #ad or the platform’s paid-partnership setting.",
   "Send people to clunoid.com — never straight to a broker signup page.",
   "Use only music from the platform’s own library.",
+  "Speak English or the main language of your country — whichever you are natural in.",
 ];
 
 export const DONT = [
@@ -153,6 +152,14 @@ export const PHASES = [
  */
 export const REMINDERS = [
   {
+    t: "Views are not required. Posting every day is.",
+    d: "You get paid for showing up, not for going viral. Post every day and your payout is yours even if every video is quiet. Views only decide whether you earn the extra $500 on top — they are never what decides if you get paid.",
+  },
+  {
+    t: "Use English, or the language people speak where you are",
+    d: "Whichever gets you understood. English works everywhere, and so does the main language of your country — pick the one you are natural in, because that is the one people watch to the end.",
+  },
+  {
     t: "You get paid more every month",
     d: "Finish your first 30 days and you get paid. Every month after that adds $50: your second payout is $150, your third is $200, and so on up to $750.",
   },
@@ -188,38 +195,34 @@ export const REMINDERS = [
     t: "Leave everything up until you are paid",
     d: "Deleting, archiving or hiding videos before payout cancels the month. If a platform takes a post down, it stops counting \u2014 tell us.",
   },
-  {
-    t: "Say it is paid, and say there is risk",
-    d: "Use #ad or the paid-partnership setting, and put \u201CTrading carries risk. Not financial advice.\u201D in every caption.",
-  },
 ] as const;
 
 export function phaseFor(day: number) {
   return PHASES.find((p) => day >= p.from && day <= p.to) ?? PHASES[0];
 }
 
-/** Caption skeletons that already carry the required disclosure and risk line. */
+/** Caption skeletons. Change the wording to sound like you. */
 export const TEMPLATES = [
   {
     t: "The explainer",
-    body: "Most people have never seen a bot actually place a trade. Here is what it looks like.\n\nI use Clunoid for this — link in bio.\n\n#ad Trading carries risk. Not financial advice.",
+    body: "Most people have never seen a bot actually place a trade. Here is what it looks like.\n\nI use Clunoid for this — link in bio.",
   },
   {
     t: "The myth",
-    body: "“Trading bots are a scam.” Some are. Here is how to tell the difference in 30 seconds.\n\nI use Clunoid — clunoid.com\n\n#ad Trading carries risk. Not financial advice.",
+    body: "“Trading bots are a scam.” Some are. Here is how to tell the difference in 30 seconds.\n\nI use Clunoid — clunoid.com",
   },
   {
     t: "The one term",
-    body: "Nobody explains what a synthetic index actually is, so here it is in plain English.\n\nMore on clunoid.com\n\n#ad Trading carries risk. Not financial advice.",
+    body: "Nobody explains what a synthetic index actually is, so here it is in plain English.\n\nMore on clunoid.com",
   },
   {
     t: "The honest take",
-    body: "I am not going to tell you this makes money while you sleep. Here is what it actually does.\n\nclunoid.com\n\n#ad Trading carries risk. Not financial advice.",
+    body: "I am not going to tell you this makes money while you sleep. Here is what it actually does.\n\nclunoid.com",
   },
 ];
 
 /** The footer line, identical on the sign-up page and the dashboard. */
-export const DISCLAIMER = "Payouts depend on meeting the terms in Rules. This is promotion work";
+export const DISCLAIMER = "Get paid to post.";
 
 export const addDays = (d: Date, n: number) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
 export const fmt = (d: Date | string) =>
