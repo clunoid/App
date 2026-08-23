@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/requireUser";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { isPayoutMethod, newAccessToken, normaliseHandle, trim } from "@/lib/creators/account";
 
 export const runtime = "nodejs";
 
@@ -11,8 +12,10 @@ export const runtime = "nodejs";
  * does not require a Clunoid account. If they happen to be signed in we stamp
  * their user id, which makes paying them later easier.
  *
- * There is no approval gate. The row goes in 'active' with started_at = now, so
- * the creator's 30 days begin the second this returns and they can post today.
+ * There is no approval gate. The row goes in 'active' straight away and the
+ * creator lands on their dashboard. started_at records when they registered; the
+ * 30 days themselves begin when they confirm their FIRST POST is live, which is
+ * stamped separately as first_post_at.
  *
  * The row is written with the service role because the table denies everything
  * to anon clients. Duplicate email or handle comes back as a friendly 409 rather
@@ -31,22 +34,6 @@ type Body = {
   agreed?: boolean;
 };
 
-/** The rails we can actually pay on. Details are collected after month one. */
-const PAYOUT_METHODS = ["usdt", "paypal", "venmo", "cashapp", "mpesa", "wise", "payoneer"];
-
-const MAX = 120;
-const trim = (v: unknown) => (typeof v === "string" ? v.trim().slice(0, MAX) : "");
-
-/** Strip @, any full URL wrapper, and case — so one person cannot hold two seats. */
-function handle(v: unknown): string | null {
-  let s = trim(v);
-  if (!s) return null;
-  s = s.replace(/^https?:\/\/(www\.)?[^/]+\//i, ""); // a pasted profile URL
-  s = s.replace(/^@+/, "").replace(/\/+$/, "").trim();
-  if (!s) return null;
-  return s.toLowerCase();
-}
-
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
 export async function POST(req: NextRequest) {
@@ -55,19 +42,17 @@ export async function POST(req: NextRequest) {
   const name = trim(body.name);
   const email = trim(body.email).toLowerCase();
   const country = trim(body.country);
-  const tiktok = handle(body.tiktok);
-  const instagram = handle(body.instagram);
-  const youtube = handle(body.youtube);
+  const tiktok = normaliseHandle(body.tiktok);
+  const instagram = normaliseHandle(body.instagram);
+  const youtube = normaliseHandle(body.youtube);
 
   if (!name) return NextResponse.json({ error: "Please give us your name." }, { status: 400 });
   if (!EMAIL_RE.test(email)) return NextResponse.json({ error: "That email does not look right." }, { status: 400 });
   if (!country) return NextResponse.json({ error: "Please tell us your country." }, { status: 400 });
   // Handles are optional at this stage — they are required before the first
   // payout, not before applying, so someone can join while an account is new.
-  const payoutMethod = PAYOUT_METHODS.includes(trim(body.payoutMethod).toLowerCase())
-    ? trim(body.payoutMethod).toLowerCase()
-    : null;
-  if (!payoutMethod) {
+  const payoutMethod = trim(body.payoutMethod).toLowerCase();
+  if (!isPayoutMethod(payoutMethod)) {
     return NextResponse.json({ error: "Choose how you would like to be paid." }, { status: 400 });
   }
   if (!body.agreed) {
@@ -80,6 +65,9 @@ export async function POST(req: NextRequest) {
   // Signed in? Remember who, so payout has an account to attach to. Applying
   // does not require it.
   const user = await requireUser().catch(() => null);
+
+  // The key their browser keeps so it can open their dashboard again later.
+  const accessToken = newAccessToken();
 
   const { error } = await db.from("trading_creator_applications").insert({
     name,
@@ -94,6 +82,7 @@ export async function POST(req: NextRequest) {
     // No waiting on us: the clock starts now.
     status: 'active',
     started_at: new Date().toISOString(),
+    access_token: accessToken,
   });
 
   if (error) {
@@ -113,5 +102,5 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Something went wrong. Please try again." }, { status: 500 });
   }
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, token: accessToken });
 }

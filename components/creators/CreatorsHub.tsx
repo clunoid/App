@@ -1,14 +1,22 @@
 "use client";
 
 /**
- * CREATOR PROGRAM — explainer, registration, then the rules.
+ * CREATOR PROGRAM — the front door.
  *
- * Ordered the way someone actually uses it: what this is, then the form while
- * they are still interested, then everything they need to know, and only at the
- * very bottom the two confirmations and the send button. The whole page is one
- * form, so nobody has to scroll back up to submit what they filled in.
+ * Two pages in one, chosen by whether this browser already belongs to a creator:
+ *
+ *   · Not registered → the pitch and the form. Ordered the way someone actually
+ *     uses it: what this is, then the form while they are still interested, then
+ *     everything they need to know, and only at the very bottom the two
+ *     confirmations and the button. The whole thing is one form, so nobody has
+ *     to scroll back up to submit what they filled in.
+ *   · Registered → their dashboard, which is where the real work happens.
+ *
+ * Registration hands back a token; we keep it in localStorage and present it on
+ * every dashboard call. A signed-in creator is also findable by user id, so
+ * clearing site data does not lock them out.
  */
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   ArrowLeft, Clapperboard, CalendarDays, Check, X, Sparkles, Wallet,
@@ -16,86 +24,13 @@ import {
 } from "lucide-react";
 import { TC, DOT_GRID, monoFont } from "@/lib/trading/theme";
 import { CountryPicker } from "./CountryPicker";
+import { CreatorDashboard, type Me } from "./CreatorDashboard";
+import {
+  A, GOOD, BAD, SOCIALS, PAYOUTS, LADDER, STEPS, DO, DONT, IDEAS, AI_PROMPTS, addDays, fmt,
+} from "./content";
 
-const A = "#a78bfa";
-const GOOD = "#34d399";
-const BAD = "#f2607d";
-
-const SOCIALS = [
-  { key: "tiktok", label: "TikTok", logo: "/logos/tiktok.svg", ph: "@yourhandle" },
-  { key: "instagram", label: "Instagram", logo: "/logos/instagram.svg", ph: "@yourhandle" },
-  { key: "youtube", label: "YouTube", logo: "/logos/youtube.svg", ph: "@yourchannel" },
-] as const;
-
-const PAYOUTS = [
-  { key: "usdt", label: "USDT (Tether)", logo: "/logos/tether.svg" },
-  { key: "paypal", label: "PayPal", logo: "/logos/paypal.svg" },
-  { key: "venmo", label: "Venmo", logo: "/logos/venmo.svg" },
-  { key: "cashapp", label: "Cash App", logo: "/logos/cashapp.svg" },
-  { key: "mpesa", label: "M-Pesa", logo: "/logos/mpesa.svg" },
-  { key: "wise", label: "Wise", logo: "/logos/wise.svg" },
-  { key: "payoneer", label: "Payoneer", logo: "/logos/payoneer.svg" },
-] as const;
-
-const LADDER = [
-  { m: "Month 1", pay: 100, note: "New account: $50" },
-  { m: "Month 2", pay: 150, note: "" },
-  { m: "Month 3", pay: 200, note: "" },
-  { m: "Month 4", pay: 250, note: "" },
-  { m: "Month 5", pay: 300, note: "" },
-  { m: "Month 6", pay: 350, note: "" },
-  { m: "…", pay: null as number | null, note: "+$50 every month" },
-  { m: "Month 14+", pay: 750, note: "Maximum base" },
-];
-
-const STEPS = [
-  { n: 1, icon: Rocket, title: "Register and start today", body: "Fill in the form above. There is nothing to wait for and nobody to approve you — your 30 days begin the moment you register, and your first video can go up the same day." },
-  { n: 2, icon: Clock, title: "Days 1–14: post once a day", body: "One video per day. Post that same video to TikTok, Instagram Reels and YouTube Shorts — all three together count as one post. Going slower at the start is on purpose: it builds reach and keeps accounts out of trouble." },
-  { n: 3, icon: TrendingUp, title: "Days 15–30: post twice a day", body: "Two videos per day, each one posted to all three platforms. From month two onward this is your normal pace, every day." },
-  { n: 4, icon: CalendarDays, title: "Finish 30 days, then request payout", body: "You get 2 grace days per month, so you need 28 qualifying days out of 30. Leave every video up. Deleting them before payout cancels the month." },
-  { n: 5, icon: Wallet, title: "We check, then we pay", body: "We review for 3 working days — posts still live, made by you, following the rules, views genuine. You are paid within 7 days of requesting." },
-];
-
-const DO = [
-  "Show the platform in every single video — screen recording, the site, or the bots running.",
-  "Say what it does in your own words. Your voice beats a script.",
-  "Keep videos 30 seconds to 2 minutes. Go longer only if the content earns it.",
-  "Re-export each video before posting so the three platforms do not get an identical file.",
-  "Change the hook and caption for each platform.",
-  "Add “Trading carries risk. Not financial advice.” to every caption.",
-  "Mark it as paid: use #ad or the platform’s paid-partnership setting.",
-  "Send people to clunoid.com — never straight to a broker signup page.",
-  "Use only music from the platform’s own library.",
-];
-
-const DONT = [
-  "No profit screenshots. No account balances. No “I made $500 today”.",
-  "No promises — nothing is guaranteed, risk-free, or passive income.",
-  "No fake urgency, countdowns, or “only 3 spots left”.",
-  "No borrowed clips, reposts, or anyone else’s footage.",
-  "No bought views, follow-for-follow, or engagement groups.",
-  "No posting the exact same file twice on the same platform.",
-  "No second or third account to farm more posts. One account per platform.",
-  "No speaking as Clunoid. Say “I use this”, never “we offer”.",
-];
-
-const IDEAS = [
-  { t: "Show it working", d: "Screen record a bot placing trades. No balance on screen. Let people watch the thing do its job." },
-  { t: "Explain one word", d: "Pick one term — synthetic index, martingale, stop loss — and explain it in 45 seconds." },
-  { t: "Bust a myth", d: "“Why most trading bots fail.” Honest takes travel further than hype." },
-  { t: "Before and after", d: "How you used to do it by hand, and what changed." },
-  { t: "Answer a real question", d: "Take a comment you actually got and answer it properly on camera." },
-];
-
-const AI_PROMPTS = [
-  "Give me 10 short-video hooks about automated trading that make no income claims.",
-  "Explain what a synthetic index is, in 60 seconds, for a total beginner.",
-  "Rewrite this caption so it is honest and has no guarantees.",
-  "List 5 myths about trading bots I can correct in a 45-second video.",
-];
-
-const addDays = (d: Date, n: number) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
-const fmt = (d: Date) => d.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short", year: "numeric" });
+/** Where this browser remembers which creator it belongs to. */
+const TOKEN_KEY = "cln_creator_token";
 
 export function CreatorsHub() {
   const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
@@ -107,7 +42,38 @@ export function CreatorsHub() {
   const [agreed, setAgreed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const [done, setDone] = useState(false);
+
+  // Session: null while we are still asking, false once we know there is none.
+  const [me, setMe] = useState<Me | null>(null);
+  const [token, setToken] = useState("");
+  const [checking, setChecking] = useState(true);
+
+  const load = useCallback(async (t: string) => {
+    try {
+      const res = await fetch("/api/creators/me", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: t }),
+      });
+      if (!res.ok) return false;
+      setMe((await res.json()) as Me);
+      return true;
+    } catch {
+      return false;
+    }
+  }, []);
+
+  // On arrival: if this browser holds a token — or the visitor is signed in and
+  // already registered — go straight to their dashboard.
+  useEffect(() => {
+    let live = true;
+    const stored = typeof window !== "undefined" ? window.localStorage.getItem(TOKEN_KEY) ?? "" : "";
+    setToken(stored);
+    load(stored).finally(() => { if (live) setChecking(false); });
+    return () => { live = false; };
+  }, [load]);
+
+  const refresh = useCallback(async () => { await load(token); }, [load, token]);
 
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setF((p) => ({ ...p, [k]: e.target.value }));
@@ -129,10 +95,13 @@ export function CreatorsHub() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...f, payoutMethod: payout, newAccounts, agreed }),
       });
-      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; token?: string };
       if (!res.ok || !data.ok) { setErr(data.error || "Something went wrong. Please try again."); return; }
-      setDone(true);
-      window.scrollTo({ top: 0, behavior: "smooth" });
+      const t = data.token ?? "";
+      if (t) window.localStorage.setItem(TOKEN_KEY, t);
+      setToken(t);
+      window.scrollTo({ top: 0 });
+      await load(t);
     } catch {
       setErr("Could not reach us just now. Please try again.");
     } finally { setBusy(false); }
@@ -141,6 +110,18 @@ export function CreatorsHub() {
   const field = "rounded-xl border px-3 py-2.5 text-[13.5px] outline-none transition focus:border-violet-400";
   const fieldStyle = { borderColor: TC.line, background: "rgba(0,0,0,0.25)", color: TC.text } as const;
   const label = "text-[10.5px] font-semibold uppercase tracking-wider";
+
+  // Already a creator → the dashboard is the page.
+  if (me) return <CreatorDashboard me={me} token={token} onRefresh={refresh} />;
+
+  if (checking) {
+    return (
+      <main className="relative grid min-h-[100dvh] w-full place-items-center" style={{ background: TC.bg, color: TC.text }}>
+        <div aria-hidden className="pointer-events-none absolute inset-0" style={DOT_GRID} />
+        <Loader2 size={22} className="relative z-10 animate-spin" style={{ color: A }} />
+      </main>
+    );
+  }
 
   return (
     <main className="relative min-h-[100dvh] w-full overflow-x-hidden" style={{ background: TC.bg, color: TC.text }}>
@@ -184,30 +165,9 @@ export function CreatorsHub() {
           </div>
         </section>
 
-        {done ? (
-          <section className="mt-8 rounded-2xl border p-5 sm:p-6" style={{ borderColor: `${GOOD}55`, background: `linear-gradient(180deg, ${GOOD}14, rgba(255,255,255,0.015))` }}>
-            <div className="flex items-start gap-3">
-              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl" style={{ background: `${GOOD}22` }}>
-                <Check size={18} style={{ color: GOOD }} />
-              </span>
-              <div>
-                <h2 className="text-[18px] font-bold sm:text-[20px]">You are in — day 1 is today</h2>
-                <p className="mt-2 max-w-2xl text-[13px] leading-relaxed" style={{ color: TC.muted }}>
-                  Nothing to wait for. Your 30 days have started, so post your first video today and keep going
-                  once a day until day 14.
-                </p>
-                <p className="mt-2 max-w-2xl text-[12.5px] leading-relaxed" style={{ color: TC.faint }}>
-                  Use the dates below to see when your pace doubles and when you can request payout.
-                </p>
-              </div>
-            </div>
-          </section>
-        ) : null}
-
         {/* One form from here to the bottom, so nothing has to be scrolled back to. */}
         <form onSubmit={submit}>
           {/* ── the application ──────────────────────────────────────────── */}
-          {!done && (
             <section id="apply" className="mt-8 rounded-2xl border p-5 sm:p-6" style={{ borderColor: `${A}55`, background: `linear-gradient(180deg, ${A}10, rgba(255,255,255,0.015))` }}>
               <h2 className="text-[18px] font-bold sm:text-[20px]">Register and start today</h2>
               <p className="mt-1.5 max-w-2xl text-[12.5px] leading-relaxed" style={{ color: TC.muted }}>
@@ -290,7 +250,6 @@ export function CreatorsHub() {
                 <ArrowDown size={15} /> Read the rules below, then confirm and send at the bottom.
               </div>
             </section>
-          )}
 
           {/* ── the five steps ─────────────────────────────────────────────── */}
           <section className="mt-12">
@@ -495,7 +454,6 @@ export function CreatorsHub() {
           </section>
 
           {/* ── confirm and send, once they have read it all ───────────────── */}
-          {!done && (
             <section className="mt-12 rounded-2xl border p-5 sm:p-6" style={{ borderColor: `${A}55`, background: `linear-gradient(180deg, ${A}12, rgba(255,255,255,0.015))` }}>
               <h2 className="text-[18px] font-bold sm:text-[20px]">Now you have read it, start creating</h2>
               <div className="mt-4 space-y-3">
@@ -521,7 +479,6 @@ export function CreatorsHub() {
                 Day 1 is today. Post your first video as soon as you have registered.
               </p>
             </section>
-          )}
         </form>
 
         <p className="mt-10 flex items-start gap-1.5 text-[11px] leading-relaxed" style={{ color: TC.faint }}>
