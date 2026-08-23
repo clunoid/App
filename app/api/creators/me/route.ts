@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db, findCreator, hasAllHandles, type CreatorRow } from "@/lib/creators/account";
+import { db, findCreator, hasAllHandles, loadHandles, type CreatorRow, type HandleRow } from "@/lib/creators/account";
 import { computeProgress, baseForMonth, type PostRow } from "@/lib/creators/progress";
 
 export const runtime = "nodejs";
@@ -16,7 +16,7 @@ export const dynamic = "force-dynamic";
  */
 
 export type MeResponse = {
-  creator: CreatorRow & { handlesComplete: boolean };
+  creator: CreatorRow & { handlesComplete: boolean; platforms: string[]; handles: HandleRow[] };
   posts: PostRow[];
   payouts: Payout[];
   totals: { paidUsd: number; pendingUsd: number; monthsPaid: number };
@@ -49,7 +49,8 @@ export async function POST(req: NextRequest) {
   // 404, not 401: the browser uses this to decide "show the registration page".
   if (!creator) return NextResponse.json({ error: "No creator found." }, { status: 404 });
 
-  const [{ data: postRows }, { data: payoutRows }] = await Promise.all([
+  const [handleRows, { data: postRows }, { data: payoutRows }] = await Promise.all([
+    loadHandles(admin, creator.id),
     admin
       .from("trading_creator_posts")
       .select("id, posted_on, slot, platforms, link, created_at")
@@ -81,7 +82,12 @@ export async function POST(req: NextRequest) {
   const nextPayout = { month, baseUsd: baseForMonth(month, creator.new_accounts), bonusPossibleUsd: 500 };
 
   const body: MeResponse = {
-    creator: { ...creator, handlesComplete: hasAllHandles(creator) },
+    creator: {
+      ...creator,
+      handlesComplete: hasAllHandles(handleRows),
+      platforms: handleRows.map((h) => h.platform),
+      handles: handleRows,
+    },
     posts,
     payouts,
     totals: { paidUsd, pendingUsd, monthsPaid },

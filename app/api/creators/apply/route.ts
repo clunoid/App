@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/requireUser";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { isPayoutMethod, newAccessToken, normaliseHandle, trim } from "@/lib/creators/account";
+import { DEFAULT_PLATFORMS, parsePlatformChoice, PLATFORMS_REQUIRED } from "@/lib/creators/platforms";
 
 export const runtime = "nodejs";
 
@@ -26,10 +27,8 @@ type Body = {
   name?: string;
   email?: string;
   country?: string;
-  tiktok?: string;
-  instagram?: string;
-  facebook?: string;
-  youtube?: string;
+  platforms?: string[];
+  handles?: Record<string, string>;
   payoutMethod?: string;
   newAccounts?: boolean;
   agreed?: boolean;
@@ -43,16 +42,21 @@ export async function POST(req: NextRequest) {
   const name = trim(body.name);
   const email = trim(body.email).toLowerCase();
   const country = trim(body.country);
-  const tiktok = normaliseHandle(body.tiktok);
-  const instagram = normaliseHandle(body.instagram);
-  const facebook = normaliseHandle(body.facebook);
-  const youtube = normaliseHandle(body.youtube);
+  // Three platforms of their choosing. Nothing sent means they never opened the
+  // picker, which is the recommended set.
+  const platforms = body.platforms === undefined ? DEFAULT_PLATFORMS : parsePlatformChoice(body.platforms);
+  if (!platforms) {
+    return NextResponse.json(
+      { error: `Choose exactly ${PLATFORMS_REQUIRED} platforms to post on.` },
+      { status: 400 },
+    );
+  }
 
   if (!name) return NextResponse.json({ error: "Please give us your name." }, { status: 400 });
   if (!EMAIL_RE.test(email)) return NextResponse.json({ error: "That email does not look right." }, { status: 400 });
   if (!country) return NextResponse.json({ error: "Please tell us your country." }, { status: 400 });
   // Handles are optional at this stage — they are required before the first
-  // payout, not before applying, so someone can join while an account is new.
+  // post, not before registering, so someone can join while an account is new.
   // Optional at sign-up. A payout rail matters when there is money to send, and
   // the dashboard keeps asking until it is set — so it must not block joining.
   // Anything sent must still be one we can actually pay on.
@@ -75,22 +79,18 @@ export async function POST(req: NextRequest) {
   // The key their browser keeps so it can open their dashboard again later.
   const accessToken = newAccessToken();
 
-  const { error } = await db.from("trading_creator_applications").insert({
+  const { data: created, error } = await db.from("trading_creator_applications").insert({
     name,
     email,
     country,
     user_id: user?.id ?? null,
-    tiktok,
-    instagram,
-    facebook,
-    youtube,
     payout_method: payoutMethod,
     new_accounts: !!body.newAccounts,
     // No waiting on us: the clock starts now.
     status: 'active',
     started_at: new Date().toISOString(),
     access_token: accessToken,
-  });
+  }).select("id").single();
 
   if (error) {
     // 23505 = unique violation: same email or same handle already applied.
@@ -107,6 +107,29 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Applications are not open yet. Try again shortly." }, { status: 503 });
     }
     return NextResponse.json({ error: "Something went wrong. Please try again." }, { status: 500 });
+  }
+
+  // One row per chosen platform. A handle they did not give yet stays null —
+  // the choice is recorded either way, so the dashboard knows where they post.
+  if (created?.id) {
+    const rows = platforms.map((platform) => ({
+      application_id: created.id as string,
+      platform,
+      handle: normaliseHandle(body.handles?.[platform]),
+    }));
+    const { error: hErr } = await db.from("trading_creator_handles").insert(rows);
+    if (hErr) {
+      // A handle already used by someone else. Undo the registration rather than
+      // leaving a creator with no platforms at all.
+      await db.from("trading_creator_applications").delete().eq("id", created.id);
+      if (hErr.code === "23505") {
+        return NextResponse.json(
+          { error: "One of those accounts is already registered by another creator." },
+          { status: 409 },
+        );
+      }
+      return NextResponse.json({ error: "Something went wrong. Please try again." }, { status: 500 });
+    }
   }
 
   return NextResponse.json({ ok: true, token: accessToken });

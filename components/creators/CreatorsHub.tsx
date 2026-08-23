@@ -26,10 +26,12 @@ import { TC, DOT_GRID, monoFont } from "@/lib/trading/theme";
 import { CountryPicker } from "./CountryPicker";
 import { CreatorDashboard, PostDailyBanner, type Me } from "./CreatorDashboard";
 import { PayoutPicker } from "./PayoutPicker";
+import { PlatformPicker } from "./PlatformPicker";
 import { Reminders } from "./Reminders";
 import { FieldOk, useToast } from "./Feedback";
 import {
-  A, GOOD, BAD, SOCIALS, PAYOUTS, LADDER, STEPS, DO, DONT, IDEAS, AI_PROMPTS, addDays, fmt,
+  A, GOOD, BAD, PAYOUTS, LADDER, STEPS, DO, DONT, IDEAS, AI_PROMPTS, addDays, fmt,
+  DEFAULT_PLATFORMS, PLATFORMS_REQUIRED, platformInfo,
   DISCLAIMER,
 } from "./content";
 
@@ -40,7 +42,9 @@ export function CreatorsHub() {
   const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
   const [start, setStart] = useState(today);
 
-  const [f, setF] = useState({ name: "", email: "", country: "", tiktok: "", instagram: "", facebook: "", youtube: "" });
+  const [f, setF] = useState({ name: "", email: "", country: "" });
+  const [platforms, setPlatforms] = useState<string[]>([...DEFAULT_PLATFORMS]);
+  const [handles, setHandles] = useState<Record<string, string>>({});
   const [payout, setPayout] = useState("");
   const [newAccounts, setNewAccounts] = useState(false);
   const [agreed, setAgreed] = useState(false);
@@ -108,7 +112,7 @@ export function CreatorsHub() {
       const res = await fetch("/api/creators/apply", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...f, payoutMethod: payout, newAccounts, agreed }),
+        body: JSON.stringify({ ...f, platforms, handles, payoutMethod: payout, newAccounts, agreed }),
       });
       const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; token?: string };
       if (!res.ok || !data.ok) { setErr(data.error || "Something went wrong. Please try again."); return; }
@@ -123,7 +127,7 @@ export function CreatorsHub() {
     } finally { setBusy(false); }
   }
 
-  const handlesAdded = SOCIALS.filter((sc) => f[sc.key].trim().length > 0).length;
+  const handlesAdded = platforms.filter((k) => (handles[k] ?? "").trim().length > 0).length;
 
   const field = "rounded-xl border px-3 py-2.5 text-[13.5px] outline-none transition focus:border-violet-400";
   const fieldStyle = { borderColor: TC.line, background: "rgba(0,0,0,0.25)", color: TC.text } as const;
@@ -166,7 +170,7 @@ export function CreatorsHub() {
             Get paid every month to post about Clunoid
           </h1>
           <p className="mt-3 max-w-4xl text-[14px] leading-relaxed sm:text-[15.5px]" style={{ color: TC.muted }}>
-            Make short videos, post them on your own TikTok, Instagram, Facebook and YouTube, and get paid at the end of
+            Make short videos, post them on three social accounts of your choosing, and get paid at the end of
             every 30 days. <b style={{ color: TC.text }}>You do not need views to get paid</b> — you need to post
             every day. Get <b style={{ color: TC.text }}>10,000 views</b> consistently and you earn <b style={{ color: TC.text }}>$500</b> on top. Use accounts you already have and month one pays{" "}
             <b style={{ color: TC.text }}>$100</b>; make new ones for this and month one pays{" "}
@@ -218,42 +222,40 @@ export function CreatorsHub() {
                 </div>
               </div>
 
-              {/* social handles — optional now, required before the first payout */}
-              <div className="mt-6">
+              {/* where they post — three of their choosing */}
+              <div className="mt-6 sm:max-w-md">
                 <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-                  <span className={label} style={{ color: TC.faint }}>Your accounts</span>
+                  <span className={label} style={{ color: TC.faint }}>Where will you post?</span>
                   <span className="text-[11.5px]" style={{ color: TC.muted }}>
-                    Paste the link to each profile, or just type the handle — either works. Add what you have now;
-                    <b style={{ color: TC.text }}> all four must be there before you can be paid.</b>
+                    Pick {PLATFORMS_REQUIRED}. Instagram, TikTok and YouTube are the ones we recommend — swap any of
+                    them if it is banned or unusable where you live.
                   </span>
                 </div>
-                <div className="mt-2.5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                  {SOCIALS.map((sc) => {
-                    const filled = f[sc.key].trim().length > 0;
-                    return (
-                      <div key={sc.key} className="flex flex-col gap-1.5">
-                        <label className="flex items-center gap-2.5 rounded-xl border px-3 py-2 transition"
-                          style={{ borderColor: filled ? `${A}66` : TC.line, background: "rgba(0,0,0,0.25)" }}>
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={sc.logo} alt={sc.label} className="h-5 w-5 shrink-0" />
-                          <input
-                            value={f[sc.key]}
-                            onChange={set(sc.key)}
-                            placeholder={sc.ph}
-                            aria-label={sc.label}
-                            className="w-full bg-transparent text-[13.5px] outline-none"
-                            style={{ color: TC.text }}
-                          />
-                          {filled && <Check size={14} className="shrink-0" style={{ color: A }} />}
-                        </label>
-                        {filled && <FieldOk>{sc.label} added</FieldOk>}
-                      </div>
-                    );
-                  })}
+                <div className="mt-2.5">
+                  <PlatformPicker
+                    platforms={platforms}
+                    handles={handles}
+                    onPlatforms={(next) => {
+                      setPlatforms(next);
+                      if (next.length > platforms.length) {
+                        const added = next[next.length - 1];
+                        show((platformInfo(added)?.label ?? "Platform") + " added");
+                      }
+                    }}
+                    onHandle={(k, v) => setHandles((p) => ({ ...p, [k]: v }))}
+                    accent={A}
+                  />
                 </div>
+                <p className="mt-2 text-[11.5px]" style={{ color: TC.muted }}>
+                  Handles are optional today —{" "}
+                  <b style={{ color: TC.text }}>all three must be there before your first post.</b>
+                </p>
                 {handlesAdded > 0 && (
-                  <div className="mt-2.5">
-                    <FieldOk>{handlesAdded} of 3 accounts added{handlesAdded === 3 ? " — all set" : ", the rest can wait"}</FieldOk>
+                  <div className="mt-2">
+                    <FieldOk>
+                      {handlesAdded} of {PLATFORMS_REQUIRED} handles added
+                      {handlesAdded === PLATFORMS_REQUIRED ? " — all set" : ", the rest can wait"}
+                    </FieldOk>
                   </div>
                 )}
               </div>
@@ -316,7 +318,7 @@ export function CreatorsHub() {
               {[
                 { k: "Days 1–14", v: "1 video a day", s: "Slow start builds reach and protects the account" },
                 { k: "Days 15–30", v: "2 videos a day", s: "Same for every month after this one" },
-                { k: "Each video", v: "All 4 platforms", s: "TikTok + IG + FB + Shorts together = one post" },
+                { k: "Each video", v: "Your 3 platforms", s: "The same video on all three = one post" },
               ].map((c) => (
                 <div key={c.k} className="rounded-2xl border p-4 sm:p-5" style={{ borderColor: TC.line, background: TC.panel }}>
                   <div className="text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: TC.faint }}>{c.k}</div>
@@ -479,11 +481,13 @@ You get <b style={{ color: TC.text }}>$500 on top</b> of what you already earn, 
           {/* ── the one rule that voids everything ─────────────────────────── */}
           <section className="mt-12">
             <div className="rounded-2xl border p-5" style={{ borderColor: `${A}55`, background: `linear-gradient(180deg, ${A}12, rgba(255,255,255,0.015))` }}>
-              <h2 className="text-[15px] font-bold">Every video must show Clunoid</h2>
+              <h2 className="text-[15px] font-bold">Every video must tell viewers about Clunoid</h2>
               <p className="mt-2 max-w-3xl text-[13px] leading-relaxed" style={{ color: TC.muted }}>
-                A video that does not clearly feature or mention the platform does not count towards your 30 days —
-                even if it did well. Show the site, show a bot running, or say the name clearly. If someone watches
-                your video and cannot tell what you are talking about, it will not be counted.
+                A video that does not clearly tell viewers about the platform does not count towards
+                your 30 days — even if it did well. Say the name, say what it does, or show the site or a bot
+                running while you explain it. Telling people matters more than showing them: if someone watches your
+                video and cannot say what you were talking about, it will not be counted. You never have to be on
+                camera — a screen recording with your voice over it is fine.
               </p>
             </div>
           </section>

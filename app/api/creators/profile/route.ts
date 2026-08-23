@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db, findCreator, normaliseHandle, isPayoutMethod, trim } from "@/lib/creators/account";
+import { db, findCreator, loadHandles, normaliseHandle, setPlatforms, isPayoutMethod, trim } from "@/lib/creators/account";
+import { parsePlatformChoice, PLATFORMS_REQUIRED } from "@/lib/creators/platforms";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,10 +18,8 @@ export const dynamic = "force-dynamic";
 
 type Body = {
   token?: string;
-  tiktok?: string;
-  instagram?: string;
-  facebook?: string;
-  youtube?: string;
+  platforms?: string[];
+  handles?: Record<string, string>;
   payoutMethod?: string;
 };
 
@@ -33,14 +32,48 @@ export async function POST(req: NextRequest) {
   const creator = await findCreator(admin, body.token);
   if (!creator) return NextResponse.json({ error: "No creator found." }, { status: 404 });
 
-  const patch: Record<string, string | null> = {};
-
-  // Only touch a field the caller actually sent, so saving one thing does not
-  // blank another.
-  for (const key of ["tiktok", "instagram", "facebook", "youtube"] as const) {
-    if (body[key] === undefined) continue;
-    patch[key] = normaliseHandle(body[key]);
+  // ── which platforms they post on ─────────────────────────────────────────
+  if (body.platforms !== undefined) {
+    const picked = parsePlatformChoice(body.platforms);
+    if (!picked) {
+      return NextResponse.json(
+        { error: `Choose exactly ${PLATFORMS_REQUIRED} platforms to post on.` },
+        { status: 400 },
+      );
+    }
+    await setPlatforms(admin, creator.id, picked);
   }
+
+  // ── the handles themselves ───────────────────────────────────────────────
+  if (body.handles) {
+    const chosen = await loadHandles(admin, creator.id);
+    const allowed = new Set(chosen.map((h) => h.platform));
+
+    for (const [platform, raw] of Object.entries(body.handles)) {
+      // Silently ignore a handle for a platform they are not posting on, rather
+      // than storing something the dashboard will never show them.
+      if (!allowed.has(platform)) continue;
+
+      const { error } = await admin
+        .from("trading_creator_handles")
+        .upsert(
+          { application_id: creator.id, platform, handle: normaliseHandle(raw) },
+          { onConflict: "application_id,platform" },
+        );
+
+      if (error) {
+        if (error.code === "23505") {
+          return NextResponse.json(
+            { error: "That account is already registered by another creator." },
+            { status: 409 },
+          );
+        }
+        return NextResponse.json({ error: "Could not save that. Please try again." }, { status: 500 });
+      }
+    }
+  }
+
+  const patch: Record<string, string | null> = {};
 
   if (body.payoutMethod !== undefined) {
     const m = trim(body.payoutMethod).toLowerCase();

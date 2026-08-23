@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db, findCreator, hasAllHandles } from "@/lib/creators/account";
-import { computeProgress, dayKey, requiredOn, PLATFORMS, type PostRow } from "@/lib/creators/progress";
+import { db, findCreator, hasAllHandles, loadHandles } from "@/lib/creators/account";
+import { computeProgress, dayKey, requiredOn, type PostRow } from "@/lib/creators/progress";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,6 +14,9 @@ export const dynamic = "force-dynamic";
  *
  * Slots stop double-logging: the unique index is (application, day, slot), and
  * the programme never asks for more than two videos in a day.
+ *
+ * Which platforms count is per creator: they pick three, and a post counts when
+ * it is live on all three of theirs — not on a fixed list everyone shares.
  */
 
 type Body = { token?: string; platforms?: string[]; link?: string; action?: "log" | "undo"; id?: string };
@@ -56,21 +59,24 @@ export async function POST(req: NextRequest) {
   }
 
   // ── logging ──────────────────────────────────────────────────────────────
+  const chosen = await loadHandles(admin, creator.id);
+  const mine = new Set(chosen.map((h) => h.platform));
+
   const platforms = Array.isArray(body.platforms)
-    ? [...new Set(body.platforms.filter((p): p is string => typeof p === "string" && (PLATFORMS as readonly string[]).includes(p)))]
+    ? [...new Set(body.platforms.filter((p): p is string => typeof p === "string" && mine.has(p)))]
     : [];
 
-  if (platforms.length < PLATFORMS.length) {
+  if (platforms.length < mine.size) {
     return NextResponse.json(
-      { error: "A post counts when it is up on all four: TikTok, Instagram, Facebook and YouTube." },
+      { error: "A post counts when it is up on all three platforms you chose." },
       { status: 400 },
     );
   }
 
   const first = !creator.first_post_at;
-  if (first && !hasAllHandles(creator)) {
+  if (first && !hasAllHandles(chosen)) {
     return NextResponse.json(
-      { error: "Add all four account handles before you start — that is what we check your posts against." },
+      { error: "Add the handle for each of your three platforms before you start — that is what we check your posts against." },
       { status: 400 },
     );
   }

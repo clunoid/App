@@ -23,13 +23,15 @@ import {
 } from "lucide-react";
 import { TC, DOT_GRID, monoFont } from "@/lib/trading/theme";
 import {
-  A, GOOD, BAD, SOCIALS, PAYOUTS, LADDER, DO, DONT, IDEAS, AI_PROMPTS,
+  A, GOOD, BAD, PAYOUTS, LADDER, DO, DONT, IDEAS, AI_PROMPTS,
   PHASES, phaseFor, TEMPLATES, fmt, fmtShort, DISCLAIMER,
+  PLATFORMS_REQUIRED, platformInfo, platformSentence,
 } from "./content";
+import { PlatformPicker } from "./PlatformPicker";
 import { PayoutPicker } from "./PayoutPicker";
 import { Reminders } from "./Reminders";
 import { FieldOk, useToast } from "./Feedback";
-import { computeProgress, PLATFORMS, GRACE_DAYS, QUALIFYING_DAYS_NEEDED, type Progress } from "@/lib/creators/progress";
+import { computeProgress, GRACE_DAYS, QUALIFYING_DAYS_NEEDED, type Progress } from "@/lib/creators/progress";
 
 // ── the shape /api/creators/me returns ──────────────────────────────────────
 export type Creator = {
@@ -38,6 +40,8 @@ export type Creator = {
   payout_method: string | null; new_accounts: boolean; status: string;
   applied_at: string; started_at: string | null; first_post_at: string | null;
   handlesComplete: boolean;
+  platforms: string[];
+  handles: { platform: string; handle: string | null }[];
 };
 export type Payout = {
   id: string; month_number: number; period_start: string; period_end: string;
@@ -71,7 +75,15 @@ type TabKey = (typeof TABS)[number]["key"];
 const card = "rounded-2xl border p-4 sm:p-5";
 const cardStyle = { borderColor: TC.line, background: TC.panel } as const;
 const labelCls = "text-[10.5px] font-semibold uppercase tracking-wider";
-const money = (n: number) => `$${n.toFixed(n % 1 === 0 ? 0 : 2)}`;
+const money = (n: number) => `${n.toFixed(n % 1 === 0 ? 0 : 2)}`;
+
+/** What is stored, as a plain map, for seeding inputs and spotting unsaved edits. */
+function handleMap(creator: Creator): Record<string, string> {
+  return Object.fromEntries(creator.handles.map((h) => [h.platform, h.handle ?? ""]));
+}
+function savedMap(creator: Creator): Record<string, string | null> {
+  return Object.fromEntries(creator.handles.map((h) => [h.platform, h.handle]));
+}
 
 export function CreatorDashboard({ me, token, onRefresh, justRegistered = false }: { me: Me; token: string; onRefresh: () => Promise<void>; justRegistered?: boolean }) {
   const [tab, setTab] = useState<TabKey>("overview");
@@ -272,7 +284,7 @@ function Overview({ me, progress, token, onRefresh, now, setTab, show }: {
             <p className="mt-1 text-[12.5px] leading-relaxed" style={{ color: TC.muted }}>
               {done
                 ? `${progress.doneToday} of ${progress.requiredToday} logged. Come back tomorrow — the streak is what gets paid.`
-                : `${progress.doneToday} of ${progress.requiredToday} logged. Each video goes to all four platforms; that counts as one.`}
+                : `${progress.doneToday} of ${progress.requiredToday} logged. Each video goes to all ${me.creator.platforms.length} of your platforms; that counts as one.`}
             </p>
           </div>
           <button type="button" onClick={() => setTab("posts")}
@@ -440,17 +452,15 @@ function Countdown({ to, now, label }: { to: string | null; now: Date; label: st
 
 function StartCard({ me, token, onRefresh, setTab, show }: { me: Me; token: string; onRefresh: () => Promise<void>; setTab: (t: TabKey) => void; show: Show }) {
   const { creator } = me;
-  const [handles, setHandles] = useState({
-    tiktok: creator.tiktok ?? "", instagram: creator.instagram ?? "",
-    facebook: creator.facebook ?? "", youtube: creator.youtube ?? "",
-  });
+  const [platforms, setPlatforms] = useState<string[]>(creator.platforms);
+  const [handles, setHandles] = useState<Record<string, string>>(() => handleMap(creator));
   const [checked, setChecked] = useState<string[]>([]);
   const [link, setLink] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  const allHandles = SOCIALS.every((s) => handles[s.key].trim().length > 0);
-  const allPlatforms = PLATFORMS.every((p) => checked.includes(p));
+  const allHandles = platforms.length === PLATFORMS_REQUIRED && platforms.every((k) => (handles[k] ?? "").trim().length > 0);
+  const allPlatforms = platforms.length > 0 && platforms.every((p) => checked.includes(p));
 
   async function start() {
     if (busy) return;
@@ -459,7 +469,7 @@ function StartCard({ me, token, onRefresh, setTab, show }: { me: Me; token: stri
       // Handles first — the clock must not start against a half-filled profile.
       const save = await fetch("/api/creators/profile", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token, ...handles }),
+        body: JSON.stringify({ token, platforms, handles }),
       });
       const saved = await save.json().catch(() => ({}));
       if (!save.ok) { setErr(saved.error || "Could not save your handles."); return; }
@@ -483,8 +493,8 @@ function StartCard({ me, token, onRefresh, setTab, show }: { me: Me; token: stri
         <h1 className="text-[22px] font-bold sm:text-[26px]">You are in. Day 1 starts with your first video.</h1>
         <p className="mt-2 max-w-3xl text-[13.5px] leading-relaxed" style={{ color: TC.muted }}>
           Your 30 days begin when your <b style={{ color: TC.text }}>first video is live</b> — not when you
-          registered. That way nobody loses days to a slow start. Post your first video to all four platforms, then
-          confirm it below and the countdown starts.
+          registered. That way nobody loses days to a slow start. Post your first video to all three of your
+          platforms, then confirm it below and the countdown starts.
         </p>
         <div className="mt-3 flex flex-wrap gap-2 text-[12px]" style={{ color: TC.faint }}>
           <span className="rounded-lg px-2.5 py-1.5" style={{ background: "rgba(0,0,0,0.28)" }}>
@@ -503,27 +513,26 @@ function StartCard({ me, token, onRefresh, setTab, show }: { me: Me; token: stri
           Add your four accounts
         </h2>
         <p className="mt-1.5 text-[12.5px] leading-relaxed" style={{ color: TC.muted }}>
-          Paste the link to each profile, or just type the handle — either works. All four are needed before the
-          clock starts, because they are what we check your posts against. Put{" "}
+          Paste the link to each profile, or just type the handle — either works. All {PLATFORMS_REQUIRED} are
+          needed before the clock starts, because they are what we check your posts against. Put{" "}
           <b style={{ color: TC.text }}>clunoid.com</b> in the bio of each one before you post, so &ldquo;link in
-          bio&rdquo; is true from day one. Link Instagram to a Facebook Page and your Reels cross-post to both from
-          one upload.
+          bio&rdquo; is true from day one.
         </p>
-        <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {SOCIALS.map((s) => (
-            <label key={s.key} className="flex items-center gap-2.5 rounded-xl border px-3 py-2" style={{ borderColor: handles[s.key] ? `${A}66` : TC.line, background: "rgba(0,0,0,0.25)" }}>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={s.logo} alt={s.label} className="h-5 w-5 shrink-0" />
-              <input value={handles[s.key]} onChange={(e) => setHandles((p) => ({ ...p, [s.key]: e.target.value }))}
-                placeholder={s.ph} aria-label={s.label}
-                className="w-full bg-transparent text-[13.5px] outline-none" style={{ color: TC.text }} />
-              {handles[s.key] && <Check size={14} className="shrink-0" style={{ color: A }} />}
-            </label>
-          ))}
+        <div className="mt-3 sm:max-w-md">
+          <PlatformPicker
+            platforms={platforms}
+            handles={handles}
+            onPlatforms={(next) => {
+              setPlatforms(next);
+              setChecked((c) => c.filter((k) => next.includes(k)));
+            }}
+            onHandle={(k, v) => setHandles((p) => ({ ...p, [k]: v }))}
+            accent={A}
+          />
         </div>
         {allHandles && (
           <div className="mt-2.5">
-            <FieldOk>All four accounts added — confirm your first video below</FieldOk>
+            <FieldOk>All {PLATFORMS_REQUIRED} handles added — confirm your first video below</FieldOk>
           </div>
         )}
       </section>
@@ -535,19 +544,22 @@ function StartCard({ me, token, onRefresh, setTab, show }: { me: Me; token: stri
           Confirm your first video is live
         </h2>
         <p className="mt-1.5 text-[12.5px] leading-relaxed" style={{ color: TC.muted }}>
-          Tick each platform it is up on. All four are needed — one video on all four is what counts as one post.
+          Tick each platform it is up on. All {platforms.length} are needed — one video on all of them is what
+          counts as one post.
         </p>
         <div className="mt-3 grid gap-2.5 sm:grid-cols-3">
-          {SOCIALS.map((s) => {
-            const on = checked.includes(s.key);
+          {platforms.map((key) => {
+            const p = platformInfo(key);
+            if (!p) return null;
+            const on = checked.includes(key);
             return (
-              <label key={s.key} className="flex cursor-pointer items-center gap-2.5 rounded-xl border px-3 py-2.5 transition"
+              <label key={key} className="flex cursor-pointer items-center gap-2.5 rounded-xl border px-3 py-2.5 transition"
                 style={on ? { borderColor: GOOD, background: `${GOOD}1a` } : { borderColor: TC.line, background: "rgba(0,0,0,0.25)" }}>
                 <input type="checkbox" className="sr-only" checked={on}
-                  onChange={() => { setChecked((p) => (on ? p.filter((x) => x !== s.key) : [...p, s.key])); if (!on) show(s.label + " confirmed"); }} />
+                  onChange={() => { setChecked((c) => (on ? c.filter((x) => x !== key) : [...c, key])); if (!on) show(p.label + " confirmed"); }} />
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={s.logo} alt="" aria-hidden className="h-5 w-5 shrink-0" />
-                <span className="text-[13px] font-medium" style={{ color: on ? TC.text : TC.muted }}>{s.label}</span>
+                <img src={p.logo} alt="" aria-hidden className="h-5 w-5 shrink-0 rounded" />
+                <span className="min-w-0 truncate text-[13px] font-medium" style={{ color: on ? TC.text : TC.muted }}>{p.label}</span>
                 {on && <Check size={15} className="ml-auto shrink-0" style={{ color: GOOD }} />}
               </label>
             );
@@ -555,7 +567,7 @@ function StartCard({ me, token, onRefresh, setTab, show }: { me: Me; token: stri
         </div>
         {allPlatforms && (
           <div className="mt-2.5">
-            <FieldOk>All four confirmed — press start and your 30 days begin</FieldOk>
+            <FieldOk>All {platforms.length} confirmed — press start and your 30 days begin</FieldOk>
           </div>
         )}
 
@@ -574,8 +586,8 @@ function StartCard({ me, token, onRefresh, setTab, show }: { me: Me; token: stri
           {busy ? <Loader2 size={16} className="animate-spin" /> : <Rocket size={16} />}
           {busy ? "Starting…" : "Start my 30 days"}
         </button>
-        {!allHandles && <p className="mt-2 text-[11.5px]" style={{ color: TC.faint }}>Add all four handles first.</p>}
-        {allHandles && !allPlatforms && <p className="mt-2 text-[11.5px]" style={{ color: TC.faint }}>Tick all four platforms once the video is up on each.</p>}
+        {!allHandles && <p className="mt-2 text-[11.5px]" style={{ color: TC.faint }}>Add a handle for each of your {PLATFORMS_REQUIRED} platforms first.</p>}
+        {allHandles && !allPlatforms && <p className="mt-2 text-[11.5px]" style={{ color: TC.faint }}>Tick all {platforms.length} platforms once the video is up on each.</p>}
       </section>
 
       <Reminders title="Read this before your first post" />
@@ -694,7 +706,8 @@ function PostsPanel({ me, progress, token, onRefresh, show }: { me: Me; progress
   const [undoing, setUndoing] = useState<string | null>(null);
 
   const started = progress.phase !== "awaiting_first_post";
-  const allPlatforms = PLATFORMS.every((p) => checked.includes(p));
+  const mine = me.creator.platforms;
+  const allPlatforms = mine.length > 0 && mine.every((p) => checked.includes(p));
   const roomToday = started && progress.doneToday < progress.requiredToday;
 
   async function log() {
@@ -758,19 +771,21 @@ function PostsPanel({ me, progress, token, onRefresh, show }: { me: Me; progress
         {roomToday ? (
           <>
             <p className="mt-1.5 text-[12.5px] leading-relaxed" style={{ color: TC.muted }}>
-              Tick every platform the video is live on. All four are needed for it to count.
+              Tick every platform the video is live on. All {mine.length} are needed for it to count.
             </p>
             <div className="mt-3 grid gap-2.5 sm:grid-cols-3">
-              {SOCIALS.map((s) => {
-                const on = checked.includes(s.key);
+              {mine.map((key) => {
+                const p = platformInfo(key);
+                if (!p) return null;
+                const on = checked.includes(key);
                 return (
-                  <label key={s.key} className="flex cursor-pointer items-center gap-2.5 rounded-xl border px-3 py-2.5 transition"
+                  <label key={key} className="flex cursor-pointer items-center gap-2.5 rounded-xl border px-3 py-2.5 transition"
                     style={on ? { borderColor: GOOD, background: `${GOOD}1a` } : { borderColor: TC.line, background: "rgba(0,0,0,0.25)" }}>
                     <input type="checkbox" className="sr-only" checked={on}
-                      onChange={() => { setChecked((p) => (on ? p.filter((x) => x !== s.key) : [...p, s.key])); if (!on) show(s.label + " confirmed"); }} />
+                      onChange={() => { setChecked((c) => (on ? c.filter((x) => x !== key) : [...c, key])); if (!on) show(p.label + " confirmed"); }} />
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={s.logo} alt="" aria-hidden className="h-5 w-5 shrink-0" />
-                    <span className="text-[13px] font-medium" style={{ color: on ? TC.text : TC.muted }}>{s.label}</span>
+                    <img src={p.logo} alt="" aria-hidden className="h-5 w-5 shrink-0 rounded" />
+                    <span className="min-w-0 truncate text-[13px] font-medium" style={{ color: on ? TC.text : TC.muted }}>{p.label}</span>
                     {on && <Check size={15} className="ml-auto shrink-0" style={{ color: GOOD }} />}
                   </label>
                 );
@@ -778,7 +793,7 @@ function PostsPanel({ me, progress, token, onRefresh, show }: { me: Me; progress
             </div>
             {allPlatforms && (
               <div className="mt-2.5">
-                <FieldOk>All four confirmed — this will count as one post</FieldOk>
+                <FieldOk>All {mine.length} confirmed — this will count as one post</FieldOk>
               </div>
             )}
             <label className="mt-3 flex flex-col gap-1.5">
@@ -831,9 +846,9 @@ function PostsPanel({ me, progress, token, onRefresh, show }: { me: Me; progress
                       <td className="py-2 text-[12.5px]" style={{ color: TC.muted }}>{fmtShort(p.posted_on.slice(0, 10))}</td>
                       <td className="py-2">
                         <span className="flex gap-1.5">
-                          {SOCIALS.filter((s) => p.platforms.includes(s.key)).map((s) => (
+                          {p.platforms.map((k) => platformInfo(k)).filter(Boolean).map((pl) => (
                             // eslint-disable-next-line @next/next/no-img-element
-                            <img key={s.key} src={s.logo} alt={s.label} title={s.label} className="h-4 w-4" />
+                            <img key={pl!.key} src={pl!.logo} alt={pl!.label} title={pl!.label} className="h-4 w-4 rounded" />
                           ))}
                         </span>
                       </td>
@@ -1081,11 +1096,13 @@ function RulesPanel() {
   return (
     <div className="space-y-4">
       <section className={card} style={{ borderColor: `${A}55`, background: `linear-gradient(180deg, ${A}12, rgba(255,255,255,0.015))` }}>
-        <h2 className="text-[15px] font-bold">Every video must show Clunoid</h2>
+        <h2 className="text-[15px] font-bold">Every video must tell viewers about Clunoid</h2>
         <p className="mt-2 max-w-3xl text-[13px] leading-relaxed" style={{ color: TC.muted }}>
-          A video that does not clearly feature or mention the platform does not count towards your 30 days — even if
-          it did well. Show the site, show a bot running, or say the name clearly. If someone watches your video and
-          cannot tell what you are talking about, it will not be counted.
+          A video that does not clearly tell viewers about the platform does not count towards your 30 days — even if
+          it did well. Say the name, say what it does, or show the site or a bot running while you explain it.
+          Telling people matters more than showing them: if someone watches your video and cannot say what you were
+          talking about, it will not be counted. You never have to be on camera — a screen recording with your voice
+          over it is fine.
         </p>
       </section>
 
@@ -1124,7 +1141,7 @@ function RulesPanel() {
           {[
             { k: "Days 1–14", v: "1 video a day", s: "Slow start builds reach and protects the account" },
             { k: "Days 15–30", v: "2 videos a day", s: "Same for every month after this one" },
-            { k: "Each video", v: "All 4 platforms", s: "TikTok + IG + FB + Shorts together = one post" },
+            { k: "Each video", v: "Your 3 platforms", s: "The same video on all three = one post" },
           ].map((c) => (
             <div key={c.k} className="rounded-xl border p-3.5" style={{ borderColor: TC.line, background: "rgba(0,0,0,0.22)" }}>
               <div className={labelCls} style={{ color: TC.faint }}>{c.k}</div>
@@ -1146,10 +1163,8 @@ function RulesPanel() {
 
 function DetailsPanel({ me, token, onRefresh, show }: { me: Me; token: string; onRefresh: () => Promise<void>; show: Show }) {
   const { creator } = me;
-  const [handles, setHandles] = useState({
-    tiktok: creator.tiktok ?? "", instagram: creator.instagram ?? "",
-    facebook: creator.facebook ?? "", youtube: creator.youtube ?? "",
-  });
+  const [platforms, setPlatforms] = useState<string[]>(creator.platforms);
+  const [handles, setHandles] = useState<Record<string, string>>(() => handleMap(creator));
   const [payout, setPayout] = useState(creator.payout_method ?? "");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -1160,7 +1175,7 @@ function DetailsPanel({ me, token, onRefresh, show }: { me: Me; token: string; o
     try {
       const res = await fetch("/api/creators/profile", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token, ...handles, payoutMethod: payout || undefined }),
+        body: JSON.stringify({ token, platforms, handles, payoutMethod: payout || undefined }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) { setMsg({ ok: false, text: data.error || "Could not save." }); show(data.error || "Could not save.", "bad"); return; }
@@ -1189,28 +1204,21 @@ function DetailsPanel({ me, token, onRefresh, show }: { me: Me; token: string; o
       </section>
 
       <section className={card} style={cardStyle}>
-        <h2 className="text-[16px] font-bold">Your accounts</h2>
+        <h2 className="text-[16px] font-bold">Where you post</h2>
         <p className="mt-1.5 text-[12.5px] leading-relaxed" style={{ color: TC.muted }}>
-          Paste the link to each profile, or just type the handle — either works. All four must be filled in and
-          correct before you can be paid, because this is what we check your posts against.
+          {PLATFORMS_REQUIRED} platforms, yours to choose — remove one to swap in another. Paste the link to each
+          profile or just type the handle, either works. All {PLATFORMS_REQUIRED} must be filled in and correct
+          before you can be paid, because this is what we check your posts against.
         </p>
-        <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {SOCIALS.map((sc) => {
-            const saved = handles[sc.key].trim().length > 0 && handles[sc.key].trim() === (creator[sc.key] ?? "");
-            return (
-              <div key={sc.key} className="flex flex-col gap-1.5">
-                <label className="flex items-center gap-2.5 rounded-xl border px-3 py-2" style={{ borderColor: handles[sc.key] ? `${A}55` : TC.line, background: "rgba(0,0,0,0.25)" }}>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={sc.logo} alt={sc.label} className="h-5 w-5 shrink-0" />
-                  <input value={handles[sc.key]} onChange={(e) => setHandles((p) => ({ ...p, [sc.key]: e.target.value }))}
-                    placeholder={sc.ph} aria-label={sc.label}
-                    className="w-full bg-transparent text-[13.5px] outline-none" style={{ color: TC.text }} />
-                  {saved && <Check size={14} className="shrink-0" style={{ color: GOOD }} />}
-                </label>
-                {handles[sc.key].trim() && !saved && <FieldOk tone="bad">Not saved yet</FieldOk>}
-              </div>
-            );
-          })}
+        <div className="mt-3 sm:max-w-md">
+          <PlatformPicker
+            platforms={platforms}
+            handles={handles}
+            onPlatforms={setPlatforms}
+            onHandle={(k, v) => setHandles((p) => ({ ...p, [k]: v }))}
+            accent={A}
+            savedHandles={savedMap(creator)}
+          />
         </div>
       </section>
 

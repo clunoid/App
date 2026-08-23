@@ -2,6 +2,7 @@ import { randomBytes } from "crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireUser } from "@/lib/auth/requireUser";
+import { DEFAULT_PLATFORMS, PLATFORMS_REQUIRED } from "./platforms";
 
 /**
  * CREATOR PROGRAM — finding and identifying a creator.
@@ -56,17 +57,13 @@ export function newAccessToken(): string {
 
 /** Columns the creator is allowed to see about themselves. Never selects the token. */
 export const CREATOR_FIELDS =
-  "id, name, email, country, tiktok, instagram, facebook, youtube, payout_method, new_accounts, status, applied_at, started_at, first_post_at";
+  "id, name, email, country, payout_method, new_accounts, status, applied_at, started_at, first_post_at";
 
 export type CreatorRow = {
   id: string;
   name: string;
   email: string;
   country: string;
-  tiktok: string | null;
-  instagram: string | null;
-  facebook: string | null;
-  youtube: string | null;
   payout_method: string | null;
   new_accounts: boolean;
   status: string;
@@ -110,7 +107,45 @@ export function db(): Db | null {
   return getSupabaseAdmin();
 }
 
-/** Every handle present — the gate on starting the clock and on payout. */
-export function hasAllHandles(c: Pick<CreatorRow, "tiktok" | "instagram" | "facebook" | "youtube">): boolean {
-  return !!(c.tiktok && c.instagram && c.facebook && c.youtube);
+/** One row per platform the creator picked, handle filled in or not yet. */
+export type HandleRow = { platform: string; handle: string | null };
+
+/**
+ * Read a creator's platform choice. Always returns the picked set — falling back
+ * to the recommended three for a row written before the picker existed, so an
+ * old creator never lands on a dashboard with no platforms at all.
+ */
+export async function loadHandles(db: Db, applicationId: string): Promise<HandleRow[]> {
+  const { data } = await db
+    .from("trading_creator_handles")
+    .select("platform, handle")
+    .eq("application_id", applicationId);
+
+  const rows = (data ?? []) as HandleRow[];
+  if (rows.length > 0) return rows;
+  return DEFAULT_PLATFORMS.map((platform) => ({ platform, handle: null }));
+}
+
+/**
+ * Replace a creator's platform choice, keeping the handle of any platform that
+ * survives the change. Dropping a platform drops its handle with it — that is
+ * the point, since they are no longer posting there.
+ */
+export async function setPlatforms(db: Db, applicationId: string, platforms: string[]): Promise<void> {
+  const existing = await loadHandles(db, applicationId);
+  const keep = new Map(existing.map((r) => [r.platform, r.handle]));
+
+  await db.from("trading_creator_handles").delete().eq("application_id", applicationId).not("platform", "in", `(${platforms.join(",")})`);
+
+  const rows = platforms.map((platform) => ({
+    application_id: applicationId,
+    platform,
+    handle: keep.get(platform) ?? null,
+  }));
+  await db.from("trading_creator_handles").upsert(rows, { onConflict: "application_id,platform" });
+}
+
+/** Every chosen platform has a handle — the gate on starting the clock and on payout. */
+export function hasAllHandles(rows: HandleRow[]): boolean {
+  return rows.length >= PLATFORMS_REQUIRED && rows.every((r) => !!r.handle);
 }
