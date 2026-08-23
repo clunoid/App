@@ -8,7 +8,7 @@
  * The rules being modelled, all of which come from the programme page:
  *   · The clock starts at the FIRST POST, not at registration.
  *   · Days 1–14 ask for 1 video a day; days 15–30 ask for 2.
- *   · Every video goes to all three platforms — that together is one post.
+ *   · Every video goes to all four platforms — that together is one post.
  *   · 2 grace days a month, so 28 qualifying days out of 30 is a pass.
  *   · Payout can be requested on day 30 and is paid within 7 days, after a
  *     3 working-day check.
@@ -20,7 +20,7 @@ export const GRACE_DAYS = 2;
 export const QUALIFYING_DAYS_NEEDED = PROGRAM_DAYS - GRACE_DAYS; // 28
 export const PAYOUT_LEAD_DAYS = 10; // day 30 → paid by (3 working-day check + 7)
 
-export const PLATFORMS = ["tiktok", "instagram", "youtube"] as const;
+export const PLATFORMS = ["tiktok", "instagram", "facebook", "youtube"] as const;
 export type Platform = (typeof PLATFORMS)[number];
 
 export type PostRow = { posted_on: string; slot: number; platforms: string[]; link: string | null };

@@ -40,7 +40,7 @@ export function CreatorsHub() {
   const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
   const [start, setStart] = useState(today);
 
-  const [f, setF] = useState({ name: "", email: "", country: "", tiktok: "", instagram: "", youtube: "" });
+  const [f, setF] = useState({ name: "", email: "", country: "", tiktok: "", instagram: "", facebook: "", youtube: "" });
   const [payout, setPayout] = useState("");
   const [newAccounts, setNewAccounts] = useState(false);
   const [agreed, setAgreed] = useState(false);
@@ -166,7 +166,7 @@ export function CreatorsHub() {
             Get paid every month to post about Clunoid
           </h1>
           <p className="mt-3 max-w-4xl text-[14px] leading-relaxed sm:text-[15.5px]" style={{ color: TC.muted }}>
-            Make short videos, post them on your own TikTok, Instagram and YouTube, and get paid at the end of
+            Make short videos, post them on your own TikTok, Instagram, Facebook and YouTube, and get paid at the end of
             every 30 days. <b style={{ color: TC.text }}>You do not need views to get paid</b> — you need to post
             every day. Get <b style={{ color: TC.text }}>10,000 views</b> consistently and you earn <b style={{ color: TC.text }}>$500</b> on top. Use accounts you already have and month one pays{" "}
             <b style={{ color: TC.text }}>$100</b>; make new ones for this and month one pays{" "}
@@ -224,7 +224,7 @@ export function CreatorsHub() {
                   <span className={label} style={{ color: TC.faint }}>Your accounts</span>
                   <span className="text-[11.5px]" style={{ color: TC.muted }}>
                     Paste the link to each profile, or just type the handle — either works. Add what you have now;
-                    <b style={{ color: TC.text }}> all three must be there before you can be paid.</b>
+                    <b style={{ color: TC.text }}> all four must be there before you can be paid.</b>
                   </span>
                 </div>
                 <div className="mt-2.5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -316,7 +316,7 @@ export function CreatorsHub() {
               {[
                 { k: "Days 1–14", v: "1 video a day", s: "Slow start builds reach and protects the account" },
                 { k: "Days 15–30", v: "2 videos a day", s: "Same for every month after this one" },
-                { k: "Each video", v: "All 3 platforms", s: "TikTok + Reels + Shorts together = one post" },
+                { k: "Each video", v: "All 4 platforms", s: "TikTok + IG + FB + Shorts together = one post" },
               ].map((c) => (
                 <div key={c.k} className="rounded-2xl border p-4 sm:p-5" style={{ borderColor: TC.line, background: TC.panel }}>
                   <div className="text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: TC.faint }}>{c.k}</div>
@@ -438,8 +438,8 @@ You get <b style={{ color: TC.text }}>$500 on top</b> of what you already earn, 
                 ))}
               </ul>
               <p className="mt-3 text-[11.5px] leading-relaxed" style={{ color: TC.faint }}>
-                These are not house rules for their own sake. Profit claims and copied clips are exactly what gets
-                accounts restricted or banned in this subject. Breaking them cancels the month.
+                These are not house rules for their own sake. Copied clips are exactly what gets accounts restricted
+                or banned. Breaking them cancels the month.
               </p>
             </div>
           </section>
@@ -460,7 +460,7 @@ You get <b style={{ color: TC.text }}>$500 on top</b> of what you already earn, 
             <div className="mt-4 rounded-2xl border p-4 sm:p-5" style={{ borderColor: TC.line, background: "rgba(255,255,255,0.02)" }}>
               <div className="text-[13.5px] font-bold">Use AI to find ideas</div>
               <p className="mt-1.5 text-[12.5px] leading-relaxed" style={{ color: TC.muted }}>
-                Ask an AI for angles, hooks and simpler explanations — then film it yourself, in your own words. Try these:
+                Ask an AI for angles, hooks and simpler explanations — then make the video yourself, in your own words. Try these:
               </p>
               <ul className="mt-3 space-y-1.5">
                 {AI_PROMPTS.map((p) => (

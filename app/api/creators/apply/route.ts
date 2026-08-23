@@ -28,6 +28,7 @@ type Body = {
   country?: string;
   tiktok?: string;
   instagram?: string;
+  facebook?: string;
   youtube?: string;
   payoutMethod?: string;
   newAccounts?: boolean;
@@ -44,6 +45,7 @@ export async function POST(req: NextRequest) {
   const country = trim(body.country);
   const tiktok = normaliseHandle(body.tiktok);
   const instagram = normaliseHandle(body.instagram);
+  const facebook = normaliseHandle(body.facebook);
   const youtube = normaliseHandle(body.youtube);
 
   if (!name) return NextResponse.json({ error: "Please give us your name." }, { status: 400 });
@@ -80,6 +82,7 @@ export async function POST(req: NextRequest) {
     user_id: user?.id ?? null,
     tiktok,
     instagram,
+    facebook,
     youtube,
     payout_method: payoutMethod,
     new_accounts: !!body.newAccounts,

@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
  * CREATOR PROGRAM — log a post, or take one back.
  *
  * The first log is special: it is what STARTS the 30 days, so it also stamps
- * first_post_at and requires all three handles to be on file. Every log after
+ * first_post_at and requires every handle to be on file. Every log after
  * that just records the day's work.
  *
  * Slots stop double-logging: the unique index is (application, day, slot), and
@@ -62,7 +62,7 @@ export async function POST(req: NextRequest) {
 
   if (platforms.length < PLATFORMS.length) {
     return NextResponse.json(
-      { error: "A post counts when it is up on all three: TikTok, Instagram and YouTube." },
+      { error: "A post counts when it is up on all four: TikTok, Instagram, Facebook and YouTube." },
       { status: 400 },
     );
   }
@@ -70,7 +70,7 @@ export async function POST(req: NextRequest) {
   const first = !creator.first_post_at;
   if (first && !hasAllHandles(creator)) {
     return NextResponse.json(
-      { error: "Add all three account handles before you start — that is what we check your posts against." },
+      { error: "Add all four account handles before you start — that is what we check your posts against." },
       { status: 400 },
     );
   }

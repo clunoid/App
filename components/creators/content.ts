@@ -14,6 +14,7 @@ export const BAD = "#f2607d";
 export const SOCIALS = [
   { key: "tiktok", label: "TikTok", logo: "/logos/tiktok.svg", ph: "@handle or paste your link" },
   { key: "instagram", label: "Instagram", logo: "/logos/instagram.svg", ph: "@handle or paste your link" },
+  { key: "facebook", label: "Facebook", logo: "/logos/facebook.svg", ph: "@page or paste your link" },
   { key: "youtube", label: "YouTube", logo: "/logos/youtube.svg", ph: "@channel or paste your link" },
 ] as const;
 
@@ -41,34 +42,25 @@ export const LADDER = [
 
 export const STEPS = [
   { n: 1, icon: Rocket, title: "Register and start today", body: "Fill in the form above. There is nothing to wait for and nobody to approve you — you get your dashboard straight away, and your first video can go up the same day." },
-  { n: 2, icon: Clock, title: "Days 1–14: post once a day", body: "One video per day. Post that same video to TikTok, Instagram Reels and YouTube Shorts — all three together count as one post. Going slower at the start is on purpose: it builds reach and keeps accounts out of trouble." },
-  { n: 3, icon: TrendingUp, title: "Days 15–30: post twice a day", body: "Two videos per day, each one posted to all three platforms. From month two onward this is your normal pace, every day." },
+  { n: 2, icon: Clock, title: "Days 1–14: post once a day", body: "One video per day. Post that same video to TikTok, Instagram Reels, Facebook Reels and YouTube Shorts — all four together count as one post. Going slower at the start is on purpose: it builds reach and keeps accounts out of trouble." },
+  { n: 3, icon: TrendingUp, title: "Days 15–30: post twice a day", body: "Two videos per day, each one posted to all four platforms. From month two onward this is your normal pace, every day." },
   { n: 4, icon: CalendarDays, title: "Finish 30 days, then ask to be paid", body: "You can miss 2 days a month, so you need 28 days out of 30. Leave every video up — deleting them before you are paid cancels the month." },
   { n: 5, icon: Wallet, title: "We check, then we pay you", body: "We spend 3 working days checking: posts still up, made by you, following the rules, views real. You get your money within 7 days of asking. Every month after your first adds $50 — month two is $150." },
 ];
 
 export const DO = [
-  "Put clunoid.com in your bio on all three profiles before your first post.",
+  "Put clunoid.com in your bio on all four profiles before your first post.",
+  "Link Instagram to a Facebook Page so your Reels cross-post to both from one upload.",
   "Show the platform in every single video — screen recording, the site, or the bots running.",
-  "Take ideas from other trading creators, and use AI for hooks and scripts. Then film it yourself.",
+  "Take ideas from other trading creators, and use AI for hooks and scripts. Then make it yourself — record, screen record, edit, whatever suits you.",
   "Say what it does in your own words. Your voice beats a script.",
   "Keep videos 30 seconds to 2 minutes. Go longer only if the content earns it.",
-  "Re-export each video before posting so the three platforms do not get an identical file.",
-  "Change the hook and caption for each platform.",
-  "Send people to clunoid.com — never straight to a broker signup page.",
-  "Use only music from the platform’s own library.",
   "Speak English or the main language of your country — whichever you are natural in.",
 ];
 
 export const DONT = [
-  "No profit screenshots. No account balances. No “I made $500 today”.",
-  "No promises — nothing is guaranteed, risk-free, or passive income.",
-  "No fake urgency, countdowns, or “only 3 spots left”.",
   "No copying another creator's video. Ideas yes, footage never.",
-  "No re-posting a video you have already posted, on any platform.",
-  "No bought views, follow-for-follow, or engagement groups.",
-  "No posting the exact same file twice on the same platform.",
-  "No second or third account to farm more posts. One account per platform.",
+  "No using a video you posted on an earlier day as today's post — every day needs a new one. Putting that same new video on all four accounts is right, and counts as one post.",
   "No speaking as Clunoid. Say “I use this”, never “we offer”.",
 ];
 
@@ -110,7 +102,7 @@ export const PHASES = [
     todo: [
       "Keep the winning format, change only the hook and the topic.",
       "Reply to every comment in the first hour — it is the cheapest reach you will get.",
-      "Write the caption before you film. It keeps the video to one idea.",
+      "Write the caption before you edit. It keeps the video to one idea.",
     ],
   },
   {
@@ -118,7 +110,7 @@ export const PHASES = [
     title: "Build the habit",
     aim: "One a day without thinking about it, and a small backlog ready.",
     todo: [
-      "Batch-film 3 videos in one sitting so a bad day never breaks your streak.",
+      "Edit 3 videos in one sitting so a bad day never breaks your streak.",
       "Start each video with the point, not an introduction. The first 2 seconds decide.",
       "Check which platform is carrying you — that is the one to tailor hooks for.",
     ],
@@ -139,7 +131,7 @@ export const PHASES = [
     aim: "Land all 30 days and get ready to be paid.",
     todo: [
       "Do not delete or archive anything — every video must still be live when we check.",
-      "Make sure all three handles on your dashboard are correct.",
+      "Make sure all four handles on your dashboard are correct.",
       "On day 30, ask to be paid. The money follows within 7 days of our check.",
     ],
   },
@@ -169,7 +161,7 @@ export const REMINDERS = [
   },
   {
     t: "Put clunoid.com in your bio on day one",
-    d: "All three profiles — TikTok, Instagram and YouTube — need clunoid.com in the bio, description or link field before your first post. That is what lets you say \u201Clink in bio\u201D and have it be true.",
+    d: "All four profiles — TikTok, Instagram, Facebook and YouTube — need clunoid.com in the bio, description or link field before your first post. That is what lets you say \u201Clink in bio\u201D and have it be true.",
   },
   {
     t: "Post every day, and make it decent",
@@ -180,16 +172,16 @@ export const REMINDERS = [
     d: "Take ideas from anyone. Take footage from nobody. Downloading someone's video and posting it is the fastest way to lose the month and your account.",
   },
   {
-    t: "Never re-post something you already posted",
-    d: "Each post is a new video. Re-uploading an old one does not count, on any platform.",
+    t: "Same video on all four accounts, yes. Yesterday's video again, no.",
+    d: "One video going up on TikTok, Instagram, Facebook and YouTube is exactly right — that is one post, not four. What does not count is taking a video you already posted on an earlier day and putting it up again as today's post. Every day needs something new.",
   },
   {
     t: "AI is fine for ideas, not for the video",
-    d: "Use AI for hooks, scripts, angles and explanations. Get ideas from other trading creators too. Then film it yourself, in your own voice.",
+    d: "Use AI for hooks, scripts, angles and explanations. Get ideas from other trading creators too. Then make the video yourself — talk to camera, or just screen record and add a voice-over. Either earns.",
   },
   {
-    t: "One video, all three platforms",
-    d: "TikTok, Instagram Reels and YouTube Shorts together count as one post. Re-export it for each so the file is not identical.",
+    t: "One video, all four platforms",
+    d: "TikTok, Instagram Reels, Facebook Reels and YouTube Shorts together count as one post. Link your Instagram account to a Facebook Page and Reels cross-post automatically — one upload, two platforms, no extra work.",
   },
   {
     t: "Leave everything up until you are paid",

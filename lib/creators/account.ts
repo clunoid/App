@@ -28,7 +28,7 @@ export const trim = (v: unknown) => (typeof v === "string" ? v.trim().slice(0, M
 /**
  * Reduce whatever someone pastes to one canonical handle.
  *
- * People give us a handle, an @handle, or the whole address bar — all three are
+ * People give us a handle, an @handle, or the whole address bar — all of them are
  * the same account, and all three must reduce to the same stored value or the
  * uniqueness index stops catching one person taking two seats.
  *
@@ -56,7 +56,7 @@ export function newAccessToken(): string {
 
 /** Columns the creator is allowed to see about themselves. Never selects the token. */
 export const CREATOR_FIELDS =
-  "id, name, email, country, tiktok, instagram, youtube, payout_method, new_accounts, status, applied_at, started_at, first_post_at";
+  "id, name, email, country, tiktok, instagram, facebook, youtube, payout_method, new_accounts, status, applied_at, started_at, first_post_at";
 
 export type CreatorRow = {
   id: string;
@@ -65,6 +65,7 @@ export type CreatorRow = {
   country: string;
   tiktok: string | null;
   instagram: string | null;
+  facebook: string | null;
   youtube: string | null;
   payout_method: string | null;
   new_accounts: boolean;
@@ -109,7 +110,7 @@ export function db(): Db | null {
   return getSupabaseAdmin();
 }
 
-/** All three handles present — the gate on starting the clock and on payout. */
-export function hasAllHandles(c: Pick<CreatorRow, "tiktok" | "instagram" | "youtube">): boolean {
-  return !!(c.tiktok && c.instagram && c.youtube);
+/** Every handle present — the gate on starting the clock and on payout. */
+export function hasAllHandles(c: Pick<CreatorRow, "tiktok" | "instagram" | "facebook" | "youtube">): boolean {
+  return !!(c.tiktok && c.instagram && c.facebook && c.youtube);
 }

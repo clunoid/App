@@ -10,7 +10,7 @@
  *
  * The one thing to understand about the clock: it does NOT start at registration.
  * It starts when the creator confirms their first post is live, which is also the
- * moment all three handles become mandatory. Until then the dashboard shows one
+ * moment every handle becomes mandatory. Until then the dashboard shows one
  * thing — how to start.
  */
 
@@ -34,7 +34,7 @@ import { computeProgress, PLATFORMS, GRACE_DAYS, QUALIFYING_DAYS_NEEDED, type Pr
 // ── the shape /api/creators/me returns ──────────────────────────────────────
 export type Creator = {
   id: string; name: string; email: string; country: string;
-  tiktok: string | null; instagram: string | null; youtube: string | null;
+  tiktok: string | null; instagram: string | null; facebook: string | null; youtube: string | null;
   payout_method: string | null; new_accounts: boolean; status: string;
   applied_at: string; started_at: string | null; first_post_at: string | null;
   handlesComplete: boolean;
@@ -272,7 +272,7 @@ function Overview({ me, progress, token, onRefresh, now, setTab, show }: {
             <p className="mt-1 text-[12.5px] leading-relaxed" style={{ color: TC.muted }}>
               {done
                 ? `${progress.doneToday} of ${progress.requiredToday} logged. Come back tomorrow — the streak is what gets paid.`
-                : `${progress.doneToday} of ${progress.requiredToday} logged. Each video goes to all three platforms; that counts as one.`}
+                : `${progress.doneToday} of ${progress.requiredToday} logged. Each video goes to all four platforms; that counts as one.`}
             </p>
           </div>
           <button type="button" onClick={() => setTab("posts")}
@@ -441,7 +441,8 @@ function Countdown({ to, now, label }: { to: string | null; now: Date; label: st
 function StartCard({ me, token, onRefresh, setTab, show }: { me: Me; token: string; onRefresh: () => Promise<void>; setTab: (t: TabKey) => void; show: Show }) {
   const { creator } = me;
   const [handles, setHandles] = useState({
-    tiktok: creator.tiktok ?? "", instagram: creator.instagram ?? "", youtube: creator.youtube ?? "",
+    tiktok: creator.tiktok ?? "", instagram: creator.instagram ?? "",
+    facebook: creator.facebook ?? "", youtube: creator.youtube ?? "",
   });
   const [checked, setChecked] = useState<string[]>([]);
   const [link, setLink] = useState("");
@@ -482,7 +483,7 @@ function StartCard({ me, token, onRefresh, setTab, show }: { me: Me; token: stri
         <h1 className="text-[22px] font-bold sm:text-[26px]">You are in. Day 1 starts with your first video.</h1>
         <p className="mt-2 max-w-3xl text-[13.5px] leading-relaxed" style={{ color: TC.muted }}>
           Your 30 days begin when your <b style={{ color: TC.text }}>first video is live</b> — not when you
-          registered. That way nobody loses days to a slow start. Post your first video to all three platforms, then
+          registered. That way nobody loses days to a slow start. Post your first video to all four platforms, then
           confirm it below and the countdown starts.
         </p>
         <div className="mt-3 flex flex-wrap gap-2 text-[12px]" style={{ color: TC.faint }}>
@@ -499,13 +500,14 @@ function StartCard({ me, token, onRefresh, setTab, show }: { me: Me; token: stri
       <section className={card} style={cardStyle}>
         <h2 className="flex items-center gap-2 text-[15px] font-bold">
           <span className="grid h-6 w-6 place-items-center rounded-lg text-[12px] font-bold" style={{ background: `${A}22`, color: A }}>1</span>
-          Add your three accounts
+          Add your four accounts
         </h2>
         <p className="mt-1.5 text-[12.5px] leading-relaxed" style={{ color: TC.muted }}>
-          Paste the link to each profile, or just type the handle — either works. All three are needed before the
+          Paste the link to each profile, or just type the handle — either works. All four are needed before the
           clock starts, because they are what we check your posts against. Put{" "}
           <b style={{ color: TC.text }}>clunoid.com</b> in the bio of each one before you post, so &ldquo;link in
-          bio&rdquo; is true from day one.
+          bio&rdquo; is true from day one. Link Instagram to a Facebook Page and your Reels cross-post to both from
+          one upload.
         </p>
         <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {SOCIALS.map((s) => (
@@ -521,7 +523,7 @@ function StartCard({ me, token, onRefresh, setTab, show }: { me: Me; token: stri
         </div>
         {allHandles && (
           <div className="mt-2.5">
-            <FieldOk>All three accounts added — confirm your first video below</FieldOk>
+            <FieldOk>All four accounts added — confirm your first video below</FieldOk>
           </div>
         )}
       </section>
@@ -533,7 +535,7 @@ function StartCard({ me, token, onRefresh, setTab, show }: { me: Me; token: stri
           Confirm your first video is live
         </h2>
         <p className="mt-1.5 text-[12.5px] leading-relaxed" style={{ color: TC.muted }}>
-          Tick each platform it is up on. All three are needed — one video on all three is what counts as one post.
+          Tick each platform it is up on. All four are needed — one video on all four is what counts as one post.
         </p>
         <div className="mt-3 grid gap-2.5 sm:grid-cols-3">
           {SOCIALS.map((s) => {
@@ -553,7 +555,7 @@ function StartCard({ me, token, onRefresh, setTab, show }: { me: Me; token: stri
         </div>
         {allPlatforms && (
           <div className="mt-2.5">
-            <FieldOk>All three confirmed — press start and your 30 days begin</FieldOk>
+            <FieldOk>All four confirmed — press start and your 30 days begin</FieldOk>
           </div>
         )}
 
@@ -572,8 +574,8 @@ function StartCard({ me, token, onRefresh, setTab, show }: { me: Me; token: stri
           {busy ? <Loader2 size={16} className="animate-spin" /> : <Rocket size={16} />}
           {busy ? "Starting…" : "Start my 30 days"}
         </button>
-        {!allHandles && <p className="mt-2 text-[11.5px]" style={{ color: TC.faint }}>Add all three handles first.</p>}
-        {allHandles && !allPlatforms && <p className="mt-2 text-[11.5px]" style={{ color: TC.faint }}>Tick all three platforms once the video is up on each.</p>}
+        {!allHandles && <p className="mt-2 text-[11.5px]" style={{ color: TC.faint }}>Add all four handles first.</p>}
+        {allHandles && !allPlatforms && <p className="mt-2 text-[11.5px]" style={{ color: TC.faint }}>Tick all four platforms once the video is up on each.</p>}
       </section>
 
       <Reminders title="Read this before your first post" />
@@ -756,7 +758,7 @@ function PostsPanel({ me, progress, token, onRefresh, show }: { me: Me; progress
         {roomToday ? (
           <>
             <p className="mt-1.5 text-[12.5px] leading-relaxed" style={{ color: TC.muted }}>
-              Tick every platform the video is live on. All three are needed for it to count.
+              Tick every platform the video is live on. All four are needed for it to count.
             </p>
             <div className="mt-3 grid gap-2.5 sm:grid-cols-3">
               {SOCIALS.map((s) => {
@@ -776,7 +778,7 @@ function PostsPanel({ me, progress, token, onRefresh, show }: { me: Me; progress
             </div>
             {allPlatforms && (
               <div className="mt-2.5">
-                <FieldOk>All three confirmed — this will count as one post</FieldOk>
+                <FieldOk>All four confirmed — this will count as one post</FieldOk>
               </div>
             )}
             <label className="mt-3 flex flex-col gap-1.5">
@@ -1055,7 +1057,7 @@ function IdeasPanel() {
           <Sparkles size={14} style={{ color: A }} /> Use AI to find ideas
         </h2>
         <p className="mt-2 text-[12.5px] leading-relaxed" style={{ color: TC.muted }}>
-          Ask an AI for angles, hooks and simpler explanations — then film it yourself, in your own words.
+          Ask an AI for angles, hooks and simpler explanations — then make the video yourself, in your own words.
         </p>
         <ul className="mt-3 space-y-1.5">
           {AI_PROMPTS.map((p) => (
@@ -1108,8 +1110,8 @@ function RulesPanel() {
             ))}
           </ul>
           <p className="mt-3 text-[11.5px] leading-relaxed" style={{ color: TC.faint }}>
-            These are not house rules for their own sake. Profit claims and copied clips are exactly what gets
-            accounts restricted or banned in this subject. Breaking them cancels the month.
+            These are not house rules for their own sake. Copied clips are exactly what gets accounts restricted or
+            banned. Breaking them cancels the month.
           </p>
         </section>
       </div>
@@ -1122,7 +1124,7 @@ function RulesPanel() {
           {[
             { k: "Days 1–14", v: "1 video a day", s: "Slow start builds reach and protects the account" },
             { k: "Days 15–30", v: "2 videos a day", s: "Same for every month after this one" },
-            { k: "Each video", v: "All 3 platforms", s: "TikTok + Reels + Shorts together = one post" },
+            { k: "Each video", v: "All 4 platforms", s: "TikTok + IG + FB + Shorts together = one post" },
           ].map((c) => (
             <div key={c.k} className="rounded-xl border p-3.5" style={{ borderColor: TC.line, background: "rgba(0,0,0,0.22)" }}>
               <div className={labelCls} style={{ color: TC.faint }}>{c.k}</div>
@@ -1145,7 +1147,8 @@ function RulesPanel() {
 function DetailsPanel({ me, token, onRefresh, show }: { me: Me; token: string; onRefresh: () => Promise<void>; show: Show }) {
   const { creator } = me;
   const [handles, setHandles] = useState({
-    tiktok: creator.tiktok ?? "", instagram: creator.instagram ?? "", youtube: creator.youtube ?? "",
+    tiktok: creator.tiktok ?? "", instagram: creator.instagram ?? "",
+    facebook: creator.facebook ?? "", youtube: creator.youtube ?? "",
   });
   const [payout, setPayout] = useState(creator.payout_method ?? "");
   const [busy, setBusy] = useState(false);
@@ -1188,7 +1191,7 @@ function DetailsPanel({ me, token, onRefresh, show }: { me: Me; token: string; o
       <section className={card} style={cardStyle}>
         <h2 className="text-[16px] font-bold">Your accounts</h2>
         <p className="mt-1.5 text-[12.5px] leading-relaxed" style={{ color: TC.muted }}>
-          Paste the link to each profile, or just type the handle — either works. All three must be filled in and
+          Paste the link to each profile, or just type the handle — either works. All four must be filled in and
           correct before you can be paid, because this is what we check your posts against.
         </p>
         <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">

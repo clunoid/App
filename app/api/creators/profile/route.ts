@@ -19,6 +19,7 @@ type Body = {
   token?: string;
   tiktok?: string;
   instagram?: string;
+  facebook?: string;
   youtube?: string;
   payoutMethod?: string;
 };
@@ -36,7 +37,7 @@ export async function POST(req: NextRequest) {
 
   // Only touch a field the caller actually sent, so saving one thing does not
   // blank another.
-  for (const key of ["tiktok", "instagram", "youtube"] as const) {
+  for (const key of ["tiktok", "instagram", "facebook", "youtube"] as const) {
     if (body[key] === undefined) continue;
     patch[key] = normaliseHandle(body[key]);
   }
