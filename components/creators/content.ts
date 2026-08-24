@@ -87,6 +87,7 @@ export const DO = [
   "A realistic AI voice is allowed for the voice-over. Your own voice is fine too — whichever you prefer.",
   "If you pick Facebook, link it to Instagram so your Reels cross-post to both from one upload.",
   "Tell viewers about Clunoid in every single video — say what it is, not just show it.",
+  "Say the bots are 100% FREE, in every video. This one is not optional — it is the thing that stops people scrolling past thinking it costs money.",
   "Take ideas from other trading creators, and use AI for hooks and scripts. Then make it yourself — record, screen record, edit, whatever suits you.",
   "Say what it does in your own words. Your voice beats a script.",
   "Keep videos 30 seconds to 2 minutes. Go longer only if the content earns it.",
@@ -108,7 +109,7 @@ export const DONT = [
  * Pine Script — analysis, not bots. Nobody should be saying otherwise on camera.
  */
 export const TRUE_ABOUT_CLUNOID = [
-  "All the trading bots are 100% free.",
+  "All the trading bots are 100% FREE — say this in every video, it is a rule.",
   "They are fully automated — you pick a bot and it places the trades.",
   "The bots stop by themselves once the profit target for the run is reached.",
   "Easy to set up. The Deriv bots run in your browser, nothing to install.",
@@ -296,6 +297,36 @@ export const IDEAS = [
   },
 ];
 
+/**
+ * Words that get this content found. Not hashtag stuffing — these are the things
+ * people actually search and say, so working them into the voice-over and the
+ * caption is what puts the video in front of the right feed.
+ */
+export const KEYWORDS = [
+  "free AI trading bots",
+  "MT5 bots",
+  "MetaTrader 5 Expert Advisor",
+  "trading automation",
+  "automated trading",
+  "Deriv bots",
+  "synthetic indices",
+  "trading bot free",
+];
+
+/**
+ * Voice-over openers for the practice video — the same "start with something
+ * that works, then turn it towards Clunoid" shape as the ideas, written out so a
+ * creator can read one straight off the screen.
+ */
+export const VOICEOVER_STARTERS = [
+  "You have probably never seen a trading bot actually place a trade. This one is running by itself — and it is 100% free.",
+  "Everyone says trading bots are a scam. Watch this one work, then decide. I use this, it costs nothing.",
+  "I used to sit and watch charts all day. Now I use this instead — free AI bots that trade for you.",
+  "This took me 90 seconds to set up. I use this on Clunoid and the bots are completely free.",
+  "If you have MetaTrader 5, you can do this today. Free Expert Advisors, any broker.",
+  "Nobody explains what a synthetic index is, so watch a free bot trade one and I will tell you.",
+];
+
 export const AI_PROMPTS = [
   "Give me 10 short-video hooks about automated trading that would stop someone scrolling.",
   "Explain what a synthetic index is, in 60 seconds, for a total beginner.",
@@ -393,6 +424,10 @@ export const REMINDERS = [
   {
     t: "Faceless is fine",
     d: "You never have to be on camera. A screen recording of a bot running with a voice over the top earns exactly the same as talking to the camera, and a realistic AI voice is allowed for that voice-over — there is an example on your dashboard to download. What matters is that the viewer comes away knowing what Clunoid is.",
+  },
+  {
+    t: "Say it is FREE — in every video, no exceptions",
+    d: "The single most common reason someone scrolls past is assuming it costs money. So say it out loud and put it on screen: the bots, the automations, the AI bots are 100% FREE. A video that never says this does not count towards your 30 days.",
   },
   {
     t: "Every video must tell viewers about Clunoid",

@@ -11,7 +11,9 @@ import { ArrowLeft, Play, Square, Loader2, TrendingUp, TrendingDown, Wallet, Sta
 import { TC, DOT_GRID, monoFont, fmtBalance } from "@/lib/trading/theme";
 import { BOT_DEFAULTS } from "@/lib/deriv/bots/config";
 import { SimulatedDerivBot } from "@/lib/deriv/bots/simEngine";
-import { getSimBalance } from "@/lib/deriv/bots/simBalance";
+// Aliased: the component has its own state setter called setSimBalance, which
+// would shadow this one.
+import { getSimBalance, setSimBalance as persistSimBalance } from "@/lib/deriv/bots/simBalance";
 import { getBot } from "@/lib/deriv/bots/registry";
 import { RunnerStyles } from "./RunnerStyles";
 import type { BotUI, BotStats, TradeRow } from "@/lib/deriv/bots/types";
@@ -24,11 +26,14 @@ export function DerivBotSimRunner({
   backHref = "/trading/deriv/bots/sim",
   backLabel = "All bots",
   guide = false,
+  onBack,
 }: {
   botId: string;
   /** Where the back link goes. Defaults to the sim catalogue. */
   backHref?: string;
   backLabel?: string;
+  /** Given instead of a href when "back" means going back a step, not a page. */
+  onBack?: () => void;
   /**
    * Walk a first-timer through setting it up: highlight one field at a time,
    * suggest a number scaled to their balance, confirm each step. Off by default,
@@ -91,27 +96,41 @@ export function DerivBotSimRunner({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [guide, ready]);
 
-  /** Take what is typed (or the suggestion) and move the coach on. */
-  const applyStep = (which: "stake" | "tp", raw?: number) => {
+  /**
+   * Whatever is in the box IS the value — there is no apply button. Typing just
+   * settles for a moment before the coach acknowledges it and moves on, so it
+   * does not congratulate someone halfway through typing "70".
+   */
+  const settle = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (settle.current) clearTimeout(settle.current); }, []);
+
+  const advance = (which: "stake" | "tp", value: number) => {
     if (which === "stake") {
-      const v = raw ?? parseFloat(stake);
-      if (!Number.isFinite(v) || v < BOT_DEFAULTS.minStake) {
-        setGuideMsg(`Type a stake of at least ${BOT_DEFAULTS.minStake} USD, or tap the suggestion.`);
-        return;
-      }
-      setStake(String(round2(v)));
-      setStep(1);
-      setGuideMsg(`Stake set to ${round2(v).toFixed(2)} USD. Now set your take profit.`);
-      return;
+      setStep((cur) => (cur > 1 ? cur : 1));
+      setGuideMsg(`Stake set to ${value.toFixed(2)} USD. Now set your take profit.`);
+    } else {
+      setStep((cur) => (cur > 2 ? cur : 2));
+      setGuideMsg(`Take profit set to ${value.toFixed(2)} USD. Stop loss and martingale are already handled — press Start.`);
     }
-    const v = raw ?? parseFloat(takeProfit);
-    if (!Number.isFinite(v) || v < 1) {
-      setGuideMsg("Type a take profit of at least 1 USD, or tap the suggestion.");
-      return;
-    }
-    setTakeProfit(String(round2(v)));
-    setStep(2);
-    setGuideMsg(`Take profit set to ${round2(v).toFixed(2)} USD. Stop loss and martingale can stay as they are — press Start.`);
+  };
+
+  /** Called on every keystroke in a guided field. */
+  const onGuideType = (which: "stake" | "tp", raw: string) => {
+    if (which === "stake") setStake(raw); else setTakeProfit(raw);
+    if (!guide) return;
+    if (settle.current) clearTimeout(settle.current);
+    settle.current = setTimeout(() => {
+      const v = parseFloat(raw);
+      const floor = which === "stake" ? BOT_DEFAULTS.minStake : 1;
+      if (Number.isFinite(v) && v >= floor) advance(which, round2(v));
+    }, 700);
+  };
+
+  /** Tapping the recommended number skips the wait. */
+  const takeSuggested = (which: "stake" | "tp", value: number) => {
+    if (settle.current) clearTimeout(settle.current);
+    if (which === "stake") setStake(String(value)); else setTakeProfit(String(value));
+    advance(which, value);
   };
 
   // On a phone the trades sit below everything else, so a first-timer starts the
@@ -223,6 +242,10 @@ export function DerivBotSimRunner({
       onBalance: (balance, currency) => {
         setLiveBalance({ balance, currency });
         setSimBalance(balance);
+        // Guided runs are meant to be resumable — a creator comes back and
+        // carries on from whatever the bot left them with. Only guided mode
+        // writes it down, so the plain simulator behaves as it always has.
+        if (guide) persistSimBalance(balance);
       },
       onFinish: (kind, summary) => setFinish({ kind, summary }),
     };
@@ -276,9 +299,15 @@ export function DerivBotSimRunner({
       <div className="cln-dash-inner relative z-10 flex w-full flex-1 flex-col px-4 py-4 sm:px-6 lg:px-10">
 
         <header className="flex flex-wrap items-center gap-x-3 gap-y-2">
-          <Link href={backHref} className="flex items-center gap-1 text-[12.5px] font-medium transition hover:opacity-80" style={{ color: TC.muted }}>
-            <ArrowLeft size={14} /> {backLabel}
-          </Link>
+          {onBack ? (
+            <button type="button" onClick={onBack} className="flex items-center gap-1 text-[12.5px] font-medium transition hover:opacity-80" style={{ color: TC.muted }}>
+              <ArrowLeft size={14} /> {backLabel}
+            </button>
+          ) : (
+            <Link href={backHref} className="flex items-center gap-1 text-[12.5px] font-medium transition hover:opacity-80" style={{ color: TC.muted }}>
+              <ArrowLeft size={14} /> {backLabel}
+            </Link>
+          )}
           <span className="h-4 w-px" style={{ background: TC.line }} />
           <span className="inline-flex items-center gap-1.5 truncate text-[15px] font-bold">
             {meta.name}
@@ -303,25 +332,23 @@ export function DerivBotSimRunner({
         <div className="cln-dash-grid mt-4 grid grid-cols-1 gap-4 lg:min-h-[480px] lg:flex-1 lg:grid-cols-3">
           <Col title="Configuration">
             <div className="grid gap-3">
-              <Field label="Initial stake (USD)" value={stake} onChange={setStake} min={BOT_DEFAULTS.minStake} step={0.01} disabled={runningState}
+              <Field label="Initial stake (USD)" value={stake} onChange={guide ? (v) => onGuideType("stake", v) : setStake} min={BOT_DEFAULTS.minStake} step={0.01} disabled={runningState}
                 glow={guide && !runningState && step === 0} done={guide && step > 0} />
               {guide && !runningState && step === 0 && (
                 <GuideRow
                   text={`Step 1 of 2 — set your stake. On a ${fmtBalance(guideBalance, "USD")} balance we suggest ${suggestedStake.toFixed(2)} USD.`}
                   suggestion={suggestedStake}
-                  onUse={() => applyStep("stake", suggestedStake)}
-                  onApply={() => applyStep("stake")}
+                  onUse={() => takeSuggested("stake", suggestedStake)}
                 />
               )}
 
-              <Field label="Take profit (USD)" value={takeProfit} onChange={setTakeProfit} min={1} step={1} disabled={runningState}
+              <Field label="Take profit (USD)" value={takeProfit} onChange={guide ? (v) => onGuideType("tp", v) : setTakeProfit} min={1} step={1} disabled={runningState}
                 glow={guide && !runningState && step === 1} done={guide && step > 1} />
               {guide && !runningState && step === 1 && (
                 <GuideRow
                   text={`Step 2 of 2 — set your take profit. The bot stops itself the moment it reaches this. We suggest ${suggestedTP.toFixed(2)} USD.`}
                   suggestion={suggestedTP}
-                  onUse={() => applyStep("tp", suggestedTP)}
-                  onApply={() => applyStep("tp")}
+                  onUse={() => takeSuggested("tp", suggestedTP)}
                 />
               )}
 
@@ -551,24 +578,16 @@ function Field({ label, value, onChange, min, step, disabled, glow, done }: { la
  * The one instruction showing at any moment, with the suggested number as a
  * button. Deliberately loud: this is read off a screen recording, on a phone.
  */
-function GuideRow({ text, suggestion, onUse, onApply }: {
-  text: string; suggestion: number; onUse: () => void; onApply: () => void;
-}) {
+function GuideRow({ text, suggestion, onUse }: { text: string; suggestion: number; onUse: () => void }) {
   return (
     <div className="cln-guide-card rounded-xl border p-2.5" style={{ borderColor: `${TC.profit}66`, background: "rgba(52,211,153,0.08)" }}>
       <p className="text-[12px] leading-snug" style={{ color: TC.text }}>{text}</p>
-      <div className="mt-2 flex flex-wrap gap-1.5">
-        <button type="button" onClick={onUse}
-          className="rounded-lg px-2.5 py-1.5 text-[12px] font-bold transition hover:opacity-90"
-          style={{ ...monoFont, background: TC.profit, color: TC.ink }}>
-          Use {suggestion.toFixed(2)}
-        </button>
-        <button type="button" onClick={onApply}
-          className="rounded-lg border px-2.5 py-1.5 text-[12px] font-semibold transition hover:bg-white/5"
-          style={{ borderColor: `${TC.profit}66`, color: TC.profit }}>
-          Apply what I typed
-        </button>
-      </div>
+      <button type="button" onClick={onUse}
+        className="mt-2 rounded-lg px-2.5 py-1.5 text-[12px] font-bold transition hover:opacity-90"
+        style={{ ...monoFont, background: TC.profit, color: TC.ink }}>
+        Use {suggestion.toFixed(2)}
+      </button>
+      <p className="mt-1.5 text-[11px]" style={{ color: TC.faint }}>Or just type your own — it applies as you type.</p>
     </div>
   );
 }

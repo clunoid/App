@@ -1371,7 +1371,8 @@ function RulesPanel() {
           it did well. Say the name, say what it does, or show the site or a bot running while you explain it.
           Telling people matters more than showing them: if someone watches your video and cannot say what you were
           talking about, it will not be counted. You never have to be on camera — a screen recording with your voice
-          over it is fine.
+          over it is fine. And say the bots are <b style={{ color: TC.text }}>100% FREE</b> — every video, no
+          exceptions. People scroll past because they assume it costs money.
         </p>
       </section>
 
