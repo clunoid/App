@@ -82,7 +82,7 @@ type TabKey = (typeof TABS)[number]["key"];
 const card = "rounded-2xl border p-4 sm:p-5";
 const cardStyle = { borderColor: TC.line, background: TC.panel } as const;
 const labelCls = "text-[10.5px] font-semibold uppercase tracking-wider";
-const money = (n: number) => `${n.toFixed(n % 1 === 0 ? 0 : 2)}`;
+const money = (n: number) => "$" + n.toFixed(n % 1 === 0 ? 0 : 2);
 
 /** The AI voice creators can listen to and keep. */
 const VOICE_EXAMPLE_SRC = "/creators/blake-voice-example.mp3";
