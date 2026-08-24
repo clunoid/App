@@ -134,7 +134,7 @@ export function CreatorDashboard({ me, token, onRefresh, justRegistered = false 
       <div className="relative z-10 w-full px-5 py-5 sm:px-8 lg:px-12 xl:px-16">
         <header className="flex w-full flex-wrap items-center gap-3">
           <Link href="/trading/command" className="flex items-center gap-1.5 text-[13px] font-medium transition hover:opacity-80" style={{ color: TC.muted }}>
-            <ArrowLeft size={15} /> <span className="hidden sm:inline">Command</span>
+            <ArrowLeft size={15} /> <span className="hidden sm:inline">Home</span>
           </Link>
           {/* A phone has room for the back arrow, the name and the day badge —
               the label and the programme chip are what give way. */}

@@ -23,6 +23,7 @@ import { BalanceVisibilityNote } from "@/components/deriv/BalanceVisibilityNote"
 import { parseDerivRedirect, isDerivRedirect, isDerivCodeReturn, startDerivLogin, completeDerivLogin, saveDerivTokens, loadDerivTokens, clearDerivTokens, saveDerivAccess, loadDerivAccess, clearDerivAccess, clearReconnectGuard, type DerivToken } from "@/lib/deriv/oauth";
 import { fetchDerivPortfolio, type DerivPortfolio } from "@/lib/deriv/client";
 import { fetchDerivPortfolioREST } from "@/lib/deriv/api";
+import { SupportChat } from "@/components/support/SupportChat";
 /** Binance referral — open an account with us and claim the welcome gifts. */
 const BINANCE_REFERRAL_URL = "https://www.binance.com/referral/earn-together/refer2earn-usdc/claim?hl=en&ref=GRO_28502_IIEHW&utm_source=referral_entrance";
 
@@ -332,7 +333,7 @@ export function CommandCenter() {
             <ArrowLeft size={15} /> Clunoid Trading
           </Link>
           <span className="h-4 w-px" style={{ background: TC.line }} />
-          <span className="text-[14px] font-bold tracking-[0.16em]">CENTRAL COMMAND</span>
+          <span className="text-[14px] font-bold tracking-[0.16em]">HOME</span>
           {connected && (
             <button onClick={() => void refresh(session)} disabled={loading} className="ml-auto inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12.5px] font-medium transition hover:bg-white/5 disabled:opacity-50" style={{ borderColor: TC.line, color: TC.muted }}>
               {loading ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />} Refresh
@@ -343,7 +344,7 @@ export function CommandCenter() {
         <div className="mt-2 max-w-2xl">
           <h1 className="text-[26px] font-bold sm:text-[30px]">{portfolio?.name ? `Welcome, ${portfolio.name.split(" ")[0]}.` : "Your accounts, one place."}</h1>
           <p className="mt-1.5 text-[13.5px] leading-relaxed" style={{ color: TC.muted }}>
-            Connect a platform and manage every account — full portfolio, balances and status — from a single command center. No Clunoid account needed; you authorise your own broker.
+            Connect a platform and manage every account — full portfolio, balances and status — from one place. No Clunoid account needed; you authorise your own broker.
           </p>
         </div>
 
@@ -636,6 +637,8 @@ export function CommandCenter() {
           }}
         />
       )}
+
+      <SupportChat source="Home" />
     </main>
   );
 }

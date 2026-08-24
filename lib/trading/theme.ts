@@ -3,6 +3,10 @@
 export const TC = {
   bg: "#1F1E1C", // matches the classic Showtime console background (bg-base)
   panel: "rgba(255,255,255,0.032)",
+  /** Opaque surface for anything that floats over the page. The translucent
+   *  panel above only works when there is a page behind it to tint; a dialog
+   *  or a popover needs something you can actually read text on. */
+  panelSolid: "#26241f",
   panelHi: "rgba(255,255,255,0.06)",
   line: "rgba(125,211,252,0.14)",
   text: "#eaf2fb",

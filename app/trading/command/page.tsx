@@ -9,7 +9,7 @@ import { CommandCenter } from "@/components/trading/CommandCenter";
  * reachable in trading mode (middleware).
  */
 export const metadata: Metadata = {
-  title: "Central Command — connect your broker account",
+  title: "Home — connect your broker account",
   description:
     "Connect your broker and see every account, balance and platform in one place, then open the trading bots. You authorise your own broker directly.",
   alternates: { canonical: "/trading/command" },

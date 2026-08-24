@@ -9,6 +9,7 @@ import Link from "next/link";
 import { ArrowLeft, Bot, Star, ChevronRight, LineChart } from "lucide-react";
 import { TC, DOT_GRID, monoFont } from "@/lib/trading/theme";
 import { MT5_BOTS, RATING_HOT } from "@/lib/deriv/mt5/registry";
+import { SupportChat } from "@/components/support/SupportChat";
 
 export function Mt5BotsList() {
   return (
@@ -17,7 +18,7 @@ export function Mt5BotsList() {
       <div className="relative z-10 w-full px-6 py-5 sm:px-10 lg:px-16">
         <header className="flex flex-wrap items-center gap-3">
           <Link href="/trading/command" className="flex items-center gap-1.5 text-[13px] font-medium transition hover:opacity-80" style={{ color: TC.muted }}>
-            <ArrowLeft size={15} /> Command
+            <ArrowLeft size={15} /> Home
           </Link>
           <span className="h-4 w-px" style={{ background: TC.line }} />
           <span className="inline-flex items-center gap-1.5 text-[14px] font-bold tracking-[0.14em]"><Bot size={16} style={{ color: TC.profit }} /> MT5 AUTOMATIONS</span>
@@ -67,6 +68,8 @@ export function Mt5BotsList() {
           Trading carries risk. This is an automated tool, not financial advice or a profit guarantee. Never risk more than you can afford to lose.
         </p>
       </div>
+
+      <SupportChat source="MT5 bots" />
     </main>
   );
 }

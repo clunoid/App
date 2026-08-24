@@ -30,7 +30,7 @@ import { PayoutPicker } from "./PayoutPicker";
 import { PlatformPicker } from "./PlatformPicker";
 import { Reminders } from "./Reminders";
 import { FieldOk, useToast } from "./Feedback";
-import { SupportChat } from "./SupportChat";
+import { SupportChat } from "@/components/support/SupportChat";
 import {
   A, GOOD, BAD, PAYOUTS, LADDER, STEPS, DO, DONT, IDEAS, AI_PROMPTS, addDays, fmt,
   DEFAULT_PLATFORMS, PLATFORMS_REQUIRED, platformInfo,
@@ -163,7 +163,7 @@ export function CreatorsHub() {
     return (
       <>
         <CreatorDashboard me={me} token={token} onRefresh={refresh} justRegistered={justRegistered} />
-        <SupportChat email={me.creator.email} name={me.creator.name} country={me.creator.country} />
+        <SupportChat source="Creator Program" email={me.creator.email} name={me.creator.name} country={me.creator.country} />
       </>
     );
   }
@@ -184,7 +184,7 @@ export function CreatorsHub() {
       <div className="relative z-10 w-full px-5 py-5 sm:px-8 lg:px-12 xl:px-16">
         <header className="flex w-full flex-wrap items-center gap-3">
           <Link href="/trading/command" className="flex items-center gap-1.5 text-[13px] font-medium transition hover:opacity-80" style={{ color: TC.muted }}>
-            <ArrowLeft size={15} /> <span className="hidden sm:inline">Command</span>
+            <ArrowLeft size={15} /> <span className="hidden sm:inline">Home</span>
           </Link>
           {/* On a phone the arrow alone is enough — the label and the programme
               chip are the first things to go so the rest of the row fits. */}
@@ -575,7 +575,7 @@ You get <b style={{ color: TC.text }}>$500 on top</b> of what you already earn, 
 
       {/* Whatever they have typed into the form so far is the address to reply
           to — someone asking a question before registering has given us one. */}
-      <SupportChat email={f.email} name={f.name} country={f.country} />
+      <SupportChat source="Creator Program" email={f.email} name={f.name} country={f.country} />
 
       {toast}
     </main>

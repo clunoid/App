@@ -284,9 +284,9 @@ export const IDEAS = [
   },
   {
     t: "Everything in one place",
-    d: "The Central Command angle — for people juggling several accounts.",
+    d: "The Home screen angle — for people juggling several accounts.",
     hook: "I have accounts on three brokers and I stopped logging into all of them.",
-    show: "Central Command with every account and balance listed in one place.",
+    show: "Your Clunoid home screen with every account and balance listed in one place.",
     pivot: "\u201COne page, every account. It is on clunoid.com with the bots.\u201D",
   },
   {
