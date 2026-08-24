@@ -33,6 +33,7 @@ import { TeamPanel } from "./TeamPanel";
 import { Reminders } from "./Reminders";
 import { FieldOk, useToast } from "./Feedback";
 import { computeProgress, GRACE_DAYS, QUALIFYING_DAYS_NEEDED, type Progress } from "@/lib/creators/progress";
+import { loadDerivAccess } from "@/lib/deriv/oauth";
 
 // ── the shape /api/creators/me returns ──────────────────────────────────────
 export type Creator = {
@@ -122,8 +123,12 @@ export function CreatorDashboard({ me, token, onRefresh, justRegistered = false 
 
   const started = progress.phase !== "awaiting_first_post";
 
+  // The page uses overflow-x-CLIP rather than hidden: hidden turns this into a
+  // scroll container, which silently stops position:sticky working on the
+  // sidebar. Clip contains the same overflow without creating one.
+
   return (
-    <main className="relative min-h-[100dvh] w-full overflow-x-hidden" style={{ background: TC.bg, color: TC.text }}>
+    <main className="relative min-h-[100dvh] w-full overflow-x-clip" style={{ background: TC.bg, color: TC.text }}>
       <div aria-hidden className="pointer-events-none absolute inset-0" style={DOT_GRID} />
 
       <div className="relative z-10 w-full px-5 py-5 sm:px-8 lg:px-12 xl:px-16">
@@ -201,8 +206,11 @@ export function PostDailyBanner() {
 function Sidebar({ tab, setTab, progress, started }: { tab: TabKey; setTab: (t: TabKey) => void; progress: Progress; started: boolean }) {
   return (
     <nav className="lg:w-[212px] lg:shrink-0">
-      {/* Desktop: a sticky column. Mobile: a scrolling strip of the same items. */}
-      <div className="-mx-5 flex gap-2 overflow-x-auto px-5 pb-2 lg:mx-0 lg:sticky lg:top-5 lg:flex-col lg:overflow-visible lg:px-0 lg:pb-0">
+      {/* Desktop: the whole column pins to the viewport and scrolls on its own,
+          so the header and the tabs do not slide away together. Mobile: the same
+          items as a strip that scrolls sideways. */}
+      <div className="-mx-5 px-5 pb-2 lg:sticky lg:top-4 lg:mx-0 lg:max-h-[calc(100dvh-2rem)] lg:overflow-y-auto lg:px-0 lg:pb-2">
+      <div className="flex gap-2 overflow-x-auto lg:flex-col lg:overflow-visible">
         {TABS.map(({ key, label, icon: Icon }) => {
           const on = tab === key;
           return (
@@ -226,6 +234,8 @@ function Sidebar({ tab, setTab, progress, started }: { tab: TabKey; setTab: (t: 
         <span className="whitespace-nowrap">Start creating</span>
       </Link>
 
+      <EarnMore />
+
       {started && (
         <div className="mt-3 hidden rounded-xl border p-3 lg:block" style={{ borderColor: TC.line, background: "rgba(0,0,0,0.22)" }}>
           <div className={labelCls} style={{ color: TC.faint }}>Progress</div>
@@ -237,6 +247,7 @@ function Sidebar({ tab, setTab, progress, started }: { tab: TabKey; setTab: (t: 
           </div>
         </div>
       )}
+      </div>
     </nav>
   );
 }
@@ -384,6 +395,61 @@ function Overview({ me, progress, token, onRefresh, now, setTab, show }: {
 
       <Reminders title="Reminders for every creator" />
     </div>
+  );
+}
+
+/**
+ * A creator's other income.
+ *
+ * Everyone here has a Clunoid account by definition — they are making videos
+ * about the bots. Plenty of them have never actually run one, and the posting
+ * money is capped while the bots are not. If a balance is connected it shows,
+ * because a number someone recognises is more persuasive than an invitation.
+ */
+function EarnMore() {
+  const [balance, setBalance] = useState<{ amount: number; currency: string } | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    (async () => {
+      try {
+        const token = loadDerivAccess();
+        if (!token) return;
+        const { fetchDerivPortfolioREST } = await import("@/lib/deriv/api");
+        const p = await fetchDerivPortfolioREST(token);
+        if (!live || p.totalReal == null) return;
+        setBalance({ amount: p.totalReal, currency: p.totalCurrency || "USD" });
+      } catch { /* not connected, or the token has gone — the badge still works */ }
+    })();
+    return () => { live = false; };
+  }, []);
+
+  return (
+    <Link href="/trading/deriv/bots"
+      className="mt-3 hidden overflow-hidden rounded-xl border lg:block"
+      style={{ borderColor: "rgba(56,189,248,0.4)", background: "linear-gradient(180deg, rgba(56,189,248,0.12), rgba(255,255,255,0.015))" }}>
+      <div className="p-3">
+        <div className="flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: "#38bdf8" }}>
+          <TrendingUp size={13} /> Earn more
+        </div>
+
+        {balance ? (
+          <div className="mt-1.5 text-[15px] font-bold leading-none" style={{ ...monoFont, color: TC.text }}>
+            {balance.currency} {balance.amount.toFixed(2)}
+          </div>
+        ) : null}
+
+        <p className="mt-1.5 text-[11.5px] leading-relaxed" style={{ color: TC.muted }}>
+          {balance
+            ? "Put your own account to work while you post — run a bot alongside the videos."
+            : "Posting is not the only way to earn here. Run one of the free bots on your own account, on top of what you make from videos."}
+        </p>
+
+        <span className="mt-2 inline-flex items-center gap-1 text-[12px] font-semibold" style={{ color: "#38bdf8" }}>
+          Open the bots <ExternalLink size={12} />
+        </span>
+      </div>
+    </Link>
   );
 }
 

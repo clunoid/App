@@ -13,6 +13,7 @@
  * (deriv-com/deriv-api-schemas, rest-api-openapi.json).
  */
 import { DERIV_CLIENT_ID } from "./config";
+import { reconnectAfterExpiry } from "./oauth";
 import type { ConnectedAccount } from "@/lib/trading/accounts";
 import type { DerivPortfolio } from "./client";
 
@@ -26,7 +27,10 @@ async function get(path: string, accessToken: string): Promise<unknown> {
     },
   });
   if (res.status === 401) {
-    throw new Error("Your Deriv session expired — please reconnect.");
+    // Do not tell them the session expired — just put it right. This navigates
+    // away, so the throw below is only reached if the redirect could not start.
+    if (reconnectAfterExpiry()) throw new Error("Reconnecting to Deriv…");
+    throw new Error("Could not reach your Deriv account. Please connect again.");
   }
   const json = (await res.json().catch(() => null)) as
     | { data?: unknown; errors?: Array<{ message?: string; code?: string }>; message?: string; error?: string }

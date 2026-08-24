@@ -11,6 +11,7 @@
  * to classic Clunoid.
  */
 import { useState } from "react";
+import { startDerivLogin, loadDerivAccess, loadDerivTokens } from "@/lib/deriv/oauth";
 import { Activity, ArrowUpRight, BookOpen, BrainCircuit, Cpu, LineChart, Lock, ShieldCheck, Zap, ChevronRight, Loader2, Clapperboard } from "lucide-react";
 import { useClunoid } from "@/lib/store/useClunoid";
 import { TradingHub } from "@/components/trading/TradingHub";
@@ -61,6 +62,45 @@ const BRANDS: { name: string; src: string; cap: number }[] = [
   { name: "The 5%ers", src: "/logos/the5ers.svg", cap: 0.6 },
   { name: "FundingPips", src: "/logos/fundingpips.svg", cap: 1 },
 ];
+
+/**
+ * "Get started" connects, it does not just navigate.
+ *
+ * Someone who arrives here and presses this wants to use the bots, and the bots
+ * need their broker. So it goes straight to Deriv's own authorisation — the same
+ * call the command centre's Connect button makes — and Deriv sends them back to
+ * the command centre already connected. Nobody lands on an empty dashboard
+ * wondering what to press next.
+ *
+ * Already connected? Then there is nothing to authorise, so it just opens the
+ * command centre.
+ */
+function GetStarted() {
+  const [busy, setBusy] = useState(false);
+
+  async function go() {
+    if (busy) return;
+    setBusy(true);
+    try {
+      if (loadDerivAccess() || loadDerivTokens().length > 0) {
+        window.location.href = "/trading/command";
+        return;
+      }
+      await startDerivLogin();
+    } catch {
+      // If Deriv cannot be reached, the command centre can still explain.
+      window.location.href = "/trading/command";
+    }
+  }
+
+  return (
+    <button type="button" onClick={go} disabled={busy}
+      className="inline-flex items-center gap-2 rounded-xl px-5 py-3 text-[14px] font-semibold transition hover:opacity-90 disabled:opacity-70"
+      style={{ background: C.profit, color: "#04121f" }}>
+      {busy ? <><Loader2 size={16} className="animate-spin" /> Connecting…</> : <>Get started <ArrowUpRight size={16} /></>}
+    </button>
+  );
+}
 
 export function TradingLanding() {
   const isAuthed = useClunoid((s) => s.user.isAuthed);
@@ -128,9 +168,7 @@ export function TradingLanding() {
               analysing the market, deciding, and placing the trades, around the clock. You keep custody; the machine does the work.
             </p>
             <div className="mt-7 flex flex-wrap items-center gap-3">
-              <a href="/trading/command" className="inline-flex items-center gap-2 rounded-xl px-5 py-3 text-[14px] font-semibold transition hover:opacity-90" style={{ background: C.profit, color: "#04121f" }}>
-                Get started <ArrowUpRight size={16} />
-              </a>
+              <GetStarted />
               <a href="#platforms" className="inline-flex items-center gap-2 rounded-xl border px-5 py-3 text-[14px] font-medium transition hover:bg-white/5" style={{ borderColor: C.line, color: C.text }}>
                 <BookOpen size={16} style={{ color: C.profit }} /> Explore the trading hub
               </a>

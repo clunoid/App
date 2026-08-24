@@ -20,7 +20,7 @@ import { TC, DOT_GRID, monoFont, fmtBalance } from "@/lib/trading/theme";
 import type { ConnectedAccount } from "@/lib/trading/accounts";
 import { hasDerivApp, DERIV_AFFILIATE_URL, DERIV_TRACKED_DEPOSIT_URL, DERIV_TRACKED_WITHDRAW_URL } from "@/lib/deriv/config";
 import { BalanceVisibilityNote } from "@/components/deriv/BalanceVisibilityNote";
-import { parseDerivRedirect, isDerivRedirect, isDerivCodeReturn, startDerivLogin, completeDerivLogin, saveDerivTokens, loadDerivTokens, clearDerivTokens, saveDerivAccess, loadDerivAccess, clearDerivAccess, type DerivToken } from "@/lib/deriv/oauth";
+import { parseDerivRedirect, isDerivRedirect, isDerivCodeReturn, startDerivLogin, completeDerivLogin, saveDerivTokens, loadDerivTokens, clearDerivTokens, saveDerivAccess, loadDerivAccess, clearDerivAccess, clearReconnectGuard, type DerivToken } from "@/lib/deriv/oauth";
 import { fetchDerivPortfolio, type DerivPortfolio } from "@/lib/deriv/client";
 import { fetchDerivPortfolioREST } from "@/lib/deriv/api";
 /** Binance referral — open an account with us and claim the welcome gifts. */
@@ -237,6 +237,8 @@ export function CommandCenter() {
         try {
           const accessToken = await completeDerivLogin(search);
           saveDerivAccess(accessToken);
+          // A fresh token means a future expiry is allowed to auto-retry again.
+          clearReconnectGuard();
           clearDerivTokens(); // OAuth supersedes any pasted token
           const s: Session = { kind: "oauth", accessToken };
           setSession(s);

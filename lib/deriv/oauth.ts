@@ -228,6 +228,36 @@ export function saveDerivAccess(token: string): void {
 export function loadDerivAccess(): string {
   try { return localStorage.getItem(ACCESS_KEY) || ""; } catch { return ""; }
 }
+/**
+ * A Deriv access token has a life, and there is nothing we can do about that —
+ * it is their OAuth server that decides. What we can do is stop showing people
+ * an error about it: throw the dead token away and send them straight back
+ * through the same connect they already did. If their Deriv session is still
+ * alive, that round-trip is invisible and they land back where they were.
+ *
+ * Guarded to one attempt per browser session. If Deriv keeps refusing, a second
+ * automatic redirect would be a loop, and a loop is worse than a message.
+ */
+const RECONNECT_GUARD = "clunoid_deriv_reconnecting";
+
+export function reconnectAfterExpiry(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    if (sessionStorage.getItem(RECONNECT_GUARD) === "1") return false;
+    sessionStorage.setItem(RECONNECT_GUARD, "1");
+  } catch { /* private mode — try anyway, once */ }
+
+  clearDerivAccess();
+  clearDerivTokens();
+  void startDerivLogin();
+  return true;
+}
+
+/** Called once a connection succeeds, so a later expiry can retry again. */
+export function clearReconnectGuard(): void {
+  try { sessionStorage.removeItem(RECONNECT_GUARD); } catch { /* ignore */ }
+}
+
 export function clearDerivAccess(): void {
   try { localStorage.removeItem(ACCESS_KEY); } catch { /* ignore */ }
 }

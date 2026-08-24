@@ -9,6 +9,7 @@
  * (same host + auth the command center already uses to read the portfolio).
  */
 import { DERIV_API_BASE, DERIV_BOT_APP_ID } from "./config";
+import { reconnectAfterExpiry } from "../oauth";
 
 /** POST /trading/v1/options/accounts/{accountId}/otp → the ready-to-connect WS URL. */
 export async function fetchTradeSocketUrl(accessToken: string, accountId: string): Promise<string> {
@@ -25,7 +26,11 @@ export async function fetchTradeSocketUrl(accessToken: string, accountId: string
   const json = (await res.json().catch(() => null)) as
     | { data?: { url?: string }; errors?: Array<{ message?: string }>; message?: string; error?: string }
     | null;
-  if (res.status === 401) throw new Error("Your Deriv session expired — reconnect in the command center.");
+  if (res.status === 401) {
+    // Same as the REST client: reconnect rather than report.
+    if (reconnectAfterExpiry()) throw new Error("Reconnecting to Deriv…");
+    throw new Error("Could not reach your Deriv account. Please connect again.");
+  }
   const url = json?.data?.url;
   if (!res.ok || !url) {
     throw new Error(json?.errors?.[0]?.message || json?.message || json?.error || `Couldn't open a trading session (${res.status}).`);
