@@ -31,8 +31,8 @@ export function Mt5PlatformList() {
           <h1 className="text-[26px] font-bold sm:text-[30px]">Automations for MetaTrader 5</h1>
           <p className="mt-1.5 text-[13.5px] leading-relaxed" style={{ color: TC.muted }}>
             Professional Expert Advisors that run hands-free on your own MT5 terminal — any broker, any balance. Every
-            trade is sized to your account and carries a hard stop the instant it opens. One is free; the rest, a simple
-            one-time purchase — no subscriptions, no connection needed.
+            trade is sized to your account and carries a hard stop the instant it opens. One is ready to download now;
+            the rest are still in testing — open any of them to be told the moment it is ready.
           </p>
           <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 text-[12px]" style={{ color: TC.faint }}>
             <span className="inline-flex items-center gap-1.5"><Wallet size={13} style={{ color: TC.profit }} /> Manages any balance</span>

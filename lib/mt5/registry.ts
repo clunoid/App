@@ -25,7 +25,6 @@ export type Mt5Auto = {
   markets: string;
   status: Mt5Status;
   free?: boolean; // the Aggressive automation is free; the rest are one-time purchases
-  priceUsd?: number; // one-time price for a paid automation (mirrors lib/deriv/mt5/products.ts)
   file?: string; // public download path — free automation only (paid ones stream via the gated route)
 };
 
@@ -56,7 +55,6 @@ export const MT5_AUTOS: Mt5Auto[] = [
       "A patient, fully hands-free automation that follows market trends across indices, metals, currencies and crypto — holding the winners, cutting the losers small, and diversifying across a broad basket from a single chart.",
     markets: "Indices · Metals · FX · Crypto",
     status: "available",
-    priceUsd: 425,
   },
   {
     id: "index-dip",
@@ -68,7 +66,6 @@ export const MT5_AUTOS: Mt5Auto[] = [
       "Automated dip-buying on major stock indices that are still climbing. It steps in when a rising market pulls back, then takes the quick bounce and moves on. Frequent, fast, and the ideal partner to a trend automation.",
     markets: "US500 · US30 · NAS100 · indices",
     status: "available",
-    priceUsd: 149,
   },
   {
     id: "volatility-breakout",
@@ -80,7 +77,6 @@ export const MT5_AUTOS: Mt5Auto[] = [
       "When gold, silver, oil, copper or the major coins break into a powerful move, this hands-free automation gets you in and rides it with a wide trailing exit — staying with winners while every trade opens under a hard stop.",
     markets: "Gold · Silver · Oil · Copper · Crypto",
     status: "available",
-    priceUsd: 249,
   },
   {
     id: "orb",
@@ -92,7 +88,6 @@ export const MT5_AUTOS: Mt5Auto[] = [
       "The fast, active counterpart to your position automations. It trades the break of the market open across major indices, then closes everything before the bell. Fully hands-free, flat overnight, every trade protected.",
     markets: "US500 · US30 · NAS100 · indices",
     status: "available",
-    priceUsd: 99,
   },
   {
     id: "crypto-momentum",
@@ -104,7 +99,6 @@ export const MT5_AUTOS: Mt5Auto[] = [
       "Ride the major coins while they trend — BTC, ETH, SOL, XRP and more — around the clock. Fully hands-free, every position protected the moment it opens, all on your own MT5 terminal.",
     markets: "BTC · ETH · SOL · XRP · and more",
     status: "available",
-    priceUsd: 349,
   },
   {
     id: "crypto-ls",
@@ -116,7 +110,6 @@ export const MT5_AUTOS: Mt5Auto[] = [
       "A market-neutral crypto book that goes long the strongest coins and short the weakest at the same time. It aims to profit from which coins outperform — whether the market rises or falls. Fully hands-free, with a hard stop on every trade.",
     markets: "Long-short across major coins",
     status: "available",
-    priceUsd: 199,
   },
   {
     id: "currency-trend",

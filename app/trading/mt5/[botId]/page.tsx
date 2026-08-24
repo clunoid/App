@@ -17,8 +17,12 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const b = getMt5Auto(botId);
   if (!b) return { title: "MetaTrader 5 automations", alternates: { canonical: "/trading/mt5" } };
   const title = b.free ? `${b.name} — free MT5 automation` : `${b.name} — MT5 automation`;
-  const buy = b.free ? "Download the Expert Advisor" : "A one-time purchase — download the Expert Advisor";
-  const description = `${b.blurb} ${buy} and run it on your own MetaTrader 5 terminal, on any broker.`;
+  // Nothing is for sale here while these are in testing, so the description
+  // says what a reader can actually do today.
+  const state = b.free
+    ? "Download the Expert Advisor"
+    : "Still in testing — join the channel to hear when it is ready to download";
+  const description = `${b.blurb} ${state}, and run it on your own MetaTrader 5 terminal, on any broker.`;
   const url = `/trading/mt5/${b.id}`;
   return { title, description, alternates: { canonical: url }, openGraph: { type: "article", url, title: `${title} · Clunoid Trading`, description } };
 }

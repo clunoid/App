@@ -57,7 +57,20 @@ export default function sitemap(): MetadataRoute.Sitemap {
       priority: 0.8,
     })),
 
+    // The broker and charting pages. Each is a real destination with its own
+    // title, description and canonical, and people search for these by name —
+    // leaving them out was the sitemap's only gap.
+    { url: `${BASE}/trading/exness`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
+    { url: `${BASE}/trading/tradingview`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
+
+    // The Creator Program — a public landing page people are sent to by name.
+    { url: `${BASE}/trading/creators`, lastModified: now, changeFrequency: "weekly", priority: 0.7 },
+
     // The account hub — useful, but a tool rather than something people search.
     { url: `${BASE}/trading/command`, lastModified: now, changeFrequency: "monthly", priority: 0.5 },
+
+    // Deliberately absent, and it should stay that way: /trading/creators/practice
+    // and everything under /trading/deriv/bots/sim are noindex — they are
+    // practice surfaces, not pages anybody should land on from a search.
   ];
 }
