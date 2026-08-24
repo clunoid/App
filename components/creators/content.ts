@@ -599,11 +599,6 @@ export const INVITE_VARIANTS: InviteVariant[] = [
   },
 ];
 
-/** The one used unless a creator has chosen otherwise. */
-export function inviteMessage(link: string): string {
-  return INVITE_VARIANTS[0].body(link);
-}
-
 export const DISCLAIMER =
   "If your post tells people about Clunoid, it counts. Stop overthinking it and start posting.";
 

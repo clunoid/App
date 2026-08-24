@@ -25,6 +25,7 @@ import {
 import { TC, DOT_GRID, monoFont } from "@/lib/trading/theme";
 import { CountryPicker } from "./CountryPicker";
 import { CreatorDashboard, PostDailyBanner, type Me } from "./CreatorDashboard";
+import { loadDerivAccess } from "@/lib/deriv/oauth";
 import { PayoutPicker } from "./PayoutPicker";
 import { PlatformPicker } from "./PlatformPicker";
 import { Reminders } from "./Reminders";
@@ -81,10 +82,18 @@ export function CreatorsHub() {
       const res = await fetch("/api/creators/me", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token: t }),
+        // The Deriv token goes along so somebody on a new device is recognised
+        // by the account they already connected, instead of being told their
+        // email is taken and left with nowhere to go.
+        body: JSON.stringify({ token: t, derivAccess: loadDerivAccess() }),
       });
       if (!res.ok) return false;
-      setMe((await res.json()) as Me);
+      const data = (await res.json()) as Me & { recoveredToken?: string };
+      if (data.recoveredToken) {
+        try { window.localStorage.setItem(TOKEN_KEY, data.recoveredToken); } catch { /* private mode */ }
+        setToken(data.recoveredToken);
+      }
+      setMe(data);
       return true;
     } catch {
       return false;

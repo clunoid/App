@@ -430,23 +430,20 @@ function EarnMore() {
       style={{ borderColor: "rgba(56,189,248,0.4)", background: "linear-gradient(180deg, rgba(56,189,248,0.12), rgba(255,255,255,0.015))" }}>
       <div className="p-3">
         <div className="flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: "#38bdf8" }}>
-          <TrendingUp size={13} /> Earn more
+          <TrendingUp size={13} /> Your trading balance
         </div>
 
-        {balance ? (
-          <div className="mt-1.5 text-[15px] font-bold leading-none" style={{ ...monoFont, color: TC.text }}>
-            {balance.currency} {balance.amount.toFixed(2)}
-          </div>
-        ) : null}
+        <div className="mt-1.5 text-[17px] font-bold leading-none" style={{ ...monoFont, color: TC.text }}>
+          {balance ? `${balance.currency} ${balance.amount.toFixed(2)}` : "—"}
+        </div>
 
         <p className="mt-1.5 text-[11.5px] leading-relaxed" style={{ color: TC.muted }}>
-          {balance
-            ? "Put your own account to work while you post — run a bot alongside the videos."
-            : "Posting is not the only way to earn here. Run one of the free bots on your own account, on top of what you make from videos."}
+          {balance ? "Set a bot running on it while you post." : "Connect your account and set a bot running."}
         </p>
 
-        <span className="mt-2 inline-flex items-center gap-1 text-[12px] font-semibold" style={{ color: "#38bdf8" }}>
-          Open the bots <ExternalLink size={12} />
+        <span className="mt-2.5 inline-flex w-full items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-[12px] font-bold transition"
+          style={{ background: "#38bdf8", color: "#04121f" }}>
+          Go trade <ExternalLink size={12} />
         </span>
       </div>
     </Link>

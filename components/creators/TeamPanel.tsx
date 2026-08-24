@@ -13,12 +13,20 @@
  * how a domain ends up flagged or blocked on a platform. Every creator having
  * their own address avoids that — and it lands on the product, not on this
  * programme, because someone arriving from a video should meet the bots first.
+ *
+ * On the wordings: there is no "selected" one. Whatever sits at the top of the
+ * list is what goes out — a starred version if they starred one, otherwise this
+ * visit's random pick. Nothing is ever shown as chosen that the creator did not
+ * choose, and fifty people do not all send the same sentence.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Users, Copy, Check, Link2, Share2, ShieldCheck, Clock, X, Loader2, UserPlus, MessageSquare, Star, ChevronDown } from "lucide-react";
+import {
+  Users, Copy, Check, Link2, Share2, ShieldCheck, Clock, X, Loader2, UserPlus,
+  MessageSquare, Star, ChevronDown,
+} from "lucide-react";
 import { TC, monoFont } from "@/lib/trading/theme";
-import { A, GOOD, BAD, fmt, inviteMessage, INVITE_VARIANTS } from "./content";
+import { A, GOOD, BAD, fmt, INVITE_VARIANTS } from "./content";
 import type { Me } from "./CreatorDashboard";
 
 const card = "rounded-2xl border p-4 sm:p-5";
@@ -26,8 +34,10 @@ const cardStyle = { borderColor: TC.line, background: TC.panel } as const;
 const labelCls = "text-[10.5px] font-semibold uppercase tracking-wider";
 const money = (n: number) => "$" + n.toFixed(0);
 
-/** Which wordings this creator starred. Their phone, their preference. */
+/** Which wordings this creator starred. Their device, their preference. */
 const FAVES_KEY = "cln_invite_faves";
+
+type Variant = (typeof INVITE_VARIANTS)[number];
 
 export function TeamPanel({ me, show, onRefresh, token }: {
   me: Me; show: (t: string, tone?: "ok" | "bad") => void; onRefresh: () => Promise<void>; token: string;
@@ -35,37 +45,26 @@ export function TeamPanel({ me, show, onRefresh, token }: {
   const { creator, team, teamTotals } = me;
   const [copied, setCopied] = useState<string | null>(null);
   const [picking, setPicking] = useState(false);
-  const [variant, setVariant] = useState(INVITE_VARIANTS[0].key);
-  const [favourites, setFavourites] = useState<string[]>([]);
   const [browsing, setBrowsing] = useState(false);
-  // Reshuffled once per visit. Without it every creator opens on the same
-  // wording, and fifty identical messages is what makes something look like spam.
-  const [shuffle] = useState(() => INVITE_VARIANTS.map((v) => v.key).sort(() => Math.random() - 0.5));
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [favourites, setFavourites] = useState<string[]>([]);
   const [origin, setOrigin] = useState("https://clunoid.com");
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Shuffled once per visit, so with nothing starred the top one differs
+  // between creators and between sessions.
+  const [shuffle] = useState(() => INVITE_VARIANTS.map((v) => v.key).sort(() => Math.random() - 0.5));
 
   useEffect(() => {
     if (typeof window !== "undefined") setOrigin(window.location.origin);
-    let picked = "";
     try {
       const saved = JSON.parse(localStorage.getItem(FAVES_KEY) || "[]");
-      if (Array.isArray(saved)) {
-        const keys = saved.filter((k) => typeof k === "string");
-        setFavourites(keys);
-        if (keys[0]) picked = keys[0];
-      }
+      if (Array.isArray(saved)) setFavourites(saved.filter((k) => typeof k === "string"));
     } catch { /* nothing saved */ }
-    // No favourite yet? Start on a random one rather than always the first.
-    setVariant(picked || shuffle[0] || INVITE_VARIANTS[0].key);
     return () => { if (timer.current) clearTimeout(timer.current); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Starred wordings float to the top, because a creator who found one that
-  // works for them should not have to hunt for it every time. Everything else
-  // keeps this visit's random order.
   const rank = (k: string) => (favourites.includes(k) ? -1000 + favourites.indexOf(k) : shuffle.indexOf(k));
-  const ordered = [...INVITE_VARIANTS].sort((x, y) => rank(x.key) - rank(y.key));
+  const ordered: Variant[] = [...INVITE_VARIANTS].sort((x, y) => rank(x.key) - rank(y.key));
 
   function toggleFave(key: string) {
     setFavourites((cur) => {
@@ -77,14 +76,15 @@ export function TeamPanel({ me, show, onRefresh, token }: {
 
   const code = creator.referral_code ?? "";
   const link = code ? `${origin}/r/${code}` : "";
-  const chosen = INVITE_VARIANTS.find((v) => v.key === variant) ?? INVITE_VARIANTS[0];
-  const message = link ? chosen.body(link) : inviteMessage(link);
+  const message = (ordered[0] ?? INVITE_VARIANTS[0]).body(link);
 
   const copy = useCallback(async (what: string, value: string) => {
     try {
       await navigator.clipboard.writeText(value);
       setCopied(what);
-      show(what === "link" ? "Link copied — put it in your bio" : what === "message" ? "Message copied — paste and send" : "Code copied");
+      show(what === "link" ? "Link copied — put it in your bio"
+        : what === "message" ? "Message copied — paste and send"
+        : "Code copied");
       if (timer.current) clearTimeout(timer.current);
       timer.current = setTimeout(() => setCopied(null), 1600);
     } catch {
@@ -143,7 +143,7 @@ export function TeamPanel({ me, show, onRefresh, token }: {
           <button type="button" onClick={() => setBrowsing(true)}
             className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border px-3.5 py-2.5 text-[12.5px] font-semibold transition hover:bg-white/5"
             style={{ borderColor: TC.line, color: TC.muted }}>
-            <MessageSquare size={14} style={{ color: A }} /> Wordings
+            <MessageSquare size={14} style={{ color: A }} /> Send a message
           </button>
         </div>
 
@@ -156,7 +156,6 @@ export function TeamPanel({ me, show, onRefresh, token }: {
           </button>
         </div>
 
-        {/* the real reason this matters */}
         <div className="mt-4 rounded-xl border p-3" style={{ borderColor: `${GOOD}44`, background: `${GOOD}10` }}>
           <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider" style={{ color: GOOD }}>
             <ShieldCheck size={13} /> Use this link in your bios, not clunoid.com
@@ -174,7 +173,8 @@ export function TeamPanel({ me, show, onRefresh, token }: {
       {/* ── the numbers ───────────────────────────────────────────────────── */}
       <section className="grid gap-3 sm:grid-cols-3">
         <Stat label="People you brought" value={String(teamTotals.members)} sub="Joined through your link" tone={A} />
-        <Stat label="Earned from your team" value={money(teamTotals.earnedUsd)} sub={teamTotals.earning === 1 ? "1 of them has been paid" : `${teamTotals.earning} of them have been paid`} tone={GOOD} />
+        <Stat label="Earned from your team" value={money(teamTotals.earnedUsd)}
+          sub={teamTotals.earning === 1 ? "1 of them has been paid" : `${teamTotals.earning} of them have been paid`} tone={GOOD} />
         <Stat label="Waiting on them" value={money(teamTotals.pendingUsd)} sub="Yours once they get paid" tone={A} />
       </section>
 
@@ -235,11 +235,8 @@ export function TeamPanel({ me, show, onRefresh, token }: {
       {picking && (
         <CopyChoice
           link={link}
-          message={message}
           variants={ordered}
-          variant={variant}
           favourites={favourites}
-          onVariant={setVariant}
           onFave={toggleFave}
           onClose={() => setPicking(false)}
           onPick={(what, value) => { setPicking(false); copy(what, value); }}
@@ -247,12 +244,10 @@ export function TeamPanel({ me, show, onRefresh, token }: {
       )}
 
       {browsing && (
-        <WordingLibrary
+        <MessageLibrary
           link={link}
           variants={ordered}
-          variant={variant}
           favourites={favourites}
-          onVariant={setVariant}
           onFave={toggleFave}
           onCopy={(value) => { setBrowsing(false); copy("message", value); }}
           onClose={() => setBrowsing(false)}
@@ -263,23 +258,43 @@ export function TeamPanel({ me, show, onRefresh, token }: {
 }
 
 /**
- * Copy asks what they actually want. Most people want the message — a bare link
- * in a chat gets ignored — but somebody putting it in a bio needs the link on
- * its own, and guessing wrong wastes their time either way.
+ * One version: read it, copy it, star it. The featured one wears the green,
+ * because the first thing in the dialog is what most people are there to take.
  */
-function CopyChoice({ link, message, variants, variant, favourites, onVariant, onFave, onPick, onClose }: {
-  link: string;
-  message: string;
-  variants: typeof INVITE_VARIANTS;
-  variant: string;
-  favourites: string[];
-  onVariant: (key: string) => void;
-  onFave: (key: string) => void;
-  onPick: (what: "link" | "message", value: string) => void;
-  onClose: () => void;
+function MessageCard({ v, link, fave, featured, onCopy, onFave }: {
+  v: Variant; link: string; fave: boolean; featured?: boolean; onCopy: () => void; onFave: () => void;
 }) {
-  const [showAll, setShowAll] = useState(false);
+  return (
+    <div className="rounded-xl border p-3"
+      style={featured
+        ? { borderColor: `${GOOD}66`, background: `${GOOD}10` }
+        : { borderColor: TC.line, background: "rgba(0,0,0,0.2)" }}>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="flex min-w-0 flex-1 items-center gap-1.5 text-[12.5px] font-bold"
+          style={{ color: featured ? GOOD : TC.muted }}>
+          <MessageSquare size={13} /> {featured ? "The message and the link" : v.label}
+        </span>
+        <button type="button" onClick={onFave} aria-label={fave ? `Unstar ${v.label}` : `Star ${v.label}`}
+          className="shrink-0 rounded-lg p-1 transition hover:opacity-80"
+          style={{ color: fave ? "#fcd34d" : TC.faint }}>
+          <Star size={14} fill={fave ? "#fcd34d" : "none"} />
+        </button>
+        <button type="button" onClick={onCopy}
+          className="shrink-0 rounded-lg px-2.5 py-1 text-[11.5px] font-semibold transition hover:opacity-85"
+          style={featured ? { background: GOOD, color: "#06231a" } : { background: "rgba(255,255,255,0.07)", color: TC.muted }}>
+          <Copy size={11} className="mr-1 inline" /> Copy
+        </button>
+      </div>
+      <pre className="mt-2 whitespace-pre-wrap font-sans text-[11.5px] leading-relaxed"
+        style={{ color: featured ? TC.muted : TC.faint }}>{v.body(link)}</pre>
+    </div>
+  );
+}
 
+/** Shared shell so both dialogs look and behave the same. */
+function Dialog({ labelledBy, wide, children, onClose }: {
+  labelledBy: string; wide?: boolean; children: React.ReactNode; onClose: () => void;
+}) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", onKey);
@@ -287,158 +302,118 @@ function CopyChoice({ link, message, variants, variant, favourites, onVariant, o
   }, [onClose]);
 
   return (
-    <div role="dialog" aria-modal="true" aria-labelledby="copy-title"
+    <div role="dialog" aria-modal="true" aria-labelledby={labelledBy}
       className="fixed inset-0 z-50 grid place-items-center overflow-y-auto p-5"
       style={{ background: "rgba(4,10,20,0.74)", backdropFilter: "blur(3px)" }}>
-      <div className="relative my-auto w-full max-w-[460px] rounded-2xl border p-5"
+      <div className={`relative my-auto w-full rounded-2xl border p-5 ${wide ? "max-w-[520px]" : "max-w-[460px]"}`}
         style={{ borderColor: TC.line, background: TC.panel, boxShadow: "0 24px 60px rgba(0,0,0,0.55)" }}>
         <button onClick={onClose} aria-label="Close" className="absolute right-3.5 top-3.5 rounded-lg p-1 transition hover:bg-white/10" style={{ color: TC.faint }}>
           <X size={16} />
         </button>
-
-        <h3 id="copy-title" className="text-[18px] font-bold tracking-tight">What do you want to copy?</h3>
-
-        <button type="button" onClick={() => onPick("message", message)}
-          className="mt-4 w-full rounded-xl border p-3 text-left transition hover:bg-white/5"
-          style={{ borderColor: `${GOOD}66`, background: `${GOOD}10` }}>
-          <div className="flex items-center gap-1.5 text-[12.5px] font-bold" style={{ color: GOOD }}>
-            <MessageSquare size={13} /> The message and the link
-          </div>
-          <pre className="mt-2 whitespace-pre-wrap font-sans text-[11.5px] leading-relaxed" style={{ color: TC.muted }}>{message}</pre>
-        </button>
-
-        {/* Right here, where they are already deciding what to send. */}
-        <button type="button" onClick={() => setShowAll((v) => !v)}
-          className="mt-2 inline-flex items-center gap-1 text-[12px] font-semibold transition hover:opacity-80" style={{ color: A }}>
-          {showAll ? "Hide other versions" : "More versions"}
-          <ChevronDown size={13} className="transition" style={{ transform: showAll ? "rotate(180deg)" : undefined }} />
-        </button>
-
-        {showAll && (
-          <div className="mt-2 max-h-[46vh] space-y-2 overflow-y-auto rounded-xl border p-2.5"
-            style={{ borderColor: TC.line, background: "rgba(0,0,0,0.22)" }}>
-            <p className="text-[11.5px] leading-relaxed" style={{ color: TC.faint }}>
-              Pick the one that sounds like you. Star what you like and it moves to the top next time.
-            </p>
-            {variants.map((v) => {
-              const on = v.key === variant;
-              const fave = favourites.includes(v.key);
-              return (
-                <div key={v.key} className="rounded-xl border p-2.5 transition"
-                  style={on ? { borderColor: `${A}77`, background: `${A}12` } : { borderColor: TC.line, background: "rgba(0,0,0,0.2)" }}>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <button type="button" onClick={() => onVariant(v.key)}
-                      className="flex min-w-0 flex-1 items-center gap-1.5 text-left text-[12.5px] font-bold"
-                      style={{ color: on ? TC.text : TC.muted }}>
-                      {on && <Check size={13} style={{ color: A }} />} {v.label}
-                    </button>
-                    <button type="button" onClick={() => onFave(v.key)}
-                      aria-label={fave ? `Unstar ${v.label}` : `Star ${v.label}`}
-                      className="shrink-0 rounded-lg p-1 transition hover:opacity-80"
-                      style={{ color: fave ? "#fcd34d" : TC.faint }}>
-                      <Star size={14} fill={fave ? "#fcd34d" : "none"} />
-                    </button>
-                    <button type="button" onClick={() => onPick("message", v.body(link))}
-                      className="shrink-0 rounded-lg px-2 py-1 text-[11.5px] font-semibold transition hover:opacity-85"
-                      style={{ background: "rgba(255,255,255,0.07)", color: TC.muted }}>
-                      <Copy size={11} className="mr-1 inline" /> Copy
-                    </button>
-                  </div>
-                  <pre className="mt-1.5 whitespace-pre-wrap font-sans text-[11.5px] leading-relaxed" style={{ color: TC.faint }}>{v.body(link)}</pre>
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        <button type="button" onClick={() => onPick("link", link)}
-          className="mt-2.5 w-full rounded-xl border p-3 text-left transition hover:bg-white/5"
-          style={{ borderColor: TC.line, background: "rgba(0,0,0,0.22)" }}>
-          <div className="flex items-center gap-1.5 text-[12.5px] font-bold" style={{ color: TC.text }}>
-            <Link2 size={13} style={{ color: A }} /> Just the link
-          </div>
-          <div className="mt-1 truncate text-[11.5px]" style={{ ...monoFont, color: TC.muted }}>{link}</div>
-          <div className="mt-1 text-[11px]" style={{ color: TC.faint }}>For your bio.</div>
-        </button>
+        {children}
       </div>
     </div>
   );
 }
 
 /**
- * All the wordings, on their own. Reached from the Wordings button — for when
- * somebody wants to read through them rather than copy something right now.
+ * Copy asks what they actually want. Most people want the message — a bare link
+ * in a chat gets ignored — but somebody putting it in a bio needs the link on
+ * its own, and guessing wrong wastes their time either way.
  */
-function WordingLibrary({ link, variants, variant, favourites, onVariant, onFave, onCopy, onClose }: {
+function CopyChoice({ link, variants, favourites, onFave, onPick, onClose }: {
   link: string;
-  variants: typeof INVITE_VARIANTS;
-  variant: string;
+  variants: Variant[];
   favourites: string[];
-  onVariant: (key: string) => void;
+  onFave: (key: string) => void;
+  onPick: (what: "link" | "message", value: string) => void;
+  onClose: () => void;
+}) {
+  const [showAll, setShowAll] = useState(false);
+  const top = variants[0];
+
+  return (
+    <Dialog labelledBy="copy-title" onClose={onClose}>
+      <h3 id="copy-title" className="text-[18px] font-bold tracking-tight">What do you want to copy?</h3>
+
+      <div className="mt-4">
+        <MessageCard v={top} link={link} featured
+          fave={favourites.includes(top.key)}
+          onCopy={() => onPick("message", top.body(link))}
+          onFave={() => onFave(top.key)} />
+      </div>
+
+      {variants.length > 1 && (
+        <button type="button" onClick={() => setShowAll((v) => !v)}
+          className="mt-2 inline-flex items-center gap-1 text-[12px] font-semibold transition hover:opacity-80" style={{ color: A }}>
+          {showAll ? "Hide other versions" : "All versions"}
+          <ChevronDown size={13} className="transition" style={{ transform: showAll ? "rotate(180deg)" : undefined }} />
+        </button>
+      )}
+
+      {showAll && (
+        <div className="mt-2 max-h-[42vh] space-y-2 overflow-y-auto rounded-xl border p-2.5"
+          style={{ borderColor: TC.line, background: "rgba(0,0,0,0.22)" }}>
+          <p className="text-[11.5px] leading-relaxed" style={{ color: TC.faint }}>
+            Star the one that sounds like you and it moves to the top.
+          </p>
+          {variants.slice(1).map((v) => (
+            <MessageCard key={v.key} v={v} link={link}
+              fave={favourites.includes(v.key)}
+              onCopy={() => onPick("message", v.body(link))}
+              onFave={() => onFave(v.key)} />
+          ))}
+        </div>
+      )}
+
+      <button type="button" onClick={() => onPick("link", link)}
+        className="mt-2.5 w-full rounded-xl border p-3 text-left transition hover:bg-white/5"
+        style={{ borderColor: TC.line, background: "rgba(0,0,0,0.22)" }}>
+        <div className="flex items-center gap-1.5 text-[12.5px] font-bold" style={{ color: TC.text }}>
+          <Link2 size={13} style={{ color: A }} /> Just the link
+        </div>
+        <div className="mt-1 truncate text-[11.5px]" style={{ ...monoFont, color: TC.muted }}>{link}</div>
+        <div className="mt-1 text-[11px]" style={{ color: TC.faint }}>For your bio.</div>
+      </button>
+    </Dialog>
+  );
+}
+
+/**
+ * Every version, to read through and pick from — for when somebody is choosing
+ * what to send rather than grabbing the nearest thing.
+ */
+function MessageLibrary({ link, variants, favourites, onFave, onCopy, onClose }: {
+  link: string;
+  variants: Variant[];
+  favourites: string[];
   onFave: (key: string) => void;
   onCopy: (value: string) => void;
   onClose: () => void;
 }) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
   return (
-    <div role="dialog" aria-modal="true" aria-labelledby="wordings-title"
-      className="fixed inset-0 z-50 grid place-items-center overflow-y-auto p-5"
-      style={{ background: "rgba(4,10,20,0.74)", backdropFilter: "blur(3px)" }}>
-      <div className="relative my-auto w-full max-w-[520px] rounded-2xl border p-5"
-        style={{ borderColor: TC.line, background: TC.panel, boxShadow: "0 24px 60px rgba(0,0,0,0.55)" }}>
-        <button onClick={onClose} aria-label="Close" className="absolute right-3.5 top-3.5 rounded-lg p-1 transition hover:bg-white/10" style={{ color: TC.faint }}>
-          <X size={16} />
-        </button>
+    <Dialog labelledBy="wordings-title" wide onClose={onClose}>
+      <h3 id="wordings-title" className="text-[18px] font-bold tracking-tight">All versions</h3>
+      <p className="mt-1.5 text-[12.5px] leading-relaxed" style={{ color: TC.muted }}>
+        Same link, different tone. Copy whichever suits who you are sending it to — and star the ones you keep
+        coming back to, so they are waiting at the top next time.
+      </p>
 
-        <h3 id="wordings-title" className="text-[18px] font-bold tracking-tight">Ways to say it</h3>
-        <p className="mt-1.5 text-[12.5px] leading-relaxed" style={{ color: TC.muted }}>
-          Same link, different tone. Copy whichever suits who you are sending it to — and star the ones you keep
-          coming back to.
-        </p>
-
-        <div className="mt-3.5 max-h-[58vh] space-y-2 overflow-y-auto pr-1">
-          {variants.map((v) => {
-            const on = v.key === variant;
-            const fave = favourites.includes(v.key);
-            return (
-              <div key={v.key} className="rounded-xl border p-3 transition"
-                style={on ? { borderColor: `${A}77`, background: `${A}12` } : { borderColor: TC.line, background: "rgba(0,0,0,0.22)" }}>
-                <div className="flex flex-wrap items-center gap-2">
-                  <button type="button" onClick={() => onVariant(v.key)}
-                    className="flex min-w-0 flex-1 items-center gap-1.5 text-left text-[13px] font-bold"
-                    style={{ color: on ? TC.text : TC.muted }}>
-                    {on && <Check size={13} style={{ color: A }} />} {v.label}
-                  </button>
-                  <button type="button" onClick={() => onFave(v.key)}
-                    aria-label={fave ? `Unstar ${v.label}` : `Star ${v.label}`}
-                    className="shrink-0 rounded-lg p-1 transition hover:opacity-80"
-                    style={{ color: fave ? "#fcd34d" : TC.faint }}>
-                    <Star size={15} fill={fave ? "#fcd34d" : "none"} />
-                  </button>
-                  <button type="button" onClick={() => onCopy(v.body(link))}
-                    className="shrink-0 rounded-lg px-2.5 py-1.5 text-[12px] font-semibold transition hover:opacity-85"
-                    style={{ background: `${A}1f`, color: A }}>
-                    <Copy size={12} className="mr-1 inline" /> Copy
-                  </button>
-                </div>
-                <pre className="mt-2 whitespace-pre-wrap font-sans text-[12px] leading-relaxed" style={{ color: TC.faint }}>{v.body(link)}</pre>
-              </div>
-            );
-          })}
-        </div>
-
-        <button type="button" onClick={onClose}
-          className="mt-4 w-full rounded-xl px-4 py-2.5 text-[13.5px] font-semibold transition hover:opacity-90"
-          style={{ background: A, color: "#12091f" }}>
-          Done
-        </button>
+      <div className="mt-3.5 max-h-[58vh] space-y-2 overflow-y-auto pr-1">
+        {variants.map((v, i) => (
+          <MessageCard key={v.key} v={v} link={link} featured={i === 0}
+            fave={favourites.includes(v.key)}
+            onCopy={() => onCopy(v.body(link))}
+            onFave={() => onFave(v.key)} />
+        ))}
       </div>
-    </div>
+
+      <button type="button" onClick={onClose}
+        className="mt-4 w-full rounded-xl px-4 py-2.5 text-[13.5px] font-semibold transition hover:opacity-90"
+        style={{ background: A, color: "#12091f" }}>
+        Done
+      </button>
+    </Dialog>
   );
 }
 

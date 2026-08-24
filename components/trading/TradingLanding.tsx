@@ -138,10 +138,6 @@ export function TradingLanding() {
               <button onClick={() => void toClassic()} disabled={switching} className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12.5px] font-medium transition hover:bg-white/5 disabled:opacity-50" style={{ borderColor: C.line, color: C.muted }}>
                 {switching ? <Loader2 size={13} className="animate-spin" /> : <ChevronRight size={13} />} Classic Clunoid
               </button>
-            ) : !isAuthed ? (
-              <button onClick={() => openAuth("login")} className="rounded-full border px-3.5 py-1.5 text-[12.5px] font-medium transition hover:bg-white/5" style={{ borderColor: C.line, color: C.muted }}>
-                Sign in
-              </button>
             ) : null}
           </div>
         </header>

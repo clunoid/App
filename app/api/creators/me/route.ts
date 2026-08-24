@@ -25,6 +25,8 @@ export type MeResponse = {
   teamTotals: { members: number; earning: number; earnedUsd: number; pendingUsd: number; perPersonUsd: number };
   progress: ReturnType<typeof computeProgress>;
   serverTime: string;
+  /** Present when they were found by something other than their own token. */
+  recoveredToken?: string;
 };
 
 export type TeamMember = {
@@ -53,12 +55,12 @@ type Payout = {
 };
 
 export async function POST(req: NextRequest) {
-  const { token } = (await req.json().catch(() => ({}))) as { token?: string };
+  const { token, derivAccess } = (await req.json().catch(() => ({}))) as { token?: string; derivAccess?: string };
 
   const admin = db();
   if (!admin) return NextResponse.json({ error: "Not available right now." }, { status: 503 });
 
-  const creator = await findCreator(admin, token);
+  const creator = await findCreator(admin, token, derivAccess);
   // 404, not 401: the browser uses this to decide "show the registration page".
   if (!creator) return NextResponse.json({ error: "No creator found." }, { status: 404 });
 
@@ -87,6 +89,20 @@ export async function POST(req: NextRequest) {
     .filter((p) => p.status === "requested" || p.status === "approved")
     .reduce((sum, p) => sum + Number(p.base_usd) + Number(p.bonus_usd), 0);
   const monthsPaid = payouts.filter((p) => p.status === "paid").length;
+
+  // Record which Deriv account this is, so the same person is recognised on
+  // their next device. Verified against Deriv rather than taken from the body.
+  if (typeof derivAccess === "string" && derivAccess.length > 20 && !creator.deriv_loginid) {
+    const { primaryDerivId } = await import("@/lib/creators/derivIdentity");
+    const id = await primaryDerivId(derivAccess);
+    if (id) {
+      await admin
+        .from("trading_creator_applications")
+        .update({ deriv_loginid: id })
+        .eq("id", creator.id)
+        .is("deriv_loginid", null);
+    }
+  }
 
   // ── the team ─────────────────────────────────────────────────────────────
   // Everyone who registered through this creator's link, and whether they have
@@ -152,6 +168,16 @@ export async function POST(req: NextRequest) {
     progress,
     serverTime: new Date().toISOString(),
   };
+
+  // Found some other way? Hand back the key so this device stops needing to.
+  if (!token || token.length < 32) {
+    const { data: keyRow } = await admin
+      .from("trading_creator_applications")
+      .select("access_token")
+      .eq("id", creator.id)
+      .maybeSingle();
+    if (keyRow?.access_token) body.recoveredToken = keyRow.access_token as string;
+  }
 
   return NextResponse.json(body);
 }
