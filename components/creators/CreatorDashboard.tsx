@@ -1511,34 +1511,94 @@ function RulesPanel() {
 
 /* ── my details ───────────────────────────────────────────────────────────── */
 
+/** Only these four things are the creator's to change. */
+type Patch = {
+  platforms?: string[];
+  handles?: Record<string, string>;
+  newAccounts?: boolean;
+  payoutMethod?: string;
+};
+
+/**
+ * My details saves itself.
+ *
+ * A "Save changes" button at the bottom of a long page is a trap: people pick a
+ * payout method, scroll away satisfied, and lose it. So every change is sent as
+ * it happens — a tick or a choice almost immediately, typing after a short
+ * pause so we are not posting on every keystroke. Anything still waiting when
+ * the panel closes is flushed on the way out.
+ */
 function DetailsPanel({ me, token, onRefresh, show }: { me: Me; token: string; onRefresh: () => Promise<void>; show: Show }) {
   const { creator } = me;
   const [platforms, setPlatforms] = useState<string[]>(creator.platforms);
   const [handles, setHandles] = useState<Record<string, string>>(() => handleMap(creator));
   const [payout, setPayout] = useState(creator.payout_method ?? "");
   const [newAccounts, setNewAccounts] = useState(creator.new_accounts);
-  const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
-  async function save() {
-    if (busy) return;
-    setBusy(true); setMsg(null);
+  const [state, setState] = useState<"idle" | "saving" | "saved">("idle");
+  const [err, setErr] = useState<string | null>(null);
+
+  const pending = useRef<Patch>({});
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const doneTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Kept in refs so a debounced save never fires against a stale closure.
+  const refresh = useRef(onRefresh); refresh.current = onRefresh;
+  const toast = useRef(show); toast.current = show;
+
+  const flush = useCallback(async () => {
+    const patch = pending.current;
+    pending.current = {};
+    if (Object.keys(patch).length === 0) return;
+
+    setState("saving"); setErr(null);
     try {
       const res = await fetch("/api/creators/profile", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token, platforms, handles, newAccounts, payoutMethod: payout || undefined }),
+        body: JSON.stringify({ token, ...patch }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) { setMsg({ ok: false, text: data.error || "Could not save." }); show(data.error || "Could not save.", "bad"); return; }
-      setMsg({ ok: true, text: "Saved." });
-      show("Saved. Your details are up to date.");
-      await onRefresh();
-    } catch { setMsg({ ok: false, text: "Could not reach us just now." }); show("Could not reach us just now.", "bad"); }
-    finally { setBusy(false); }
-  }
+      if (!res.ok) {
+        const text = data.error || "Could not save that.";
+        setState("idle"); setErr(text); toast.current(text, "bad");
+        return;
+      }
+      setErr(null);
+      setState("saved");
+      if (doneTimer.current) clearTimeout(doneTimer.current);
+      doneTimer.current = setTimeout(() => setState("idle"), 2400);
+      await refresh.current();
+    } catch {
+      setState("idle");
+      setErr("Could not reach us just now.");
+      toast.current("Could not reach us just now.", "bad");
+    }
+  }, [token]);
+
+  // Nothing typed should be lost by switching panel during the pause.
+  const flushRef = useRef(flush); flushRef.current = flush;
+  useEffect(() => () => {
+    if (doneTimer.current) clearTimeout(doneTimer.current);
+    if (timer.current) { clearTimeout(timer.current); void flushRef.current(); }
+  }, []);
+
+  const queue = useCallback((patch: Patch, delay = 220) => {
+    const next: Patch = { ...pending.current, ...patch };
+    if (patch.handles || pending.current.handles) {
+      next.handles = { ...(pending.current.handles ?? {}), ...(patch.handles ?? {}) };
+    }
+    pending.current = next;
+
+    if (timer.current) clearTimeout(timer.current);
+    if (doneTimer.current) clearTimeout(doneTimer.current);
+    setState("saving");
+    timer.current = setTimeout(() => { timer.current = null; void flush(); }, delay);
+  }, [flush]);
 
   return (
     <div className="space-y-4">
+      <SaveState state={state} err={err} />
+
       <section className={card} style={cardStyle}>
         <h2 className="text-[16px] font-bold">What you registered with</h2>
         <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -1547,7 +1607,6 @@ function DetailsPanel({ me, token, onRefresh, show }: { me: Me; token: string; o
           <Field k="Country" v={creator.country} />
           <Field k="Registered" v={fmt(creator.applied_at)} />
           <Field k="First post" v={creator.first_post_at ? fmt(creator.first_post_at) : "Not started"} />
-
         </div>
         <p className="mt-3 text-[11.5px]" style={{ color: TC.faint }}>
           Name, email and country are fixed at registration. Email us if one of them is wrong.
@@ -1564,15 +1623,17 @@ function DetailsPanel({ me, token, onRefresh, show }: { me: Me; token: string; o
           <PayoutMethods
             value={payout}
             available={me.totals.pendingUsd + me.teamTotals.earnedUsd}
-            onChange={(v) => { setPayout(v); show((PAYOUTS.find((p) => p.key === v)?.label ?? "Payout method") + " chosen — press save to keep it"); }}
+            onChange={(v) => {
+              setPayout(v);
+              queue({ payoutMethod: v });
+              show((PAYOUTS.find((p) => p.key === v)?.label ?? "Payout method") + " chosen — saved");
+            }}
           />
         </div>
         {payout && (
           <div className="mt-2.5">
             <FieldOk>
-              {payout === creator.payout_method
-                ? "Saved — you will be paid by " + (PAYOUTS.find((p) => p.key === payout)?.label ?? "")
-                : "Not saved yet — press Save changes at the bottom"}
+              You will be paid by {PAYOUTS.find((p) => p.key === payout)?.label ?? ""}. Change it any time.
             </FieldOk>
           </div>
         )}
@@ -1589,13 +1650,29 @@ function DetailsPanel({ me, token, onRefresh, show }: { me: Me; token: string; o
           <PlatformPicker
             platforms={platforms}
             handles={handles}
-            onPlatforms={setPlatforms}
-            onHandle={(k, v) => setHandles((p) => ({ ...p, [k]: v }))}
+            onPlatforms={(next) => {
+              setPlatforms(next);
+              // Mid-swap there are only two, and a partial set is rejected. So
+              // the choice is saved once it is a complete set again.
+              if (next.length === PLATFORMS_REQUIRED) queue({ platforms: next });
+            }}
+            onHandle={(k, v) => {
+              setHandles((p) => ({ ...p, [k]: v }));
+              // A longer pause: this one is typed, not clicked.
+              if (v.trim()) queue({ handles: { [k]: v } }, 900);
+            }}
             accent={A}
             savedHandles={savedMap(creator)}
             columns
           />
         </div>
+        {platforms.length !== PLATFORMS_REQUIRED && (
+          <div className="mt-2.5">
+            <FieldOk tone="bad">
+              Pick {PLATFORMS_REQUIRED} to save this — you have {platforms.length}.
+            </FieldOk>
+          </div>
+        )}
       </section>
 
       <section className={card} style={cardStyle}>
@@ -1608,7 +1685,11 @@ function DetailsPanel({ me, token, onRefresh, show }: { me: Me; token: string; o
 
         <label className="mt-3 flex cursor-pointer items-start gap-2.5 text-[13px] leading-relaxed" style={{ color: TC.muted }}>
           <input type="checkbox" checked={newAccounts}
-            onChange={(e) => setNewAccounts(e.target.checked)}
+            onChange={(e) => {
+              setNewAccounts(e.target.checked);
+              queue({ newAccounts: e.target.checked });
+              show(e.target.checked ? "Saved — brand new accounts" : "Saved — accounts you already had");
+            }}
             className="mt-0.5 h-4 w-4 shrink-0" style={{ accentColor: A }} />
           <span>I made these accounts brand new for this.</span>
         </label>
@@ -1619,29 +1700,35 @@ function DetailsPanel({ me, token, onRefresh, show }: { me: Me; token: string; o
           before we pay you</b>, so what is set here never decides it on its own — and you can change it whenever you
           like.
         </p>
-
-        {newAccounts !== creator.new_accounts && (
-          <div className="mt-2">
-            <FieldOk tone="bad">Not saved yet — press Save changes below</FieldOk>
-          </div>
-        )}
       </section>
+    </div>
+  );
+}
 
-      <section className={card} style={cardStyle}>
-        <h2 className="text-[16px] font-bold">Save what you changed</h2>
-        <p className="mt-1.5 text-[12.5px] leading-relaxed" style={{ color: TC.muted }}>
-          Nothing above is stored until you press this.
-        </p>
+/**
+ * The one place that says whether the page is keeping up. Quiet when there is
+ * nothing to report, because a permanent banner stops being read.
+ */
+function SaveState({ state, err }: { state: "idle" | "saving" | "saved"; err: string | null }) {
+  if (err) {
+    return (
+      <div className="flex items-center gap-2 rounded-xl border px-3.5 py-2.5 text-[12.5px] font-medium"
+        style={{ borderColor: `${BAD}55`, background: `${BAD}12`, color: BAD }}>
+        <CircleAlert size={14} className="shrink-0" /> {err}
+      </div>
+    );
+  }
 
-        {msg && <p className="mt-3 text-[12.5px] font-medium" style={{ color: msg.ok ? GOOD : BAD }}>{msg.text}</p>}
-
-        <button type="button" onClick={save} disabled={busy}
-          className="mt-4 inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-[13.5px] font-semibold transition hover:opacity-90 disabled:opacity-60"
-          style={{ background: A, color: "#12091f" }}>
-          {busy ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />}
-          {busy ? "Saving…" : "Save changes"}
-        </button>
-      </section>
+  return (
+    <div className="flex items-center gap-2 rounded-xl border px-3.5 py-2.5 text-[12.5px]"
+      style={state === "saved"
+        ? { borderColor: `${GOOD}55`, background: `${GOOD}10`, color: GOOD }
+        : { borderColor: TC.line, background: "rgba(0,0,0,0.22)", color: TC.faint }}>
+      {state === "saving"
+        ? <><Loader2 size={14} className="shrink-0 animate-spin" style={{ color: A }} /> Saving…</>
+        : state === "saved"
+          ? <><Check size={14} className="shrink-0" /> Saved.</>
+          : <><ShieldCheck size={14} className="shrink-0" style={{ color: GOOD }} /> Everything here saves itself as you change it — there is nothing to press.</>}
     </div>
   );
 }

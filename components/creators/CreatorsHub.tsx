@@ -30,6 +30,7 @@ import { PayoutPicker } from "./PayoutPicker";
 import { PlatformPicker } from "./PlatformPicker";
 import { Reminders } from "./Reminders";
 import { FieldOk, useToast } from "./Feedback";
+import { SupportChat } from "./SupportChat";
 import {
   A, GOOD, BAD, PAYOUTS, LADDER, STEPS, DO, DONT, IDEAS, AI_PROMPTS, addDays, fmt,
   DEFAULT_PLATFORMS, PLATFORMS_REQUIRED, platformInfo,
@@ -156,8 +157,16 @@ export function CreatorsHub() {
   const fieldStyle = { borderColor: TC.line, background: "rgba(0,0,0,0.25)", color: TC.text } as const;
   const label = "text-[10.5px] font-semibold uppercase tracking-wider";
 
-  // Already a creator → the dashboard is the page.
-  if (me) return <CreatorDashboard me={me} token={token} onRefresh={refresh} justRegistered={justRegistered} />;
+  // Already a creator → the dashboard is the page. Support rides along with it,
+  // because most questions arrive after someone has started, not before.
+  if (me) {
+    return (
+      <>
+        <CreatorDashboard me={me} token={token} onRefresh={refresh} justRegistered={justRegistered} />
+        <SupportChat email={me.creator.email} name={me.creator.name} country={me.creator.country} />
+      </>
+    );
+  }
 
   if (checking) {
     return (
@@ -563,6 +572,10 @@ You get <b style={{ color: TC.text }}>$500 on top</b> of what you already earn, 
           {DISCLAIMER}
         </p>
       </div>
+
+      {/* Whatever they have typed into the form so far is the address to reply
+          to — someone asking a question before registering has given us one. */}
+      <SupportChat email={f.email} name={f.name} country={f.country} />
 
       {toast}
     </main>
