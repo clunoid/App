@@ -70,7 +70,7 @@ export function PracticeBot() {
 
   // Once applied, hand over to the real thing.
   if (started) {
-    return <DerivBotSimRunner botId={BOT_ID} backHref="/trading/creators" backLabel="Creator Program" />;
+    return <DerivBotSimRunner botId={BOT_ID} backHref="/trading/creators" backLabel="Creator Program" guide />;
   }
 
   return (

@@ -23,11 +23,19 @@ export function DerivBotSimRunner({
   botId,
   backHref = "/trading/deriv/bots/sim",
   backLabel = "All bots",
+  guide = false,
 }: {
   botId: string;
   /** Where the back link goes. Defaults to the sim catalogue. */
   backHref?: string;
   backLabel?: string;
+  /**
+   * Walk a first-timer through setting it up: highlight one field at a time,
+   * suggest a number scaled to their balance, confirm each step. Off by default,
+   * so the ordinary simulator behaves exactly as it always has — this is purely
+   * an overlay on the same inputs, and it changes nothing about the engine.
+   */
+  guide?: boolean;
 }) {
   const router = useRouter();
   const meta = getBot(botId);
@@ -47,6 +55,12 @@ export function DerivBotSimRunner({
   const [liveBalance, setLiveBalance] = useState<{ balance: number | null; currency: string }>({ balance: null, currency: "USD" });
   const [finish, setFinish] = useState<{ kind: "take-profit" | "stop-loss"; summary: BotStats } | null>(null);
   const [lowBalOpen, setLowBalOpen] = useState(false);
+
+  // Guided setup: 0 stake · 1 take profit · 2 press start · 3 done.
+  const [step, setStep] = useState(0);
+  const [guideMsg, setGuideMsg] = useState<string | null>(null);
+  const tradesRef = useRef<HTMLElement | null>(null);
+  const scrolled = useRef(false);
   const lowBalDecided = useRef(false);
   const botRef = useRef<SimulatedDerivBot | null>(null);
 
@@ -61,6 +75,108 @@ export function DerivBotSimRunner({
   useEffect(() => () => { botRef.current?.stop("Left the page.", "info"); }, []);
 
   const shownBalance = liveBalance;
+
+  // Suggestions scale with the balance: $70 stake and $300 target on $1,000.
+  const round2 = (n: number) => Math.round(n * 100) / 100;
+  const guideBalance = shownBalance.balance ?? simBalance;
+  const suggestedStake = Math.max(BOT_DEFAULTS.minStake, round2(guideBalance * 0.07));
+  const suggestedTP = Math.max(1, round2(guideBalance * 0.3));
+
+  // Guided runs put the stop loss out of reach on purpose, so a big stake ends
+  // the run on the take profit rather than tripping a stop first.
+  useEffect(() => {
+    if (!guide || !ready) return;
+    setStopLoss(String(Math.max(BOT_DEFAULTS.stopLoss, Math.round(guideBalance))));
+    // Only when the simulator first becomes ready — never while they are typing.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [guide, ready]);
+
+  /** Take what is typed (or the suggestion) and move the coach on. */
+  const applyStep = (which: "stake" | "tp", raw?: number) => {
+    if (which === "stake") {
+      const v = raw ?? parseFloat(stake);
+      if (!Number.isFinite(v) || v < BOT_DEFAULTS.minStake) {
+        setGuideMsg(`Type a stake of at least ${BOT_DEFAULTS.minStake} USD, or tap the suggestion.`);
+        return;
+      }
+      setStake(String(round2(v)));
+      setStep(1);
+      setGuideMsg(`Stake set to ${round2(v).toFixed(2)} USD. Now set your take profit.`);
+      return;
+    }
+    const v = raw ?? parseFloat(takeProfit);
+    if (!Number.isFinite(v) || v < 1) {
+      setGuideMsg("Type a take profit of at least 1 USD, or tap the suggestion.");
+      return;
+    }
+    setTakeProfit(String(round2(v)));
+    setStep(2);
+    setGuideMsg(`Take profit set to ${round2(v).toFixed(2)} USD. Stop loss and martingale can stay as they are — press Start.`);
+  };
+
+  // On a phone the trades sit below everything else, so a first-timer starts the
+  // bot and never sees them. Walk the page down to them once, slowly enough to
+  // read on a screen recording — and stop the moment they touch the screen, so
+  // it never fights someone who is already scrolling.
+  useEffect(() => {
+    if (!guide || !runningState || scrolled.current) return;
+    if (typeof window === "undefined" || window.innerWidth >= 1024) return;
+    scrolled.current = true;
+
+    let timer = 0;
+    let cancelled = false;
+    const stopIt = () => { cancelled = true; };
+
+    const begin = () => {
+      const el = tradesRef.current;
+      const doc = document.scrollingElement || document.documentElement;
+      if (!el || !doc) return;
+
+      const from = doc.scrollTop;
+
+      // Where the trades card sits in the document, not in the viewport — this
+      // stays right even as the page grows underneath us, which it does: trades
+      // are arriving the whole time the scroll is running.
+      const destination = () =>
+        Math.min(
+          doc.scrollTop + el.getBoundingClientRect().top - 12,
+          doc.scrollHeight - doc.clientHeight,
+        );
+
+      if (destination() - from <= 8) return;
+
+      // Hand-rolled rather than scrollIntoView({behavior:"smooth"}): the native
+      // one is over in a blink, and this needs to be slow enough that someone
+      // watching a recording sees where the page went. Driven off the clock
+      // rather than rAF so it still completes if the tab is throttled.
+      const DURATION = 1600;
+      const ease = (p: number) => (p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2);
+      const t0 = performance.now();
+
+      timer = window.setInterval(() => {
+        if (cancelled) { window.clearInterval(timer); return; }
+        const p = Math.min(1, (performance.now() - t0) / DURATION);
+        doc.scrollTop = from + (destination() - from) * ease(p);
+        if (p >= 1) window.clearInterval(timer);
+      }, 16);
+    };
+
+    window.addEventListener("wheel", stopIt, { passive: true });
+    window.addEventListener("touchstart", stopIt, { passive: true });
+
+    // A beat after the first trades land, so there is something to look at.
+    const id = setTimeout(begin, 1400);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(id);
+      window.clearInterval(timer);
+      window.removeEventListener("wheel", stopIt);
+      window.removeEventListener("touchstart", stopIt);
+    };
+  }, [guide, runningState]);
+
+  useEffect(() => { if (!runningState) scrolled.current = false; }, [runningState]);
 
   useEffect(() => {
     if (!ready || lowBalDecided.current) return;
@@ -137,6 +253,26 @@ export function DerivBotSimRunner({
     <main className="cln-dash relative flex min-h-[100dvh] w-full flex-col overflow-x-hidden" style={{ background: TC.bg, color: TC.text }}>
       <div aria-hidden className="pointer-events-none absolute inset-0" style={DOT_GRID} />
       <RunnerStyles />
+      {guide && (
+        <style>{`
+          /* One thing lit at a time. Bright enough to read off a phone screen
+             recording, calm enough not to strobe. */
+          @keyframes clnGuideGlow {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(52,211,153,.55), 0 0 14px 0 rgba(52,211,153,.35); }
+            50%      { box-shadow: 0 0 0 5px rgba(52,211,153,0), 0 0 22px 4px rgba(52,211,153,.55); }
+          }
+          @keyframes clnGuideIn {
+            from { opacity: 0; transform: translate3d(0, -4px, 0); }
+            to   { opacity: 1; transform: none; }
+          }
+          .cln-guide-glow { animation: clnGuideGlow 1.9s ease-in-out infinite; }
+          .cln-guide-card { animation: clnGuideIn .26s ease-out both; }
+          @media (prefers-reduced-motion: reduce) {
+            .cln-guide-glow { animation: none; box-shadow: 0 0 0 2px rgba(52,211,153,.6); }
+            .cln-guide-card { animation: none; }
+          }
+        `}</style>
+      )}
       <div className="cln-dash-inner relative z-10 flex w-full flex-1 flex-col px-4 py-4 sm:px-6 lg:px-10">
 
         <header className="flex flex-wrap items-center gap-x-3 gap-y-2">
@@ -167,16 +303,43 @@ export function DerivBotSimRunner({
         <div className="cln-dash-grid mt-4 grid grid-cols-1 gap-4 lg:min-h-[480px] lg:flex-1 lg:grid-cols-3">
           <Col title="Configuration">
             <div className="grid gap-3">
-              <Field label="Initial stake (USD)" value={stake} onChange={setStake} min={BOT_DEFAULTS.minStake} step={0.01} disabled={runningState} />
-              <Field label="Take profit (USD)" value={takeProfit} onChange={setTakeProfit} min={1} step={1} disabled={runningState} />
+              <Field label="Initial stake (USD)" value={stake} onChange={setStake} min={BOT_DEFAULTS.minStake} step={0.01} disabled={runningState}
+                glow={guide && !runningState && step === 0} done={guide && step > 0} />
+              {guide && !runningState && step === 0 && (
+                <GuideRow
+                  text={`Step 1 of 2 — set your stake. On a ${fmtBalance(guideBalance, "USD")} balance we suggest ${suggestedStake.toFixed(2)} USD.`}
+                  suggestion={suggestedStake}
+                  onUse={() => applyStep("stake", suggestedStake)}
+                  onApply={() => applyStep("stake")}
+                />
+              )}
+
+              <Field label="Take profit (USD)" value={takeProfit} onChange={setTakeProfit} min={1} step={1} disabled={runningState}
+                glow={guide && !runningState && step === 1} done={guide && step > 1} />
+              {guide && !runningState && step === 1 && (
+                <GuideRow
+                  text={`Step 2 of 2 — set your take profit. The bot stops itself the moment it reaches this. We suggest ${suggestedTP.toFixed(2)} USD.`}
+                  suggestion={suggestedTP}
+                  onUse={() => applyStep("tp", suggestedTP)}
+                  onApply={() => applyStep("tp")}
+                />
+              )}
+
               <Field label="Stop loss (USD)" value={stopLoss} onChange={setStopLoss} min={1} step={1} disabled={runningState} />
               {meta.supportsMartingale && <Field label="Martingale ×" value={martingale} onChange={setMartingale} min={1} step={0.1} disabled={runningState} />}
+              {guide && !runningState && step >= 1 && (
+                <p className="text-[11px] leading-snug" style={{ color: TC.faint }}>
+                  Leave stop loss and martingale alone — they are already set so the run ends on your take profit.
+                </p>
+              )}
             </div>
             {/* action block sinks to the bottom of a tall card so the inputs stay
                 grouped at the top instead of everything floating mid-card */}
             <div className="lg:mt-auto">
               {!runningState ? (
-                <button onClick={startBot} className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-[13.5px] font-semibold transition hover:opacity-90" style={{ background: TC.profit, color: TC.ink }}>
+                <button onClick={() => { if (guide) { setStep(3); setGuideMsg(null); } startBot(); }}
+                  className={`mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-[13.5px] font-semibold transition hover:opacity-90${guide && step === 2 ? " cln-guide-glow" : ""}`}
+                  style={{ background: TC.profit, color: TC.ink }}>
                   <Play size={15} /> Start on Real
                 </button>
               ) : (
@@ -185,6 +348,17 @@ export function DerivBotSimRunner({
                 </button>
               )}
               {runningState && <div className="mt-2 inline-flex items-center gap-1.5 text-[12px]" style={{ color: TC.profit }}><Loader2 size={13} className="animate-spin" /> running on real</div>}
+              {guide && guideMsg && !runningState && (
+                <div className="cln-guide-card mt-2 flex items-start gap-1.5 rounded-xl border p-2.5 text-[12px] leading-snug"
+                  style={{ borderColor: `${TC.profit}55`, background: "rgba(52,211,153,0.08)", color: TC.text }}>
+                  <Check size={13} className="mt-0.5 shrink-0" style={{ color: TC.profit }} /> {guideMsg}
+                </div>
+              )}
+              {guide && step === 2 && !runningState && (
+                <p className="mt-2 text-[12px] font-semibold" style={{ color: TC.profit }}>
+                  You are set — press Start and watch it trade.
+                </p>
+              )}
               {status && <div className="mt-2 text-[12px] leading-snug" style={{ color: status.kind === "error" ? TC.loss : status.kind === "success" ? TC.profit : status.kind === "warning" ? "#f5c451" : TC.muted }}>{status.msg}</div>}
               <p className="mt-3 text-[10.5px] leading-relaxed" style={{ color: TC.faint }}>Stops automatically at your take-profit or stop-loss (realised P/L).</p>
             </div>
@@ -203,7 +377,7 @@ export function DerivBotSimRunner({
             </div>
           </Col>
 
-          <Col title="Recent Trades" right={trades.length ? `${trades.length}` : undefined}>
+          <Col title="Recent Trades" right={trades.length ? `${trades.length}` : undefined} anchorRef={tradesRef}>
             {trades.length === 0 ? (
               <div className="grid place-items-center rounded-xl border border-dashed py-10 text-center lg:flex-1" style={{ borderColor: TC.line }}>
                 <span className="text-[12px]" style={{ color: TC.muted }}>No trades yet — start the bot.</span>
@@ -347,9 +521,9 @@ function FinishModal({ finish, onClose }: { finish: { kind: "take-profit" | "sto
   );
 }
 
-function Col({ title, right, children }: { title: string; right?: string; children: React.ReactNode }) {
+function Col({ title, right, children, anchorRef }: { title: string; right?: string; children: React.ReactNode; anchorRef?: React.Ref<HTMLElement> }) {
   return (
-    <section className="flex min-h-0 flex-col rounded-2xl border p-4 sm:p-5" style={{ borderColor: TC.line, background: TC.panel }}>
+    <section ref={anchorRef} className="flex min-h-0 flex-col rounded-2xl border p-4 sm:p-5" style={{ borderColor: TC.line, background: TC.panel }}>
       <div className="mb-3 flex items-center gap-2">
         <h2 className="text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: TC.faint }}>{title}</h2>
         {right && <span className="ml-auto text-[11px]" style={{ ...monoFont, color: TC.faint }}>{right}</span>}
@@ -359,14 +533,43 @@ function Col({ title, right, children }: { title: string; right?: string; childr
   );
 }
 
-function Field({ label, value, onChange, min, step, disabled }: { label: string; value: string; onChange: (v: string) => void; min: number; step: number; disabled?: boolean }) {
+function Field({ label, value, onChange, min, step, disabled, glow, done }: { label: string; value: string; onChange: (v: string) => void; min: number; step: number; disabled?: boolean; glow?: boolean; done?: boolean }) {
   return (
     <label className="flex flex-col gap-1">
-      <span className="text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: TC.faint }}>{label}</span>
+      <span className="flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: glow ? TC.profit : TC.faint }}>
+        {label}
+        {done && <Check size={11} style={{ color: TC.profit }} />}
+      </span>
       <input type="number" value={value} min={min} step={step} disabled={disabled} onChange={(e) => onChange(e.target.value)}
-        className="rounded-xl border px-3 py-2 text-[13.5px] outline-none transition focus:border-sky-400 disabled:opacity-60"
-        style={{ ...monoFont, borderColor: TC.line, background: "rgba(0,0,0,0.2)", color: TC.text }} />
+        className={`rounded-xl border px-3 py-2 text-[13.5px] outline-none transition focus:border-sky-400 disabled:opacity-60${glow ? " cln-guide-glow" : ""}`}
+        style={{ ...monoFont, borderColor: glow ? TC.profit : TC.line, background: "rgba(0,0,0,0.2)", color: TC.text }} />
     </label>
+  );
+}
+
+/**
+ * The one instruction showing at any moment, with the suggested number as a
+ * button. Deliberately loud: this is read off a screen recording, on a phone.
+ */
+function GuideRow({ text, suggestion, onUse, onApply }: {
+  text: string; suggestion: number; onUse: () => void; onApply: () => void;
+}) {
+  return (
+    <div className="cln-guide-card rounded-xl border p-2.5" style={{ borderColor: `${TC.profit}66`, background: "rgba(52,211,153,0.08)" }}>
+      <p className="text-[12px] leading-snug" style={{ color: TC.text }}>{text}</p>
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        <button type="button" onClick={onUse}
+          className="rounded-lg px-2.5 py-1.5 text-[12px] font-bold transition hover:opacity-90"
+          style={{ ...monoFont, background: TC.profit, color: TC.ink }}>
+          Use {suggestion.toFixed(2)}
+        </button>
+        <button type="button" onClick={onApply}
+          className="rounded-lg border px-2.5 py-1.5 text-[12px] font-semibold transition hover:bg-white/5"
+          style={{ borderColor: `${TC.profit}66`, color: TC.profit }}>
+          Apply what I typed
+        </button>
+      </div>
+    </div>
   );
 }
 
