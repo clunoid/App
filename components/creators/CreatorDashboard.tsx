@@ -19,7 +19,7 @@ import Link from "next/link";
 import {
   ArrowLeft, Clapperboard, LayoutDashboard, CalendarRange, ListChecks, Wallet, Sparkles,
   BookOpen, UserRound, Check, X, Loader2, Rocket, TrendingUp, Clock, ShieldCheck,
-  CircleAlert, PartyPopper, Copy, ExternalLink, Undo2, CalendarCheck, Download, AudioLines, Gamepad2,
+  CircleAlert, PartyPopper, Copy, ExternalLink, Undo2, CalendarCheck, Download, AudioLines, Gamepad2, Users,
 } from "lucide-react";
 import { TC, DOT_GRID, monoFont } from "@/lib/trading/theme";
 import {
@@ -28,6 +28,7 @@ import {
   PLATFORMS_REQUIRED, platformInfo, platformSentence, TRUE_ABOUT_CLUNOID, SHOT_LIST, HOOKS, PIVOTS,
 } from "./content";
 import { PlatformPicker } from "./PlatformPicker";
+import { TeamPanel } from "./TeamPanel";
 import { PayoutPicker } from "./PayoutPicker";
 import { Reminders } from "./Reminders";
 import { FieldOk, useToast } from "./Feedback";
@@ -39,6 +40,7 @@ export type Creator = {
   tiktok: string | null; instagram: string | null; facebook: string | null; youtube: string | null;
   payout_method: string | null; new_accounts: boolean; status: string;
   applied_at: string; started_at: string | null; first_post_at: string | null;
+  referral_code: string | null; referred_by: string | null;
   handlesComplete: boolean;
   platforms: string[];
   handles: { platform: string; handle: string | null }[];
@@ -49,8 +51,12 @@ export type Payout = {
   requested_at: string | null; paid_at: string | null; method: string | null; reference: string | null;
 };
 export type PostEntry = { id: string; posted_on: string; slot: number; platforms: string[]; link: string | null };
+export type TeamMember = { name: string; joined: string; started: boolean; paid: boolean };
+
 export type Me = {
   creator: Creator;
+  team: TeamMember[];
+  teamTotals: { members: number; earning: number; earnedUsd: number; pendingUsd: number; perPersonUsd: number };
   posts: PostEntry[];
   payouts: Payout[];
   totals: { paidUsd: number; pendingUsd: number; monthsPaid: number };
@@ -63,6 +69,7 @@ type Show = (text: string, tone?: "ok" | "bad") => void;
 
 const TABS = [
   { key: "overview", label: "Overview", icon: LayoutDashboard },
+  { key: "team", label: "Team", icon: Users },
   { key: "plan", label: "My 30 days", icon: CalendarRange },
   { key: "posts", label: "Post log", icon: ListChecks },
   { key: "payouts", label: "Payouts", icon: Wallet },
@@ -146,6 +153,7 @@ export function CreatorDashboard({ me, token, onRefresh, justRegistered = false 
 
           <div className="min-w-0 flex-1">
             {tab === "overview" && <Overview me={me} progress={progress} token={token} onRefresh={onRefresh} now={now} setTab={setTab} show={show} />}
+            {tab === "team" && <TeamPanel me={me} show={show} />}
             {tab === "plan" && <PlanPanel progress={progress} token={token} onRefresh={onRefresh} show={show} />}
             {tab === "posts" && <PostsPanel me={me} progress={progress} token={token} onRefresh={onRefresh} show={show} />}
             {tab === "payouts" && <PayoutsPanel me={me} progress={progress} />}
@@ -1482,7 +1490,7 @@ function DetailsPanel({ me, token, onRefresh, show }: { me: Me; token: string; o
           profile or just type the handle, either works. All {PLATFORMS_REQUIRED} must be filled in and correct
           before you can be paid, because this is what we check your posts against.
         </p>
-        <div className="mt-3 sm:max-w-md">
+        <div className="mt-3">
           <PlatformPicker
             platforms={platforms}
             handles={handles}
@@ -1490,6 +1498,7 @@ function DetailsPanel({ me, token, onRefresh, show }: { me: Me; token: string; o
             onHandle={(k, v) => setHandles((p) => ({ ...p, [k]: v }))}
             accent={A}
             savedHandles={savedMap(creator)}
+            columns
           />
         </div>
       </section>

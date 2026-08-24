@@ -82,7 +82,7 @@ export const STEPS = [
 ];
 
 export const DO = [
-  "Put clunoid.com in the bio of all three profiles before your first post.",
+  "Put your own share link in the bio of all three profiles before your first post — it opens clunoid.com and it is on your dashboard.",
   "Faceless is fine — screen recording and a voice-over counts, as long as you tell viewers about Clunoid.",
   "A realistic AI voice is allowed for the voice-over. Your own voice is fine too — whichever you prefer.",
   "If you pick Facebook, link it to Instagram so your Reels cross-post to both from one upload.",
@@ -421,11 +421,15 @@ export const REMINDERS = [
   },
   {
     t: "Put clunoid.com in your bio on day one",
-    d: "All three of your profiles need clunoid.com in the bio, description or link field before your first post. That is what lets you say \u201Clink in bio\u201D and have it be true.",
+    d: "All three of your profiles need a link in the bio, description or link field before your first post — use your own share link from the Team tab rather than the plain address. It opens clunoid.com either way, so \u201Clink in bio\u201D is still true, and every creator having a different one keeps the domain out of trouble.",
   },
   {
     t: "Faceless is fine",
     d: "You never have to be on camera. A screen recording of a bot running with a voice over the top earns exactly the same as talking to the camera, and a realistic AI voice is allowed for that voice-over — there is an example on your dashboard to download. What matters is that the viewer comes away knowing what Clunoid is.",
+  },
+  {
+    t: "Bring people in and earn with them",
+    d: "Your dashboard has a share link. Anyone who joins through it becomes part of your team, and you get $20 for each of them once they have been paid. Give it to friends, to other creators, to anyone — there is no limit, and it takes nothing away from what they earn.",
   },
   {
     t: "Say it is FREE — in every video, no exceptions",

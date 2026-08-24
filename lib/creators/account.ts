@@ -57,7 +57,7 @@ export function newAccessToken(): string {
 
 /** Columns the creator is allowed to see about themselves. Never selects the token. */
 export const CREATOR_FIELDS =
-  "id, name, email, country, payout_method, new_accounts, status, applied_at, started_at, first_post_at";
+  "id, name, email, country, payout_method, new_accounts, status, applied_at, started_at, first_post_at, referral_code, referred_by";
 
 export type CreatorRow = {
   id: string;
@@ -70,7 +70,12 @@ export type CreatorRow = {
   applied_at: string;
   started_at: string | null;
   first_post_at: string | null;
+  referral_code: string | null;
+  referred_by: string | null;
 };
+
+/** What one creator earns for each person they bring who gets paid. */
+export const TEAM_BONUS_USD = 20;
 
 export type Db = SupabaseClient;
 

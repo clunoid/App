@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db, findCreator, hasAllHandles, loadHandles, type CreatorRow, type HandleRow } from "@/lib/creators/account";
+import { db, findCreator, hasAllHandles, loadHandles, TEAM_BONUS_USD, type CreatorRow, type HandleRow } from "@/lib/creators/account";
 import { computeProgress, baseForMonth, type PostRow } from "@/lib/creators/progress";
 
 export const runtime = "nodejs";
@@ -21,8 +21,18 @@ export type MeResponse = {
   payouts: Payout[];
   totals: { paidUsd: number; pendingUsd: number; monthsPaid: number };
   nextPayout: { month: number; baseUsd: number; bonusPossibleUsd: number } | null;
+  team: TeamMember[];
+  teamTotals: { members: number; earning: number; earnedUsd: number; pendingUsd: number; perPersonUsd: number };
   progress: ReturnType<typeof computeProgress>;
   serverTime: string;
+};
+
+export type TeamMember = {
+  name: string;
+  joined: string;
+  started: boolean;
+  /** True once this member has been paid, which is what earns the bonus. */
+  paid: boolean;
 };
 
 type Payout = {
@@ -75,6 +85,36 @@ export async function POST(req: NextRequest) {
     .reduce((sum, p) => sum + Number(p.base_usd) + Number(p.bonus_usd), 0);
   const monthsPaid = payouts.filter((p) => p.status === "paid").length;
 
+  // ── the team ─────────────────────────────────────────────────────────────
+  // Everyone who registered through this creator's link, and whether they have
+  // been paid yet — being paid is what turns a member into a bonus.
+  const { data: broughtRows } = await admin
+    .from("trading_creator_applications")
+    .select("id, name, applied_at, first_post_at")
+    .eq("referred_by", creator.id)
+    .order("applied_at", { ascending: false });
+
+  const brought = (broughtRows ?? []) as { id: string; name: string; applied_at: string; first_post_at: string | null }[];
+
+  let paidIds = new Set<string>();
+  if (brought.length > 0) {
+    const { data: theirPayouts } = await admin
+      .from("trading_creator_payouts")
+      .select("application_id")
+      .eq("status", "paid")
+      .in("application_id", brought.map((b) => b.id));
+    paidIds = new Set((theirPayouts ?? []).map((p) => p.application_id as string));
+  }
+
+  const team: TeamMember[] = brought.map((b) => ({
+    name: b.name,
+    joined: b.applied_at,
+    started: !!b.first_post_at,
+    paid: paidIds.has(b.id),
+  }));
+
+  const earningCount = team.filter((t) => t.paid).length;
+
   const progress = computeProgress(creator.first_post_at, posts);
 
   // The month they are working towards right now.
@@ -92,6 +132,15 @@ export async function POST(req: NextRequest) {
     payouts,
     totals: { paidUsd, pendingUsd, monthsPaid },
     nextPayout,
+    team,
+    teamTotals: {
+      members: team.length,
+      earning: earningCount,
+      earnedUsd: earningCount * TEAM_BONUS_USD,
+      // Members who joined but have not been paid yet — money not yet earned.
+      pendingUsd: (team.length - earningCount) * TEAM_BONUS_USD,
+      perPersonUsd: TEAM_BONUS_USD,
+    },
     progress,
     serverTime: new Date().toISOString(),
   };

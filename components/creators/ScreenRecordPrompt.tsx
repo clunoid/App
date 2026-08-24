@@ -14,7 +14,7 @@
  * shortcut for it, rather than putting a button in the way.
  */
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Video, X, Check, Smartphone, Monitor, Crop } from "lucide-react";
 import { TC } from "@/lib/trading/theme";
 import { GOOD, A } from "./content";
@@ -89,16 +89,38 @@ const HOW: Record<Device, { icon: typeof Smartphone; title: string; steps: strin
   },
 };
 
+/**
+ * Once someone has this memorised, being asked every single time is noise. The
+ * tick puts it away for a month rather than forever — long enough to stop being
+ * annoying, short enough that a creator coming back after a break is reminded.
+ */
+const SNOOZE_KEY = "cln_rec_prompt_snoozed";
+const SNOOZE_MS = 30 * 24 * 60 * 60 * 1000;
+
+export function isRecordPromptSnoozed(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    const at = Number(localStorage.getItem(SNOOZE_KEY) || 0);
+    return Number.isFinite(at) && at > 0 && Date.now() - at < SNOOZE_MS;
+  } catch { return false; }
+}
+
 export function ScreenRecordPrompt({ onClose }: { onClose: () => void }) {
   const [device, setDevice] = useState<Device>("desktop");
+  const [hide, setHide] = useState(false);
 
   useEffect(() => setDevice(detect()), []);
 
+  const dismiss = useCallback(() => {
+    if (hide) { try { localStorage.setItem(SNOOZE_KEY, String(Date.now())); } catch { /* private mode */ } }
+    onClose();
+  }, [hide, onClose]);
+
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") dismiss(); };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, [dismiss]);
 
   const how = HOW[device];
   const Icon = how.icon;
@@ -109,7 +131,7 @@ export function ScreenRecordPrompt({ onClose }: { onClose: () => void }) {
       style={{ background: "rgba(4,10,20,0.74)", backdropFilter: "blur(3px)" }}>
       <div className="relative w-full max-w-[440px] rounded-2xl border p-5"
         style={{ borderColor: TC.line, background: TC.panel, boxShadow: "0 24px 60px rgba(0,0,0,0.55)" }}>
-        <button onClick={onClose} aria-label="Close" className="absolute right-3.5 top-3.5 rounded-lg p-1 transition hover:bg-white/10" style={{ color: TC.faint }}>
+        <button onClick={dismiss} aria-label="Close" className="absolute right-3.5 top-3.5 rounded-lg p-1 transition hover:bg-white/10" style={{ color: TC.faint }}>
           <X size={16} />
         </button>
 
@@ -141,11 +163,17 @@ export function ScreenRecordPrompt({ onClose }: { onClose: () => void }) {
           </p>
         )}
 
-        <button type="button" onClick={onClose}
+        <button type="button" onClick={dismiss}
           className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-[13.5px] font-semibold transition hover:opacity-90"
           style={{ background: GOOD, color: "#06231a" }}>
           <Check size={15} /> Got it
         </button>
+
+        <label className="mt-3 flex cursor-pointer items-center justify-center gap-2 text-[11.5px]" style={{ color: TC.faint }}>
+          <input type="checkbox" checked={hide} onChange={(e) => setHide(e.target.checked)}
+            className="h-3.5 w-3.5" style={{ accentColor: GOOD }} />
+          Do not remind me again
+        </label>
       </div>
     </div>
   );

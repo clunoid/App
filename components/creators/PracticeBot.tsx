@@ -27,7 +27,7 @@ import { TC, DOT_GRID, monoFont } from "@/lib/trading/theme";
 import { DerivBotSimRunner } from "@/components/deriv/bots/DerivBotSimRunner";
 import { setSimBalance, getSimBalance, markSimEditorApplied } from "@/lib/deriv/bots/simBalance";
 import { A, GOOD, VOICEOVER_STARTERS, KEYWORDS, IDEAS } from "./content";
-import { ScreenRecordPrompt } from "./ScreenRecordPrompt";
+import { ScreenRecordPrompt, isRecordPromptSnoozed } from "./ScreenRecordPrompt";
 
 /** The bot creators practise on — the flagship, so it matches what they film. */
 const BOT_ID = "smart-recovery-differ";
@@ -87,7 +87,7 @@ export function PracticeBot() {
     setSimBalance(v);
     markSimEditorApplied();
     setStarted(true);
-    setAskRecord(true);
+    setAskRecord(!isRecordPromptSnoozed());
   }
 
   if (started) {

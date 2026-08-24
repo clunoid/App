@@ -32,6 +32,7 @@ export function PlatformPicker({
   accent,
   showHandles = true,
   savedHandles,
+  columns = false,
 }: {
   platforms: string[];
   handles: Record<string, string>;
@@ -42,6 +43,8 @@ export function PlatformPicker({
   showHandles?: boolean;
   /** What is actually stored, so the row can say "not saved yet". */
   savedHandles?: Record<string, string | null>;
+  /** Lay the rows out side by side where there is room, instead of stacked. */
+  columns?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const boxRef = useRef<HTMLDivElement>(null);
@@ -78,6 +81,7 @@ export function PlatformPicker({
   return (
     <div className="space-y-2.5">
       {/* ── the three you post on ─────────────────────────────────────────── */}
+      <div className={columns ? "grid gap-2.5 sm:grid-cols-2 xl:grid-cols-3" : "space-y-2.5"}>
       {platforms.map((key) => {
         const p = platformInfo(key);
         if (!p) return null;
@@ -122,6 +126,7 @@ export function PlatformPicker({
           </div>
         );
       })}
+      </div>
 
       {/* ── everything else, always one tap away ──────────────────────────── */}
       {available.length > 0 && (

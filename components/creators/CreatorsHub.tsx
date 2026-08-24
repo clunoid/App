@@ -38,6 +38,15 @@ import {
 /** Where this browser remembers which creator it belongs to. */
 const TOKEN_KEY = "cln_creator_token";
 
+/** Dropped by /r/<code> when somebody arrives through a creator's share link. */
+const REF_COOKIE = "cln_ref";
+
+function readRefCode(): string {
+  if (typeof document === "undefined") return "";
+  const hit = document.cookie.split("; ").find((c) => c.startsWith(REF_COOKIE + "="));
+  return hit ? decodeURIComponent(hit.slice(REF_COOKIE.length + 1)) : "";
+}
+
 export function CreatorsHub() {
   const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
   const [start, setStart] = useState(today);
@@ -60,6 +69,9 @@ export function CreatorsHub() {
   // HTML. Only a browser that already holds a token blanks to a spinner, and it
   // does that after mount, so hydration still matches.
   const [checking, setChecking] = useState(false);
+  const [invitedBy, setInvitedBy] = useState("");
+
+  useEffect(() => { setInvitedBy(readRefCode()); }, []);
   // The welcome belongs on the dashboard: this component unmounts the moment the
   // dashboard takes over, so a toast raised here would never be seen.
   const [justRegistered, setJustRegistered] = useState(false);
@@ -112,7 +124,7 @@ export function CreatorsHub() {
       const res = await fetch("/api/creators/apply", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...f, platforms, handles, payoutMethod: payout, newAccounts, agreed }),
+        body: JSON.stringify({ ...f, platforms, handles, payoutMethod: payout, newAccounts, agreed, ref: readRefCode() }),
       });
       const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; token?: string; already?: boolean };
       if (!res.ok || !data.ok) { setErr(data.error || "Something went wrong. Please try again."); return; }
@@ -212,6 +224,14 @@ export function CreatorsHub() {
                 Fill this in, read the rules below, then confirm at the bottom. Your 30 days start the moment you
                 register — no waiting, no approval.
               </p>
+
+              {invitedBy && (
+                <p className="mt-3 inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[12px]"
+                  style={{ borderColor: `${GOOD}55`, background: `${GOOD}12`, color: TC.muted }}>
+                  <Check size={13} style={{ color: GOOD }} />
+                  Joining with code <b style={{ color: TC.text }}>{invitedBy}</b> — they get credit when you are paid.
+                </p>
+              )}
 
               <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 <label className="flex flex-col gap-1.5">
@@ -519,7 +539,9 @@ You get <b style={{ color: TC.text }}>$500 on top</b> of what you already earn, 
                 your 30 days — even if it did well. Say the name, say what it does, or show the site or a bot
                 running while you explain it. Telling people matters more than showing them: if someone watches your
                 video and cannot say what you were talking about, it will not be counted. You never have to be on
-                camera — a screen recording with your voice over it is fine. And say the bots are{" "}
+                camera — a screen recording with your voice over it is fine. Put your own share link in your bios
+                rather than the plain address — you get one on your dashboard, and it opens the same place. And say
+                the bots are{" "}
                 <b style={{ color: TC.text }}>100% FREE</b> — every video, no exceptions.
               </p>
             </div>

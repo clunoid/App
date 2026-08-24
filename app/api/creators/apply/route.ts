@@ -29,6 +29,8 @@ type Body = {
   country?: string;
   platforms?: string[];
   handles?: Record<string, string>;
+  /** The share code they arrived through, if any. */
+  ref?: string;
   payoutMethod?: string;
   newAccounts?: boolean;
   agreed?: boolean;
@@ -76,6 +78,19 @@ export async function POST(req: NextRequest) {
   // does not require it.
   const user = await requireUser().catch(() => null);
 
+  // Who brought them, if anyone. An unknown or self-referencing code is simply
+  // ignored — a broken link should never stop somebody registering.
+  let referredBy: string | null = null;
+  const refCode = trim(body.ref).toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 12);
+  if (refCode.length >= 4) {
+    const { data: referrer } = await db
+      .from("trading_creator_applications")
+      .select("id")
+      .eq("referral_code", refCode)
+      .maybeSingle();
+    referredBy = referrer?.id ?? null;
+  }
+
   // The key their browser keeps so it can open their dashboard again later.
   const accessToken = newAccessToken();
 
@@ -90,6 +105,7 @@ export async function POST(req: NextRequest) {
     status: 'active',
     started_at: new Date().toISOString(),
     access_token: accessToken,
+    referred_by: referredBy,
   }).select("id").single();
 
   if (error) {
