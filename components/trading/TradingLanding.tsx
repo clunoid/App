@@ -11,7 +11,7 @@
  * to classic Clunoid.
  */
 import { useState } from "react";
-import { Activity, ArrowUpRight, BookOpen, BrainCircuit, Cpu, LineChart, Lock, ShieldCheck, Zap, ChevronRight, Loader2 } from "lucide-react";
+import { Activity, ArrowUpRight, BookOpen, BrainCircuit, Cpu, LineChart, Lock, ShieldCheck, Zap, ChevronRight, Loader2, Clapperboard } from "lucide-react";
 import { useClunoid } from "@/lib/store/useClunoid";
 import { TradingHub } from "@/components/trading/TradingHub";
 
@@ -109,9 +109,17 @@ export function TradingLanding() {
         {/* ── hero ── */}
         <section className="grid w-full items-center gap-10 px-6 pb-8 pt-6 sm:px-10 lg:px-16 lg:grid-cols-2 lg:pt-14">
           <div>
-            <span className="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ borderColor: C.line, color: C.profit }}>
-              <Zap size={12} /> Automated · AI-driven · broker-agnostic
-            </span>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ borderColor: C.line, color: C.profit }}>
+                <Zap size={12} /> Automated · AI-driven · broker-agnostic
+              </span>
+              {/* Plenty of people arrive here to earn rather than to trade, and
+                  nothing on this page told them they could. */}
+              <a href="/trading/creators" className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] transition hover:opacity-85"
+                style={{ borderColor: "rgba(167,139,250,0.45)", background: "rgba(167,139,250,0.12)", color: "#a78bfa" }}>
+                <Clapperboard size={12} /> Get paid to post
+              </a>
+            </div>
             <h1 className="mt-5 text-[34px] font-bold leading-[1.08] sm:text-[46px]">
               Free, fully automated trading bots that <span style={{ color: C.profit }}>execute for you</span>.
             </h1>

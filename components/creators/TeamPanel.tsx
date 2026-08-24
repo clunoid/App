@@ -16,15 +16,18 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Users, Copy, Check, Link2, Share2, ShieldCheck, Clock, X, Loader2, UserPlus, MessageSquare } from "lucide-react";
+import { Users, Copy, Check, Link2, Share2, ShieldCheck, Clock, X, Loader2, UserPlus, MessageSquare, Star, ChevronDown } from "lucide-react";
 import { TC, monoFont } from "@/lib/trading/theme";
-import { A, GOOD, BAD, fmt, inviteMessage } from "./content";
+import { A, GOOD, BAD, fmt, inviteMessage, INVITE_VARIANTS } from "./content";
 import type { Me } from "./CreatorDashboard";
 
 const card = "rounded-2xl border p-4 sm:p-5";
 const cardStyle = { borderColor: TC.line, background: TC.panel } as const;
 const labelCls = "text-[10.5px] font-semibold uppercase tracking-wider";
-const money = (n: number) => `$${n.toFixed(0)}`;
+const money = (n: number) => "$" + n.toFixed(0);
+
+/** Which wordings this creator starred. Their phone, their preference. */
+const FAVES_KEY = "cln_invite_faves";
 
 export function TeamPanel({ me, show, onRefresh, token }: {
   me: Me; show: (t: string, tone?: "ok" | "bad") => void; onRefresh: () => Promise<void>; token: string;
@@ -32,17 +35,42 @@ export function TeamPanel({ me, show, onRefresh, token }: {
   const { creator, team, teamTotals } = me;
   const [copied, setCopied] = useState<string | null>(null);
   const [picking, setPicking] = useState(false);
+  const [variant, setVariant] = useState(INVITE_VARIANTS[0].key);
+  const [favourites, setFavourites] = useState<string[]>([]);
+  const [showAll, setShowAll] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [origin, setOrigin] = useState("https://clunoid.com");
 
   useEffect(() => {
     if (typeof window !== "undefined") setOrigin(window.location.origin);
+    try {
+      const saved = JSON.parse(localStorage.getItem(FAVES_KEY) || "[]");
+      if (Array.isArray(saved)) {
+        setFavourites(saved.filter((k) => typeof k === "string"));
+        if (saved[0]) setVariant(saved[0]);
+      }
+    } catch { /* nothing saved */ }
     return () => { if (timer.current) clearTimeout(timer.current); };
   }, []);
 
+  // Starred wordings float to the top, because a creator who found one that
+  // works for them should not have to hunt for it every time.
+  const ordered = [...INVITE_VARIANTS].sort(
+    (x, y) => (favourites.includes(y.key) ? 1 : 0) - (favourites.includes(x.key) ? 1 : 0),
+  );
+
+  function toggleFave(key: string) {
+    setFavourites((cur) => {
+      const next = cur.includes(key) ? cur.filter((k) => k !== key) : [key, ...cur];
+      try { localStorage.setItem(FAVES_KEY, JSON.stringify(next)); } catch { /* private mode */ }
+      return next;
+    });
+  }
+
   const code = creator.referral_code ?? "";
   const link = code ? `${origin}/r/${code}` : "";
-  const message = inviteMessage(link);
+  const chosen = INVITE_VARIANTS.find((v) => v.key === variant) ?? INVITE_VARIANTS[0];
+  const message = link ? chosen.body(link) : inviteMessage(link);
 
   const copy = useCallback(async (what: string, value: string) => {
     try {
@@ -115,6 +143,58 @@ export function TeamPanel({ me, show, onRefresh, token }: {
           </button>
         </div>
 
+        {/* ── which wording goes out with it ──────────────────────────── */}
+        <div className="mt-4 rounded-xl border p-3" style={{ borderColor: TC.line, background: "rgba(0,0,0,0.22)" }}>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider" style={{ color: TC.faint }}>
+              <MessageSquare size={13} style={{ color: A }} /> What goes out with it
+            </span>
+            <button type="button" onClick={() => setShowAll((v) => !v)}
+              className="inline-flex items-center gap-1 text-[12px] font-semibold transition hover:opacity-80" style={{ color: A }}>
+              {showAll ? "Hide" : "More versions"}
+              <ChevronDown size={13} className="transition" style={{ transform: showAll ? "rotate(180deg)" : undefined }} />
+            </button>
+          </div>
+
+          <pre className="mt-2.5 whitespace-pre-wrap font-sans text-[12.5px] leading-relaxed" style={{ color: TC.muted }}>{message}</pre>
+
+          {showAll && (
+            <div className="mt-3 space-y-2 border-t pt-3" style={{ borderColor: TC.line }}>
+              <p className="text-[11.5px] leading-relaxed" style={{ color: TC.faint }}>
+                Pick the one that sounds like you. Star the ones you like and they move to the top.
+              </p>
+              {ordered.map((v) => {
+                const on = v.key === variant;
+                const fave = favourites.includes(v.key);
+                return (
+                  <div key={v.key} className="rounded-xl border p-2.5 transition"
+                    style={on ? { borderColor: `${A}77`, background: `${A}12` } : { borderColor: TC.line, background: "rgba(0,0,0,0.2)" }}>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button type="button" onClick={() => setVariant(v.key)}
+                        className="flex min-w-0 flex-1 items-center gap-1.5 text-left text-[12.5px] font-bold"
+                        style={{ color: on ? TC.text : TC.muted }}>
+                        {on && <Check size={13} style={{ color: A }} />} {v.label}
+                      </button>
+                      <button type="button" onClick={() => toggleFave(v.key)}
+                        aria-label={fave ? `Unstar ${v.label}` : `Star ${v.label}`}
+                        className="shrink-0 rounded-lg p-1 transition hover:opacity-80"
+                        style={{ color: fave ? "#fcd34d" : TC.faint }}>
+                        <Star size={14} fill={fave ? "#fcd34d" : "none"} />
+                      </button>
+                      <button type="button" onClick={() => copy("message", v.body(link))}
+                        className="shrink-0 rounded-lg px-2 py-1 text-[11.5px] font-semibold transition hover:opacity-85"
+                        style={{ background: "rgba(255,255,255,0.07)", color: TC.muted }}>
+                        <Copy size={11} className="mr-1 inline" /> Copy
+                      </button>
+                    </div>
+                    <pre className="mt-1.5 whitespace-pre-wrap font-sans text-[11.5px] leading-relaxed" style={{ color: TC.faint }}>{v.body(link)}</pre>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
         {/* the real reason this matters */}
         <div className="mt-4 rounded-xl border p-3" style={{ borderColor: `${GOOD}44`, background: `${GOOD}10` }}>
           <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider" style={{ color: GOOD }}>
@@ -149,10 +229,10 @@ export function TeamPanel({ me, show, onRefresh, token }: {
           </p>
         ) : (
           <div className="mt-3 overflow-x-auto">
-            <table className="w-full min-w-[380px] border-collapse text-left">
+            <table className="w-full min-w-[560px] border-collapse text-left">
               <thead>
                 <tr>
-                  {["Name", "Joined", "Status", "You earn"].map((h) => (
+                  {["Name", "Code", "Country", "Joined", "Status", "You earn"].map((h) => (
                     <th key={h} className={`pb-2 ${labelCls}`} style={{ color: TC.faint }}>{h}</th>
                   ))}
                 </tr>
@@ -161,6 +241,8 @@ export function TeamPanel({ me, show, onRefresh, token }: {
                 {team.map((m, i) => (
                   <tr key={`${m.name}-${m.joined}-${i}`} className="border-t" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
                     <td className="py-2 text-[13px] font-medium">{m.name}</td>
+                    <td className="py-2 text-[12px] tracking-[0.1em]" style={{ ...monoFont, color: A }}>{m.code ?? "—"}</td>
+                    <td className="py-2 text-[12px]" style={{ color: TC.muted }}>{m.country || "—"}</td>
                     <td className="py-2 text-[12px]" style={{ color: TC.muted }}>{fmt(m.joined)}</td>
                     <td className="py-2">
                       <span className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-semibold"

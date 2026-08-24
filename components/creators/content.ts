@@ -499,22 +499,109 @@ export const TEMPLATES = [
 
 /** The footer line, identical on the sign-up page and the dashboard. */
 /**
- * The message a creator sends with their link.
+ * The messages a creator sends with their link.
  *
- * Whoever receives this decides in about two seconds whether it is an
- * opportunity or something to ignore, so it leads with the money and the effort,
- * and it stays true: $100 is the real first month, $1,250 is the real ceiling
- * (a $750 base plus the $500 views bonus), and one video a day is the real ask.
+ * Whoever receives one of these decides in about two seconds whether it is an
+ * opportunity or something to ignore, so they lead with the real thing and stay
+ * short. Every number is true: $100 is the real first month, $1,250 is the real
+ * ceiling ($750 base plus the $500 views bonus), one video a day is the real ask.
+ *
+ * Several of them, deliberately. The same wording sent by fifty people reads as
+ * a chain letter — and the right tone for a close friend is not the right tone
+ * for a group of creators, so a creator should pick the one that sounds like
+ * them. All of them end by asking the reader to go and look, because a message
+ * with no ask is a message with no click.
  */
+export type InviteVariant = { key: string; label: string; body: (link: string) => string };
+
+export const INVITE_VARIANTS: InviteVariant[] = [
+  {
+    key: "straight",
+    label: "Straight up",
+    body: (link) => [
+      "I get paid to post about this.",
+      "",
+      "Clunoid has free AI trading bots — and it pays creators to make videos about them. $100 your first month, up to $1,250 once you are going. One video a day, on your own accounts.",
+      "",
+      "No cost to join, nothing to buy. Go check it out:",
+      link,
+    ].join("\n"),
+  },
+  {
+    key: "friend",
+    label: "To a friend",
+    body: (link) => [
+      "This is the thing I have been posting about.",
+      "",
+      "It is free trading bots, and they pay you to make short videos about them. I am on $100 this month and it goes up from there.",
+      "",
+      "You already post anyway. Go check it out and tell me what you think:",
+      link,
+    ].join("\n"),
+  },
+  {
+    key: "creator",
+    label: "To another creator",
+    body: (link) => [
+      "If you are already posting daily, this pays for it.",
+      "",
+      "Clunoid pays creators monthly to post about their free trading bots. Starts at $100, goes to $1,250. Your accounts, your content, no exclusivity.",
+      "",
+      "Go check it out — takes two minutes to see if it is for you:",
+      link,
+    ].join("\n"),
+  },
+  {
+    key: "short",
+    label: "Very short",
+    body: (link) => [
+      "Free AI trading bots, and they pay you to post about them. $100 a month to start.",
+      "",
+      "Go check it out:",
+      link,
+    ].join("\n"),
+  },
+  {
+    key: "sceptic",
+    label: "For a sceptic",
+    body: (link) => [
+      "Before you say it — there is nothing to buy and nothing to pay.",
+      "",
+      "The bots are free. They pay creators to make videos about them, $100 the first month and more after that. That is the whole thing.",
+      "",
+      "Go check it out yourself rather than taking my word for it:",
+      link,
+    ].join("\n"),
+  },
+  {
+    key: "sidework",
+    label: "Extra income",
+    body: (link) => [
+      "Looking for something that pays without a boss or a schedule?",
+      "",
+      "Post one short video a day about Clunoid's free trading bots and get paid monthly. $100 to start, up to $1,250. You post on your own accounts, whenever you like.",
+      "",
+      "Go check it out:",
+      link,
+    ].join("\n"),
+  },
+  {
+    key: "group",
+    label: "To a group",
+    body: (link) => [
+      "Dropping this here for anyone who posts.",
+      "",
+      "Clunoid pays creators monthly to make short videos about their free AI trading bots. $100 the first month, up to $1,250 as you keep going. Nothing to pay to join.",
+      "",
+      "Go check it out:",
+      link,
+    ].join("\n"),
+  },
+];
+
+/** The one used unless a creator has chosen otherwise. */
 export function inviteMessage(link: string): string {
-  return [
-    "I get paid to post about this.",
-    "",
-    "Clunoid has free AI trading bots — and it pays creators to make videos about them. $100 your first month, up to $1,250 once you are going. One video a day, on your own accounts.",
-    "",
-    "No cost to join, nothing to buy:",
-    link,
-  ].join("\n");
+  return INVITE_VARIANTS[0].body(link);
 }
 
 export const DISCLAIMER =

@@ -28,8 +28,8 @@ import {
   PLATFORMS_REQUIRED, platformInfo, platformSentence, TRUE_ABOUT_CLUNOID, SHOT_LIST, HOOKS, PIVOTS,
 } from "./content";
 import { PlatformPicker } from "./PlatformPicker";
+import { PayoutMethods } from "./PayoutMethods";
 import { TeamPanel } from "./TeamPanel";
-import { PayoutPicker } from "./PayoutPicker";
 import { Reminders } from "./Reminders";
 import { FieldOk, useToast } from "./Feedback";
 import { computeProgress, GRACE_DAYS, QUALIFYING_DAYS_NEEDED, type Progress } from "@/lib/creators/progress";
@@ -51,7 +51,7 @@ export type Payout = {
   requested_at: string | null; paid_at: string | null; method: string | null; reference: string | null;
 };
 export type PostEntry = { id: string; posted_on: string; slot: number; platforms: string[]; link: string | null };
-export type TeamMember = { name: string; joined: string; started: boolean; paid: boolean };
+export type TeamMember = { name: string; code: string | null; country: string; joined: string; started: boolean; paid: boolean };
 
 export type Me = {
   creator: Creator;
@@ -83,6 +83,9 @@ const card = "rounded-2xl border p-4 sm:p-5";
 const cardStyle = { borderColor: TC.line, background: TC.panel } as const;
 const labelCls = "text-[10.5px] font-semibold uppercase tracking-wider";
 const money = (n: number) => "$" + n.toFixed(n % 1 === 0 ? 0 : 2);
+
+/** Money asked for but not yet in their hands. Amber, because it is neither. */
+const PENDING = "#f5c451";
 
 /** The AI voice creators can listen to and keep. */
 const VOICE_EXAMPLE_SRC = "/creators/blake-voice-example.mp3";
@@ -156,7 +159,7 @@ export function CreatorDashboard({ me, token, onRefresh, justRegistered = false 
             {tab === "team" && <TeamPanel me={me} show={show} onRefresh={onRefresh} token={token} />}
             {tab === "plan" && <PlanPanel progress={progress} token={token} onRefresh={onRefresh} show={show} />}
             {tab === "posts" && <PostsPanel me={me} progress={progress} token={token} onRefresh={onRefresh} show={show} />}
-            {tab === "payouts" && <PayoutsPanel me={me} progress={progress} />}
+            {tab === "payouts" && <PayoutsPanel me={me} progress={progress} setTab={setTab} />}
             {tab === "ideas" && <IdeasPanel />}
             {tab === "rules" && <RulesPanel />}
             {tab === "details" && <DetailsPanel me={me} token={token} onRefresh={onRefresh} show={show} />}
@@ -323,7 +326,7 @@ function Overview({ me, progress, token, onRefresh, now, setTab, show }: {
         <Stat label="Days done" value={`${progress.qualifyingDays}`} sub={`You need ${QUALIFYING_DAYS_NEEDED} to get paid`} tone={A} />
         <Stat label="Days to go" value={`${progress.daysLeft}`} sub="Posted days, not dates" tone={progress.daysLeft === 0 ? GOOD : A} />
         <Stat label="Videos posted" value={`${progress.postsLogged}`} sub="Since you started" tone={A} />
-        <Stat label="Your total earnings" value={money(totals.paidUsd)} sub={totals.pendingUsd > 0 ? `${money(totals.pendingUsd)} coming to you` : "Money already paid to you"} tone={GOOD} />
+        <Stat label="Your total earnings" value={money(totals.paidUsd)} sub={totals.pendingUsd > 0 ? `${money(totals.pendingUsd)} pending` : "Money already paid to you"} tone={GOOD} />
       </section>
 
       {/* what this month pays */}
@@ -398,7 +401,7 @@ function StartHereCard() {
       style={{ borderColor: `${GOOD}66`, background: `linear-gradient(180deg, ${GOOD}14, rgba(255,255,255,0.015))` }}>
       <Gamepad2 size={18} className="shrink-0" style={{ color: GOOD }} />
       <div className="min-w-0 flex-1">
-        <div className="text-[13.5px] font-bold">Start creating — practise on a real bot first</div>
+        <div className="text-[13.5px] font-bold">Start creating</div>
         <p className="mt-0.5 text-[12px] leading-relaxed" style={{ color: TC.muted }}>
           Never traded before? Run the actual bot with fake money, record your screen, and build a video around
           it. Post about anything you like — copy a format that is already working and rebuild it as yours. What
@@ -1002,7 +1005,7 @@ function PostsPanel({ me, progress, token, onRefresh, show }: { me: Me; progress
 
 /* ── payouts ──────────────────────────────────────────────────────────────── */
 
-function PayoutsPanel({ me, progress }: { me: Me; progress: Progress }) {
+function PayoutsPanel({ me, progress, setTab }: { me: Me; progress: Progress; setTab: (t: TabKey) => void }) {
   const { totals, payouts, nextPayout, creator } = me;
   const rail = PAYOUTS.find((p) => p.key === creator.payout_method);
 
@@ -1010,7 +1013,7 @@ function PayoutsPanel({ me, progress }: { me: Me; progress: Progress }) {
     <div className="space-y-4">
       <section className="grid gap-3 sm:grid-cols-3">
         <Stat label="Your total earnings" value={money(totals.paidUsd)} sub={`${totals.monthsPaid} month${totals.monthsPaid === 1 ? "" : "s"} paid so far`} tone={GOOD} />
-        <Stat label="Coming to you" value={money(totals.pendingUsd)} sub="Asked for, not paid yet" tone={A} />
+        <Stat label="Pending" value={money(totals.pendingUsd)} sub="Asked for, not paid yet" tone={PENDING} />
         <Stat label="This month you earn" value={nextPayout ? money(nextPayout.baseUsd) : "—"} sub={`Your month ${nextPayout?.month ?? 1}`} tone={A} />
       </section>
 
@@ -1026,8 +1029,13 @@ function PayoutsPanel({ me, progress }: { me: Me; progress: Progress }) {
               <span className="text-[13px] font-semibold">{rail.label}</span>
             </span>
           ) : (
-            <span className="text-[12.5px]" style={{ color: TC.faint }}>No method chosen yet — set one in My details.</span>
+            <span className="text-[12.5px]" style={{ color: TC.faint }}>No method chosen yet.</span>
           )}
+          <button type="button" onClick={() => setTab("details")}
+            className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[12px] font-semibold transition hover:bg-white/5"
+            style={{ borderColor: `${A}66`, color: A }}>
+            {rail ? "Change it" : "Choose one"} <ExternalLink size={12} />
+          </button>
           <span className="text-[12px]" style={{ color: TC.muted }}>
             Account details are collected after your first 30 days, when there is a payment to make.
           </span>
@@ -1483,6 +1491,30 @@ function DetailsPanel({ me, token, onRefresh, show }: { me: Me; token: string; o
         </p>
       </section>
 
+      <section id="payout" className={card} style={cardStyle}>
+        <h2 className="text-[16px] font-bold">How you want to be paid</h2>
+        <p className="mt-1.5 text-[12.5px] leading-relaxed" style={{ color: TC.muted }}>
+          Pick where the money should go. <b style={{ color: TC.text }}>You only fill in the account details when you
+          have earnings to withdraw</b> — there is nothing to enter until then.
+        </p>
+        <div className="mt-3">
+          <PayoutMethods
+            value={payout}
+            available={me.totals.pendingUsd + me.teamTotals.earnedUsd}
+            onChange={(v) => { setPayout(v); show((PAYOUTS.find((p) => p.key === v)?.label ?? "Payout method") + " chosen — press save to keep it"); }}
+          />
+        </div>
+        {payout && (
+          <div className="mt-2.5">
+            <FieldOk>
+              {payout === creator.payout_method
+                ? "Saved — you will be paid by " + (PAYOUTS.find((p) => p.key === payout)?.label ?? "")
+                : "Not saved yet — press Save changes at the bottom"}
+            </FieldOk>
+          </div>
+        )}
+      </section>
+
       <section className={card} style={cardStyle}>
         <h2 className="text-[16px] font-bold">Where you post</h2>
         <p className="mt-1.5 text-[12.5px] leading-relaxed" style={{ color: TC.muted }}>
@@ -1533,24 +1565,12 @@ function DetailsPanel({ me, token, onRefresh, show }: { me: Me; token: string; o
       </section>
 
       <section className={card} style={cardStyle}>
-        <h2 className="text-[16px] font-bold">How you want to be paid</h2>
+        <h2 className="text-[16px] font-bold">Save what you changed</h2>
         <p className="mt-1.5 text-[12.5px] leading-relaxed" style={{ color: TC.muted }}>
-          You set up the account details after your first 30 days, when there is a payment to make.
+          Nothing above is stored until you press this.
         </p>
-        <div className="mt-3 sm:max-w-md">
-          <PayoutPicker value={payout} onChange={(v) => { setPayout(v); show((PAYOUTS.find((p) => p.key === v)?.label ?? "Payout method") + " chosen — press save to keep it"); }} accent={A} />
-        </div>
-        {payout && (
-          <div className="mt-2">
-            <FieldOk>
-              {payout === creator.payout_method
-                ? "Saved — you will be paid by " + (PAYOUTS.find((p) => p.key === payout)?.label ?? "")
-                : "Not saved yet — press Save changes below"}
-            </FieldOk>
-          </div>
-        )}
 
-        {msg && <p className="mt-4 text-[12.5px] font-medium" style={{ color: msg.ok ? GOOD : BAD }}>{msg.text}</p>}
+        {msg && <p className="mt-3 text-[12.5px] font-medium" style={{ color: msg.ok ? GOOD : BAD }}>{msg.text}</p>}
 
         <button type="button" onClick={save} disabled={busy}
           className="mt-4 inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-[13.5px] font-semibold transition hover:opacity-90 disabled:opacity-60"

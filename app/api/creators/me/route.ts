@@ -29,6 +29,9 @@ export type MeResponse = {
 
 export type TeamMember = {
   name: string;
+  /** Their own share code — so a creator can help them, or check who is who. */
+  code: string | null;
+  country: string;
   joined: string;
   started: boolean;
   /** True once this member has been paid, which is what earns the bonus. */
@@ -90,11 +93,14 @@ export async function POST(req: NextRequest) {
   // been paid yet — being paid is what turns a member into a bonus.
   const { data: broughtRows } = await admin
     .from("trading_creator_applications")
-    .select("id, name, applied_at, first_post_at")
+    .select("id, name, country, referral_code, applied_at, first_post_at")
     .eq("referred_by", creator.id)
     .order("applied_at", { ascending: false });
 
-  const brought = (broughtRows ?? []) as { id: string; name: string; applied_at: string; first_post_at: string | null }[];
+  const brought = (broughtRows ?? []) as {
+    id: string; name: string; country: string; referral_code: string | null;
+    applied_at: string; first_post_at: string | null;
+  }[];
 
   let paidIds = new Set<string>();
   if (brought.length > 0) {
@@ -108,6 +114,8 @@ export async function POST(req: NextRequest) {
 
   const team: TeamMember[] = brought.map((b) => ({
     name: b.name,
+    code: b.referral_code,
+    country: b.country,
     joined: b.applied_at,
     started: !!b.first_post_at,
     paid: paidIds.has(b.id),
