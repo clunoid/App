@@ -8,6 +8,11 @@ Two environment variables switch it on. Until both are set the bubble is still
 there but sending returns "We could not send that just now", and the server logs
 say why.
 
+> **Already live.** The bot is `@clunoidmagiclabbot`, messages go to
+> `@DFirstdirector`, and all three variables are set locally in `.env` and on
+> Vercel for production, preview and development. The steps below are here for
+> rotating credentials or setting this up again from scratch.
+
 ## 1. Make the bot (2 minutes, in Telegram)
 
 1. Open Telegram and search for **@BotFather**, then press **Start**.
@@ -42,7 +47,27 @@ In production, add the same two in your host's environment settings (Vercel:
 Project → Settings → Environment Variables, then redeploy). They must **not** be
 prefixed `NEXT_PUBLIC_`.
 
-## 4. Check it works
+## 4. The bot's own replies
+
+The bot is outbound only — it delivers creator messages and nothing else. But a
+bot that says nothing when you press **Start** looks broken, so
+`/api/support/telegram` answers it.
+
+Register the webhook once, after deploying:
+
+```bash
+curl -X POST "https://api.telegram.org/bot<TOKEN>/setWebhook" -H "Content-Type: application/json" -d "{\"url\":\"https://www.clunoid.com/api/support/telegram\",\"secret_token\":\"<TELEGRAM_WEBHOOK_SECRET>\",\"allowed_updates\":[\"message\"]}"
+```
+
+Telegram then sends that secret in the `x-telegram-bot-api-secret-token` header
+on every call, and the route ignores anything without it — otherwise anyone who
+guesses the path could make the bot speak. It also only ever replies to
+`TELEGRAM_CHAT_ID`, so a stranger who finds the bot gets silence.
+
+`getUpdates` and a webhook are mutually exclusive: once the webhook is set,
+`getUpdates` returns nothing. Use `deleteWebhook` if you need to go back.
+
+## 5. Check it works
 
 With the dev server running:
 
