@@ -8,7 +8,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Bot, Shield, Zap, Gauge, CheckCircle2, CircleDashed } from "lucide-react";
 import { TC, DOT_GRID, monoFont } from "@/lib/trading/theme";
-import { Mt5Download } from "@/components/deriv/mt5/Mt5Download";
+import { Mt5Testing } from "@/components/mt5/Mt5Testing";
 
 const ACCENT = "#fb923c";
 
@@ -65,15 +65,8 @@ export function VolBreakoutMt5() {
 
         <Section n={2} title="Get it running">
           <div className="rounded-2xl border p-5" style={{ borderColor: TC.line, background: TC.panel }}>
-            <div className="flex flex-wrap items-center gap-3">
-              <Mt5Download
-                botId="volatility-breakout"
-                botName="Volatility Breakout"
-                accent={ACCENT}
-                label="Download EA"
-                freeLabel="Use our free trading bots instead."
-                freeBlurb={<>Not ready to buy? Use our <b style={{ color: TC.text }}>free, fully automated trading bots</b> at no cost — connect your account or create one to get started.</>}
-              />
+            <div className="flex flex-col gap-3">
+              <Mt5Testing botName="Volatility Breakout" />
               <span className="text-[11.5px]" style={{ color: TC.faint }}>Add gold, silver, oil, copper and the major coins to Market Watch.</span>
             </div>
             <ol className="mt-4 space-y-3">

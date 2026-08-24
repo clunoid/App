@@ -8,7 +8,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Bot, Shield, Zap, Gauge, CheckCircle2, CircleDashed, Scale, AlertTriangle } from "lucide-react";
 import { TC, DOT_GRID, monoFont } from "@/lib/trading/theme";
-import { Mt5Download } from "@/components/deriv/mt5/Mt5Download";
+import { Mt5Testing } from "@/components/mt5/Mt5Testing";
 
 const ACCENT = "#22d3ee";
 
@@ -77,15 +77,8 @@ export function CryptoLSMt5() {
 
         <Section n={2} title="Get it running">
           <div className="rounded-2xl border p-5" style={{ borderColor: TC.line, background: TC.panel }}>
-            <div className="flex flex-wrap items-center gap-3">
-              <Mt5Download
-                botId="crypto-ls"
-                botName="Crypto Long-Short"
-                accent={ACCENT}
-                label="Download EA"
-                freeLabel="Use our free trading bots instead."
-                freeBlurb={<>Not ready to buy? Use our <b style={{ color: TC.text }}>free, fully automated trading bots</b> at no cost — connect your account or create one to get started.</>}
-              />
+            <div className="flex flex-col gap-3">
+              <Mt5Testing botName="Crypto Long-Short" />
               <span className="text-[11.5px]" style={{ color: TC.faint }}>Add at least 8 shortable coins to Market Watch (BTC, ETH, SOL, XRP, LTC, BNB, ADA, DOGE…).</span>
             </div>
             <ol className="mt-4 space-y-3">
