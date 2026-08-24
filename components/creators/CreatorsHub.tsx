@@ -463,7 +463,7 @@ You get <b style={{ color: TC.text }}>$500 on top</b> of what you already earn, 
             <div className="mt-4 rounded-2xl border p-4 sm:p-5" style={{ borderColor: TC.line, background: "rgba(255,255,255,0.02)" }}>
               <div className="text-[13.5px] font-bold">Use AI to find ideas</div>
               <p className="mt-1.5 text-[12.5px] leading-relaxed" style={{ color: TC.muted }}>
-                Ask an AI for angles, hooks and simpler explanations — then make the video yourself, in your own words. Try these:
+                Ask an AI for angles, hooks and simpler explanations — then make the video yourself. Try these:
               </p>
               <ul className="mt-3 space-y-1.5">
                 {AI_PROMPTS.map((p) => (
@@ -473,8 +473,9 @@ You get <b style={{ color: TC.text }}>$500 on top</b> of what you already earn, 
                 ))}
               </ul>
               <p className="mt-3 text-[11.5px] leading-relaxed" style={{ color: TC.faint }}>
-                Do not post AI-generated video with no face or voice of your own. It performs badly and platforms
-                increasingly label it.
+                A realistic AI voice over your own screen recording is fine, and common — there is an example to
+                listen to on your dashboard. What does not work is a video that is entirely generated, with nothing
+                of yours in it.
               </p>
             </div>
           </section>

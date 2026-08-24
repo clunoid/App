@@ -84,6 +84,7 @@ export const STEPS = [
 export const DO = [
   "Put clunoid.com in the bio of all three profiles before your first post.",
   "Faceless is fine — screen recording and a voice-over counts, as long as you tell viewers about Clunoid.",
+  "A realistic AI voice is allowed for the voice-over. Your own voice is fine too — whichever you prefer.",
   "If you pick Facebook, link it to Instagram so your Reels cross-post to both from one upload.",
   "Tell viewers about Clunoid in every single video — say what it is, not just show it.",
   "Take ideas from other trading creators, and use AI for hooks and scripts. Then make it yourself — record, screen record, edit, whatever suits you.",
@@ -136,8 +137,8 @@ export const SHOT_LIST = [
     d: "Search \u201Cclunoid\u201D in Google and screen-record the result being tapped, or just record yourself typing clunoid.com into the address bar. It proves the thing is real and tells viewers exactly where to go.",
   },
   {
-    t: "4 · Talk over it",
-    d: "Record a voice-over on your phone. Say what is on screen as it happens — \u201Cthis is a bot placing a trade by itself\u201D — then say what it is and where to get it. Your normal voice beats a presenter voice.",
+    t: "4 · Add a voice-over",
+    d: "Say what is on screen as it happens — \u201Cthis is a bot placing a trade by itself\u201D — then say what it is and where to get it. Record it on your phone, or use a realistic AI voice: both are allowed. There is an example AI voice below you can download and listen to.",
   },
   {
     t: "5 · Cut it to length",
@@ -302,6 +303,7 @@ export const AI_PROMPTS = [
   "List 5 myths about trading bots I can correct in a 45-second video.",
   "Write a 30-second voice-over for a screen recording of a trading bot placing trades, that ends by telling people it is free at clunoid.com.",
   "Turn this into a script where the pivot to the product happens halfway, not at the end.",
+  "Write a 45-second voice-over script I can feed to a text-to-speech tool.",
 ];
 
 /**
@@ -390,7 +392,7 @@ export const REMINDERS = [
   },
   {
     t: "Faceless is fine",
-    d: "You never have to be on camera. A screen recording of a bot running with your voice over the top earns exactly the same as talking to the camera. What matters is that the viewer comes away knowing what Clunoid is.",
+    d: "You never have to be on camera. A screen recording of a bot running with a voice over the top earns exactly the same as talking to the camera, and a realistic AI voice is allowed for that voice-over — there is an example on your dashboard to download. What matters is that the viewer comes away knowing what Clunoid is.",
   },
   {
     t: "Every video must tell viewers about Clunoid",

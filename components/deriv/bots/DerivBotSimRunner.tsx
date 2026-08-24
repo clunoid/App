@@ -19,7 +19,16 @@ import type { BotUI, BotStats, TradeRow } from "@/lib/deriv/bots/types";
 type StatusKind = "info" | "success" | "warning" | "error";
 const RECOMMENDED_BALANCE = 1000;
 
-export function DerivBotSimRunner({ botId }: { botId: string }) {
+export function DerivBotSimRunner({
+  botId,
+  backHref = "/trading/deriv/bots/sim",
+  backLabel = "All bots",
+}: {
+  botId: string;
+  /** Where the back link goes. Defaults to the sim catalogue. */
+  backHref?: string;
+  backLabel?: string;
+}) {
   const router = useRouter();
   const meta = getBot(botId);
 
@@ -131,8 +140,8 @@ export function DerivBotSimRunner({ botId }: { botId: string }) {
       <div className="cln-dash-inner relative z-10 flex w-full flex-1 flex-col px-4 py-4 sm:px-6 lg:px-10">
 
         <header className="flex flex-wrap items-center gap-x-3 gap-y-2">
-          <Link href="/trading/deriv/bots/sim" className="flex items-center gap-1 text-[12.5px] font-medium transition hover:opacity-80" style={{ color: TC.muted }}>
-            <ArrowLeft size={14} /> All bots
+          <Link href={backHref} className="flex items-center gap-1 text-[12.5px] font-medium transition hover:opacity-80" style={{ color: TC.muted }}>
+            <ArrowLeft size={14} /> {backLabel}
           </Link>
           <span className="h-4 w-px" style={{ background: TC.line }} />
           <span className="inline-flex items-center gap-1.5 truncate text-[15px] font-bold">

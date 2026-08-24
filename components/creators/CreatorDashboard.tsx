@@ -19,7 +19,7 @@ import Link from "next/link";
 import {
   ArrowLeft, Clapperboard, LayoutDashboard, CalendarRange, ListChecks, Wallet, Sparkles,
   BookOpen, UserRound, Check, X, Loader2, Rocket, TrendingUp, Clock, ShieldCheck,
-  CircleAlert, PartyPopper, Copy, ExternalLink, Undo2, CalendarCheck,
+  CircleAlert, PartyPopper, Copy, ExternalLink, Undo2, CalendarCheck, Download, AudioLines, Gamepad2,
 } from "lucide-react";
 import { TC, DOT_GRID, monoFont } from "@/lib/trading/theme";
 import {
@@ -76,6 +76,9 @@ const card = "rounded-2xl border p-4 sm:p-5";
 const cardStyle = { borderColor: TC.line, background: TC.panel } as const;
 const labelCls = "text-[10.5px] font-semibold uppercase tracking-wider";
 const money = (n: number) => `${n.toFixed(n % 1 === 0 ? 0 : 2)}`;
+
+/** The AI voice creators can listen to and keep. */
+const VOICE_EXAMPLE_SRC = "/creators/blake-voice-example.mp3";
 
 /** What is stored, as a plain map, for seeding inputs and spotting unsaved edits. */
 function handleMap(creator: Creator): Record<string, string> {
@@ -204,6 +207,14 @@ function Sidebar({ tab, setTab, progress, started }: { tab: TabKey; setTab: (t: 
         })}
       </div>
 
+      {/* Not a tab — it is its own page, so it links out rather than switching. */}
+      <Link href="/trading/creators/practice"
+        className="mt-2 hidden items-center gap-2 rounded-xl border px-3 py-2.5 text-[13px] font-medium transition hover:opacity-85 lg:flex"
+        style={{ borderColor: `${GOOD}55`, background: `${GOOD}12`, color: TC.text }}>
+        <Gamepad2 size={15} style={{ color: GOOD }} />
+        <span className="whitespace-nowrap">Bot trading</span>
+      </Link>
+
       {started && (
         <div className="mt-3 hidden rounded-xl border p-3 lg:block" style={{ borderColor: TC.line, background: "rgba(0,0,0,0.22)" }}>
           <div className={labelCls} style={{ color: TC.faint }}>Progress</div>
@@ -230,6 +241,7 @@ function Overview({ me, progress, token, onRefresh, now, setTab, show }: {
     return (
       <div className="space-y-4">
         <PostDailyBanner />
+        <StartHereCard />
         <PayoutReminder creator={creator} setTab={setTab} />
         <StartCard me={me} token={token} onRefresh={onRefresh} setTab={setTab} show={show} />
       </div>
@@ -242,6 +254,7 @@ function Overview({ me, progress, token, onRefresh, now, setTab, show }: {
   return (
     <div className="space-y-4">
       <PostDailyBanner />
+      <StartHereCard />
       <PayoutReminder creator={creator} setTab={setTab} />
 
       {/* headline */}
@@ -360,6 +373,35 @@ function Overview({ me, progress, token, onRefresh, now, setTab, show }: {
 
       <Reminders title="Reminders for every creator" />
     </div>
+  );
+}
+
+/**
+ * The practice bot, pushed at everybody.
+ *
+ * Most creators here have never traded. They are being asked to screen-record a
+ * bot placing trades, and without a run-through first that shows in the video —
+ * hunting for buttons, narrating the wrong thing. This is the real simulator on
+ * fake money, so the fumbling happens off camera.
+ */
+function StartHereCard() {
+  return (
+    <section className="flex flex-wrap items-center gap-3 rounded-2xl border p-4"
+      style={{ borderColor: `${GOOD}66`, background: `linear-gradient(180deg, ${GOOD}14, rgba(255,255,255,0.015))` }}>
+      <Gamepad2 size={18} className="shrink-0" style={{ color: GOOD }} />
+      <div className="min-w-0 flex-1">
+        <div className="text-[13.5px] font-bold">Start here — practise on a real bot</div>
+        <p className="mt-0.5 text-[12px] leading-relaxed" style={{ color: TC.muted }}>
+          Never traded before? Run the actual bot with fake money first. Set it up, watch it trade, practise your
+          screen recording and voice-over on it — then film the real thing knowing exactly what you are doing.
+        </p>
+      </div>
+      <Link href="/trading/creators/practice"
+        className="shrink-0 rounded-xl px-3.5 py-2 text-[12.5px] font-semibold transition hover:opacity-90"
+        style={{ background: GOOD, color: "#06231a" }}>
+        Open the bot
+      </Link>
+    </section>
   );
 }
 
@@ -1187,6 +1229,9 @@ function IdeasPanel() {
         </div>
       </section>
 
+      {/* ── an actual AI voice, to hear and to keep ───────────────────────── */}
+      <VoiceExample />
+
       {/* ── captions ──────────────────────────────────────────────────────── */}
       <section className={card} style={cardStyle}>
         <h2 className={`flex items-center gap-2 ${labelCls}`} style={{ color: TC.faint }}>
@@ -1228,11 +1273,79 @@ function IdeasPanel() {
           ))}
         </ul>
         <p className="mt-3 text-[11.5px] leading-relaxed" style={{ color: TC.faint }}>
-          Do not post AI-generated video with no face or voice of your own. It performs badly and platforms
-          increasingly label it.
+          A realistic AI voice over your own screen recording is fine, and common. What does not work is a video that
+          is entirely generated — no real footage, nothing of yours in it. Platforms label those and people scroll past.
         </p>
       </section>
     </div>
+  );
+}
+
+/**
+ * A real AI voice-over, playable and downloadable.
+ *
+ * Creators ask whether an AI voice is allowed far more than anything else, and
+ * the answer is easier to hear than to read. Every download gets its own file
+ * name so a creator can tell one save from another in their downloads folder.
+ */
+function VoiceExample() {
+  const [saving, setSaving] = useState(false);
+
+  async function download() {
+    if (saving) return;
+    setSaving(true);
+    try {
+      const res = await fetch(VOICE_EXAMPLE_SRC);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      // A short random tag, so two saves never collide in the same folder.
+      a.download = `blake-clunoid-${Math.random().toString(36).slice(2, 8)}.mp3`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 4000);
+    } catch { /* the player is still there to listen with */ }
+    finally { setSaving(false); }
+  }
+
+  return (
+    <section className={card} style={cardStyle}>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="flex items-center gap-2 text-[16px] font-bold">
+            <AudioLines size={16} style={{ color: A }} /> AI voice-over is allowed
+          </h2>
+          <p className="mt-1.5 max-w-2xl text-[12.5px] leading-relaxed" style={{ color: TC.muted }}>
+            This is an AI voice — have a listen. A voice like this over your screen recording is perfectly fine, and
+            it is what a lot of creators use. Your own voice works just as well; pick whichever you will actually
+            keep doing every day.
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={download}
+          disabled={saving}
+          title="Download this example"
+          aria-label="Download this example"
+          className="shrink-0 rounded-lg p-2 transition hover:opacity-85 disabled:opacity-50"
+          style={{ background: `${A}1f`, color: A, boxShadow: `inset 0 0 0 1px ${A}55` }}
+        >
+          {saving ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
+        </button>
+      </div>
+
+      <audio controls preload="none" src={VOICE_EXAMPLE_SRC} className="mt-3 w-full" style={{ colorScheme: "dark" }}>
+        Your browser cannot play audio.
+      </audio>
+
+      <p className="mt-2.5 text-[11.5px] leading-relaxed" style={{ color: TC.faint }}>
+        Made with a text-to-speech tool. Any of them will do — write your script, generate it, drop it over the
+        recording.
+      </p>
+    </section>
   );
 }
 
