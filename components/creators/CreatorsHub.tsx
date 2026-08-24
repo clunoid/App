@@ -20,7 +20,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   ArrowLeft, Clapperboard, CalendarDays, Check, X, Sparkles, Wallet,
-  TrendingUp, ShieldCheck, Clock, Rocket, Loader2, ArrowDown,
+  TrendingUp, ShieldCheck, Clock, Rocket, Loader2,
 } from "lucide-react";
 import { TC, DOT_GRID, monoFont } from "@/lib/trading/theme";
 import { CountryPicker } from "./CountryPicker";
@@ -114,13 +114,15 @@ export function CreatorsHub() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...f, platforms, handles, payoutMethod: payout, newAccounts, agreed }),
       });
-      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; token?: string };
+      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; token?: string; already?: boolean };
       if (!res.ok || !data.ok) { setErr(data.error || "Something went wrong. Please try again."); return; }
+      // Already registered and we could prove who they are — straight to the
+      // dashboard rather than an error they cannot act on.
+      if (data.already) { setJustRegistered(false); } else { setJustRegistered(true); }
       const t = data.token ?? "";
       if (t) window.localStorage.setItem(TOKEN_KEY, t);
       setToken(t);
       window.scrollTo({ top: 0 });
-      setJustRegistered(true);
       await load(t);
     } catch {
       setErr("Could not reach us just now. Please try again.");
@@ -176,6 +178,11 @@ export function CreatorsHub() {
             <b style={{ color: TC.text }}>$100</b>; make new ones for this and month one pays{" "}
             <b style={{ color: TC.text }}>$50</b>. <b style={{ color: TC.text }}>You start the day you register</b> —
             there is nothing to wait for.
+          </p>
+          <p className="mt-2.5 max-w-4xl text-[13.5px] leading-relaxed" style={{ color: TC.muted }}>
+            <b style={{ color: TC.text }}>You can post about anything.</b> Take a format that is already working —
+            another creator, a video going viral in any niche — and rebuild it as your own with Clunoid in it. The
+            only thing that decides whether a video counts is whether it tells viewers about Clunoid.
           </p>
           <div className="mt-5 flex flex-wrap gap-2.5">
             {[
@@ -279,8 +286,31 @@ export function CreatorsHub() {
                 )}
               </div>
 
-              <div className="mt-6 flex items-center gap-2 text-[12.5px] font-medium" style={{ color: A }}>
-                <ArrowDown size={15} /> Read the rules below, then confirm and send at the bottom.
+              {/* Confirm and register right here — nobody should have to scroll to
+                  the bottom of a long page to finish something they started at the top. */}
+              <div className="mt-6 border-t pt-5" style={{ borderColor: TC.line }}>
+                <div className="space-y-3">
+                  <label className="flex cursor-pointer items-start gap-2.5 text-[13px] leading-relaxed" style={{ color: TC.muted }}>
+                    <input type="checkbox" checked={newAccounts} onChange={(e) => { setNewAccounts(e.target.checked); if (e.target.checked) show("Noted — month 1 pays $50 for brand-new accounts"); }} className="mt-0.5 h-4 w-4 shrink-0" style={{ accentColor: A }} />
+                    <span>I made these accounts brand new for this. <span style={{ color: TC.faint }}>Leave this unticked if you are using accounts you already had — those pay <b style={{ color: TC.text }}>$100</b> in month one. Brand-new accounts pay <b style={{ color: TC.text }}>$50</b> in month one because they have no reach yet. From month two everyone is the same. <b style={{ color: TC.text }}>Do not worry about getting this wrong</b> — we check your accounts ourselves, and you can change it on your dashboard any time.</span></span>
+                  </label>
+                  <label className="flex cursor-pointer items-start gap-2.5 text-[13px] leading-relaxed" style={{ color: TC.muted }}>
+                    <input required type="checkbox" checked={agreed} onChange={(e) => { setAgreed(e.target.checked); if (e.target.checked) show("Thanks — you can register now"); }} className="mt-0.5 h-4 w-4 shrink-0" style={{ accentColor: A }} />
+                    <span>I have read the rules and I will follow them. <span style={{ color: TC.faint }}>They are all on this page, below.</span></span>
+                  </label>
+                </div>
+
+                {err && <p className="mt-4 text-[12.5px] font-medium" style={{ color: BAD }}>{err}</p>}
+
+                <button type="submit" disabled={busy}
+                  className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl px-5 py-3 text-[14px] font-semibold transition hover:opacity-90 disabled:opacity-60 sm:w-auto"
+                  style={{ background: A, color: "#12091f" }}>
+                  {busy ? <Loader2 size={16} className="animate-spin" /> : <Clapperboard size={16} />}
+                  {busy ? "Registering…" : "Register and start today"}
+                </button>
+                <p className="mt-2.5 text-[11.5px]" style={{ color: TC.faint }}>
+                  Day 1 is today. Post your first video as soon as you have registered.
+                </p>
               </div>
             </section>
 
@@ -495,32 +525,6 @@ You get <b style={{ color: TC.text }}>$500 on top</b> of what you already earn, 
             </div>
           </section>
 
-          {/* ── confirm and send, once they have read it all ───────────────── */}
-            <section className="mt-12 rounded-2xl border p-5 sm:p-6" style={{ borderColor: `${A}55`, background: `linear-gradient(180deg, ${A}12, rgba(255,255,255,0.015))` }}>
-              <h2 className="text-[18px] font-bold sm:text-[20px]">Now you have read it, start creating</h2>
-              <div className="mt-4 space-y-3">
-                <label className="flex cursor-pointer items-start gap-2.5 text-[13px] leading-relaxed" style={{ color: TC.muted }}>
-                  <input type="checkbox" checked={newAccounts} onChange={(e) => { setNewAccounts(e.target.checked); if (e.target.checked) show("Noted — month 1 pays $50 for brand-new accounts"); }} className="mt-0.5 h-4 w-4 shrink-0" style={{ accentColor: A }} />
-                  <span>I made these accounts brand new for this. <span style={{ color: TC.faint }}>Leave this unticked if you are using accounts you already had — those pay <b style={{ color: TC.text }}>$100</b> in month one. Brand-new accounts pay <b style={{ color: TC.text }}>$50</b> in month one because they have no reach yet. From month two everyone is the same. <b style={{ color: TC.text }}>Do not worry about getting this wrong</b> — we check your accounts ourselves, and you can change it on your dashboard any time.</span></span>
-                </label>
-                <label className="flex cursor-pointer items-start gap-2.5 text-[13px] leading-relaxed" style={{ color: TC.muted }}>
-                  <input required type="checkbox" checked={agreed} onChange={(e) => { setAgreed(e.target.checked); if (e.target.checked) show("Thanks — you can register now"); }} className="mt-0.5 h-4 w-4 shrink-0" style={{ accentColor: A }} />
-                  <span>I have read the rules on this page and I will follow them. <span style={{ color: TC.faint }}>Breaking them cancels the month.</span></span>
-                </label>
-              </div>
-
-              {err && <p className="mt-4 text-[12.5px] font-medium" style={{ color: BAD }}>{err}</p>}
-
-              <button type="submit" disabled={busy}
-                className="mt-5 inline-flex items-center justify-center gap-2 rounded-xl px-5 py-3 text-[14px] font-semibold transition hover:opacity-90 disabled:opacity-60"
-                style={{ background: A, color: "#12091f" }}>
-                {busy ? <Loader2 size={16} className="animate-spin" /> : <Clapperboard size={16} />}
-                {busy ? "Registering…" : "Register and start today"}
-              </button>
-              <p className="mt-2.5 text-[11.5px]" style={{ color: TC.faint }}>
-                Day 1 is today. Post your first video as soon as you have registered.
-              </p>
-            </section>
         </form>
 
         <p className="mt-10 flex items-start gap-1.5 text-[11px] leading-relaxed" style={{ color: TC.faint }}>

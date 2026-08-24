@@ -110,7 +110,7 @@ export function PracticeBot() {
     <main className="relative min-h-[100dvh] w-full overflow-x-hidden" style={{ background: TC.bg, color: TC.text }}>
       <div aria-hidden className="pointer-events-none absolute inset-0" style={DOT_GRID} />
 
-      <div className="relative z-10 mx-auto w-full max-w-2xl px-5 py-5 sm:px-8">
+      <div className="relative z-10 w-full px-4 py-4 sm:px-6 lg:px-10">
         <header className="flex w-full flex-wrap items-center gap-3">
           <Link href="/trading/creators" className="flex items-center gap-1.5 text-[13px] font-medium transition hover:opacity-80" style={{ color: TC.muted }}>
             <ArrowLeft size={15} />
@@ -121,9 +121,11 @@ export function PracticeBot() {
           </span>
         </header>
 
-        <p className="mt-6 text-[14px] leading-relaxed" style={{ color: TC.muted }}>
+        <p className="mt-5 max-w-3xl text-[14px] leading-relaxed" style={{ color: TC.muted }}>
           Three steps and you have a video. Do them in order the first time — after that you will not need this page.
         </p>
+
+        <div className="mt-5 grid items-start gap-4 xl:grid-cols-3">
 
         {/* ══ STEP 1 ═══════════════════════════════════════════════════════ */}
         <Step n={1} icon={Video} title="Screen recording" accent={A}>
@@ -131,6 +133,11 @@ export function PracticeBot() {
             This is the real Smart Recovery Differ simulator — same bot, same behaviour,{" "}
             <b style={{ color: TC.text }}>fake money</b>. Pick a starting balance, open it, and record your screen
             while it trades. That recording is the footage for your video.
+          </p>
+          <p className="mt-2.5 text-[12.5px] leading-relaxed" style={{ color: TC.muted }}>
+            <b style={{ color: TC.text }}>You can post about anything.</b> Copy a format that is already working —
+            another trading creator, a video going viral in any niche — and rebuild it as yours, with this recording
+            in it. The only thing that decides whether a video counts is whether it tells viewers about Clunoid.
           </p>
 
           <div className="mt-4">
@@ -161,7 +168,7 @@ export function PracticeBot() {
               <button type="button" onClick={() => open()}
                 className="inline-flex shrink-0 items-center gap-2 rounded-xl px-5 text-[14px] font-semibold transition hover:opacity-90"
                 style={{ background: A, color: "#12091f" }}>
-                <Play size={16} /> Open the bot
+                <Play size={16} /> Start creating
               </button>
             </div>
 
@@ -206,7 +213,7 @@ export function PracticeBot() {
               ["Your own voice or an AI voice — both are allowed.", "A realistic text-to-speech voice is completely fine. There is an example below to listen to."],
               ["You never have to show your face.", "Faceless works. Screen recording plus a voice is the format most of these videos use."],
               ["Say “I use this”.", "Speak as someone who uses it, not as the company. It lands better and it is the rule."],
-              ["Start with something that works, then turn it.", "Take a hook that already performs — or a viral video in this niche — and twist it towards the bots. Never re-upload anyone's footage, just the idea."],
+              ["Start with something that works, then turn it.", "Find a hook that is already performing — another trading creator, or any viral video — and rebuild it as your own. Your recording, your voice, your edit, turned to tell viewers about Clunoid. That is what the screen recording is for. The only thing off limits is downloading somebody's file and posting it."],
             ].map(([t, d]) => (
               <li key={t} className="flex gap-2">
                 <Check size={14} className="mt-0.5 shrink-0" style={{ color: GOOD }} />
@@ -302,6 +309,7 @@ export function PracticeBot() {
             dashboard calendar. That is one day done.
           </p>
         </Step>
+        </div>
       </div>
     </main>
   );
@@ -311,7 +319,7 @@ function Step({ n, icon: Icon, title, accent, children }: {
   n: number; icon: typeof Video; title: string; accent: string; children: React.ReactNode;
 }) {
   return (
-    <section className="mt-6 rounded-2xl border p-5 sm:p-6"
+    <section className="flex h-full flex-col rounded-2xl border p-5 sm:p-6"
       style={{ borderColor: `${accent}44`, background: `linear-gradient(180deg, ${accent}0d, rgba(255,255,255,0.015))` }}>
       <h2 className="flex items-center gap-2.5">
         <span className="grid h-8 w-8 shrink-0 place-items-center rounded-xl text-[14px] font-bold"
@@ -322,7 +330,7 @@ function Step({ n, icon: Icon, title, accent, children }: {
           <Icon size={17} style={{ color: accent }} /> {title}
         </span>
       </h2>
-      <div className="mt-3.5">{children}</div>
+      <div className="mt-3.5 min-w-0">{children}</div>
     </section>
   );
 }

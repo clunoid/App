@@ -88,14 +88,15 @@ export const DO = [
   "If you pick Facebook, link it to Instagram so your Reels cross-post to both from one upload.",
   "Tell viewers about Clunoid in every single video — say what it is, not just show it.",
   "Say the bots are 100% FREE, in every video. This one is not optional — it is the thing that stops people scrolling past thinking it costs money.",
-  "Take ideas from other trading creators, and use AI for hooks and scripts. Then make it yourself — record, screen record, edit, whatever suits you.",
+  "Take ideas from other trading creators, or from any video that is going viral, and use AI for hooks and scripts. Then rebuild it yourself — your recording, your edit — and turn it to tell viewers about Clunoid.",
+  "Post about anything you like, as long as the video ends up telling viewers about Clunoid. That is the only thing that decides whether it counts.",
   "Say what it does in your own words. Your voice beats a script.",
   "Keep videos 30 seconds to 2 minutes. Go longer only if the content earns it.",
   "Speak English or the main language of your country — whichever you are natural in.",
 ];
 
 export const DONT = [
-  "No copying another creator's video. Ideas yes, footage never.",
+  "No downloading someone else's video and posting it as yours. Take the idea, rebuild it — never the file.",
   "No using a video you posted on an earlier day as today's post — every day needs a new one. Putting that same new video on all three of your accounts is right, and counts as one post.",
   "No speaking as Clunoid. Say “I use this”, never “we offer”.",
 ];
@@ -351,6 +352,7 @@ export const PHASES = [
       "Post at the same time each day — pick a slot and keep it.",
       "Make all three different: one screen recording, one talking to camera, one explaining a single term.",
       "Do not judge anything by day 3 numbers. You are looking for which was easiest to make.",
+      "Copy a format that is already working and rebuild it in your own words, pointed at Clunoid.",
     ],
   },
   {
@@ -438,8 +440,8 @@ export const REMINDERS = [
     d: "Every video is about Clunoid and made by you. Consistency is what gets paid, but a month of throwaway videos is not a month of work, and we do check.",
   },
   {
-    t: "Never copy another creator's video",
-    d: "Take ideas from anyone. Take footage from nobody. Downloading someone's video and posting it is the fastest way to lose the month and your account.",
+    t: "Take any idea. Make it yours.",
+    d: "Watch what is already working — other trading creators, a video going viral in any niche — and rebuild it as your own. Your screen recording, your voice, your edit, turned to tell viewers about Clunoid. That is the whole job. What you cannot do is download somebody's file and post it as yours.",
   },
   {
     t: "Same video on all three accounts, yes. Yesterday's video again, no.",
@@ -492,7 +494,8 @@ export const TEMPLATES = [
 ];
 
 /** The footer line, identical on the sign-up page and the dashboard. */
-export const DISCLAIMER = "Get paid to post.";
+export const DISCLAIMER =
+  "If your post tells people about Clunoid, it counts. Stop overthinking it and start posting.";
 
 export const addDays = (d: Date, n: number) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
 export const fmt = (d: Date | string) =>

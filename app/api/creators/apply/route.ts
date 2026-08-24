@@ -93,10 +93,40 @@ export async function POST(req: NextRequest) {
   }).select("id").single();
 
   if (error) {
-    // 23505 = unique violation: same email or same handle already applied.
+    // 23505 = unique violation: they are already registered.
+    //
+    // Being stranded on the sign-up page with no route to your own dashboard is
+    // a dead end, so where it is safe we just let them back in. "Safe" means
+    // they are signed in to Clunoid with the very email on the row — signing in
+    // is the proof. Knowing somebody's email is NOT proof, and handing over a
+    // dashboard on an email alone would let anyone read a creator's details and
+    // change where their money goes.
     if (error.code === "23505") {
+      const { data: existing } = await db
+        .from("trading_creator_applications")
+        .select("access_token, email, user_id")
+        .eq("email", email)
+        .maybeSingle();
+
+      const signedInAsThem =
+        !!existing &&
+        !!user &&
+        (existing.user_id === user.id || (user.email ?? "").toLowerCase() === existing.email);
+
+      if (signedInAsThem && existing.access_token) {
+        // Link the row to the account while we are here, so the fallback lookup
+        // finds them next time even without a token.
+        if (!existing.user_id) {
+          await db.from("trading_creator_applications").update({ user_id: user.id }).eq("email", email);
+        }
+        return NextResponse.json({ ok: true, token: existing.access_token, already: true });
+      }
+
       return NextResponse.json(
-        { error: "You are already registered with that email or account — just keep posting." },
+        {
+          error:
+            "You are already registered with that email or account. Open your dashboard on the device you signed up on, or sign in to Clunoid with this email and try again.",
+        },
         { status: 409 },
       );
     }

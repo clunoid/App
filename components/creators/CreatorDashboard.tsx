@@ -212,7 +212,7 @@ function Sidebar({ tab, setTab, progress, started }: { tab: TabKey; setTab: (t: 
         className="mt-2 hidden items-center gap-2 rounded-xl border px-3 py-2.5 text-[13px] font-medium transition hover:opacity-85 lg:flex"
         style={{ borderColor: `${GOOD}55`, background: `${GOOD}12`, color: TC.text }}>
         <Gamepad2 size={15} style={{ color: GOOD }} />
-        <span className="whitespace-nowrap">Bot trading</span>
+        <span className="whitespace-nowrap">Start creating</span>
       </Link>
 
       {started && (
@@ -390,16 +390,17 @@ function StartHereCard() {
       style={{ borderColor: `${GOOD}66`, background: `linear-gradient(180deg, ${GOOD}14, rgba(255,255,255,0.015))` }}>
       <Gamepad2 size={18} className="shrink-0" style={{ color: GOOD }} />
       <div className="min-w-0 flex-1">
-        <div className="text-[13.5px] font-bold">Start here — practise on a real bot</div>
+        <div className="text-[13.5px] font-bold">Start creating — practise on a real bot first</div>
         <p className="mt-0.5 text-[12px] leading-relaxed" style={{ color: TC.muted }}>
-          Never traded before? Run the actual bot with fake money first. Set it up, watch it trade, practise your
-          screen recording and voice-over on it — then film the real thing knowing exactly what you are doing.
+          Never traded before? Run the actual bot with fake money, record your screen, and build a video around
+          it. Post about anything you like — copy a format that is already working and rebuild it as yours. What
+          matters is that the video tells viewers about Clunoid.
         </p>
       </div>
       <Link href="/trading/creators/practice"
         className="shrink-0 rounded-xl px-3.5 py-2 text-[12.5px] font-semibold transition hover:opacity-90"
         style={{ background: GOOD, color: "#06231a" }}>
-        Open the bot
+        Start creating
       </Link>
     </section>
   );
