@@ -498,6 +498,25 @@ export const TEMPLATES = [
 ];
 
 /** The footer line, identical on the sign-up page and the dashboard. */
+/**
+ * The message a creator sends with their link.
+ *
+ * Whoever receives this decides in about two seconds whether it is an
+ * opportunity or something to ignore, so it leads with the money and the effort,
+ * and it stays true: $100 is the real first month, $1,250 is the real ceiling
+ * (a $750 base plus the $500 views bonus), and one video a day is the real ask.
+ */
+export function inviteMessage(link: string): string {
+  return [
+    "I get paid to post about this.",
+    "",
+    "Clunoid has free AI trading bots — and it pays creators to make videos about them. $100 your first month, up to $1,250 once you are going. One video a day, on your own accounts.",
+    "",
+    "No cost to join, nothing to buy:",
+    link,
+  ].join("\n");
+}
+
 export const DISCLAIMER =
   "If your post tells people about Clunoid, it counts. Stop overthinking it and start posting.";
 

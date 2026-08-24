@@ -16,9 +16,9 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Users, Copy, Check, Link2, Share2, ShieldCheck, Clock } from "lucide-react";
+import { Users, Copy, Check, Link2, Share2, ShieldCheck, Clock, X, Loader2, UserPlus, MessageSquare } from "lucide-react";
 import { TC, monoFont } from "@/lib/trading/theme";
-import { A, GOOD, fmt } from "./content";
+import { A, GOOD, BAD, fmt, inviteMessage } from "./content";
 import type { Me } from "./CreatorDashboard";
 
 const card = "rounded-2xl border p-4 sm:p-5";
@@ -26,9 +26,12 @@ const cardStyle = { borderColor: TC.line, background: TC.panel } as const;
 const labelCls = "text-[10.5px] font-semibold uppercase tracking-wider";
 const money = (n: number) => `$${n.toFixed(0)}`;
 
-export function TeamPanel({ me, show }: { me: Me; show: (t: string, tone?: "ok" | "bad") => void }) {
+export function TeamPanel({ me, show, onRefresh, token }: {
+  me: Me; show: (t: string, tone?: "ok" | "bad") => void; onRefresh: () => Promise<void>; token: string;
+}) {
   const { creator, team, teamTotals } = me;
   const [copied, setCopied] = useState<string | null>(null);
+  const [picking, setPicking] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [origin, setOrigin] = useState("https://clunoid.com");
 
@@ -39,12 +42,13 @@ export function TeamPanel({ me, show }: { me: Me; show: (t: string, tone?: "ok" 
 
   const code = creator.referral_code ?? "";
   const link = code ? `${origin}/r/${code}` : "";
+  const message = inviteMessage(link);
 
   const copy = useCallback(async (what: string, value: string) => {
     try {
       await navigator.clipboard.writeText(value);
       setCopied(what);
-      show(what === "link" ? "Link copied — put it in your bio" : "Code copied");
+      show(what === "link" ? "Link copied — put it in your bio" : what === "message" ? "Message copied — paste and send" : "Code copied");
       if (timer.current) clearTimeout(timer.current);
       timer.current = setTimeout(() => setCopied(null), 1600);
     } catch {
@@ -52,14 +56,15 @@ export function TeamPanel({ me, show }: { me: Me; show: (t: string, tone?: "ok" 
     }
   }, [show]);
 
+  /** Share sends the whole pitch, not a bare URL nobody will click. */
   async function share() {
     if (typeof navigator !== "undefined" && navigator.share) {
       try {
-        await navigator.share({ title: "Free AI trading bots", text: "Free automated trading bots — have a look:", url: link });
+        await navigator.share({ title: "Get paid to post", text: message });
         return;
       } catch { /* they closed the sheet */ }
     }
-    copy("link", link);
+    copy("message", message);
   }
 
   return (
@@ -89,10 +94,10 @@ export function TeamPanel({ me, show }: { me: Me; show: (t: string, tone?: "ok" 
               {link || "…"}
             </span>
           </div>
-          <button type="button" onClick={() => copy("link", link)}
+          <button type="button" onClick={() => setPicking(true)}
             className="inline-flex shrink-0 items-center gap-1.5 rounded-xl px-3.5 py-2.5 text-[12.5px] font-semibold transition hover:opacity-90"
-            style={{ background: copied === "link" ? GOOD : A, color: copied === "link" ? "#06231a" : "#12091f" }}>
-            {copied === "link" ? <Check size={14} /> : <Copy size={14} />} {copied === "link" ? "Copied" : "Copy"}
+            style={{ background: copied ? GOOD : A, color: copied ? "#06231a" : "#12091f" }}>
+            {copied ? <Check size={14} /> : <Copy size={14} />} {copied ? "Copied" : "Copy"}
           </button>
           <button type="button" onClick={share}
             className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border px-3.5 py-2.5 text-[12.5px] font-semibold transition hover:bg-white/5"
@@ -116,13 +121,14 @@ export function TeamPanel({ me, show }: { me: Me; show: (t: string, tone?: "ok" 
             <ShieldCheck size={13} /> Use this link in your bios, not clunoid.com
           </div>
           <p className="mt-1.5 text-[12.5px] leading-relaxed" style={{ color: TC.muted }}>
-            Put <b style={{ color: TC.text }}>your own link</b> in the bio of all three profiles instead of the plain
-            address. It opens clunoid.com exactly the same, so &ldquo;link in bio&rdquo; is still true — but hundreds
-            of accounts all carrying the identical URL is what gets a domain flagged as spam. Your own link protects
-            the platform and credits you at the same time.
+            Put <b style={{ color: TC.text }}>your own link</b> in the bio of all three profiles. It opens
+            clunoid.com exactly the same, so &ldquo;link in bio&rdquo; is still true.
           </p>
         </div>
       </section>
+
+      {/* ── linking up by code, for anyone who missed the link ────────────── */}
+      <JoinByCode token={token} me={me} show={show} onRefresh={onRefresh} />
 
       {/* ── the numbers ───────────────────────────────────────────────────── */}
       <section className="grid gap-3 sm:grid-cols-3">
@@ -182,7 +188,158 @@ export function TeamPanel({ me, show }: { me: Me; show: (t: string, tone?: "ok" 
           &ldquo;Earned from your team&rdquo;.
         </p>
       </section>
+
+      {picking && (
+        <CopyChoice
+          link={link}
+          message={message}
+          onClose={() => setPicking(false)}
+          onPick={(what, value) => { setPicking(false); copy(what, value); }}
+        />
+      )}
     </div>
+  );
+}
+
+/**
+ * Copy asks what they actually want. Most people want the message — a bare link
+ * in a chat gets ignored — but somebody putting it in a bio needs the link on
+ * its own, and guessing wrong wastes their time either way.
+ */
+function CopyChoice({ link, message, onPick, onClose }: {
+  link: string; message: string; onPick: (what: "link" | "message", value: string) => void; onClose: () => void;
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return (
+    <div role="dialog" aria-modal="true" aria-labelledby="copy-title"
+      className="fixed inset-0 z-50 grid place-items-center overflow-y-auto p-5"
+      style={{ background: "rgba(4,10,20,0.74)", backdropFilter: "blur(3px)" }}>
+      <div className="relative w-full max-w-[440px] rounded-2xl border p-5"
+        style={{ borderColor: TC.line, background: TC.panel, boxShadow: "0 24px 60px rgba(0,0,0,0.55)" }}>
+        <button onClick={onClose} aria-label="Close" className="absolute right-3.5 top-3.5 rounded-lg p-1 transition hover:bg-white/10" style={{ color: TC.faint }}>
+          <X size={16} />
+        </button>
+
+        <h3 id="copy-title" className="text-[18px] font-bold tracking-tight">What do you want to copy?</h3>
+
+        <button type="button" onClick={() => onPick("message", message)}
+          className="mt-4 w-full rounded-xl border p-3 text-left transition hover:bg-white/5"
+          style={{ borderColor: `${GOOD}66`, background: `${GOOD}10` }}>
+          <div className="flex items-center gap-1.5 text-[12.5px] font-bold" style={{ color: GOOD }}>
+            <MessageSquare size={13} /> The message and the link
+          </div>
+          <pre className="mt-2 whitespace-pre-wrap font-sans text-[11.5px] leading-relaxed" style={{ color: TC.muted }}>{message}</pre>
+        </button>
+
+        <button type="button" onClick={() => onPick("link", link)}
+          className="mt-2.5 w-full rounded-xl border p-3 text-left transition hover:bg-white/5"
+          style={{ borderColor: TC.line, background: "rgba(0,0,0,0.22)" }}>
+          <div className="flex items-center gap-1.5 text-[12.5px] font-bold" style={{ color: TC.text }}>
+            <Link2 size={13} style={{ color: A }} /> Just the link
+          </div>
+          <div className="mt-1 truncate text-[11.5px]" style={{ ...monoFont, color: TC.muted }}>{link}</div>
+          <div className="mt-1 text-[11px]" style={{ color: TC.faint }}>For your bio.</div>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Someone joined without using the link, and now one of them wants the credit.
+ * Whichever of the two is looking at this can fix it — but they have to say
+ * which way round it goes, because that is what decides who gets paid.
+ */
+function JoinByCode({ token, me, show, onRefresh }: {
+  token: string; me: Me; show: (t: string, tone?: "ok" | "bad") => void; onRefresh: () => Promise<void>;
+}) {
+  const [code, setCode] = useState("");
+  const [dir, setDir] = useState<"they_referred_me" | "i_referred_them">("they_referred_me");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const alreadyOnATeam = !!me.creator.referred_by;
+
+  async function submit() {
+    if (busy) return;
+    setBusy(true); setErr(null);
+    try {
+      const res = await fetch("/api/creators/team", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token, code, direction: dir }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { setErr(data.error || "Could not do that."); return; }
+      setCode("");
+      show(dir === "they_referred_me" ? `You are now on ${data.name}'s team` : `${data.name} is now on your team`);
+      await onRefresh();
+    } catch {
+      setErr("Could not reach us just now.");
+    } finally { setBusy(false); }
+  }
+
+  return (
+    <section className={card} style={cardStyle}>
+      <h2 className={`flex items-center gap-2 ${labelCls}`} style={{ color: TC.faint }}>
+        <UserPlus size={14} style={{ color: A }} /> Someone joined without the link?
+      </h2>
+      <p className="mt-1.5 text-[12.5px] leading-relaxed" style={{ color: TC.muted }}>
+        Swap codes and connect it here. Either of you can do it — just pick the right way round so the credit goes to
+        the right person.
+      </p>
+
+      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+        {([
+          ["they_referred_me", "They referred me", "Their code goes in below"],
+          ["i_referred_them", "I referred them", "Their code goes in below"],
+        ] as const).map(([key, title, sub]) => {
+          const on = dir === key;
+          const blocked = key === "they_referred_me" && alreadyOnATeam;
+          return (
+            <button key={key} type="button" disabled={blocked} onClick={() => { setDir(key); setErr(null); }}
+              className="rounded-xl border px-3 py-2.5 text-left transition disabled:cursor-not-allowed disabled:opacity-45"
+              style={on ? { borderColor: A, background: `${A}1a` } : { borderColor: TC.line, background: "rgba(0,0,0,0.25)" }}>
+              <div className="flex items-center gap-1.5 text-[13px] font-semibold" style={{ color: on ? TC.text : TC.muted }}>
+                {on && <Check size={13} style={{ color: A }} />} {title}
+              </div>
+              <div className="mt-0.5 text-[11px]" style={{ color: TC.faint }}>
+                {blocked ? "You are already on a team" : sub}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-stretch gap-2">
+        <input
+          value={code}
+          onChange={(e) => { setCode(e.target.value.toUpperCase()); setErr(null); }}
+          onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
+          placeholder="Their code"
+          aria-label="Their code"
+          maxLength={12}
+          className="min-w-0 flex-1 rounded-xl border px-3 py-2.5 text-[14px] tracking-[0.14em] outline-none transition focus:border-violet-400"
+          style={{ ...monoFont, borderColor: TC.line, background: "rgba(0,0,0,0.28)", color: TC.text }}
+        />
+        <button type="button" onClick={submit} disabled={busy || code.trim().length < 4}
+          className="inline-flex shrink-0 items-center gap-2 rounded-xl px-4 py-2.5 text-[13px] font-semibold transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-45"
+          style={{ background: A, color: "#12091f" }}>
+          {busy ? <Loader2 size={15} className="animate-spin" /> : <UserPlus size={15} />} Connect
+        </button>
+      </div>
+
+      {err && <p className="mt-2.5 text-[12.5px] font-medium" style={{ color: BAD }}>{err}</p>}
+
+      <p className="mt-2.5 text-[11.5px] leading-relaxed" style={{ color: TC.faint }}>
+        A connection is recorded once and cannot be changed afterwards, so check the direction before you press
+        Connect.
+      </p>
+    </section>
   );
 }
 

@@ -153,7 +153,7 @@ export function CreatorDashboard({ me, token, onRefresh, justRegistered = false 
 
           <div className="min-w-0 flex-1">
             {tab === "overview" && <Overview me={me} progress={progress} token={token} onRefresh={onRefresh} now={now} setTab={setTab} show={show} />}
-            {tab === "team" && <TeamPanel me={me} show={show} />}
+            {tab === "team" && <TeamPanel me={me} show={show} onRefresh={onRefresh} token={token} />}
             {tab === "plan" && <PlanPanel progress={progress} token={token} onRefresh={onRefresh} show={show} />}
             {tab === "posts" && <PostsPanel me={me} progress={progress} token={token} onRefresh={onRefresh} show={show} />}
             {tab === "payouts" && <PayoutsPanel me={me} progress={progress} />}
