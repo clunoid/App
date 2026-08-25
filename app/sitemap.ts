@@ -66,6 +66,14 @@ export default function sitemap(): MetadataRoute.Sitemap {
     // The Creator Program — a public landing page people are sent to by name.
     { url: `${BASE}/trading/creators`, lastModified: now, changeFrequency: "weekly", priority: 0.7 },
 
+    // The two pages written FOR search: the programme explained to somebody who
+    // has never heard of it, and the answer to "is this a scam". They are the
+    // ones people arrive on from Google and from AI assistants, and neither
+    // needs an account to read — which is exactly why they rank above the
+    // dashboard for those questions.
+    { url: `${BASE}/trading/creator-program`, lastModified: now, changeFrequency: "weekly", priority: 0.9 },
+    { url: `${BASE}/trading/is-clunoid-legit`, lastModified: now, changeFrequency: "monthly", priority: 0.8 },
+
     // The account hub — useful, but a tool rather than something people search.
     { url: `${BASE}/trading/command`, lastModified: now, changeFrequency: "monthly", priority: 0.5 },
 

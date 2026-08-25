@@ -239,6 +239,17 @@ export function TradingLanding() {
 
         {/* ── footer ── */}
         <footer className="border-t px-5 py-6 text-center text-[12px] sm:px-8" style={{ borderColor: C.line, color: C.faint }}>
+          {/* The pages written for search. Linked from here so crawlers can reach
+              them, and so somebody still deciding has something to read rather
+              than only a Connect button. */}
+          <div className="mb-4 flex flex-wrap justify-center gap-x-5 gap-y-2">
+            <a href="/trading/creator-program" className="transition hover:opacity-80" style={{ color: C.muted }}>
+              Get paid to post — Creator Program
+            </a>
+            <a href="/trading/is-clunoid-legit" className="transition hover:opacity-80" style={{ color: C.muted }}>
+              Is Clunoid legit?
+            </a>
+          </div>
           Clunoid Trading — intelligent automated trading. Trading involves risk; you can lose money. Nothing here is financial advice.
         </footer>
       </div>
