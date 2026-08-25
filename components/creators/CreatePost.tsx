@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * CREATOR PROGRAM — the practice bot, and the three steps around it.
+ * CREATOR PROGRAM — making one post: the bot, then the three steps around it.
  *
  * Most creators arrive having never traded. They are asked to screen-record a
  * bot placing trades, and the first time they try it they are fumbling through
@@ -29,10 +29,10 @@ import { setSimBalance, getSimBalance, markSimEditorApplied } from "@/lib/deriv/
 import { A, GOOD, VOICEOVER_STARTERS, KEYWORDS, IDEAS } from "./content";
 import { ScreenRecordPrompt, isRecordPromptSnoozed } from "./ScreenRecordPrompt";
 
-/** The bot creators practise on — the flagship, so it matches what they film. */
+/** The bot creators run — the flagship, so it matches what they film. */
 const BOT_ID = "smart-recovery-differ";
 
-export const MIN_PRACTICE_BALANCE = 1000;
+export const MIN_START_BALANCE = 1000;
 /** The most someone can type in from scratch. A balance they GREW is not capped. */
 export const MAX_TYPED_BALANCE = 92569.34;
 
@@ -43,13 +43,13 @@ const money = (n: number) =>
 
 /** A believable, unrepeatable balance — nobody gets the same one twice. */
 function randomBalance(): number {
-  const whole = Math.floor(MIN_PRACTICE_BALANCE + Math.random() * (MAX_TYPED_BALANCE - MIN_PRACTICE_BALANCE));
+  const whole = Math.floor(MIN_START_BALANCE + Math.random() * (MAX_TYPED_BALANCE - MIN_START_BALANCE));
   const cents = Math.floor(Math.random() * 100);
   return Math.round((whole + cents / 100) * 100) / 100;
 }
 
-export function PracticeBot() {
-  const [amount, setAmount] = useState(String(MIN_PRACTICE_BALANCE));
+export function CreatePost() {
+  const [amount, setAmount] = useState(String(MIN_START_BALANCE));
   const [saved, setSaved] = useState<number | null>(null);
   const [started, setStarted] = useState(false);
   const [askRecord, setAskRecord] = useState(false);
@@ -69,16 +69,16 @@ export function PracticeBot() {
 
   // A balance the bot handed them can be anything; a typed one has a ceiling.
   const cap = Math.max(MAX_TYPED_BALANCE, saved ?? 0);
-  const valid = Number.isFinite(parsed) && parsed >= MIN_PRACTICE_BALANCE && parsed <= cap;
+  const valid = Number.isFinite(parsed) && parsed >= MIN_START_BALANCE && parsed <= cap;
 
   function open(value?: number) {
     const v = value ?? parsed;
-    if (!Number.isFinite(v) || v < MIN_PRACTICE_BALANCE || v > cap) {
+    if (!Number.isFinite(v) || v < MIN_START_BALANCE || v > cap) {
       setErr(
         !Number.isFinite(v)
           ? "Type an amount first."
-          : v < MIN_PRACTICE_BALANCE
-            ? `The lowest you can start with is $${money(MIN_PRACTICE_BALANCE)}.`
+          : v < MIN_START_BALANCE
+            ? `The lowest you can start with is $${money(MIN_START_BALANCE)}.`
             : `The highest you can type in is $${money(cap)}.`,
       );
       return;
@@ -104,7 +104,7 @@ export function PracticeBot() {
     );
   }
 
-  const grew = saved != null && saved > MIN_PRACTICE_BALANCE;
+  const grew = saved != null && saved > MIN_START_BALANCE;
 
   return (
     <main className="relative min-h-[100dvh] w-full overflow-x-hidden" style={{ background: TC.bg, color: TC.text }}>
@@ -173,7 +173,7 @@ export function PracticeBot() {
             </div>
 
             <div className="mt-2.5 flex flex-wrap gap-2">
-              {[MIN_PRACTICE_BALANCE, 5000, 25000].map((p) => (
+              {[MIN_START_BALANCE, 5000, 25000].map((p) => (
                 <button key={p} type="button" onClick={() => { setAmount(String(p)); setErr(null); }}
                   className="rounded-lg border px-2.5 py-1.5 text-[12px] font-medium transition hover:opacity-85"
                   style={{ ...monoFont, borderColor: TC.line, background: "rgba(0,0,0,0.25)", color: parsed === p ? A : TC.muted }}>

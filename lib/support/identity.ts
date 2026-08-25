@@ -64,7 +64,7 @@ export type SupportSource =
   | "Home"
   | "Creator Program"
   | "Deriv bots"
-  | "Practice bots"
+  | "Simulator bots"
   | "MT5 bots"
   | "Exness"
   | "TradingView";

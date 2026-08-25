@@ -315,7 +315,7 @@ export const KEYWORDS = [
 ];
 
 /**
- * Voice-over openers for the practice video — the same "start with something
+ * Voice-over openers for the first video — the same "start with something
  * that works, then turn it towards Clunoid" shape as the ideas, written out so a
  * creator can read one straight off the screen.
  */

@@ -83,7 +83,7 @@ export class SimulatedDerivBot {
     this.plan = { trades: 0, nextAt: SimulatedDerivBot.gap(), legsLeft: 0, depth: 0 };
   }
 
-  /** Turn on the never-lose, guided-recovery behaviour. Practice pages only. */
+  /** Turn on the never-lose, guided-recovery behaviour. Creators' page only. */
   setCreatorMode(on: boolean): void {
     this.creatorMode = on;
     if (on) this.resetPlan();

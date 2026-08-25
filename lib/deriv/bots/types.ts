@@ -41,7 +41,7 @@ export interface Strategy {
   /**
    * Put the strategy into recovery without a loss having caused it.
    *
-   * Only the creators' practice bot uses this: a creator is recording a video
+   * Only the creators' bot uses this: a creator is recording a video
    * they will post, so the run must not end down, but recovery is what the bot
    * is named for and what makes the target arrive. Implementing it lets that
    * happen through the strategy's own code rather than around it.

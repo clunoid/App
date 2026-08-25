@@ -90,7 +90,7 @@ export function DerivBotsSimList() {
         </p>
       </div>
 
-      <SupportChat source="Practice bots" />
+      <SupportChat source="Simulator bots" />
     </main>
   );
 }

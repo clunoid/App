@@ -69,8 +69,8 @@ export default function sitemap(): MetadataRoute.Sitemap {
     // The account hub — useful, but a tool rather than something people search.
     { url: `${BASE}/trading/command`, lastModified: now, changeFrequency: "monthly", priority: 0.5 },
 
-    // Deliberately absent, and it should stay that way: /trading/creators/practice
+    // Deliberately absent, and it should stay that way: /trading/creators/create
     // and everything under /trading/deriv/bots/sim are noindex — they are
-    // practice surfaces, not pages anybody should land on from a search.
+    // working surfaces, not pages anybody should land on from a search.
   ];
 }

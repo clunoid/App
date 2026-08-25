@@ -227,7 +227,7 @@ function Sidebar({ tab, setTab, progress, started }: { tab: TabKey; setTab: (t: 
       </div>
 
       {/* Not a tab — it is its own page, so it links out rather than switching. */}
-      <Link href="/trading/creators/practice"
+      <Link href="/trading/creators/create"
         className="mt-2 hidden items-center gap-2 rounded-xl border px-3 py-2.5 text-[13px] font-medium transition hover:opacity-85 lg:flex"
         style={{ borderColor: `${GOOD}55`, background: `${GOOD}12`, color: TC.text }}>
         <Gamepad2 size={15} style={{ color: GOOD }} />
@@ -451,7 +451,7 @@ function EarnMore() {
 }
 
 /**
- * The practice bot, pushed at everybody.
+ * Making a post, pushed at everybody.
  *
  * Most creators here have never traded. They are being asked to screen-record a
  * bot placing trades, and without a run-through first that shows in the video —
@@ -471,7 +471,7 @@ function StartHereCard() {
           matters is that the video tells viewers about Clunoid.
         </p>
       </div>
-      <Link href="/trading/creators/practice"
+      <Link href="/trading/creators/create"
         className="shrink-0 rounded-xl px-3.5 py-2 text-[12.5px] font-semibold transition hover:opacity-90"
         style={{ background: GOOD, color: "#06231a" }}>
         Start creating

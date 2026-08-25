@@ -397,13 +397,13 @@ export function DerivBotSimRunner({
           <Col title="Live Performance" right={stats ? `${fmtTime(stats.runningSeconds)}` : "00:00:00"}>
             <div className="flex flex-col lg:flex-1">
               <Stat label="Session P/L" value={stats ? `${stats.totalProfit >= 0 ? "+" : ""}${stats.totalProfit.toFixed(2)}` : "—"} tone={stats ? (stats.totalProfit >= 0 ? "profit" : "loss") : undefined} />
-              <Stat label="Win rate" value={stats ? `${stats.winRate.toFixed(1)}%` : "—"} sub={stats ? `${stats.wins}/${stats.totalTrades}` : undefined} />
-              <Stat label="Trades" value={stats ? String(stats.totalTrades) : "0"} />
-              <Stat label="Current stake" value={stats ? stats.currentStake.toFixed(2) : "—"} />
-              <Stat label="Loss streak" value={stats ? String(stats.consecutiveLosses) : "0"} tone={stats && stats.consecutiveLosses > 0 ? "loss" : undefined} />
-              <Stat label="Market" value={stats?.market ?? "—"} />
-              <Stat label="Target" value={stats?.target ?? "—"} />
-              <Stat label="Balance" value={fmtBalance(shownBalance.balance, shownBalance.currency)} />
+              <Stat label="Win rate" value={stats ? `${stats.winRate.toFixed(1)}%` : "—"} sub={stats ? `${stats.wins}/${stats.totalTrades}` : undefined} hue="purple" />
+              <Stat label="Trades" value={stats ? String(stats.totalTrades) : "0"} hue="orange" />
+              <Stat label="Current stake" value={stats ? stats.currentStake.toFixed(2) : "—"} hue="cyan" />
+              <Stat label="Loss streak" value={stats ? String(stats.consecutiveLosses) : "0"} tone={stats && stats.consecutiveLosses > 0 ? "loss" : undefined} hue="red" />
+              <Stat label="Market" value={stats?.market ?? "—"} hue="amber" />
+              <Stat label="Target" value={stats?.target ?? "—"} hue="amber" />
+              <Stat label="Balance" value={fmtBalance(shownBalance.balance, shownBalance.currency)} hue="cyan" />
             </div>
           </Col>
 
@@ -595,8 +595,32 @@ function GuideRow({ text, suggestion, onUse }: { text: string; suggestion: numbe
   );
 }
 
-function Stat({ label, value, sub, tone }: { label: string; value: string; sub?: string; tone?: "profit" | "loss" }) {
-  const color = tone === "profit" ? TC.profit : tone === "loss" ? TC.loss : TC.text;
+/**
+ * One live-performance row.
+ *
+ * Every figure gets its own colour, the way the bot dashboards do it: a column
+ * of identical white numbers is read as a block rather than as eight separate
+ * facts, and the one that moved is the one you want to find. `tone` still wins
+ * where the colour carries meaning — profit and loss say something a hue for
+ * its own sake does not.
+ */
+const STAT_HUES = {
+  cyan: "#00d2ff",
+  purple: "#a855f7",
+  orange: "#ff7a18",
+  amber: "#fcd34d",
+  red: "#ff5f6d",
+} as const;
+
+function Stat({ label, value, sub, tone, hue }: {
+  label: string; value: string; sub?: string;
+  tone?: "profit" | "loss";
+  hue?: keyof typeof STAT_HUES;
+}) {
+  const color = tone === "profit" ? TC.profit
+    : tone === "loss" ? TC.loss
+    : hue ? STAT_HUES[hue]
+    : TC.text;
   return (
     <div className="flex items-center justify-between gap-3 border-b py-2.5 last:border-b-0 lg:flex-1" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
       <span className="shrink-0 text-[11px] font-medium uppercase tracking-[0.06em]" style={{ color: TC.muted }}>{label}</span>
