@@ -34,6 +34,8 @@ type Body = {
   payoutMethod?: string;
   newAccounts?: boolean;
   agreed?: boolean;
+  /** The Deriv token this browser holds, so a second device is recognised. */
+  derivAccess?: string;
 };
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
@@ -123,6 +125,25 @@ export async function POST(req: NextRequest) {
         .select("access_token, email, user_id")
         .eq("email", email)
         .maybeSingle();
+
+      // The same person on a different device is the common case, and the
+      // dashboard already recognises them by their Deriv account — but only
+      // once they reach it. Somebody who fills the form in again instead was
+      // being stranded on an error. Prove the Deriv account here too.
+      if (body.derivAccess && existing?.access_token) {
+        const { derivAccountIds } = await import("@/lib/creators/derivIdentity");
+        const ids = await derivAccountIds(body.derivAccess);
+        if (ids.length) {
+          const { data: byDeriv } = await db
+            .from("trading_creator_applications")
+            .select("access_token, email")
+            .in("deriv_loginid", ids)
+            .maybeSingle();
+          if (byDeriv?.access_token && (byDeriv.email ?? "").toLowerCase() === email) {
+            return NextResponse.json({ ok: true, token: byDeriv.access_token, already: true });
+          }
+        }
+      }
 
       const signedInAsThem =
         !!existing &&

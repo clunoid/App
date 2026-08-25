@@ -134,7 +134,7 @@ export function CreatorsHub() {
       const res = await fetch("/api/creators/apply", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...f, platforms, handles, payoutMethod: payout, newAccounts, agreed, ref: readRefCode() }),
+        body: JSON.stringify({ ...f, platforms, handles, payoutMethod: payout, newAccounts, agreed, ref: readRefCode(), derivAccess: loadDerivAccess() }),
       });
       const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; token?: string; already?: boolean };
       if (!res.ok || !data.ok) { setErr(data.error || "Something went wrong. Please try again."); return; }
