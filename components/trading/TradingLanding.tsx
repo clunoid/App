@@ -10,7 +10,7 @@
  * integration yet (built step by step); admins get an unobtrusive toggle back
  * to classic Clunoid.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { startDerivLogin, loadDerivAccess, loadDerivTokens } from "@/lib/deriv/oauth";
 import { Activity, ArrowUpRight, BookOpen, BrainCircuit, Cpu, LineChart, Lock, ShieldCheck, Zap, ChevronRight, Loader2, Clapperboard } from "lucide-react";
 import { useClunoid } from "@/lib/store/useClunoid";
@@ -77,6 +77,25 @@ const BRANDS: { name: string; src: string; cap: number }[] = [
  */
 function GetStarted() {
   const [busy, setBusy] = useState(false);
+
+  /**
+   * Somebody who has already connected has nothing to do on this page — it is
+   * a sales pitch for a decision they have made. So they are sent straight
+   * through rather than being asked to press a button that only ever leads one
+   * place for them.
+   *
+   * Client-side and after mount, so a crawler still gets the landing page: it
+   * has no Deriv token and never will.
+   */
+  useEffect(() => {
+    try {
+      if (loadDerivAccess() || loadDerivTokens().length > 0) {
+        window.location.replace("/trading/command");
+      }
+    } catch {
+      // No storage, or nothing in it — stay and show the page.
+    }
+  }, []);
 
   async function go() {
     if (busy) return;

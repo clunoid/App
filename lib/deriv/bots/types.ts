@@ -38,6 +38,15 @@ export interface Strategy {
   onResult(win: boolean, ctx: StrategyCtx): void;
   /** Optional extra stop condition checked after TP/SL — return a reason to stop. */
   postTradeStop?(ctx: StrategyCtx): string | null;
+  /**
+   * Put the strategy into recovery without a loss having caused it.
+   *
+   * Only the creators' practice bot uses this: a creator is recording a video
+   * they will post, so the run must not end down, but recovery is what the bot
+   * is named for and what makes the target arrive. Implementing it lets that
+   * happen through the strategy's own code rather than around it.
+   */
+  enterRecovery?(): void;
 }
 
 // ── UI callbacks + view models (shared by every bot's runner) ────────────────

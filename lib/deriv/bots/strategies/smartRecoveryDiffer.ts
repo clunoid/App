@@ -58,6 +58,18 @@ export class SmartRecoveryDifferStrategy implements Strategy {
     return { market, contractType: "DIGITDIFF", barrier: String(digit), duration: 1, targetLabel: `Differ ${digit}` };
   }
 
+  /**
+   * Enter recovery deliberately, choosing the market and side the same way a
+   * loss would — through analyze(), off the same tick history. Everything the
+   * engine does afterwards is unchanged.
+   */
+  enterRecovery(): void {
+    this.recoveryMode = true;
+    const r = this.analyze();
+    this.recoveryMarket = r.market;
+    this.recoveryType = r.type;
+  }
+
   onResult(win: boolean): void {
     if (win) {
       this.recoveryMode = false; this.recoveryMarket = null; this.recoveryType = null;

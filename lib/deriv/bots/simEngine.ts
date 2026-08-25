@@ -61,6 +61,62 @@ export class SimulatedDerivBot {
   private attemptTimer: ReturnType<typeof setTimeout> | null = null;
   private settleTimer: ReturnType<typeof setTimeout> | null = null;
 
+  /**
+   * CREATOR MODE — off unless a caller asks for it, so the public simulator is
+   * untouched.
+   *
+   * A creator is recording this and posting it, so the run does not end down:
+   * every trade wins. Recovery still runs, because it is what the bot is named
+   * for and what makes the target arrive quickly — it is entered deliberately
+   * rather than by losing into it, on a schedule that opens somewhere between
+   * five and twenty-five trades in and lasts one leg or two, drawn again each
+   * time so no two recordings have the same shape. A double compounds the
+   * martingale properly, because a win resets the stake and escalating from the
+   * reset value would only ever give one step.
+   */
+  private creatorMode = false;
+  private plan = { trades: 0, nextAt: 0, legsLeft: 0, depth: 0 };
+
+  private static gap(): number { return 5 + Math.floor(Math.random() * 21); }
+
+  private resetPlan(): void {
+    this.plan = { trades: 0, nextAt: SimulatedDerivBot.gap(), legsLeft: 0, depth: 0 };
+  }
+
+  /** Turn on the never-lose, guided-recovery behaviour. Practice pages only. */
+  setCreatorMode(on: boolean): void {
+    this.creatorMode = on;
+    if (on) this.resetPlan();
+  }
+
+  /** Raise the stake to the opening stake times martingale, to this depth. */
+  private armRecovery(depth: number): void {
+    this.strategy.enterRecovery?.();
+    const mg = this.config.martingaleMultiplier || this.strategy.defaultMartingale || 1;
+    this.currentStake = round2(this.config.initialStake * Math.pow(mg, depth));
+  }
+
+  /** Runs after each settled trade, and decides whether the next is recovery. */
+  private planAfterTrade(): void {
+    this.plan.trades += 1;
+
+    if (this.plan.legsLeft > 0) {
+      this.plan.legsLeft -= 1;
+      this.plan.depth += 1;
+      this.armRecovery(this.plan.depth);
+      return;
+    }
+
+    // Checked one ahead: arming happens after a trade and applies to the next.
+    if (this.plan.trades + 1 >= this.plan.nextAt) {
+      const legs = Math.random() < 0.5 ? 1 : 2;
+      this.plan.legsLeft = legs - 1;
+      this.plan.depth = 1;
+      this.armRecovery(1);
+      this.plan.nextAt = this.plan.trades + legs + SimulatedDerivBot.gap();
+    }
+  }
+
   constructor(ui: BotUI, strategy: Strategy, startingBalance: number, currency = "USD") {
     this.ui = ui;
     this.strategy = strategy;
@@ -85,6 +141,7 @@ export class SimulatedDerivBot {
     this.totalProfit = 0; this.totalTrades = 0; this.wins = 0; this.consecutiveLosses = 0; this.results = [];
     this.tradeInProgress = false; this.currentMarket = ""; this.currentTarget = ""; this.pendingSpec = null;
     this.strategy.reset();
+    if (this.creatorMode) this.resetPlan();
 
     if (ACTIVE_SIM && ACTIVE_SIM !== this) { try { ACTIVE_SIM.stop("Stopped — another bot was started.", "info"); } catch { /* ignore */ } }
     ACTIVE_SIM = this;
@@ -168,7 +225,7 @@ export class SimulatedDerivBot {
     if (!this.isRunning || this.stopRequested) return;
 
     const key = simContractKey(spec);
-    const win = simulateTradeOutcome(key, this.consecutiveLosses, this.results);
+    const win = this.creatorMode ? true : simulateTradeOutcome(key, this.consecutiveLosses, this.results);
     const profit = calculateSimProfit(this.tradeStake, key, win);
 
     this.balance = round2(this.balance + profit);
@@ -188,6 +245,10 @@ export class SimulatedDerivBot {
       }
     }
     this.strategy.onResult(win, this.ctx());
+
+    // After the win branch has reset the stake and cleared recovery, so both
+    // are set from a known state rather than fought over.
+    if (this.creatorMode) this.planAfterTrade();
 
     this.ui.onTrade({ win, profit, stake: this.tradeStake, market: this.currentMarket, target: this.currentTarget, at: Date.now() });
     this.ui.onBalance(this.balance, this.currency);

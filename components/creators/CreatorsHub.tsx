@@ -53,7 +53,10 @@ export function CreatorsHub() {
   const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
   const [start, setStart] = useState(today);
 
-  const [f, setF] = useState({ name: "", email: "", country: "" });
+  // teamCode is optional: a share link carries the code on its own, but a
+  // forwarded message or a code read aloud does not, and the person who
+  // brought them was going uncredited.
+  const [f, setF] = useState({ name: "", email: "", country: "", teamCode: "" });
   const [platforms, setPlatforms] = useState<string[]>([...DEFAULT_PLATFORMS]);
   const [handles, setHandles] = useState<Record<string, string>>({});
   const [payout, setPayout] = useState("");
@@ -134,7 +137,11 @@ export function CreatorsHub() {
       const res = await fetch("/api/creators/apply", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...f, platforms, handles, payoutMethod: payout, newAccounts, agreed, ref: readRefCode(), derivAccess: loadDerivAccess() }),
+        body: JSON.stringify({
+          ...f, platforms, handles, payoutMethod: payout, newAccounts, agreed,
+          ref: f.teamCode.trim() || readRefCode(),
+          derivAccess: loadDerivAccess(),
+        }),
       });
       const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; token?: string; already?: boolean };
       if (!res.ok || !data.ok) { setErr(data.error || "Something went wrong. Please try again."); return; }
@@ -265,6 +272,23 @@ export function CreatorsHub() {
                   <CountryPicker value={f.country} onChange={(v) => { setF((p) => ({ ...p, country: v })); show(v + " selected"); }} accent={A} />
                   {f.country && <FieldOk>{f.country} selected</FieldOk>}
                 </div>
+                <label className="flex flex-col gap-1.5">
+                  <span className={label} style={{ color: TC.faint }}>
+                    Invited by someone?{" "}
+                    <span className="normal-case tracking-normal" style={{ color: TC.faint, opacity: 0.75 }}>optional</span>
+                  </span>
+                  <input
+                    value={f.teamCode}
+                    onChange={(e) => setF((p) => ({ ...p, teamCode: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "") }))}
+                    maxLength={12}
+                    autoCapitalize="characters"
+                    spellCheck={false}
+                    className={field}
+                    style={{ ...fieldStyle, ...monoFont }}
+                    placeholder="Their team code"
+                  />
+                  {f.teamCode.length >= 4 && <FieldOk>Code added — they will be credited</FieldOk>}
+                </label>
               </div>
 
               {/* where they post — three of their choosing */}

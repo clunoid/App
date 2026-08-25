@@ -251,6 +251,9 @@ export function DerivBotSimRunner({
     };
 
     const bot = new SimulatedDerivBot(ui, meta.createStrategy(), curBal, "USD");
+    // The guided run is the creators' one: it is being recorded and posted, so
+    // it does not end down, and recovery is entered deliberately instead.
+    bot.setCreatorMode(guide);
     botRef.current = bot;
     bot.start({
       initialStake: parseFloat(stake),
