@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/requireUser";
 import { sendSupportMessage, MAX_UPLOAD_BYTES, ALLOWED_TYPES } from "@/lib/support/telegram";
+import { recordInbound } from "@/lib/support/threads";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -137,12 +138,26 @@ export async function POST(req: NextRequest) {
     photo: p.photo,
   });
 
-  if (!sent) {
+  if (sent === null) {
     return NextResponse.json(
       { error: "We could not send that just now. Please try again in a minute." },
       { status: 502 },
     );
   }
+
+  // Remember which Telegram message this became, so a swipe-reply to it can be
+  // routed back to this person. Deliberately awaited but never fatal: the
+  // message has already arrived, and failing the request now would tell them it
+  // did not. The cost of a failure here is that one answer has to go by email.
+  await recordInbound({
+    visitorId: p.visitorId,
+    body: p.message || "(screenshot only)",
+    tgMessageId: sent,
+    email,
+    name: p.name || null,
+    source: p.source || null,
+    page: p.page || null,
+  });
 
   return NextResponse.json({ ok: true, email });
 }

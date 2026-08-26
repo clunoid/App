@@ -66,6 +66,7 @@ export function SupportChat({ source, email: known, name: knownName, country }: 
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [nudged, setNudged] = useState(false);
+  const [unread, setUnread] = useState(0);
 
   const boxRef = useRef<HTMLTextAreaElement | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
@@ -118,6 +119,46 @@ export function SupportChat({ source, email: known, name: knownName, country }: 
     });
   }, []);
 
+  /**
+   * Collect anything the owner has replied.
+   *
+   * Polled rather than pushed: a websocket for a support bubble that is open
+   * for two minutes at a time is not worth the moving parts. Fast while the
+   * panel is open, slow when it is shut — a closed bubble only needs to know
+   * whether to show a dot.
+   *
+   * Only runs once they have actually asked something. Somebody who never
+   * opened the bubble has nothing waiting, and polling for them would be a
+   * request per visitor per minute for no reason.
+   */
+  useEffect(() => {
+    if (!visitorId || thread.length === 0) return;
+    let alive = true;
+
+    const tick = async () => {
+      try {
+        const r = await fetch(`/api/support/replies?visitorId=${encodeURIComponent(visitorId)}`, { cache: "no-store" });
+        if (!r.ok) return;
+        const d = (await r.json()) as { replies?: { id: string; body: string; createdAt: string }[] };
+        const fresh = d.replies ?? [];
+        if (!alive || fresh.length === 0) return;
+
+        for (const rep of fresh) {
+          remember({ id: rep.id, text: rep.body, at: rep.createdAt, from: "us" });
+        }
+        if (!open) setUnread((n) => n + fresh.length);
+      } catch { /* offline, or the tab is asleep — try again next tick */ }
+    };
+
+    void tick();
+    const every = open ? 7000 : 45000;
+    const timer = setInterval(() => void tick(), every);
+    return () => { alive = false; clearInterval(timer); };
+  }, [visitorId, thread.length, open, remember]);
+
+  // Opening the panel is reading them.
+  useEffect(() => { if (open) setUnread(0); }, [open]);
+
   function pick(f: File | null) {
     setErr(null);
     if (!f) { setFile(null); return; }
@@ -139,7 +180,7 @@ export function SupportChat({ source, email: known, name: knownName, country }: 
         id: crypto.randomUUID?.() ?? String(Math.random()),
         at: new Date().toISOString(),
         from: "us",
-        text: "Hello! So we can actually help, tell us what you need in a bit of detail — what you were doing, what happened, and what you expected instead. A screenshot helps too. Then send it and we will reply to your email.",
+        text: "Hello! So we can actually help, tell us what you need in a bit of detail — what you were doing, what happened, and what you expected instead. A screenshot helps too. Then send it and keep this window open — the answer usually comes back here in a few minutes.",
       });
       setText("");
       return;
@@ -199,6 +240,17 @@ export function SupportChat({ source, email: known, name: knownName, country }: 
         }}
       >
         {open ? <X size={22} /> : <MessageCircle size={24} />}
+        {/* A reply arrived while this was shut. Count, not a bare dot — knowing
+            there are three waiting is worth the extra glyph. */}
+        {!open && unread > 0 && (
+          <span
+            aria-label={`${unread} new ${unread === 1 ? "reply" : "replies"}`}
+            className="absolute -right-0.5 -top-0.5 grid h-5 min-w-[20px] place-items-center rounded-full px-1 text-[11px] font-bold"
+            style={{ background: GOOD, color: "#04202e", border: "2px solid " + TC.bg }}
+          >
+            {unread > 9 ? "9+" : unread}
+          </span>
+        )}
       </button>
 
       {open && (
@@ -233,7 +285,7 @@ export function SupportChat({ source, email: known, name: knownName, country }: 
           <div className="flex-1 space-y-3 overflow-y-auto px-4 py-4">
             <Bubble from="us">
               Hi{name ? ` ${name.split(" ")[0]}` : ""} — ask us anything. Tell us what happened and what you
-              expected, and add a screenshot if you have one. We reply to your email.
+              expected, and add a screenshot if you have one. The answer comes back here.
             </Bubble>
 
             {thread.map((l) => (
@@ -252,7 +304,7 @@ export function SupportChat({ source, email: known, name: knownName, country }: 
                   </div>
                   {l.sent !== false && (
                     <div className="mt-1 flex items-center justify-end gap-1 text-[10.5px]" style={{ color: GOOD }}>
-                      <Check size={11} /> Sent · we will reply by email
+                      <Check size={11} /> Sent · check back here or your email
                     </div>
                   )}
                 </div>

@@ -42,37 +42,46 @@ export type SupportMessage = {
   photo?: { data: ArrayBuffer; filename: string; type: string } | null;
 };
 
-async function call(method: string, body: BodyInit, headers?: HeadersInit): Promise<boolean> {
+/**
+ * Returns the id of the message Telegram created, or null if it refused.
+ *
+ * The id matters now: a swipe-reply in Telegram points back at it, and that
+ * pointer is the only thing connecting the owner's answer to the visitor who
+ * asked. Callers that only care whether it worked test for null.
+ */
+async function call(method: string, body: BodyInit, headers?: HeadersInit): Promise<number | null> {
   const token = process.env.TELEGRAM_BOT_TOKEN;
-  if (!token) return false;
+  if (!token) return null;
   try {
     const res = await fetch(`${API}/bot${token}/${method}`, { method: "POST", body, headers, cache: "no-store" });
     if (!res.ok) {
       // The body carries Telegram's own reason — worth having in the logs when
       // the chat id is wrong or the bot was never started.
       console.error(`[support] telegram refused ${method}:`, res.status, await res.text().catch(() => ""));
-      return false;
+      return null;
     }
-    return true;
+    const j = (await res.json().catch(() => null)) as { result?: { message_id?: number } } | null;
+    return typeof j?.result?.message_id === "number" ? j.result.message_id : 0;
   } catch (e) {
     console.error(`[support] telegram unreachable (${method}):`, e);
-    return false;
+    return null;
   }
 }
 
 /**
  * Send one message, and the screenshot after it when there is one.
  *
- * Returns false rather than throwing: a support form is the last thing that
- * should show a stack trace. The text is what matters, so it goes first and its
- * result is what decides success — a screenshot that fails to upload must not
- * make the creator think their words were lost.
+ * Returns the Telegram message id on success and null on failure, rather than
+ * throwing: a support form is the last thing that should show a stack trace.
+ * The text is what matters, so it goes first and its result is what decides
+ * success — a screenshot that fails to upload must not make the person think
+ * their words were lost.
  */
-export async function sendSupportMessage(m: SupportMessage): Promise<boolean> {
+export async function sendSupportMessage(m: SupportMessage): Promise<number | null> {
   const chat = process.env.TELEGRAM_CHAT_ID;
   if (!process.env.TELEGRAM_BOT_TOKEN || !chat) {
     console.error("[support] TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID are not set");
-    return false;
+    return null;
   }
 
   // Built so the reply address is the first thing readable on a phone screen,
@@ -94,7 +103,7 @@ export async function sendSupportMessage(m: SupportMessage): Promise<boolean> {
     JSON.stringify({ chat_id: chat, text: lines.join("\n"), parse_mode: "HTML", disable_web_page_preview: true }),
     { "Content-Type": "application/json" },
   );
-  if (!sent) return false;
+  if (sent === null) return null;
 
   if (m.photo) {
     const form = new FormData();
@@ -107,5 +116,5 @@ export async function sendSupportMessage(m: SupportMessage): Promise<boolean> {
     await call("sendPhoto", form);
   }
 
-  return true;
+  return sent;
 }

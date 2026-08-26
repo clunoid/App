@@ -15,6 +15,7 @@ import { startDerivLogin, loadDerivAccess, loadDerivTokens } from "@/lib/deriv/o
 import { Activity, ArrowUpRight, BookOpen, BrainCircuit, Cpu, LineChart, Lock, ShieldCheck, Zap, ChevronRight, Loader2, Clapperboard } from "lucide-react";
 import { useClunoid } from "@/lib/store/useClunoid";
 import { TradingHub } from "@/components/trading/TradingHub";
+import { SupportChat } from "@/components/support/SupportChat";
 
 const C = {
   bg: "#070b12",
@@ -242,6 +243,12 @@ export function TradingLanding() {
           Clunoid Trading — intelligent automated trading. Trading involves risk; you can lose money. Nothing here is financial advice.
         </footer>
       </div>
+
+      {/* The front door is exactly where somebody stuck on connecting gives up.
+          Until now the bubble only existed further in, which is the wrong way
+          round: the people who most need to ask are the ones who never got
+          past this page. */}
+      <SupportChat source="Home" />
 
       <style>{`@keyframes ticker { from { transform: translateX(0) } to { transform: translateX(-50%) } }`}</style>
     </main>
