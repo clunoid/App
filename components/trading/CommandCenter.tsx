@@ -24,6 +24,8 @@ import { parseDerivRedirect, isDerivRedirect, isDerivCodeReturn, startDerivLogin
 import { fetchDerivPortfolio, type DerivPortfolio } from "@/lib/deriv/client";
 import { fetchDerivPortfolioREST } from "@/lib/deriv/api";
 import { SupportChat } from "@/components/support/SupportChat";
+import { InstallApp } from "@/components/pwa/InstallApp";
+import { InstallCard } from "@/components/pwa/InstallCard";
 /** Binance referral — open an account with us and claim the welcome gifts. */
 const BINANCE_REFERRAL_URL = "https://www.binance.com/referral/earn-together/refer2earn-usdc/claim?hl=en&ref=GRO_28502_IIEHW&utm_source=referral_entrance";
 
@@ -334,11 +336,14 @@ export function CommandCenter() {
           </Link>
           <span className="h-4 w-px" style={{ background: TC.line }} />
           <span className="text-[14px] font-bold tracking-[0.16em]">HOME</span>
-          {connected && (
-            <button onClick={() => void refresh(session)} disabled={loading} className="ml-auto inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12.5px] font-medium transition hover:bg-white/5 disabled:opacity-50" style={{ borderColor: TC.line, color: TC.muted }}>
-              {loading ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />} Refresh
-            </button>
-          )}
+          <div className="ml-auto flex items-center gap-2">
+            <InstallApp className="rounded-full px-3 py-1.5 text-[12.5px]" />
+            {connected && (
+              <button onClick={() => void refresh(session)} disabled={loading} className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12.5px] font-medium transition hover:bg-white/5 disabled:opacity-50" style={{ borderColor: TC.line, color: TC.muted }}>
+                {loading ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />} Refresh
+              </button>
+            )}
+          </div>
         </header>
 
         <div className="mt-2 max-w-2xl">
@@ -638,6 +643,7 @@ export function CommandCenter() {
         />
       )}
 
+      <InstallCard />
       <SupportChat source="Home" />
     </main>
   );

@@ -1,121 +1,35 @@
 "use client";
 
 /**
- * "Install app".
+ * "Install app" — the inline button.
  *
- * Installing is a browser feature, not a page feature, and every browser
- * exposes it differently. This does the honest version of all three cases:
+ * The same offer as InstallCard, in a form that sits inside a page rather than
+ * dropping over it. Both read one shared store (lib/pwa/install), because
+ * `beforeinstallprompt` fires once and its event is single-use: two components
+ * each holding their own copy is how you end up calling prompt() on a spent
+ * one. Dismissing either hides both, for 30 days.
  *
- *   Chrome, Edge, Samsung, Opera (Android and desktop)
- *     They fire `beforeinstallprompt`. We catch it, keep it, and show a button
- *     that calls it. This is the only case where a click really installs.
- *
- *   iOS and iPadOS — any browser
- *     There is no `beforeinstallprompt` on iOS. Installing is Share → Add to
- *     Home Screen and nothing a page does can trigger it, so the button opens
- *     short instructions instead of pretending to install.
- *
- *   Firefox desktop, and anything else
- *     No install path at all. The button never appears — offering one that
- *     cannot work is worse than offering nothing.
- *
- * Already installed? Nothing renders. `display-mode: standalone` is true inside
- * an installed window, and `navigator.standalone` is the iOS equivalent.
- *
- * Dismissing hides it for 30 days. Somebody who has said no does not need to be
- * asked again on their next visit.
+ * Renders nothing where installing is impossible — Firefox desktop, or inside
+ * an already-installed window. On iOS it opens the Share instructions, because
+ * no API on earth can install from a page there.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { Download, Share, Plus, X } from "lucide-react";
 import { TC } from "@/lib/trading/theme";
-
-const SNOOZE_KEY = "cln_install_snoozed";
-const SNOOZE_DAYS = 30;
-
-/** The event Chromium fires. Not in lib.dom yet, so it is spelled out here. */
-type InstallPromptEvent = Event & {
-  prompt: () => Promise<void>;
-  userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
-};
-
-function snoozed(): boolean {
-  try {
-    const until = Number(localStorage.getItem(SNOOZE_KEY) || 0);
-    return Number.isFinite(until) && Date.now() < until;
-  } catch {
-    return false;
-  }
-}
-
-function snooze() {
-  try {
-    localStorage.setItem(SNOOZE_KEY, String(Date.now() + SNOOZE_DAYS * 86400_000));
-  } catch { /* private mode: this visit only */ }
-}
-
-/** Inside an installed window there is nothing left to offer. */
-function alreadyInstalled(): boolean {
-  if (typeof window === "undefined") return false;
-  const standalone = window.matchMedia?.("(display-mode: standalone)").matches;
-  const iosStandalone = (window.navigator as Navigator & { standalone?: boolean }).standalone === true;
-  return !!standalone || iosStandalone;
-}
-
-function isApple(): boolean {
-  if (typeof navigator === "undefined") return false;
-  const ua = navigator.userAgent;
-  // iPadOS 13+ reports itself as a Mac, so the touch check is what catches it.
-  const iOS = /iPad|iPhone|iPod/.test(ua);
-  const iPadDesktopUA = navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1;
-  return iOS || iPadDesktopUA;
-}
+import { useInstall } from "@/components/pwa/useInstall";
+import { promptInstall, snooze } from "@/lib/pwa/install";
 
 export function InstallApp({ className = "" }: { className?: string }) {
-  const [prompt, setPrompt] = useState<InstallPromptEvent | null>(null);
-  const [ios, setIos] = useState(false);
+  const { mode } = useInstall();
   const [showHow, setShowHow] = useState(false);
-  const [gone, setGone] = useState(true);
-
-  useEffect(() => {
-    if (alreadyInstalled() || snoozed()) return;
-
-    // iOS can be offered instructions straight away — there is no event coming.
-    if (isApple()) {
-      setIos(true);
-      setGone(false);
-      return;
-    }
-
-    const onPrompt = (e: Event) => {
-      // Without this Chrome shows its own mini-infobar instead of letting us
-      // choose the moment.
-      e.preventDefault();
-      setPrompt(e as InstallPromptEvent);
-      setGone(false);
-    };
-    const onInstalled = () => { setGone(true); setPrompt(null); };
-
-    window.addEventListener("beforeinstallprompt", onPrompt);
-    window.addEventListener("appinstalled", onInstalled);
-    return () => {
-      window.removeEventListener("beforeinstallprompt", onPrompt);
-      window.removeEventListener("appinstalled", onInstalled);
-    };
-  }, []);
 
   const install = useCallback(async () => {
-    if (ios) { setShowHow(true); return; }
-    if (!prompt) return;
-    await prompt.prompt();
-    const { outcome } = await prompt.userChoice;
-    // The event is single-use either way.
-    setPrompt(null);
-    if (outcome === "accepted") setGone(true);
-    else { snooze(); setGone(true); }
-  }, [ios, prompt]);
+    if (mode === "ios") { setShowHow(true); return; }
+    await promptInstall();
+  }, [mode]);
 
-  if (gone) return null;
+  if (mode === "none") return null;
 
   return (
     <>
@@ -179,7 +93,7 @@ export function InstallApp({ className = "" }: { className?: string }) {
 
             <button
               type="button"
-              onClick={() => { snooze(); setShowHow(false); setGone(true); }}
+              onClick={() => { snooze(); setShowHow(false); }}
               className="mt-5 w-full rounded-xl border py-2.5 text-[13px] font-medium transition hover:bg-white/5"
               style={{ borderColor: TC.line, color: TC.muted }}
             >

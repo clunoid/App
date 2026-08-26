@@ -17,6 +17,7 @@ import { useClunoid } from "@/lib/store/useClunoid";
 import { TradingHub } from "@/components/trading/TradingHub";
 import { SupportChat } from "@/components/support/SupportChat";
 import { InstallApp } from "@/components/pwa/InstallApp";
+import { InstallCard } from "@/components/pwa/InstallCard";
 
 const C = {
   bg: "#070b12",
@@ -250,6 +251,7 @@ export function TradingLanding() {
           Until now the bubble only existed further in, which is the wrong way
           round: the people who most need to ask are the ones who never got
           past this page. */}
+      <InstallCard />
       <SupportChat source="Home" />
 
       <style>{`@keyframes ticker { from { transform: translateX(0) } to { transform: translateX(-50%) } }`}</style>
