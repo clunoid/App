@@ -48,6 +48,9 @@ type Line = {
   /** False for something we held back — a bare "hi" was never delivered, and
    *  telling them it was is the one thing this widget must not do. */
   sent?: boolean;
+  /** True when this is the widget talking rather than a person answering. A
+   *  real reply must never be styled like the greeting above it. */
+  system?: boolean;
 };
 
 export function SupportChat({ source, email: known, name: knownName, country }: {
@@ -67,6 +70,7 @@ export function SupportChat({ source, email: known, name: knownName, country }: 
   const [err, setErr] = useState<string | null>(null);
   const [nudged, setNudged] = useState(false);
   const [unread, setUnread] = useState(0);
+  const [editWho, setEditWho] = useState(false);
 
   const boxRef = useRef<HTMLTextAreaElement | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
@@ -92,14 +96,14 @@ export function SupportChat({ source, email: known, name: knownName, country }: 
 
   // Still nothing? Ask the server whether they are signed in to Clunoid.
   useEffect(() => {
-    if (known || !open || email) return;
+    if (known || !open || email || editWho) return;
     let alive = true;
     fetch("/api/support")
       .then((r) => r.json())
       .then((d) => { if (alive && d?.email && isEmail(d.email)) { setEmail(d.email); saveIdentity({ email: d.email }); } })
       .catch(() => { /* they will type it */ });
     return () => { alive = false; };
-  }, [open, known, email]);
+  }, [open, known, email, editWho]);
 
   useEffect(() => {
     if (!open) return;
@@ -180,6 +184,7 @@ export function SupportChat({ source, email: known, name: knownName, country }: 
         id: crypto.randomUUID?.() ?? String(Math.random()),
         at: new Date().toISOString(),
         from: "us",
+        system: true,
         text: "Hello! So we can actually help, tell us what you need in a bit of detail — what you were doing, what happened, and what you expected instead. A screenshot helps too. Then send it and keep this window open — the answer usually comes back here in a few minutes.",
       });
       setText("");
@@ -216,6 +221,7 @@ export function SupportChat({ source, email: known, name: knownName, country }: 
       });
       setText("");
       setFile(null);
+      setEditWho(false);
       setNudged(false);
       if (fileRef.current) fileRef.current.value = "";
     } catch {
@@ -223,7 +229,7 @@ export function SupportChat({ source, email: known, name: knownName, country }: 
     } finally { setBusy(false); }
   }, [busy, text, file, email, name, source, visitorId, country, nudged, remember]);
 
-  const needsWho = !isEmail(email) || !name.trim();
+  const needsWho = editWho || !isEmail(email) || !name.trim();
 
   return (
     <>
@@ -283,14 +289,14 @@ export function SupportChat({ source, email: known, name: knownName, country }: 
 
           {/* thread */}
           <div className="flex-1 space-y-3 overflow-y-auto px-4 py-4">
-            <Bubble from="us">
+            <Bubble from="us" system>
               Hi{name ? ` ${name.split(" ")[0]}` : ""} — ask us anything. Tell us what happened and what you
               expected, and add a screenshot if you have one. The answer comes back here.
             </Bubble>
 
             {thread.map((l) => (
               l.from === "us" ? (
-                <Bubble key={l.id} from="us">{l.text}</Bubble>
+                <Bubble key={l.id} from="us" system={l.system}>{l.text}</Bubble>
               ) : (
                 <div key={l.id} className="ml-auto max-w-[85%]">
                   <div className="rounded-2xl rounded-br-md px-3.5 py-2.5 text-[12.5px] leading-relaxed"
@@ -317,9 +323,23 @@ export function SupportChat({ source, email: known, name: knownName, country }: 
           <div className="border-t px-4 py-2.5" style={{ borderColor: TC.line }}>
             {needsWho ? (
               <div className="space-y-2">
-                <p className="text-[11px] leading-snug" style={{ color: TC.muted }}>
-                  Fill these in first so we can reply — then type what you need below.
-                </p>
+                <div className="flex items-center gap-2">
+                  <p className="min-w-0 flex-1 text-[11px] leading-snug" style={{ color: TC.muted }}>
+                    {editWho ? "Change these, then tap Done." : "Fill these in first so we can reply — then type what you need below."}
+                  </p>
+                  {/* Only offered once both are usable: a Done that saves an
+                      unusable address would lose the reply. */}
+                  {editWho && isEmail(email) && name.trim() ? (
+                    <button
+                      type="button"
+                      onClick={() => { saveIdentity({ name, email }); setEditWho(false); }}
+                      className="shrink-0 rounded-lg px-2.5 py-1 text-[11.5px] font-bold transition hover:brightness-110"
+                      style={{ background: A, color: "#12091f" }}
+                    >
+                      Done
+                    </button>
+                  ) : null}
+                </div>
                 <div className="flex items-center gap-2">
                   <UserRound size={13} className="shrink-0" style={{ color: A }} />
                   <input
@@ -347,7 +367,7 @@ export function SupportChat({ source, email: known, name: knownName, country }: 
                 </div>
               </div>
             ) : (
-              <button type="button" onClick={() => { setEmail(""); }}
+              <button type="button" onClick={() => setEditWho(true)}
                 className="flex w-full items-center gap-1.5 text-left text-[11.5px] transition hover:opacity-80" style={{ color: TC.muted }}>
                 <Mail size={12} className="shrink-0" style={{ color: A }} />
                 <span className="min-w-0 flex-1 truncate" style={monoFont}>{email}</span>
@@ -428,11 +448,45 @@ export function SupportChat({ source, email: known, name: knownName, country }: 
   );
 }
 
-function Bubble({ children }: { from: "us"; children: React.ReactNode }) {
+/**
+ * A line from our side.
+ *
+ * `system` is the widget talking — the greeting, the nudge to say more. It stays
+ * quiet and grey because it is furniture.
+ *
+ * Everything else is a real answer from a real person, and it is the reason the
+ * window exists. It gets full-strength text, a lighter ground to sit on, an
+ * accent edge, and a label saying who it is from — so it can never be mistaken
+ * for the greeting it sits underneath.
+ */
+function Bubble({ children, system }: { from: "us"; children: React.ReactNode; system?: boolean }) {
+  if (system) {
+    return (
+      <div className="max-w-[88%] rounded-2xl rounded-tl-md border px-3.5 py-2.5 text-[12.5px] leading-relaxed"
+        style={{ borderColor: TC.line, background: "rgba(0,0,0,0.3)", color: TC.muted }}>
+        {children}
+      </div>
+    );
+  }
+
   return (
-    <div className="max-w-[88%] rounded-2xl rounded-tl-md border px-3.5 py-2.5 text-[12.5px] leading-relaxed"
-      style={{ borderColor: TC.line, background: "rgba(0,0,0,0.3)", color: TC.muted }}>
-      {children}
+    <div className="max-w-[88%]">
+      <div className="mb-1 flex items-center gap-1.5 text-[10.5px] font-bold uppercase tracking-[0.12em]" style={{ color: A }}>
+        <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: GOOD }} />
+        Clunoid support
+      </div>
+      <div
+        className="rounded-2xl rounded-tl-md border px-3.5 py-3 text-[13.5px] font-medium leading-[1.6]"
+        style={{
+          borderColor: `${A}55`,
+          borderLeft: `3px solid ${A}`,
+          background: "rgba(255,255,255,0.07)",
+          color: TC.text,
+          whiteSpace: "pre-wrap",
+        }}
+      >
+        {children}
+      </div>
     </div>
   );
 }
