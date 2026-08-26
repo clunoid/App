@@ -16,6 +16,7 @@ import { Activity, ArrowUpRight, BookOpen, BrainCircuit, Cpu, LineChart, Lock, S
 import { useClunoid } from "@/lib/store/useClunoid";
 import { TradingHub } from "@/components/trading/TradingHub";
 import { SupportChat } from "@/components/support/SupportChat";
+import { InstallApp } from "@/components/pwa/InstallApp";
 
 const C = {
   bg: "#070b12",
@@ -193,6 +194,7 @@ export function TradingLanding() {
               <a href="#platforms" className="inline-flex items-center gap-2 rounded-xl border px-5 py-3 text-[14px] font-medium transition hover:bg-white/5" style={{ borderColor: C.line, color: C.text }}>
                 <BookOpen size={16} style={{ color: C.profit }} /> Explore the trading hub
               </a>
+              <InstallApp className="px-5 py-3 text-[14px]" />
             </div>
             <BrandBand />
 

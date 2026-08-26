@@ -122,6 +122,11 @@ export const metadata: Metadata = {
     description: SEO_DESCRIPTION,
   },
   appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: "Clunoid Trading" },
+  // Next emits the modern `mobile-web-app-capable` for appleWebApp.capable, and
+  // that is the right tag - Chrome deprecated the apple- prefix. But iOS below
+  // 16.4 reads only the prefixed one, and without it "Add to Home Screen" opens
+  // inside Safari's chrome rather than as an app. One line, older iPhones work.
+  other: { "apple-mobile-web-app-capable": "yes" },
   // Google Search Console verification (also verified via the static HTML file in
   // public/ and the DNS TXT record at the registrar).
   verification: { google: "nZ4tS4HU5SuDFm29AgPfaOm42hMl6jq27wxcLq5hvBk" },
