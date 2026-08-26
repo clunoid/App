@@ -119,3 +119,41 @@ export async function collectReplies(visitorId: string): Promise<OutboundReply[]
 
   return data.map((r) => ({ id: r.id as string, body: r.body as string, createdAt: r.created_at as string }));
 }
+
+/**
+ * What has already been said to this person, oldest first.
+ *
+ * Attached to their next message so the answer can be written without
+ * remembering them. With enough people asking at once, the difference between
+ * "who is this and what did I tell them" and simply reading down the screen is
+ * the difference between support that works and support that stalls.
+ *
+ * Capped: Telegram refuses a message over 4096 characters, and a thread that
+ * long is not being read anyway.
+ */
+export async function historyFor(visitorId: string, limit = 10): Promise<{ from: "them" | "us"; body: string; at: string }[]> {
+  const db = getSupabaseAdmin();
+  if (!db || !visitorId) return [];
+
+  const { data, error } = await db
+    .from(TABLE)
+    .select("direction, body, created_at")
+    .eq("visitor_id", visitorId)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    console.error("[support] history failed:", error.message);
+    return [];
+  }
+
+  // Newest-first from the query so the LIMIT keeps the most recent, then
+  // reversed so it reads like a conversation.
+  return (data ?? [])
+    .reverse()
+    .map((r) => ({
+      from: r.direction === "out" ? ("us" as const) : ("them" as const),
+      body: r.body as string,
+      at: r.created_at as string,
+    }));
+}

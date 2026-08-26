@@ -40,6 +40,9 @@ export type SupportMessage = {
   visitorId?: string | null;
   /** A screenshot, when they attached one. */
   photo?: { data: ArrayBuffer; filename: string; type: string } | null;
+  /** Everything already said to this person, oldest first. Empty on a first
+   *  message, which is why the history block simply does not appear then. */
+  history?: { from: "them" | "us"; body: string; at: string }[];
 };
 
 /**
@@ -77,6 +80,52 @@ async function call(method: string, body: BodyInit, headers?: HeadersInit): Prom
  * success — a screenshot that fails to upload must not make the person think
  * their words were lost.
  */
+
+/** Telegram's ceiling is 4096; leave room for the header and the new message. */
+const HISTORY_BUDGET = 2200;
+const LINE_CAP = 320;
+
+/**
+ * The conversation so far, rendered for a phone screen.
+ *
+ * Oldest at the top so it reads downward, each turn labelled, and the whole
+ * thing trimmed from the OLDEST end when it is too long — the recent turns are
+ * the ones that explain the message you are about to answer.
+ */
+function renderHistory(history: { from: "them" | "us"; body: string; at: string }[]): string {
+  if (!history.length) return "";
+
+  const lines: string[] = [];
+  let budget = HISTORY_BUDGET;
+
+  for (let i = history.length - 1; i >= 0; i--) {
+    const h = history[i];
+    const who = h.from === "us" ? "↩️ <b>You</b>" : "💬 <b>Them</b>";
+    const body = h.body.length > LINE_CAP ? h.body.slice(0, LINE_CAP) + "…" : h.body;
+    const line = `${who} · ${when(h.at)}\n${esc(body)}`;
+    if (line.length > budget) {
+      lines.unshift("<i>…earlier messages not shown</i>");
+      break;
+    }
+    budget -= line.length;
+    lines.unshift(line);
+  }
+
+  return [`<b>─── Conversation so far (${history.length}) ───</b>`, "", lines.join("\n\n"), "", "<b>─── New message ───</b>"].join("\n");
+}
+
+/** Short and relative — an exact timestamp is noise when triaging. */
+function when(iso: string): string {
+  const then = new Date(iso).getTime();
+  if (!Number.isFinite(then)) return "";
+  const mins = Math.max(0, Math.round((Date.now() - then) / 60000));
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.round(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  return `${Math.round(hrs / 24)}d ago`;
+}
+
 export async function sendSupportMessage(m: SupportMessage): Promise<number | null> {
   const chat = process.env.TELEGRAM_CHAT_ID;
   if (!process.env.TELEGRAM_BOT_TOKEN || !chat) {
@@ -86,21 +135,20 @@ export async function sendSupportMessage(m: SupportMessage): Promise<number | nu
 
   // Built so the reply address is the first thing readable on a phone screen,
   // and tappable — Telegram linkifies a mailto.
-  const lines = [
+  const header = [
     `<b>${esc(m.source || "Support")}</b>`,
-    "",
     `<b>Reply to:</b> <a href="mailto:${esc(m.email)}">${esc(m.email)}</a>`,
     m.name ? `<b>Name:</b> ${esc(m.name)}` : "",
     m.country ? `<b>Country:</b> ${esc(m.country)}` : "",
     m.page ? `<b>Page:</b> ${esc(m.page)}` : "",
     m.visitorId ? `<b>Person:</b> <code>${esc(m.visitorId)}</code>` : "",
-    "",
-    esc(m.message),
-  ].filter(Boolean);
+  ].filter(Boolean).join("\n");
+
+  const lines = [header, renderHistory(m.history ?? []), esc(m.message)].filter(Boolean);
 
   const sent = await call(
     "sendMessage",
-    JSON.stringify({ chat_id: chat, text: lines.join("\n"), parse_mode: "HTML", disable_web_page_preview: true }),
+    JSON.stringify({ chat_id: chat, text: lines.join("\n\n"), parse_mode: "HTML", disable_web_page_preview: true }),
     { "Content-Type": "application/json" },
   );
   if (sent === null) return null;

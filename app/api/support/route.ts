@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/requireUser";
 import { sendSupportMessage, MAX_UPLOAD_BYTES, ALLOWED_TYPES } from "@/lib/support/telegram";
-import { recordInbound } from "@/lib/support/threads";
+import { recordInbound, historyFor } from "@/lib/support/threads";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -127,6 +127,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Add the email address we should reply to." }, { status: 400 });
   }
 
+  // What we have already said to this person. Fetched BEFORE the new message is
+  // recorded, so it is the conversation up to now and never includes itself.
+  // A failure here costs context, not delivery — the message still goes.
+  const history = await historyFor(p.visitorId);
+
   const sent = await sendSupportMessage({
     email,
     message: p.message || "(screenshot only)",
@@ -136,6 +141,7 @@ export async function POST(req: NextRequest) {
     source: p.source || null,
     visitorId: p.visitorId || null,
     photo: p.photo,
+    history,
   });
 
   if (sent === null) {
