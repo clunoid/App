@@ -21,6 +21,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { loadDerivAccess } from "@/lib/deriv/oauth";
 import {
   Users, Copy, Check, Link2, Share2, ShieldCheck, Clock, X, Loader2, UserPlus,
   MessageSquare, Star, ChevronDown,
@@ -438,7 +439,7 @@ function JoinByCode({ token, me, show, onRefresh }: {
     try {
       const res = await fetch("/api/creators/team", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token, code, direction: dir }),
+        body: JSON.stringify({ token, derivAccess: loadDerivAccess(), code, direction: dir }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) { setErr(data.error || "Could not do that."); return; }

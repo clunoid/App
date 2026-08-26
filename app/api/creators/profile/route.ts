@@ -18,6 +18,11 @@ export const dynamic = "force-dynamic";
 
 type Body = {
   token?: string;
+  /** The Deriv token this browser holds. Without it, a device that has no
+   *  valid access token of its own can load the dashboard (me/ accepts it) but
+   *  every action here would fail with "no creator found" - which is exactly
+   *  the dead end it was added to prevent. */
+  derivAccess?: string;
   platforms?: string[];
   handles?: Record<string, string>;
   newAccounts?: boolean;
@@ -30,7 +35,7 @@ export async function POST(req: NextRequest) {
   const admin = db();
   if (!admin) return NextResponse.json({ error: "Not available right now." }, { status: 503 });
 
-  const creator = await findCreator(admin, body.token);
+  const creator = await findCreator(admin, body.token, body.derivAccess);
   if (!creator) return NextResponse.json({ error: "No creator found." }, { status: 404 });
 
   // ── which platforms they post on ─────────────────────────────────────────

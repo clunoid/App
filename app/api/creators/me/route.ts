@@ -169,15 +169,15 @@ export async function POST(req: NextRequest) {
     serverTime: new Date().toISOString(),
   };
 
-  // Found some other way? Hand back the key so this device stops needing to.
-  if (!token || token.length < 32) {
-    const { data: keyRow } = await admin
-      .from("trading_creator_applications")
-      .select("access_token")
-      .eq("id", creator.id)
-      .maybeSingle();
-    if (keyRow?.access_token) body.recoveredToken = keyRow.access_token as string;
-  }
+  // Found some other way, or with a token that no longer matches? Hand back the
+  // real key so this device stops needing to be recognised the slow way.
+  const { data: keyRow } = await admin
+    .from("trading_creator_applications")
+    .select("access_token")
+    .eq("id", creator.id)
+    .maybeSingle();
+  const realToken = keyRow?.access_token as string | undefined;
+  if (realToken && realToken !== token) body.recoveredToken = realToken;
 
   return NextResponse.json(body);
 }

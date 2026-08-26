@@ -575,14 +575,14 @@ function StartCard({ me, token, onRefresh, setTab, show }: { me: Me; token: stri
       // Handles first — the clock must not start against a half-filled profile.
       const save = await fetch("/api/creators/profile", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token, platforms, handles }),
+        body: JSON.stringify({ token, derivAccess: loadDerivAccess(), platforms, handles }),
       });
       const saved = await save.json().catch(() => ({}));
       if (!save.ok) { setErr(saved.error || "Could not save your handles."); return; }
 
       const res = await fetch("/api/creators/posts", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token, platforms: checked, link }),
+        body: JSON.stringify({ token, derivAccess: loadDerivAccess(), platforms: checked, link }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) { setErr(data.error || "Could not start. Please try again."); return; }
@@ -790,7 +790,7 @@ function DayGrid({ progress, token, onRefresh, show, title = "Your calendar" }: 
     try {
       const res = await fetch("/api/creators/posts", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token, action: "day", date: d.date, done: !d.qualified }),
+        body: JSON.stringify({ token, derivAccess: loadDerivAccess(), action: "day", date: d.date, done: !d.qualified }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) { show(data.error || "Could not update that day.", "bad"); return; }
@@ -888,7 +888,7 @@ function PostsPanel({ me, progress, token, onRefresh, show }: { me: Me; progress
     try {
       const res = await fetch("/api/creators/posts", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token, platforms: checked, link }),
+        body: JSON.stringify({ token, derivAccess: loadDerivAccess(), platforms: checked, link }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) { setErr(data.error || "Could not save that."); return; }
@@ -905,7 +905,7 @@ function PostsPanel({ me, progress, token, onRefresh, show }: { me: Me; progress
     try {
       const res = await fetch("/api/creators/posts", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token, action: "undo", id }),
+        body: JSON.stringify({ token, derivAccess: loadDerivAccess(), action: "undo", id }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) { show(data.error || "Could not remove that.", "bad"); return; }
@@ -1555,7 +1555,7 @@ function DetailsPanel({ me, token, onRefresh, show }: { me: Me; token: string; o
     try {
       const res = await fetch("/api/creators/profile", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token, ...patch }),
+        body: JSON.stringify({ token, derivAccess: loadDerivAccess(), ...patch }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
