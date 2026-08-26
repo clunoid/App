@@ -12,6 +12,7 @@
  * The logic is the same one the Deriv and MT5 bots run, and publishing the
  * entry rules would hand them to anyone who wanted to trade against them.
  */
+import { useCallback, useState } from "react";
 import Link from "next/link";
 import {
   ArrowLeft, ArrowUpRight, Activity, BellRing, CandlestickChart, Clock,
@@ -45,6 +46,40 @@ const STEPS = [
 ];
 
 export function TradingViewHub() {
+  /**
+   * Double-click the logo to pull the Pine source down.
+   *
+   * Undiscoverable rather than secret — the route itself refuses anyone who is
+   * not an admin, so a visitor who finds this gesture gets a 404 and learns
+   * nothing. The message below is deliberately flat for the same reason.
+   */
+  const [grab, setGrab] = useState<"" | "busy" | "ok" | "no">("");
+
+  const grabScript = useCallback(async () => {
+    setGrab("busy");
+    try {
+      const res = await fetch("/api/trading/pine", { cache: "no-store" });
+      if (!res.ok) {
+        setGrab("no");
+        setTimeout(() => setGrab(""), 4000);
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "ClunoidARDE.pine";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      setGrab("ok");
+    } catch {
+      setGrab("no");
+    }
+    setTimeout(() => setGrab(""), 4000);
+  }, []);
+
   return (
     <main className="relative min-h-[100dvh] w-full overflow-x-hidden" style={{ background: TC.bg, color: TC.text }}>
       <div aria-hidden className="pointer-events-none absolute inset-0" style={DOT_GRID} />
@@ -60,16 +95,26 @@ export function TradingViewHub() {
             <ArrowLeft size={15} /> Home
           </Link>
           <span className="h-4 w-px" style={{ background: TC.line }} />
-          <span className="inline-flex items-center rounded-lg px-2.5 py-1.5" style={{ background: "rgba(0,0,0,0.45)", boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.08)" }}>
+          <span
+            onDoubleClick={grabScript}
+            title=""
+            className="inline-flex select-none items-center rounded-lg px-2.5 py-1.5"
+            style={{ background: "rgba(0,0,0,0.45)", boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.08)" }}
+          >
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/logos/tradingview.svg" alt="TradingView" className="h-4 w-auto object-contain" style={{ maxWidth: 110 }} />
+            <img src="/logos/tradingview.svg" alt="TradingView" className="h-4 w-auto object-contain" style={{ maxWidth: 110 }} draggable={false} />
           </span>
+          {grab ? (
+            <span className="text-[12px]" style={{ color: grab === "no" ? TC.loss : TC.muted }}>
+              {grab === "busy" ? "Fetching…" : grab === "ok" ? "Downloaded" : "Not available on this account"}
+            </span>
+          ) : null}
         </header>
 
-        <div className="mx-auto w-full max-w-[1080px]">
+        <div className="w-full">
 
           {/* ── hero ── */}
-          <section className="grid gap-10 pt-10 lg:grid-cols-[1.05fr_1fr] lg:items-center lg:pt-14">
+          <section className="grid gap-10 pt-10 lg:grid-cols-[1.15fr_0.85fr] lg:items-center lg:pt-14 xl:gap-16 2xl:gap-24">
             <div>
               <span
                 className="inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-[11.5px] font-bold uppercase tracking-[0.16em]"
@@ -79,11 +124,11 @@ export function TradingViewHub() {
                 Free signals · forex majors · 15m
               </span>
 
-              <h1 className="mt-5 text-[32px] font-extrabold leading-[1.08] tracking-[-0.02em] sm:text-[42px]">
+              <h1 className="mt-5 text-[32px] font-extrabold leading-[1.08] tracking-[-0.02em] sm:text-[42px] xl:text-[52px] 2xl:text-[58px]">
                 Day-trading setups, sent to you the moment they appear
               </h1>
 
-              <p className="mt-4 max-w-[58ch] text-[15.5px] leading-relaxed" style={{ color: TC.muted }}>
+              <p className="mt-4 max-w-[58ch] text-[15.5px] leading-relaxed xl:text-[17px]" style={{ color: TC.muted }}>
                 Our engine watches the forex majors on the 15-minute chart. When a setup qualifies, the entry,
                 stop and target go straight to Telegram — <b style={{ color: TC.text }}>free, automatic, and the same
                 signal our own bots take</b>. You copy it on your own account, or you just watch.
@@ -121,8 +166,8 @@ export function TradingViewHub() {
 
           {/* ── how ── */}
           <section id="how" className="scroll-mt-6 pt-16">
-            <h2 className="text-[22px] font-extrabold tracking-[-0.015em] sm:text-[27px]">How a signal reaches you</h2>
-            <div className="mt-5 grid gap-3.5 sm:grid-cols-3">
+            <h2 className="text-[22px] font-extrabold tracking-[-0.015em] sm:text-[27px] xl:text-[31px]">How a signal reaches you</h2>
+            <div className="mt-5 grid gap-3.5 sm:grid-cols-3 xl:gap-5">
               {STEPS.map(({ icon: I, title, body }) => (
                 <div key={title} className="rounded-2xl border p-5" style={{ borderColor: TC.line, background: "rgba(255,255,255,0.032)" }}>
                   <span className="grid h-10 w-10 place-items-center rounded-xl" style={{ background: "rgba(56,189,248,0.12)" }}>
@@ -137,8 +182,8 @@ export function TradingViewHub() {
 
           {/* ── what it watches ── */}
           <section className="pt-14">
-            <h2 className="text-[22px] font-extrabold tracking-[-0.015em] sm:text-[27px]">What it watches</h2>
-            <p className="mt-3.5 max-w-[62ch] text-[15.5px] leading-relaxed" style={{ color: TC.muted }}>
+            <h2 className="text-[22px] font-extrabold tracking-[-0.015em] sm:text-[27px] xl:text-[31px]">What it watches</h2>
+            <p className="mt-3.5 max-w-[62ch] text-[15.5px] leading-relaxed xl:text-[16.5px]" style={{ color: TC.muted }}>
               Seven forex majors, on the 15-minute chart, during the London and New York hours. The list is short
               deliberately: on wider-spread pairs the cost of getting in and out eats the trade before it starts.
             </p>
@@ -154,7 +199,7 @@ export function TradingViewHub() {
               ))}
             </ul>
 
-            <div className="mt-5 grid gap-3.5 sm:grid-cols-2">
+            <div className="mt-5 grid gap-3.5 sm:grid-cols-2 xl:gap-5">
               <div className="rounded-2xl border p-5" style={{ borderColor: TC.line, background: "rgba(255,255,255,0.032)" }}>
                 <h3 className="text-[15px] font-bold">It stands aside more than it trades</h3>
                 <p className="mt-1.5 text-[13.5px] leading-relaxed" style={{ color: TC.muted }}>
@@ -174,21 +219,21 @@ export function TradingViewHub() {
 
           {/* ── the honest bit ── */}
           <section className="pt-14">
-            <div className="rounded-2xl border p-6" style={{ borderColor: "rgba(242,96,125,0.25)", background: "rgba(242,96,125,0.05)" }}>
+            <div className="rounded-2xl border p-6 xl:p-8" style={{ borderColor: "rgba(242,96,125,0.25)", background: "rgba(242,96,125,0.05)" }}>
               <h2 className="flex items-center gap-2.5 text-[19px] font-extrabold tracking-[-0.015em]">
                 <TriangleAlert size={20} style={{ color: TC.loss }} /> Read this before you copy anything
               </h2>
-              <p className="mt-3.5 text-[14.5px] leading-relaxed" style={{ color: TC.muted }}>
+              <p className="mt-3.5 max-w-[86ch] text-[14.5px] leading-relaxed" style={{ color: TC.muted }}>
                 <b style={{ color: TC.text }}>These are not predictions and they are not advice.</b> They are setups our
                 engine rates as worth taking, published so you can decide for yourself. Trading real money carries real
                 risk and you can lose what you put in.
               </p>
-              <p className="mt-3 text-[14.5px] leading-relaxed" style={{ color: TC.muted }}>
+              <p className="mt-3 max-w-[86ch] text-[14.5px] leading-relaxed" style={{ color: TC.muted }}>
                 Some of these trades will hit the stop. That is not a malfunction — a strategy that never loses does not
                 exist, and anyone showing you one is selling something. What matters is that the winners are bigger than
                 the losers over a long run of trades, which is why every signal carries a reward-to-risk figure.
               </p>
-              <p className="mt-3 text-[14.5px] leading-relaxed" style={{ color: TC.muted }}>
+              <p className="mt-3 max-w-[86ch] text-[14.5px] leading-relaxed" style={{ color: TC.muted }}>
                 <b style={{ color: TC.text }}>Use the stop. Every time.</b> Risk a small, fixed share of your balance per
                 trade and no single signal can hurt you. Never risk money you cannot afford to lose.
               </p>
@@ -198,7 +243,7 @@ export function TradingViewHub() {
           {/* ── join ── */}
           <section className="pt-12 pb-16">
             <div
-              className="rounded-[18px] border p-6"
+              className="rounded-[18px] border p-6 xl:p-8"
               style={{ borderColor: TC.line, background: "radial-gradient(130% 150% at 0% 0%, rgba(56,189,248,0.15), transparent 58%), rgba(255,255,255,0.032)" }}
             >
               <h2 className="text-[21px] font-extrabold tracking-[-0.015em] sm:text-[26px]">Free to join. Nothing to install.</h2>
