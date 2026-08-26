@@ -2,15 +2,15 @@ import type { Metadata } from "next";
 import { TradingViewHub } from "@/components/tradingview/TradingViewHub";
 
 export const metadata: Metadata = {
-  title: "TradingView — charts, screener & Pine Script",
+  title: "Free forex signals on Telegram — entry, stop and target",
   description:
-    "Open TradingView for charts, screeners, price alerts and the largest public library of trade ideas. Analyse the market there, then execute on your own broker account.",
+    "Free day-trading signals for the forex majors on the 15-minute chart, sent to Telegram the moment a setup appears. Every signal carries an exact entry, stop and target. Nothing to install, nothing to pay.",
   alternates: { canonical: "/trading/tradingview" },
   openGraph: {
     type: "website",
     url: "/trading/tradingview",
-    title: "TradingView · Clunoid Trading",
-    description: "Charts, screener, alerts and Pine Script — then execute on your own broker account.",
+    title: "Free forex signals on Telegram · Clunoid Trading",
+    description: "Day-trading setups on the forex majors, 15m, with exact entry, stop and target — delivered automatically and free.",
   },
 };
 
