@@ -36,6 +36,7 @@ const GOOD = "#34d399";
 const BAD = "#f2607d";
 
 /** Kept so the thread survives a reload — this device, this browser. */
+const NUDGED_KEY = "cln_support_nudged";
 const THREAD_KEY = "cln_support_thread";
 
 const MAX_BYTES = 8 * 1024 * 1024;
@@ -85,6 +86,7 @@ export function SupportChat({ source, email: known, name: knownName, country }: 
     try {
       const saved = JSON.parse(localStorage.getItem(THREAD_KEY) || "[]");
       if (Array.isArray(saved)) setThread(saved.filter((l) => l && typeof l.text === "string"));
+      if (localStorage.getItem(NUDGED_KEY) === "1") setNudged(true);
     } catch { /* nothing saved */ }
   }, []);
 
@@ -179,6 +181,7 @@ export function SupportChat({ source, email: known, name: knownName, country }: 
     // "hi" is not a question yet. Ask once, then take them at their word.
     if (!file && !nudged && isJustAGreeting(message)) {
       setNudged(true);
+      try { localStorage.setItem(NUDGED_KEY, "1"); } catch { /* private mode */ }
       remember({ id: crypto.randomUUID?.() ?? String(Math.random()), text: message, at: new Date().toISOString(), from: "them", sent: false });
       remember({
         id: crypto.randomUUID?.() ?? String(Math.random()),
@@ -222,7 +225,6 @@ export function SupportChat({ source, email: known, name: knownName, country }: 
       setText("");
       setFile(null);
       setEditWho(false);
-      setNudged(false);
       if (fileRef.current) fileRef.current.value = "";
     } catch {
       setErr("We could not reach you just now. Try again in a minute.");
