@@ -13,6 +13,29 @@ const nextConfig = {
   outputFileTracingIncludes: {
     "/api/trading/mt5/download/[botId]": ["./content/mt5/**"],
   },
+
+  /**
+   * URLs that used to be pages.
+   *
+   * /trading/creator-program and /trading/is-clunoid-legit were live briefly as
+   * search landing pages before being removed. Middleware only redirects things
+   * OUTSIDE /trading, so anything under it that has no route falls through to a
+   * 404 - which is what these were doing. They now land on the trading front
+   * door, where somebody who followed one of those links can actually get
+   * started.
+   *
+   * Temporary, not permanent, on purpose: a 308 is cached hard by browsers and
+   * is genuinely painful to undo, and these two URLs have existed as pages once
+   * already. A 307 costs nothing here - they were live for about an hour, so
+   * there is no meaningful search history to consolidate - and it leaves the
+   * door open to putting real pages back at these addresses.
+   */
+  async redirects() {
+    return [
+      { source: "/trading/creator-program", destination: "/trading", permanent: false },
+      { source: "/trading/is-clunoid-legit", destination: "/trading", permanent: false },
+    ];
+  },
 };
 
 export default nextConfig;
