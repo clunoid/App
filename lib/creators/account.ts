@@ -16,7 +16,7 @@ import { DEFAULT_PLATFORMS, PLATFORMS_REQUIRED } from "./platforms";
  * with no policies, so nothing reaches them from the browser directly.
  */
 
-export const PAYOUT_METHODS = ["usdt", "paypal", "venmo", "cashapp", "mpesa", "wise", "payoneer"] as const;
+export const PAYOUT_METHODS = ["usdt", "paypal", "skrill", "venmo", "cashapp", "mpesa", "wise", "payoneer"] as const;
 export type PayoutMethod = (typeof PAYOUT_METHODS)[number];
 
 export function isPayoutMethod(v: unknown): v is PayoutMethod {

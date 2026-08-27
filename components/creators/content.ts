@@ -54,6 +54,7 @@ export function platformSentence(keys: readonly string[]): string {
 export const PAYOUTS = [
   { key: "usdt", label: "USDT (Tether)", logo: "/logos/tether.svg" },
   { key: "paypal", label: "PayPal", logo: "/logos/paypal.svg" },
+  { key: "skrill", label: "Skrill", logo: "/logos/skrill.svg" },
   { key: "venmo", label: "Venmo", logo: "/logos/venmo.svg" },
   { key: "cashapp", label: "Cash App", logo: "/logos/cashapp.svg" },
   { key: "mpesa", label: "M-Pesa", logo: "/logos/mpesa.svg" },
