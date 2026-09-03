@@ -20,7 +20,7 @@ import { TC, DOT_GRID, monoFont, fmtBalance } from "@/lib/trading/theme";
 import type { ConnectedAccount } from "@/lib/trading/accounts";
 import { hasDerivApp, DERIV_AFFILIATE_URL, DERIV_TRACKED_DEPOSIT_URL, DERIV_TRACKED_WITHDRAW_URL } from "@/lib/deriv/config";
 import { BalanceVisibilityNote } from "@/components/deriv/BalanceVisibilityNote";
-import { parseDerivRedirect, isDerivRedirect, isDerivCodeReturn, startDerivLogin, completeDerivLogin, saveDerivTokens, loadDerivTokens, clearDerivTokens, saveDerivAccess, loadDerivAccess, clearDerivAccess, clearReconnectGuard, type DerivToken } from "@/lib/deriv/oauth";
+import { parseDerivRedirect, isDerivRedirect, isDerivCodeReturn, startDerivLogin, completeDerivLogin, saveDerivTokens, loadDerivTokens, clearDerivTokens, saveDerivAccess, loadDerivAccess, clearDerivAccess, clearReconnectGuard, connectChoiceAnswered, markConnectChoice, type DerivToken } from "@/lib/deriv/oauth";
 import { fetchDerivPortfolio, type DerivPortfolio } from "@/lib/deriv/client";
 import { fetchDerivPortfolioREST } from "@/lib/deriv/api";
 import { SupportChat } from "@/components/support/SupportChat";
@@ -115,12 +115,12 @@ function ConnectPrompt({ target, onConnect, onClose }: { target: GateTarget; onC
 
         {/* Stays on screen through the hand-off: closing first makes a slow
             redirect look like a dead button. */}
-        <button onClick={() => { setBusy(true); onConnect(); }} disabled={busy}
+        <button onClick={() => { markConnectChoice(); setBusy(true); onConnect(); }} disabled={busy}
           className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-[13.5px] font-semibold transition hover:opacity-90 disabled:opacity-70"
           style={{ background: TC.profit, color: TC.ink }}>
           {busy ? <><Loader2 size={15} className="animate-spin" /> Connecting…</> : <><Plug size={15} /> Connect Deriv</>}
         </button>
-        <a href={DERIV_AFFILIATE_URL} target="_blank" rel="noopener noreferrer" className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-[13.5px] font-semibold transition hover:bg-white/5" style={{ borderColor: TC.line, color: TC.text }}>
+        <a href={DERIV_AFFILIATE_URL} onClick={markConnectChoice} target="_blank" rel="noopener noreferrer" className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-[13.5px] font-semibold transition hover:bg-white/5" style={{ borderColor: TC.line, color: TC.text }}>
           <UserPlus size={15} style={{ color: TC.profit }} /> Create a Deriv account
         </a>
 
@@ -290,6 +290,14 @@ export function CommandCenter() {
     if (!hasDerivApp()) { setError("Deriv OAuth isn't configured yet — paste a Deriv API token below to connect in the meantime."); setPasteOpen(true); return; }
     setError(null);
     void startDerivLogin();
+  };
+
+  /* The first press opens the prompt that offers both answers — the same one a
+     locked tile opens, so there is still only one connection path. Every press
+     after it goes straight to Deriv. */
+  const askThenConnect = () => {
+    if (!connectChoiceAnswered()) { setError(null); setGate("bots"); return; }
+    connectDeriv();
   };
 
   const connectWithToken = async () => {
@@ -501,7 +509,7 @@ export function CommandCenter() {
                 </div>
               ) : (
                 <>
-                  <button onClick={connectDeriv} className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-[13.5px] font-semibold transition hover:opacity-90" style={{ background: TC.profit, color: TC.ink }}>
+                  <button onClick={askThenConnect} className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-[13.5px] font-semibold transition hover:opacity-90" style={{ background: TC.profit, color: TC.ink }}>
                     <Plug size={15} /> Connect Deriv
                   </button>
                   <a href={DERIV_AFFILIATE_URL} target="_blank" rel="noopener noreferrer" className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-[13.5px] font-semibold transition hover:bg-white/5" style={{ borderColor: TC.line, color: TC.text }}>

@@ -158,10 +158,11 @@ export async function startDerivLogin(): Promise<void> {
     client_id: DERIV_CLIENT_ID,
     response_type: "code",
     redirect_uri: DERIV_REDIRECT_URI,
-    // The NEW Deriv API scopes this client allows — these are what the REST API
-    // (api.derivws.com) checks: trade→options accounts, payment→wallets,
-    // account_manage→profile. (This client rejects the old read/openid scopes.)
-    scope: "trade payment account_manage",
+    // Only what the bots need: trade→options accounts, account_manage→profile.
+    // Payment is NOT asked for — it grants deposits and withdrawals, and
+    // nothing here moves money. (This client rejects the old read/openid
+    // scopes, so these two are the whole set.)
+    scope: "trade account_manage",
     state,
     code_challenge: challenge,
     code_challenge_method: "S256",
@@ -220,6 +221,23 @@ export async function completeDerivLogin(search: string): Promise<string> {
 // ── access-token storage (OAuth / new-API path) ─────────────────────────────
 // The classic paste path stores a1- tokens (KEY); the OAuth path stores one
 // ory_at_ access token here. Only one is active at a time.
+/* Whether they have already been asked, on their first press of Connect,
+   whether they have a Deriv account at all. Somebody who has not got one used
+   to discover that at Deriv's own login screen, which is the wrong place to
+   learn it. Answering either way settles it; dismissing the prompt does not,
+   so the next press asks again. */
+const CONNECT_CHOICE_KEY = "clunoid_connect_choice_v1";
+
+export function connectChoiceAnswered(): boolean {
+  // No storage means no way to remember, and a prompt that reappears for ever
+  // is worse than one that never shows: treat it as answered.
+  try { return localStorage.getItem(CONNECT_CHOICE_KEY) === "1"; } catch { return true; }
+}
+
+export function markConnectChoice(): void {
+  try { localStorage.setItem(CONNECT_CHOICE_KEY, "1"); } catch { /* ignore */ }
+}
+
 const ACCESS_KEY = "clunoid_deriv_access";
 
 export function saveDerivAccess(token: string): void {

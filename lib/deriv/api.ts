@@ -7,7 +7,12 @@
  * `ory_at_…` OAuth access token as Bearer + the app id in a `Deriv-App-ID` header.
  * It's CORS-open to us, so the browser calls it directly — no WebSocket, no
  * legacy a1- tokens, no numeric app_id. Scopes: trade → options accounts,
- * payment → wallets, account_manage → profile name.
+ * account_manage → profile name.
+ *
+ * There is a /wallet/v1/wallets endpoint too, and it is deliberately not
+ * called: it needs the payment scope, which grants deposits and withdrawals.
+ * Asking a trader for that to print a number is not a trade worth making, so
+ * the balances here are the options accounts — the only ones the bots trade.
  *
  * Verified live against Deriv 2026-07-15 + the official OpenAPI 3.1 spec
  * (deriv-com/deriv-api-schemas, rest-api-openapi.json).
@@ -49,12 +54,6 @@ async function get(path: string, accessToken: string): Promise<unknown> {
 }
 
 type OptionsAcct = { account_id?: string; balance?: number; currency?: string; group?: string; status?: string; account_type?: string };
-type WalletAcct = {
-  wallet_id?: string;
-  type?: string;
-  balances?: Record<string, unknown>;
-  total_balance?: { converted_to?: string; approximate_total_balance?: string };
-};
 
 // Deriv demo/virtual accounts: options report account_type "demo"; ids are VR*
 // (VRTC options, VRW wallet). Real ids are CR/MF/… and account_type "real".
@@ -66,12 +65,11 @@ const numOr = (v: unknown): number | null =>
 
 /**
  * Pull the full portfolio via the new REST API. `trade` scope is required (options
- * accounts); wallets/name are best-effort so a missing scope never breaks the load.
+ * accounts); the name is best-effort so a missing scope never breaks the load.
  */
 export async function fetchDerivPortfolioREST(accessToken: string): Promise<DerivPortfolio> {
-  const [optsR, walletsR, nickR] = await Promise.allSettled([
+  const [optsR, nickR] = await Promise.allSettled([
     get("/trading/v1/options/accounts", accessToken),
-    get("/wallet/v1/wallets", accessToken),
     get("/account/v1/nickname", accessToken),
   ]);
 
@@ -94,25 +92,6 @@ export async function fetchDerivPortfolioREST(accessToken: string): Promise<Deri
       kind: "options",
       isVirtual: isDemo(a.account_type, a.group, a.status, loginid),
     });
-  }
-
-  if (walletsR.status === "fulfilled") {
-    const wallets = (Array.isArray(walletsR.value) ? walletsR.value : []) as WalletAcct[];
-    for (const w of wallets) {
-      const loginid = String(w.wallet_id || "");
-      if (!loginid) continue;
-      const tb = w.total_balance || {};
-      accounts.push({
-        platformId: "deriv-wallet",
-        broker: "Deriv",
-        platform: "Wallet",
-        loginid,
-        currency: String(tb.converted_to || ""),
-        balance: numOr(tb.approximate_total_balance),
-        kind: "wallet",
-        isVirtual: isDemo(w.type, loginid),
-      });
-    }
   }
 
   // Aggregate a real-money total. Deriv's new API returns per-account balances in

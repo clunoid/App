@@ -11,7 +11,7 @@
  * to classic Clunoid.
  */
 import { useEffect, useState } from "react";
-import { startDerivLogin, loadDerivAccess, loadDerivTokens } from "@/lib/deriv/oauth";
+import { startDerivLogin, loadDerivAccess, loadDerivTokens, connectChoiceAnswered } from "@/lib/deriv/oauth";
 import { Activity, ArrowUpRight, BookOpen, BrainCircuit, Cpu, LineChart, Lock, ShieldCheck, Zap, ChevronRight, Loader2, Clapperboard } from "lucide-react";
 import { useClunoid } from "@/lib/store/useClunoid";
 import { TradingHub } from "@/components/trading/TradingHub";
@@ -106,6 +106,14 @@ function GetStarted() {
     try {
       if (loadDerivAccess() || loadDerivTokens().length > 0) {
         window.location.href = "/trading/command";
+        return;
+      }
+      /* Never asked whether they have a Deriv account at all? Send them to the
+         command centre, which opens the connect-or-create prompt on ?connect=1
+         — rather than to Deriv's login, where somebody without an account has
+         nothing to do but leave. */
+      if (!connectChoiceAnswered()) {
+        window.location.href = "/trading/command?connect=1";
         return;
       }
       await startDerivLogin();

@@ -77,7 +77,7 @@ export const DERIV_REDIRECT_URI =
 /** The owner's Deriv REVENUE-SHARE affiliate link — used for the "Create a Deriv
  *  account" button so new sign-ups are attributed to us (recurring commission). */
 export const DERIV_AFFILIATE_URL =
-  process.env.NEXT_PUBLIC_DERIV_AFFILIATE_URL || "https://track.deriv.com/_30qaRjl291f1hit6RV3zsGNd7ZgqdRLk/1/";
+  process.env.NEXT_PUBLIC_DERIV_AFFILIATE_URL || "https://t.deriv.link?t=8FJ7FBEALQBP";
 
 /** The Deriv cashier deposit page (Deriv TradersHub — lands straight on the
  *  deposit sheet, the best UX; the bare affiliate smart link would dump the user
