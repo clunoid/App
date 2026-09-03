@@ -89,10 +89,23 @@ export class SmartRecoveryDifferStrategy implements Strategy {
       if (o > 0.6 && o > score) { score = o; best = m; type = "OVER"; }
       if (u > 0.6 && u > score) { score = u; best = m; type = "UNDER"; }
     }
+    /* No market has a strong bias, so take the one with the most data — and
+       take the side that is actually ahead on it.
+
+       Over 4 and Under 5 are complements: every digit is either above 4 or
+       below 5, so their shares add to one and one of them is always at least
+       half. Hardcoding OVER here, as this did, meant the bot could take the
+       WEAKER side of a market it had already measured. And a 60% bias is rare
+       on a volatility index, so this branch ran nearly every time: the
+       recovery was Over 4 almost always, whatever the digits said. */
     if (!best) {
       let max = 0;
-      for (const m of this.markets) { const a = this.analysis[m]; if (a && a.total > max) { max = a.total; best = m; type = "OVER"; } }
+      for (const m of this.markets) {
+        const a = this.analysis[m];
+        if (a && a.total > max) { max = a.total; best = m; type = a.over4 >= a.under5 ? "OVER" : "UNDER"; }
+      }
     }
+    // Nothing measured at all yet: there is no side to prefer.
     if (!best) { best = this.markets[Math.floor(Math.random() * this.markets.length)]; type = "OVER"; }
     return { market: best, type: type || "OVER" };
   }
