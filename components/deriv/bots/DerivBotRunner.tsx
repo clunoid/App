@@ -19,7 +19,6 @@ import { fetchDerivPortfolioREST } from "@/lib/deriv/api";
 import { BOT_DEFAULTS } from "@/lib/deriv/bots/config";
 import { DerivBot } from "@/lib/deriv/bots/engine";
 import { getBot } from "@/lib/deriv/bots/registry";
-import { autonomous, msUntilDue, AUTONOMOUS_BOT_ID, type AutoSnapshot } from "@/lib/deriv/bots/autonomous";
 import { RunnerStyles } from "./RunnerStyles";
 import type { BotUI, BotStats, TradeRow } from "@/lib/deriv/bots/types";
 
@@ -57,22 +56,6 @@ export function DerivBotRunner({ botId }: { botId: string }) {
   const [needDepOpen, setNeedDepOpen] = useState(false); // shown when a run can't afford the stake
   const lowBalDecided = useRef(false);
   const botRef = useRef<DerivBot | null>(null);
-  /** True once the automation has written into the inputs, so we know there is
-   *  something of its own to undo when it stands down. */
-  const autoFilled = useRef(false);
-  // Live view of the automation. When it is the one trading this bot, the three
-  // columns below read from it instead of this page's own engine instance.
-  const [auto, setAuto] = useState<AutoSnapshot | null>(null);
-  useEffect(() => autonomous().subscribe(setAuto), []);
-
-  // Point the automation at whichever account this page is showing, so the whole
-  // cycle can be watched on Demo before it is trusted with real money. Only this
-  // bot is automated, so other bot pages leave the setting alone.
-  useEffect(() => {
-    if (!ready || botId !== AUTONOMOUS_BOT_ID) return;
-    autonomous().setDemo(mode === "demo");
-  }, [ready, botId, mode]);
-
   const refreshAccounts = useCallback(async (acc: string): Promise<ConnectedAccount[]> => {
     try {
       const p = await fetchDerivPortfolioREST(acc);
@@ -104,53 +87,13 @@ export function DerivBotRunner({ botId }: { botId: string }) {
   const realAccount = accounts.find((a) => !a.isVirtual) || null;
   const selected = mode === "demo" ? demoAccount : realAccount;
 
-  // The automation is driving this bot right now: mirror its run rather than
-  // showing an empty page. A manual run always wins — starting one claims it.
-  // Switched off, the page shows no trace of the automation — exactly as it was
-  // before the feature existed.
-  const autoActive = !!auto?.active;
-  const autoOwns = !runningState && autoActive && auto?.phase === "running" && auto.botId === botId;
-  const autoWaiting = !runningState && autoActive && !!auto?.enabled && auto.botId === botId && auto.phase === "cooldown";
-  const effStats = autoOwns ? auto!.stats : stats;
-  const effTrades = autoOwns ? auto!.trades : trades;
-  const effStatus = autoOwns ? auto!.status : status;
-  const busy = runningState || autoOwns;
+  const effStats = stats;
+  const effTrades = trades;
+  const effStatus = status;
+  const busy = runningState;
 
-  const shownBalance = autoOwns && auto!.balance != null
-    ? { balance: auto!.balance, currency: auto!.currency }
-    : liveBalance ?? { balance: selected?.balance ?? null, currency: selected?.currency ?? "" };
+  const shownBalance = liveBalance ?? { balance: selected?.balance ?? null, currency: selected?.currency ?? "" };
   const switchMode = (m: Mode) => { if (busy) return; setMode(m); setLiveBalance(null); };
-
-  // Show the automation's numbers in the Configuration inputs, so an automated
-  // run reads exactly like a hand-set one. Mid-run these are the figures the run
-  // began with and do not move; between runs they track the balance. The user's
-  // own numbers are never touched while the automation is off.
-  // Only while it is actually trading. Resting between runs the card goes back to
-  // the bot's own defaults, so the figures on screen always belong to a live run.
-  const autoStake = autoOwns ? auto!.stake : null;
-  const autoTP = autoOwns ? auto!.target : null;
-  const autoSL = autoOwns ? auto!.stopLoss : null;
-  const autoMart = autoOwns ? auto!.martingale : null;
-  useEffect(() => {
-    if (autoStake == null || autoTP == null || autoSL == null || autoMart == null) return;
-    setStake(String(autoStake));
-    setTakeProfit(String(autoTP));
-    setStopLoss(String(autoSL));
-    setMartingale(String(autoMart));
-    autoFilled.current = true;
-  }, [autoStake, autoTP, autoSL, autoMart]);
-
-  // Once the automation is out of the picture, put the bot's own defaults back so
-  // the card never sits on figures that were sized for a run that is over. Only
-  // undoes what the automation itself wrote — numbers typed by hand are left be.
-  useEffect(() => {
-    if (autoOwns || !autoFilled.current) return;
-    autoFilled.current = false;
-    setStake(String(BOT_DEFAULTS.initialStake));
-    setTakeProfit(String(BOT_DEFAULTS.takeProfit));
-    setStopLoss(String(BOT_DEFAULTS.stopLoss));
-    setMartingale(String(meta?.defaultMartingale ?? BOT_DEFAULTS.martingaleMultiplier));
-  }, [autoOwns, meta]);
 
   // Recommend a healthier balance when the real account is under $1,000. It is a
   // gentle nudge, not a wall: decided once the balance is known, and shown at most
@@ -191,8 +134,6 @@ export function DerivBotRunner({ botId }: { botId: string }) {
     const curBal = shownBalance.balance;
     if (curBal != null && (curBal <= 0 || curBal < parseFloat(stake))) { setNeedDepOpen(true); return; }
 
-    // Taking over by hand: the automation stands down until this run ends.
-    autonomous().claimManual();
     botRef.current?.stop("Restarting.", "info");
     botRef.current = null;
     setTrades([]); setStats(null); setStatus(null); setFinish(null);
@@ -205,7 +146,6 @@ export function DerivBotRunner({ botId }: { botId: string }) {
       onRunning: (r) => {
         setRunning(r);
         if (!r) {
-          autonomous().releaseManual(); // hand control back to the automation
           void refreshAccounts(access).then((opts) => {
             const acct = opts.find((a) => a.loginid === tradedId);
             if (acct && acct.balance != null) setLiveBalance({ balance: acct.balance, currency: acct.currency });
@@ -290,13 +230,7 @@ export function DerivBotRunner({ botId }: { botId: string }) {
         <div className="cln-dash-grid mt-4 grid grid-cols-1 gap-4 lg:min-h-[480px] lg:flex-1 lg:grid-cols-3">
 
           {/* Configuration */}
-          <Col
-            title="Configuration"
-            // Only this bot is automated, and the switch hides itself while
-            // anything is running so it can never be flipped mid-trade.
-            action={!busy && botId === AUTONOMOUS_BOT_ID && auto ? <AutoToggle auto={auto} /> : undefined}
-          >
-            {(autoOwns || autoWaiting) && <AutoBanner auto={auto!} running={autoOwns} />}
+          <Col title="Configuration">
             <div className="grid gap-3">
               <Field label="Initial stake (USD)" value={stake} onChange={setStake} min={BOT_DEFAULTS.minStake} step={0.01} disabled={busy} />
               <Field label="Take profit (USD)" value={takeProfit} onChange={setTakeProfit} min={1} step={1} disabled={busy} />
@@ -306,11 +240,7 @@ export function DerivBotRunner({ botId }: { botId: string }) {
             {/* action block sinks to the bottom of a tall card so the inputs stay
                 grouped at the top instead of everything floating mid-card */}
             <div className="lg:mt-auto">
-              {autoOwns ? (
-                <button onClick={() => autonomous().stopNow("Automation stopped by you.")} className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-[13.5px] font-semibold transition hover:opacity-90" style={{ background: TC.loss, color: "#fff" }}>
-                  <Square size={15} /> Stop automation
-                </button>
-              ) : !runningState ? (
+              {!runningState ? (
                 <button onClick={startBot} className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-[13.5px] font-semibold transition hover:opacity-90" style={{ background: TC.profit, color: TC.ink }}>
                   <Play size={15} /> Start on {mode === "demo" ? "Demo" : "Real"}
                 </button>
@@ -320,12 +250,9 @@ export function DerivBotRunner({ botId }: { botId: string }) {
                 </button>
               )}
               {runningState && <div className="mt-2 inline-flex items-center gap-1.5 text-[12px]" style={{ color: TC.profit }}><Loader2 size={13} className="animate-spin" /> running on {mode}</div>}
-              {autoOwns && <div className="mt-2 inline-flex items-center gap-1.5 text-[12px]" style={{ color: "#34d399" }}><Loader2 size={13} className="animate-spin" /> automation running</div>}
               {effStatus && <div className="mt-2 text-[12px] leading-snug" style={{ color: effStatus.kind === "error" ? TC.loss : effStatus.kind === "success" ? TC.profit : effStatus.kind === "warning" ? "#f5c451" : TC.muted }}>{effStatus.msg}</div>}
               <p className="mt-3 text-[10.5px] leading-relaxed" style={{ color: TC.faint }}>
-                {autoOwns || autoWaiting
-                  ? "Stop the automation to trade with your own settings."
-                  : "Stops automatically at your take-profit or stop-loss (realised P/L)."}
+                Stops automatically at your take-profit or stop-loss (realised P/L).
               </p>
             </div>
           </Col>
@@ -586,48 +513,6 @@ function MiniStat({ label, value }: { label: string; value: string }) {
   );
 }
 
-/**
- * Automation strip at the top of Configuration. Explains what the automation is
- * doing right now — trading, or resting until the next run — and what it sized
- * this run at, so the numbers on screen are never a mystery.
- */
-function AutoBanner({ auto, running }: { auto: AutoSnapshot; running: boolean }) {
-  const [, force] = useState(0);
-  // Only tick while a countdown is on screen.
-  useEffect(() => {
-    if (running) return;
-    const t = setInterval(() => force((n) => n + 1), 1000);
-    return () => clearInterval(t);
-  }, [running]);
-
-  const cur = auto.currency || "USD";
-  const left = msUntilDue(auto.nextRunAt, Date.now());
-  const mm = Math.floor(left / 60000);
-  const ss = Math.floor((left % 60000) / 1000);
-
-  return (
-    <div className="mb-3 rounded-xl border p-3" style={{ borderColor: "rgba(52,211,153,0.35)", background: "rgba(52,211,153,0.06)" }}>
-      <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider" style={{ color: "#34d399" }}>
-        <Bot size={13} /> {running ? "Trading for you" : "Automated · resting"}
-        {auto.demo && <span className="rounded px-1.5 py-0.5 text-[9.5px]" style={{ background: "rgba(148,168,189,0.22)", color: TC.text }}>Demo</span>}
-      </div>
-      <p className="mt-1.5 text-[11.5px] leading-relaxed" style={{ color: TC.muted }}>
-        {running ? (
-          <>Staking <b style={{ color: TC.text }}>{auto.stake.toFixed(2)} {cur}</b> a trade, aiming for{" "}
-          <b style={{ color: TC.text }}>{auto.target.toFixed(2)} {cur}</b> this run.</>
-        ) : (
-          <>Next run in <b style={{ color: TC.text }}>{String(mm).padStart(2, "0")}:{String(ss).padStart(2, "0")}</b>,
-          sized from your balance at the time.</>
-        )}
-      </p>
-      {!auto.online && (
-        <p className="mt-1 text-[11px]" style={{ color: "#f5c451" }}>Offline — it resumes on its own when the connection is back.</p>
-      )}
-      {auto.error && <p className="mt-1 text-[11px]" style={{ color: TC.loss }}>{auto.error}</p>}
-    </div>
-  );
-}
-
 function Col({ title, right, action, children }: { title: string; right?: string; action?: React.ReactNode; children: React.ReactNode }) {
   return (
     <section className="flex min-h-0 flex-col rounded-2xl border p-4 sm:p-5" style={{ borderColor: TC.line, background: TC.panel }}>
@@ -638,52 +523,6 @@ function Col({ title, right, action, children }: { title: string; right?: string
       </div>
       {children}
     </section>
-  );
-}
-
-/**
- * The automation switch, sized to sit on the Configuration heading. Ticked green
- * while the automation is on, plain grey while it is off. Off is temporary by
- * design — an hour to trade by hand, then it comes back on its own.
- */
-function AutoToggle({ auto }: { auto: AutoSnapshot }) {
-  const on = auto.active;
-  // Hover/focus handled in CSS rather than state: no re-render, and it works for
-  // keyboard users through focus-within too.
-  return (
-    <span className="group relative inline-flex">
-      <button
-        type="button"
-        role="switch"
-        aria-checked={on}
-        aria-label="Automated trading"
-        onClick={() => autonomous().setActive(!on)}
-        className="inline-flex shrink-0 items-center gap-1.5 rounded-full border py-0.5 pl-1 pr-2 transition hover:opacity-80"
-        style={on
-          ? { borderColor: "rgba(52,211,153,0.45)", background: "rgba(52,211,153,0.1)" }
-          : { borderColor: TC.line, background: "transparent" }}
-      >
-        <span className="grid h-[15px] w-[15px] place-items-center rounded-[5px] border transition"
-          style={on ? { background: "#34d399", borderColor: "#34d399" } : { background: "transparent", borderColor: TC.line }}>
-          {on && <Check size={10} strokeWidth={3.5} style={{ color: TC.ink }} />}
-        </span>
-        <span className="text-[9.5px] font-bold uppercase tracking-[0.1em]" style={{ color: on ? "#34d399" : TC.faint }}>
-          Auto
-        </span>
-      </button>
-
-      {/* Says what the control does, on hover or keyboard focus. Three states,
-          because on-by-default and cleared-to-trade are not the same thing. */}
-      <span role="tooltip"
-        className="pointer-events-none absolute left-0 top-[calc(100%+6px)] z-30 hidden w-[236px] rounded-lg border p-2.5 text-[11px] leading-relaxed shadow-xl group-hover:block group-focus-within:block"
-        style={{ borderColor: TC.line, background: TC.panel, color: TC.muted }}>
-        {auto.consent === "allowed"
-          ? "Automated trading is on. The bot sizes each run from your balance and stops on its own when the profit target is reached. Switch off to trade by hand — it stays off until you turn it back on."
-          : auto.consent === "unasked"
-            ? "Automated trading is on by default, but it will ask your go-ahead before its first trade. Once you allow it, it sizes each run from your balance and stops on its own when the profit target is reached."
-            : "Automated trading is off, and stays off until you turn it back on. Switch on and the bot sizes a run from your balance and stops when its profit target is reached."}
-      </span>
-    </span>
   );
 }
 
