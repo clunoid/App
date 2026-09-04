@@ -5,11 +5,13 @@
  * bot's own page (/trading/deriv/mt5/<id>), where its Expert Advisor, live signals
  * and setup live. Mirrors the Deriv Bots catalog.
  *
- * The dedicated automations are not being offered yet. Their cards are locked:
- * they are not links, they carry a Soon chip in place of the rating, and opening
- * one says so and points at the two things that ARE available — the channel, and
- * the free bots. Nothing leads to a page that would ask for money for something
- * we are not handing over.
+ * The dedicated automations are not being offered yet. Their cards look exactly
+ * like the rest — same rating, same Open button — because the catalogue is what
+ * makes somebody want one, and a shelf of greyed-out boxes sells nothing.
+ * Pressing one says it is available soon and points at the two things that ARE:
+ * the channel, and the free bots. It is a button rather than a link, so nothing
+ * leads to a page that would ask for money for something we are not handing
+ * over.
  */
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
@@ -58,15 +60,9 @@ export function Mt5BotsList() {
                   {b.free && (
                     <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider" style={{ background: "rgba(52,211,153,0.16)", color: "#34d399" }}>Free</span>
                   )}
-                  {locked ? (
-                    <span className="ml-auto inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider" style={{ background: "rgba(148,168,189,0.16)", color: TC.muted }}>
-                      <Lock size={10} /> Soon
-                    </span>
-                  ) : (
-                    <span className="ml-auto inline-flex items-center gap-1 text-[11px] font-bold" style={{ color: ratingColor }}>
-                      <Star size={12} fill={ratingColor} /> {b.rating}/10
-                    </span>
-                  )}
+                  <span className="ml-auto inline-flex items-center gap-1 text-[11px] font-bold" style={{ color: ratingColor }}>
+                    <Star size={12} fill={ratingColor} /> {b.rating}/10
+                  </span>
                 </div>
                 <h3 className="mt-3 text-[16px] font-bold">{b.name}</h3>
                 <p className="mt-1 text-[12px]" style={{ color: TC.muted }}>{b.tagline}</p>
@@ -75,32 +71,24 @@ export function Mt5BotsList() {
                   <span className="inline-flex items-center gap-1 text-[10.5px] font-semibold uppercase tracking-wider" style={{ ...monoFont, color: TC.faint }}>
                     <LineChart size={12} /> {b.markets}
                   </span>
-                  {locked ? (
-                    <span className="inline-flex items-center gap-1 rounded-lg border px-3 py-1.5 text-[12px] font-semibold" style={{ borderColor: TC.line, color: TC.muted }}>
-                      Available soon
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-[12px] font-semibold transition group-hover:opacity-90" style={{ background: TC.profit, color: TC.ink }}>
-                      Open <ChevronRight size={14} />
-                    </span>
-                  )}
+                  <span className="inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-[12px] font-semibold transition group-hover:opacity-90" style={{ background: TC.profit, color: TC.ink }}>
+                    Open <ChevronRight size={14} />
+                  </span>
                 </div>
               </>
             );
 
-            const shell = "group relative flex flex-col rounded-2xl border p-5 text-left transition";
+            /* Identical cards. The only difference is what a press does: a
+               locked one opens the notice instead of the bot's page. */
+            const shell = "group relative flex flex-col rounded-2xl border p-5 text-left transition hover:-translate-y-0.5";
+            const skin = { borderColor: TC.line, background: TC.panel };
 
             return locked ? (
-              <button key={b.id} type="button" onClick={() => setSoon(b)}
-                aria-label={`${b.name} — available soon`}
-                className={`${shell} hover:border-white/20`}
-                style={{ borderColor: TC.line, background: TC.panel, opacity: 0.72 }}>
+              <button key={b.id} type="button" onClick={() => setSoon(b)} className={shell} style={skin}>
                 {body}
               </button>
             ) : (
-              <Link key={b.id} href={`/trading/deriv/mt5/${b.id}`}
-                className={`${shell} hover:-translate-y-0.5`}
-                style={{ borderColor: TC.line, background: TC.panel }}>
+              <Link key={b.id} href={`/trading/deriv/mt5/${b.id}`} className={shell} style={skin}>
                 {body}
               </Link>
             );
