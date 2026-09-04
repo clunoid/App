@@ -22,8 +22,13 @@ export const metadata: Metadata = {
   title: {
     absolute: "Clunoid Trading — free automated trading bots for MT5 and Deriv",
   },
+  /* 149 characters. It was 226, and Bing Webmaster Tools reports anything much
+     past 160 as "Meta Description too long or too short" — the tail is never
+     shown, and a snippet cut off mid-list is a worse advert than a short one
+     that finishes. The markets it dropped are still named in the Open Graph
+     description and all over the page itself. */
   description:
-    "Free, fully automated trading bots that execute for you. AI Expert Advisors for MetaTrader 5 and browser bots for Deriv — forex, gold, crypto, stock indices and synthetic indices, running on your own account, around the clock.",
+    "Free, fully automated trading bots that execute for you: AI Expert Advisors for MetaTrader 5 and browser bots for Deriv, running on your own account.",
   /* `/` is a middleware REWRITE of this page, so both URLs serve it and one of
      them has to be named as the original. That used to be /trading, which meant
      clunoid.com itself was never the indexed address — the domain root, the one
