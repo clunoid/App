@@ -1,6 +1,5 @@
 import type { MetadataRoute } from "next";
 import { MT5_BOTS } from "@/lib/deriv/mt5/registry";
-import { BOTS as DERIV_BOTS } from "@/lib/deriv/bots/registry";
 import { MT5_AUTOS } from "@/lib/mt5/registry";
 
 const BASE = "https://www.clunoid.com";
@@ -35,23 +34,28 @@ export default function sitemap(): MetadataRoute.Sitemap {
     // The front door — carries the trading knowledge and the topic index.
     { url: `${BASE}/`, lastModified: now, changeFrequency: "weekly", priority: 1 },
 
-    // Bot catalogues — the two entry points people search for by name.
+    // The MT5 catalogue and every bot in it. These render their full contents
+    // to anybody, connected or not, which is what makes them worth submitting.
     { url: `${BASE}/trading/deriv/mt5`, lastModified: now, changeFrequency: "weekly", priority: 0.9 },
-    { url: `${BASE}/trading/deriv/bots`, lastModified: now, changeFrequency: "weekly", priority: 0.9 },
-
-    // Every individual bot: each now has its own title, description and content.
     ...MT5_BOTS.map((b) => ({
       url: `${BASE}/trading/deriv/mt5/${b.id}`,
       lastModified: now,
       changeFrequency: "weekly" as const,
       priority: 0.8,
     })),
-    ...DERIV_BOTS.map((b) => ({
-      url: `${BASE}/trading/deriv/bots/${b.id}`,
-      lastModified: now,
-      changeFrequency: "weekly" as const,
-      priority: 0.8,
-    })),
+
+    /* NOT here: /trading/deriv/bots and the ten bots under it.
+     *
+     * Those bounce anybody without a Deriv connection to the command center,
+     * and a crawler is never connected — so what a search engine receives is an
+     * empty shell with no heading and none of the bot names. Submitting eleven
+     * blank pages does not get them indexed; it spends the crawl budget on
+     * nothing and teaches the engine that a third of this site is thin. They
+     * are marked noindex on the pages themselves for the same reason.
+     *
+     * If they should be found by name one day, the fix is to render the
+     * catalogue to everyone and gate only the RUNNING of a bot — which is
+     * exactly how the MT5 side above already works. */
 
     // The standalone MetaTrader 5 platform + its available automations.
     { url: `${BASE}/trading/mt5`, lastModified: now, changeFrequency: "weekly", priority: 0.9 },
@@ -71,11 +75,15 @@ export default function sitemap(): MetadataRoute.Sitemap {
     // The Creator Program — a public landing page people are sent to by name.
     { url: `${BASE}/trading/creators`, lastModified: now, changeFrequency: "weekly", priority: 0.7 },
 
-    // The account hub — useful, but a tool rather than something people search.
-    { url: `${BASE}/trading/command`, lastModified: now, changeFrequency: "monthly", priority: 0.5 },
-
-    // Deliberately absent, and it should stay that way: /trading/creators/create
-    // and everything under /trading/deriv/bots/sim are noindex — they are
-    // working surfaces, not pages anybody should land on from a search.
+    /* Deliberately absent, and it should stay that way:
+     *
+     *   /trading/command — somebody's own accounts and balances. Nobody
+     *     searches for it, it is the page every gated route bounces to, and a
+     *     "connect your broker account" result is not what a person looking
+     *     for trading bots wants to land on. Marked noindex too.
+     *
+     *   /trading/creators/create and everything under /trading/deriv/bots/sim
+     *     — working surfaces, not pages anybody should arrive at from a
+     *     search. Already noindex. */
   ];
 }

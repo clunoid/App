@@ -6,6 +6,15 @@ export const metadata: Metadata = {
   description:
     "Free automated Deriv bots that run in your browser and trade directly on your connected Deriv account — Demo or Real, with live trades and statistics. No download required.",
   alternates: { canonical: "/trading/deriv/bots" },
+  /* This catalogue bounces anybody without a Deriv connection to the command
+     center, and a crawler is never connected — so a search engine only ever
+     receives an empty shell of it. Better to say plainly that it is not for
+     indexing than to let a blank page be recorded as this site's answer for
+     "Deriv bots". `follow` stays on so the links are still crawled.
+
+     To make it findable by name, render the list to everyone and gate only the
+     running of a bot, the way /trading/deriv/mt5 already does. */
+  robots: { index: false, follow: true },
   openGraph: {
     type: "website",
     url: "/trading/deriv/bots",

@@ -22,6 +22,12 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     title,
     description,
     alternates: { canonical: url },
+    /* Each of these bounces anybody without a Deriv connection to the command
+       center, so a crawler — never connected — receives an empty shell with no
+       heading and none of this text on it. The titles above are still worth
+       having for a shared link, but an empty page should not be submitted as
+       this site's answer for a bot's name. `follow` stays on. */
+    robots: { index: false, follow: true },
     openGraph: { type: "article", url, title: `${title} · Clunoid Trading`, description },
   };
 }

@@ -13,6 +13,11 @@ export const metadata: Metadata = {
   description:
     "Connect your broker and see every account, balance and platform in one place, then open the trading bots. You authorise your own broker directly.",
   alternates: { canonical: "/trading/command" },
+  /* Somebody's own accounts and balances. Nobody searches for this, it is where
+     every gated route sends people who are not connected yet, and "Home —
+     connect your broker account" is not the result a person looking for trading
+     bots should land on. */
+  robots: { index: false, follow: true },
 };
 
 export default function CommandPage() {
