@@ -14,9 +14,14 @@ const BASE = "https://www.clunoid.com";
  * spend the crawl budget on URLs that are no longer destinations. Only /trading
  * URLs belong here.
  *
- * `/` is deliberately absent: middleware REWRITES it to this same landing, so
- * listing both would submit one page under two URLs. /trading is the canonical
- * (see the canonical tag in app/trading/page.tsx) and `/` points at it.
+ * Only ONE of `/` and `/trading` belongs here — middleware rewrites the root to
+ * the same landing, so listing both would submit one page under two URLs. It is
+ * the ROOT that is listed, because the root is the canonical (see the canonical
+ * tag in app/trading/page.tsx) and a sitemap that advertises a URL which defers
+ * to another one is asking a crawler to spend its time on the wrong address.
+ *
+ * It used to be the other way round, and that is how clunoid.com came to be a
+ * domain whose own name returned a sub-page.
  *
  * /trading/deriv is absent too — it is a redirect stub, not a page.
  *
@@ -27,8 +32,8 @@ export default function sitemap(): MetadataRoute.Sitemap {
   const now = new Date();
 
   return [
-    // The hub — carries the trading knowledge and the topic index.
-    { url: `${BASE}/trading`, lastModified: now, changeFrequency: "weekly", priority: 1 },
+    // The front door — carries the trading knowledge and the topic index.
+    { url: `${BASE}/`, lastModified: now, changeFrequency: "weekly", priority: 1 },
 
     // Bot catalogues — the two entry points people search for by name.
     { url: `${BASE}/trading/deriv/mt5`, lastModified: now, changeFrequency: "weekly", priority: 0.9 },
