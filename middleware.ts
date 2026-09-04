@@ -54,12 +54,22 @@ export const config = {
   /* Run on page routes only — never on API, auth, Next internals, or static
      files.
 
-     `js` belongs in that list and was missing, which is not a tidiness point:
-     /trading-sw.js does not start with "/trading/", so it fell through to the
-     redirect above and answered 307 instead of the script. A service worker
-     whose script redirects cannot be registered at all — the spec rejects it —
-     so the push worker had never installed on any browser, and the install
-     prompt, which needs a worker with a fetch handler, could never fire
-     either. A .js URL is never a page, so nothing here wants to see one. */
-  matcher: ["/((?!api|auth|r/|_next/static|_next/image|favicon.ico|icon.svg|robots.txt|sitemap.xml|opengraph-image|og|.*\\.(?:png|jpg|jpeg|gif|svg|webp|ico|txt|xml|json|webmanifest|js|mq5|ex5|mp3)).*)"],
+     `js` and `html` belong in that list and were missing, which is not a
+     tidiness point — two real things were broken by their absence:
+
+       /trading-sw.js does not start with "/trading/", so it fell through to
+       the redirect above and answered 307 instead of the script. A service
+       worker whose script redirects cannot be registered at all — the spec
+       rejects it — so the push worker had never installed on any browser, and
+       the install prompt, which needs a worker with a fetch handler, could
+       never fire either.
+
+       /googledc73ec75720fa0df.html is the Google Search Console verification
+       file, and it answered 307 as well. Google checks for the file's exact
+       contents at that exact path, so verification could never succeed and
+       the site could never be submitted for indexing.
+
+     Neither a .js nor a static .html URL is ever a page here — the app's own
+     routes have no extension — so nothing above wants to see one. */
+  matcher: ["/((?!api|auth|r/|_next/static|_next/image|favicon.ico|icon.svg|robots.txt|sitemap.xml|opengraph-image|og|.*\\.(?:png|jpg|jpeg|gif|svg|webp|ico|txt|xml|json|webmanifest|js|html|mq5|ex5|mp3)).*)"],
 };
