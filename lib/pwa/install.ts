@@ -22,6 +22,16 @@
 const SNOOZE_KEY = "cln_install_snoozed";
 const SNOOZE_DAYS = 30;
 
+/** Set by lib/deriv/oauth the first time an account is connected. */
+const ARM_KEY = "cln_install_on_connect";
+
+/* The worker the install prompt needs to exist at all. Same script and scope
+   push-client uses, so registering here is the same registration rather than a
+   second one — but it happens for everybody, not only for the people who have
+   turned alerts on. */
+const SW_URL = "/trading-sw.js";
+const SW_SCOPE = "/trading";
+
 export type InstallMode = "prompt" | "ios" | "none";
 
 /** The Chromium event. Not in lib.dom, so it is spelled out. */
@@ -80,6 +90,50 @@ export function isApple(): boolean {
   return iOS || iPadDesktopUA;
 }
 
+/**
+ * Open the offer without being asked, once — the first load after an account
+ * is connected.
+ *
+ * No browser lets a page install itself. The one install API there is puts up
+ * the browser's OWN dialog, and Chrome refuses to open even that outside a
+ * gesture, so this waits for the next touch, tap or key rather than firing on a
+ * timer, which would simply be rejected. It listens in the capture phase and
+ * stops nothing: whatever they were pressing still gets its handler, and
+ * prompt() does not block.
+ *
+ * Only the real prompt is opened this way. iOS already gets the install card
+ * by itself a moment after the page settles, so there is nothing here to add
+ * for it, and a browser with no install path at all is left alone.
+ *
+ * The flag is spent before the prompt rather than after, so a fault lands on
+ * the one visit it was armed for rather than on every visit after it.
+ */
+const GESTURES = ["pointerdown", "touchstart", "click", "keydown"] as const;
+let listening = false;
+let autoFired = false;
+
+function armAutoOffer() {
+  if (listening || autoFired || typeof window === "undefined") return;
+  if (state.mode !== "prompt") return;             // nothing real to open yet
+  let armed = false;
+  try { armed = localStorage.getItem(ARM_KEY) === "1"; } catch { return; }
+  if (!armed) return;
+
+  const go = () => {
+    if (autoFired) return;
+    autoFired = true;
+    listening = false;
+    GESTURES.forEach((n) => document.removeEventListener(n, go, true));
+    try { localStorage.removeItem(ARM_KEY); } catch { /* private mode */ }
+    // Straight from the gesture: a timer, even a zero one, is exactly how a
+    // page loses the activation prompt() insists on.
+    void promptInstall();
+  };
+
+  listening = true;
+  GESTURES.forEach((n) => document.addEventListener(n, go, true));
+}
+
 /** Wired once per page, however many components are watching. */
 function start() {
   if (started || typeof window === "undefined") return;
@@ -88,6 +142,17 @@ function start() {
   if (alreadyInstalled() || snoozed()) {
     set({ mode: "none", ready: true });
     return;
+  }
+
+  /* Registered even on iOS, where it will not produce a prompt: it is the
+     app's worker, not only the prompt's, and the push side wants it too. */
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => {
+      navigator.serviceWorker.register(SW_URL, { scope: SW_SCOPE }).catch(() => {
+        /* private mode, or a policy that forbids workers. The menu install
+           still works; only the prompt is lost. */
+      });
+    });
   }
 
   if (isApple()) {
@@ -104,6 +169,7 @@ function start() {
     e.preventDefault();
     deferred = e as InstallPromptEvent;
     set({ mode: "prompt", ready: true });
+    armAutoOffer();          // the event lands well after start() has run
   });
 
   window.addEventListener("appinstalled", () => {

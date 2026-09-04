@@ -77,8 +77,29 @@ export function parseDerivRedirect(search: string): DerivToken[] {
   return out;
 }
 
+/**
+ * Somebody who has just connected an account means to come back, and this is
+ * the one moment we know it. lib/pwa/install reads the flag and opens the
+ * install offer by itself, so getting Clunoid onto a phone stops depending on
+ * anybody noticing a button.
+ *
+ * Only where neither kind of session was already stored — this runs on every
+ * save, and being asked to install each time a token was rewritten would be
+ * its own kind of rude. Both flows land here: the OIDC exchange saves an
+ * access token, the classic redirect saves per-account tokens.
+ */
+function markFirstConnect(): void {
+  try {
+    if (localStorage.getItem(KEY) || localStorage.getItem(ACCESS_KEY)) return;
+    localStorage.setItem("cln_install_on_connect", "1");
+  } catch {
+    /* private mode — the install button is still there */
+  }
+}
+
 export function saveDerivTokens(tokens: DerivToken[]): void {
   try {
+    markFirstConnect();
     localStorage.setItem(KEY, JSON.stringify(tokens));
   } catch {
     /* storage disabled — the session stays connected in-memory only */
@@ -241,7 +262,7 @@ export function markConnectChoice(): void {
 const ACCESS_KEY = "clunoid_deriv_access";
 
 export function saveDerivAccess(token: string): void {
-  try { localStorage.setItem(ACCESS_KEY, token); } catch { /* ignore */ }
+  try { markFirstConnect(); localStorage.setItem(ACCESS_KEY, token); } catch { /* ignore */ }
 }
 export function loadDerivAccess(): string {
   try { return localStorage.getItem(ACCESS_KEY) || ""; } catch { return ""; }

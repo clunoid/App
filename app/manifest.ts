@@ -3,13 +3,18 @@ import type { MetadataRoute } from "next";
 /**
  * THE INSTALL MANIFEST.
  *
- * This is the whole reason clunoid.com can be installed as an app. A service
- * worker is NOT required for installability, and this app deliberately does not
- * add one for it: components/tdesk/push-client.ts already registers a push
- * worker at scope "/trading", and the narrowest matching scope wins — a second
- * worker at "/" would either be shadowed there or start fighting it. Caching a
- * trading screen is also the wrong instinct: a stale balance is worse than a
- * slow one.
+ * This is the whole reason clunoid.com can be installed as an app.
+ *
+ * A service worker is not required to install from the browser's own menu —
+ * Chrome dropped that in 108 on mobile and 112 on desktop. It IS still required
+ * by the algorithm that fires `beforeinstallprompt`, which is what the install
+ * button and the install card here are built on. So public/trading-sw.js
+ * carries a fetch listener that does nothing but exist.
+ *
+ * That listener lives in the push worker rather than in a second worker at "/",
+ * because the narrowest matching scope wins: a root worker would be shadowed
+ * under "/trading" — where start_url points — and the prompt would still never
+ * fire. Nothing is cached either way. A stale balance is worse than a slow one.
  *
  * `start_url` is /trading, not /. Middleware rewrites `/` to the trading
  * landing and redirects every classic page there, so launching the installed

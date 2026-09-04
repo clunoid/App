@@ -51,6 +51,15 @@ export function middleware(req: NextRequest) {
 }
 
 export const config = {
-  // Run on page routes only — never on API, auth, Next internals, or static files.
-  matcher: ["/((?!api|auth|r/|_next/static|_next/image|favicon.ico|icon.svg|robots.txt|sitemap.xml|opengraph-image|og|.*\\.(?:png|jpg|jpeg|gif|svg|webp|ico|txt|xml|json|webmanifest|mq5|ex5|mp3)).*)"],
+  /* Run on page routes only — never on API, auth, Next internals, or static
+     files.
+
+     `js` belongs in that list and was missing, which is not a tidiness point:
+     /trading-sw.js does not start with "/trading/", so it fell through to the
+     redirect above and answered 307 instead of the script. A service worker
+     whose script redirects cannot be registered at all — the spec rejects it —
+     so the push worker had never installed on any browser, and the install
+     prompt, which needs a worker with a fetch handler, could never fire
+     either. A .js URL is never a page, so nothing here wants to see one. */
+  matcher: ["/((?!api|auth|r/|_next/static|_next/image|favicon.ico|icon.svg|robots.txt|sitemap.xml|opengraph-image|og|.*\\.(?:png|jpg|jpeg|gif|svg|webp|ico|txt|xml|json|webmanifest|js|mq5|ex5|mp3)).*)"],
 };
