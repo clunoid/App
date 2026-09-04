@@ -22,6 +22,10 @@ export type Mt5BotMeta = {
   markets: string; // display, e.g. "Forex · Volatility"
   /** The general automation is free to download; the dedicated bots are paid. */
   free?: boolean;
+  /** Not offered yet. The card locks, and opening it says so rather than
+      leading to a page that would ask for money for something we are not
+      handing over. */
+  soon?: boolean;
 };
 
 /** A rating this high renders in green — the standouts, not the whole list. */
@@ -41,6 +45,7 @@ export const MT5_BOTS: Mt5BotMeta[] = [
   },
   {
     id: "gold",
+    soon: true,
     name: "Gold & Silver AI Automation",
     rating: 9.5,
     chip: "Gold + Silver",
@@ -51,6 +56,7 @@ export const MT5_BOTS: Mt5BotMeta[] = [
   },
   {
     id: "crypto",
+    soon: true,
     name: "Crypto AI Automation",
     rating: 8,
     chip: "Crypto · 24/7",
@@ -61,6 +67,7 @@ export const MT5_BOTS: Mt5BotMeta[] = [
   },
   {
     id: "forex",
+    soon: true,
     name: "Forex AI Automation",
     rating: 8,
     chip: "Forex",
@@ -71,6 +78,7 @@ export const MT5_BOTS: Mt5BotMeta[] = [
   },
   {
     id: "indices",
+    soon: true,
     name: "Stock Index AI Automation",
     rating: 8,
     chip: "Stock indices",
@@ -81,6 +89,7 @@ export const MT5_BOTS: Mt5BotMeta[] = [
   },
   {
     id: "volatility",
+    soon: true,
     name: "Synthetic Index AI Automation",
     rating: 8,
     chip: "Synthetic · 24/7",
