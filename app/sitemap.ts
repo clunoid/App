@@ -72,6 +72,16 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { url: `${BASE}/trading/exness`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
     { url: `${BASE}/trading/tradingview`, lastModified: now, changeFrequency: "monthly", priority: 0.7 },
 
+    /* THE WRITTEN PAGES. Guides, not app surfaces — they render their whole
+       text to anybody, connected or not, which is the same test the MT5
+       catalogue passes and the Deriv bot pages fail. Each one exists because a
+       real query cluster had nowhere to land: MT5 downloads, free Deriv bots,
+       what "AI trading robot" means, and whether we are a scam. */
+    { url: `${BASE}/trading/free-mt5-robot-download`, lastModified: now, changeFrequency: "monthly", priority: 0.9 },
+    { url: `${BASE}/trading/free-deriv-bots`, lastModified: now, changeFrequency: "monthly", priority: 0.85 },
+    { url: `${BASE}/trading/is-clunoid-legit`, lastModified: now, changeFrequency: "monthly", priority: 0.8 },
+    { url: `${BASE}/trading/ai-trading-robot`, lastModified: now, changeFrequency: "monthly", priority: 0.75 },
+
     // The Creator Program — a public landing page people are sent to by name.
     { url: `${BASE}/trading/creators`, lastModified: now, changeFrequency: "weekly", priority: 0.7 },
 

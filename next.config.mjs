@@ -15,25 +15,27 @@ const nextConfig = {
   },
 
   /**
-   * URLs that used to be pages.
+   * A URL that used to be a page.
    *
-   * /trading/creator-program and /trading/is-clunoid-legit were live briefly as
-   * search landing pages before being removed. Middleware only redirects things
-   * OUTSIDE /trading, so anything under it that has no route falls through to a
-   * 404 - which is what these were doing. They now land on the trading front
-   * door, where somebody who followed one of those links can actually get
-   * started.
+   * /trading/creator-program was live briefly as a search landing page before
+   * being removed. Middleware only redirects things OUTSIDE /trading, so
+   * anything under it with no route falls through to a 404 - which is what this
+   * was doing. It now lands on the trading front door, where somebody who
+   * followed that link can actually get started.
    *
    * Temporary, not permanent, on purpose: a 308 is cached hard by browsers and
-   * is genuinely painful to undo, and these two URLs have existed as pages once
-   * already. A 307 costs nothing here - they were live for about an hour, so
-   * there is no meaningful search history to consolidate - and it leaves the
-   * door open to putting real pages back at these addresses.
+   * is genuinely painful to undo, and this URL has existed as a page once
+   * already. A 307 costs nothing here and leaves the door open to putting a
+   * real page back at the address.
+   *
+   * /trading/is-clunoid-legit was in this list for the same reason and is NOT
+   * any more: it is a real page again, and a redirect sitting in front of it
+   * would have answered 307 to every reader and every crawler while the page
+   * itself sat unreachable behind it.
    */
   async redirects() {
     return [
       { source: "/trading/creator-program", destination: "/trading", permanent: false },
-      { source: "/trading/is-clunoid-legit", destination: "/trading", permanent: false },
     ];
   },
 };

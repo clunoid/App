@@ -249,6 +249,24 @@ export function TradingLanding() {
         {/* ── the trading hub: platforms, market knowledge, discovery ── */}
         <TradingHub />
 
+        {/* ── the written pages ──
+            Guides people arrive on from a search. They need a crawlable link
+            from here or an engine never finds them, and a reader who lands on
+            one needs the way back. Plain anchors, because this is a client
+            component and these are ordinary navigations. */}
+        <nav aria-label="Guides" className="flex flex-wrap justify-center gap-2.5 border-t px-5 py-8 sm:px-8" style={{ borderColor: C.line }}>
+          {[
+            { href: "/trading/free-mt5-robot-download", label: "Free MT5 robot download" },
+            { href: "/trading/free-deriv-bots", label: "Free Deriv bots" },
+            { href: "/trading/ai-trading-robot", label: "What an AI trading robot does" },
+            { href: "/trading/is-clunoid-legit", label: "Is Clunoid legit?" },
+          ].map((l) => (
+            <a key={l.href} href={l.href} className="rounded-full border px-4 py-2 text-[13px] font-medium transition hover:bg-white/5" style={{ borderColor: C.line, color: C.text }}>
+              {l.label}
+            </a>
+          ))}
+        </nav>
+
         {/* ── footer ── */}
         <footer className="border-t px-5 py-6 text-center text-[12px] sm:px-8" style={{ borderColor: C.line, color: C.faint }}>
           Clunoid Trading — intelligent automated trading. Trading involves risk; you can lose money. Nothing here is financial advice.
