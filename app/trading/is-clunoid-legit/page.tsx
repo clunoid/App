@@ -12,36 +12,36 @@ import {
  * trading front door; a page anywhere else would answer 307 and never be read.
  *
  * The format is deliberately not the one magicbotslab.com uses for the same
- * question. That page argues from structure — we hold nothing, so there is
- * nothing to steal. This one cannot make that argument as simply, because
- * Clunoid does sell things: two Expert Advisors are free and the advanced ones
- * are one-time purchases. Pretending otherwise would be the exact dishonesty
- * the page exists to disprove. So it is built as a ledger instead — every claim
- * beside the thing a reader can go and check for themselves, and a section that
- * states plainly what costs money.
+ * question. It is built as a ledger: every claim beside the thing a reader can
+ * go and check for themselves, because "trust us" is what the reader arrived
+ * here suspicious of.
+ *
+ * Everything on Clunoid is free — nothing is for sale. An earlier version of
+ * this page described some automations as one-time purchases, which was wrong
+ * and is exactly the kind of inaccuracy this page exists to not commit.
  */
 export const metadata: Metadata = {
   title: { absolute: "Is Clunoid Legit? What We Charge For, and What You Can Verify" },
   description:
-    "Clunoid Trading is real and the core bots are free. What is free, what costs money, why we never hold your funds, and the risk management that decides your result.",
+    "Clunoid Trading is real and every bot is free. Nothing is for sale, we never hold your funds, and every claim here sits beside the way you can verify it yourself.",
   alternates: { canonical: "/trading/is-clunoid-legit" },
   openGraph: {
     type: "article",
     url: "https://www.clunoid.com/trading/is-clunoid-legit",
     title: "Is Clunoid Legit? What We Charge For, and What You Can Verify",
     description:
-      "Free MT5 and Deriv bots, no deposits taken, no funds held. Every claim beside the thing you can go and check.",
+      "Free MT5 and Deriv bots, nothing for sale, no deposits taken, no funds held. Every claim beside the thing you can go and check.",
   },
 };
 
 const FAQ = [
   {
     q: "Is Clunoid Trading legit or a scam?",
-    a: "It is legit. We never take a deposit, never hold your trading funds and never see your broker password — you sign in on Deriv's own page and the money stays in an account in your own name. Two Expert Advisors are free to download with no account at all, which means you can inspect what we build before you tell us anything about yourself.",
+    a: "It is legit. We never take a deposit, never hold your trading funds and never see your broker password — you sign in on Deriv's own page and the money stays in an account in your own name. Nothing on the site is for sale, so there is no payment for anyone to take.",
   },
   {
     q: "Are the Clunoid bots free?",
-    a: "The core ones are. The General MT5 AI Automation and Aggressive MT5 are free downloads with no payment and no licence key, and the Deriv browser bots are free to run on your own account. The advanced MetaTrader 5 automations are one-time purchases between 99 and 425 US dollars. There is no subscription anywhere.",
+    a: "All of them. Every bot on Clunoid is free — the MetaTrader 5 Expert Advisors and the Deriv browser bots alike. There is no paid tier, no licence key, no subscription and nothing for sale anywhere on the site. Automations you cannot open yet are still in testing, not behind a price.",
   },
   {
     q: "Do the bots actually make profit?",
@@ -65,7 +65,7 @@ const FAQ = [
   },
   {
     q: "Why is Clunoid free if it costs money to build?",
-    a: "Broker partner arrangements fund the free tier, which is the ordinary way free trading tools are paid for, and the paid Expert Advisors fund the rest. It costs you nothing extra, and it is why the core bots can be given away instead of sold.",
+    a: "Broker partner arrangements fund it, which is the ordinary way free trading tools are paid for. It costs you nothing extra, and it is why every bot here can be given away instead of sold.",
   },
 ];
 
@@ -81,20 +81,18 @@ export default function IsClunoidLegit() {
         <Hero eyebrow="A straight answer" title={<>Is Clunoid legit? <span style={{ color: C.profit }}>Yes</span> — and here is how to check.</>}>
           <p>
             You found us searching whether we are a scam, which is the right instinct and we would rather
-            you kept it. So this page does not ask you to believe anything. Every claim below sits beside
-            the thing you can go and verify yourself, <strong style={{ color: C.text }}>including the
-            parts that cost money</strong> — because a page that says &ldquo;everything is free&rdquo;
-            when it is not would be exactly the sort of thing you came here to catch.
+            you kept it. So this page does not ask you to believe anything. Every claim below sits beside{" "}
+            <strong style={{ color: C.text }}>the thing you can go and verify yourself</strong> — because
+            a page that only asserts its own honesty is exactly what you came here to catch.
           </p>
           <p>
-            Short version: <strong style={{ color: C.text }}>Clunoid Trading is real, the core bots are
-            free, we never take a deposit and we never hold your money.</strong> Two Expert Advisors
-            download with no account and no payment, so you can read what we build before you tell us
-            anything at all about yourself.
+            Short version: <strong style={{ color: C.text }}>Clunoid Trading is real, every bot is
+            free, nothing here is for sale, we never take a deposit and we never hold your money.</strong>{" "}
+            There is no paid tier to upsell you to and no payment page anywhere on the site.
           </p>
           <div className="flex flex-wrap items-center gap-3 pt-2">
             <StartLink />
-            <GhostLink href="/trading/free-mt5-robot-download">Download a free EA first</GhostLink>
+            <GhostLink href="/trading/free-mt5-robot-download">See the free MT5 robots</GhostLink>
           </div>
         </Hero>
 
@@ -119,9 +117,8 @@ export default function IsClunoidLegit() {
                 "Open Deriv → Settings → Connected apps. The permission listed covers trading on the account you picked. Revoke it there whenever you like.",
               ],
               [
-                "The free EAs are genuinely free",
-                <>Download <span style={{ color: C.profitSoft }}>ClunoidMT5.mq5</span> or{" "}
-                <span style={{ color: C.profitSoft }}>ClunoidAggressiveMT5.mq5</span> right now. No sign-up, no card, no licence key.</>,
+                "Nothing is for sale",
+                "Look for a price, a plan or a checkout anywhere on this site. There is none, on any page, for any bot.",
               ],
               [
                 "The EAs run on your machine",
@@ -136,30 +133,31 @@ export default function IsClunoidLegit() {
         </Section>
 
         <Section
-          kicker="The uncomfortable part"
-          title="What costs money, stated plainly"
-          intro="Most 'is it legit' pages skip this. Ours cannot, because the honest answer is that some of it is paid — and you should know which parts before you invest any time."
+          kicker="The money question"
+          title="What it costs: nothing"
+          intro="This is usually the paragraph where a catch appears. There isn't one, so here is the whole of it."
         >
           <Grid min={300}>
-            <Card tone="good" title="Free, no account, no card">
+            <Card tone="good" title="Every bot is free">
               <p>
-                <strong style={{ color: C.text }}>General MT5 AI Automation</strong> and{" "}
-                <strong style={{ color: C.text }}>Aggressive MT5</strong> — two Expert Advisors covering
-                forex and Volatility indices, downloadable this second.
+                <strong style={{ color: C.text }}>The MetaTrader 5 Expert Advisors</strong> — covering
+                forex and Volatility indices — and{" "}
+                <strong style={{ color: C.text }}>the Deriv browser bots</strong> alike.
               </p>
               <p>
-                <strong style={{ color: C.text }}>The Deriv browser bots</strong> — free to run on your
-                own Deriv account, nothing to install.
+                No paid tier, no licence key, no subscription, no trial that expires. Nothing on this
+                site is for sale, so there is no payment page to find and none to be tricked by.
               </p>
             </Card>
-            <Card tone="accent" title="One-time purchases">
+            <Card tone="accent" title="What about the locked ones?">
               <p>
-                The advanced MetaTrader 5 automations — trend, index, crypto and breakout strategies —
-                are <strong style={{ color: C.text }}>$99 to $425, paid once</strong>.
+                Some automations will not open yet. Those are{" "}
+                <strong style={{ color: C.text }}>still in testing</strong> — they are not waiting for
+                your money, and they will be free like the rest when they are ready.
               </p>
               <p>
-                No subscription, no recurring charge, no auto-renewal. You are never billed twice for the
-                same automation.
+                We would rather withhold a bot than ship one we have not finished testing on a real
+                account.
               </p>
             </Card>
             <Card tone="bad" title="What we will never do">
@@ -282,7 +280,7 @@ export default function IsClunoidLegit() {
         </Section>
 
         <Close
-          title="Check it yourself — download a free EA before you connect anything"
+          title="Check it yourself — run one on a demo account"
           links={[
             { href: "/trading/free-mt5-robot-download", label: "Free MT5 robot download" },
             { href: "/trading/free-deriv-bots", label: "Free Deriv bots" },
@@ -290,8 +288,8 @@ export default function IsClunoidLegit() {
           ]}
         >
           <p>
-            No account, no card, no email. Read the strategy, run it on a demo account, and decide about
-            us afterwards — that is the order we would use.
+            Connect on the home page, run a bot on a demo account, and decide about us afterwards — that
+            is the order we would use. It costs nothing at any point.
           </p>
         </Close>
 

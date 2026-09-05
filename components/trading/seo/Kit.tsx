@@ -40,16 +40,19 @@ const DOT_GRID = {
 } as const;
 
 /**
- * Where every call to action goes.
+ * Where every call to action goes: the landing page, and nowhere else.
  *
- * Not to Deriv's login: somebody who has never opened a broker account has
- * nothing to do there but leave. `?connect=1` is the command centre's existing
- * connect-or-create prompt — the same one the landing's Get started button
- * reaches for a visitor who has not answered that question yet — and it is
- * inert for anybody already connected, who simply sees their command centre.
- * So these pages add no new connection path; they borrow the only one there is.
+ * These pages used to point at /trading/command?connect=1, and that was wrong.
+ * The command centre is what you reach AFTER connecting — sending a stranger
+ * from a search result straight into it drops them onto account machinery they
+ * have no account for. The landing page already owns the whole connect flow,
+ * including the connect-or-create prompt for people without a Deriv account,
+ * and it forwards anybody already connected to the command centre by itself.
+ *
+ * So there is exactly one door, it is the front one, and these pages do not add
+ * a second. Nothing here links into the app any deeper than this.
  */
-export const START_HREF = "/trading/command?connect=1";
+export const START_HREF = "/";
 
 /* ── page frame ──────────────────────────────────────────────────────────── */
 
@@ -117,20 +120,28 @@ export function GhostLink({ href, children }: { href: string; children: React.Re
 /* ── layout pieces ───────────────────────────────────────────────────────── */
 
 /**
- * A download of a real file. Deliberately a plain anchor, not next/link: Link
- * would prefetch the .mq5 on hover, and `download` is what makes the browser
- * save the Expert Advisor instead of rendering it as text.
+ * A download button that does not download.
+ *
+ * An Expert Advisor is no use to somebody who has not connected a broker
+ * account — there is nothing for it to trade on. So pressing this goes to the
+ * landing page to connect first, and the file itself is reached from the bot's
+ * own page afterwards. It deliberately does NOT link the .mq5 directly: a
+ * visitor who saved the file without an account would be left holding something
+ * inert and wondering what they did wrong.
+ *
+ * It keeps the download affordance because that is what the reader came for and
+ * what they will get — the label says the connect step out loud rather than
+ * hiding it behind the arrow.
  */
-export function FileLink({ href, children }: { href: string; children: React.ReactNode }) {
+export function DownloadCta({ children }: { children: React.ReactNode }) {
   return (
-    <a
-      href={href}
-      download
+    <Link
+      href={START_HREF}
       className="inline-flex items-center gap-2 rounded-xl border px-5 py-3 text-[14px] font-medium transition hover:bg-white/5"
       style={{ borderColor: "rgba(56,189,248,0.36)", background: "rgba(56,189,248,0.07)", color: C.text }}
     >
       <Download size={16} style={{ color: C.profit }} /> {children}
-    </a>
+    </Link>
   );
 }
 

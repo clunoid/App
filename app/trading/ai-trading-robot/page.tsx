@@ -55,7 +55,7 @@ const FAQ = [
   },
   {
     q: "Is there a free AI trading robot?",
-    a: "Yes. Two of our MetaTrader 5 Expert Advisors are free downloads with no account and no licence key, and the Deriv browser bots are free to run. Advanced MT5 automations are one-time purchases, and they are labelled as such.",
+    a: "Yes. Every bot on Clunoid is free — the MetaTrader 5 Expert Advisors and the Deriv browser bots alike. There is no paid tier, no licence key and nothing for sale on the site. You connect a broker account first, because an automation has nothing to trade on without one.",
   },
 ];
 
@@ -135,7 +135,7 @@ export default function AiTradingRobot() {
               ["What is the win rate?", "Depends on conditions — judge the balance, not the win column.", "\"95%+\", or \"no loss\"."],
               ["Can I see it lose?", "Run it on demo and watch.", "Screenshots of profits only."],
               ["Where does my money sit?", "In your own broker account.", "\"Deposit to our platform.\""],
-              ["What does it cost?", "A clear figure, or genuinely free.", "Free, then a licence key appears."],
+              ["What does it cost?", "A clear figure, or genuinely free. Ours is free.", "Free, then a licence key appears."],
             ]}
           />
         </Section>
@@ -180,8 +180,8 @@ export default function AiTradingRobot() {
           ]}
         >
           <p>
-            Two Expert Advisors are free to download without an account, so you can judge the logic
-            before you decide anything about us.
+            Every bot here is free, and you can run one on a demo account before a cent of your own is
+            involved — which is the only way to judge an automation honestly.
           </p>
         </Close>
 

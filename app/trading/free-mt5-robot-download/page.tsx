@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { ldJson } from "@/lib/marketing/content";
 import {
   C, Shell, TopBar, Hero, Section, Grid, Card, Steps, Table, Faq, Close, Disclaimer,
-  GhostLink, FileLink, faqLd,
+  DownloadCta, faqLd,
 } from "@/components/trading/seo/Kit";
 
 /**
@@ -13,33 +13,36 @@ import {
  * every week and converting none of them, because the only page that answered
  * them was a landing page that mentions MT5 in passing.
  *
- * The two files named here are real and public — /deriv/ClunoidMT5.mq5 and
- * /mt5/ClunoidAggressiveMT5.mq5, both flagged free in their registries. The
- * page says two, not seven, because the other automations are one-time
- * purchases and a download page that implies otherwise earns exactly one visit.
+ * EVERYTHING IS FREE. Nothing on Clunoid is for sale — the automations still in
+ * testing are locked until they are ready, not priced. An earlier version of
+ * this page quoted purchase prices for them, which was simply untrue.
+ *
+ * Nothing here links to a .mq5 either. An Expert Advisor is inert without a
+ * broker account behind it, so every download button goes to the landing page
+ * to connect first; the file is reached from the bot's own page after that.
  */
 export const metadata: Metadata = {
   title: { absolute: "Free MT5 Robot Download — 2 Expert Advisors, No Payment" },
   description:
-    "Download two free MetaTrader 5 trading robots — forex and Volatility indices, fully automated. No licence key, no sign-up. Install steps and risk settings included.",
+    "Two free MetaTrader 5 trading robots — forex and Volatility indices, fully automated. Everything on Clunoid is free. Connect, download, install in five minutes.",
   alternates: { canonical: "/trading/free-mt5-robot-download" },
   openGraph: {
     type: "article",
     url: "https://www.clunoid.com/trading/free-mt5-robot-download",
     title: "Free MT5 Robot Download — 2 Expert Advisors, No Payment",
     description:
-      "Two free MetaTrader 5 Expert Advisors covering forex and Volatility indices. No licence key, no sign-up, install in about five minutes.",
+      "Two free MetaTrader 5 Expert Advisors covering forex and Volatility indices. Everything on Clunoid is free — no payment, ever.",
   },
 };
 
 const FAQ = [
   {
     q: "Is the MT5 robot download really free?",
-    a: "Yes. Two Expert Advisors are free with no payment, no licence key and no account: the General MT5 AI Automation and Aggressive MT5. You do not have to sign up or connect anything to download them. The advanced automations on the site are one-time purchases, and they are labelled as such.",
+    a: "Yes, and so is everything else on Clunoid. Nothing is for sale — there is no paid tier, no licence key and no subscription anywhere on the site. Two Expert Advisors are ready to download today, the General MT5 AI Automation and Aggressive MT5. You connect a broker account first, because an Expert Advisor has nothing to trade on without one.",
   },
   {
     q: "How do I install an MT5 robot?",
-    a: "Download the .mq5 file, then in MetaTrader 5 open File then Open Data Folder and copy it into MQL5/Experts. Restart MT5 or press Compile in MetaEditor, drag the robot onto any one chart, set your risk profile and enable Algo Trading. It takes about five minutes.",
+    a: "Connect your broker account on the Clunoid home page first, then open the robot's page and download the .mq5 file. In MetaTrader 5 open File then Open Data Folder and copy it into MQL5/Experts. Restart MT5 or press Compile in MetaEditor, drag the robot onto any one chart, set your risk profile and enable Algo Trading. It takes about five minutes.",
   },
   {
     q: "Which broker do these MT5 robots work with?",
@@ -79,19 +82,23 @@ export default function FreeMt5RobotDownload() {
           title={<>Free MT5 robot download — <span style={{ color: C.profit }}>two Expert Advisors</span>, no payment.</>}
         >
           <p>
-            Two fully automated MetaTrader 5 robots, free to download right now with{" "}
-            <strong style={{ color: C.text }}>no sign-up, no card and no licence key</strong>. They cover
-            forex majors and Deriv&rsquo;s Volatility indices from a single chart, size every position to
-            your balance, and attach a stop and a target the moment a trade opens.
+            Two fully automated MetaTrader 5 robots, <strong style={{ color: C.text }}>completely
+            free</strong> — no card, no licence key, no subscription. They cover forex majors and
+            Deriv&rsquo;s Volatility indices from a single chart, size every position to your balance,
+            and attach a stop and a target the moment a trade opens.
           </p>
           <p>
-            They run inside <strong style={{ color: C.text }}>your own terminal, on your own broker
-            account</strong>. Nothing routes through us, and they keep working whether or not this
-            website is up.
+            <strong style={{ color: C.text }}>Everything on Clunoid is free.</strong> There is no paid
+            tier and nothing on the site is for sale. The automations you cannot open yet are in
+            testing, not behind a price.
+          </p>
+          <p>
+            You connect a broker account first — an Expert Advisor has nothing to trade on without one
+            — and then the robot runs inside{" "}
+            <strong style={{ color: C.text }}>your own terminal, on your own account</strong>.
           </p>
           <div className="flex flex-wrap items-center gap-3 pt-2">
-            <FileLink href="/deriv/ClunoidMT5.mq5">General MT5 AI Automation</FileLink>
-            <FileLink href="/mt5/ClunoidAggressiveMT5.mq5">Aggressive MT5</FileLink>
+            <DownloadCta>Connect and download</DownloadCta>
           </div>
         </Hero>
 
@@ -125,15 +132,16 @@ export default function FreeMt5RobotDownload() {
               </p>
               <p style={{ color: C.faint }}>File: <code style={cx}>ClunoidAggressiveMT5.mq5</code></p>
             </Card>
-            <Card title="And the ones that are not free">
+            <Card title="And the ones you cannot open yet">
               <p>
-                Clunoid also publishes advanced MT5 automations — trend, index-dip, breakout, crypto
+                Clunoid is also building advanced MT5 automations — trend, index-dip, breakout, crypto
                 momentum and long-short strategies. Those are{" "}
-                <strong style={{ color: C.text }}>one-time purchases, $99 to $425</strong>.
+                <strong style={{ color: C.text }}>locked while they are in testing</strong>, and they
+                will be free too when they open.
               </p>
               <p>
-                We say so here rather than burying it, because you came looking for a free download and
-                deserve to know where the free part ends. There is no subscription on any of them.
+                Nothing on this site is for sale. If a bot will not open, it is not finished — it is not
+                waiting for your money.
               </p>
             </Card>
           </Grid>
@@ -147,8 +155,8 @@ export default function FreeMt5RobotDownload() {
           <Steps
             items={[
               {
-                title: "Copy it into MQL5/Experts",
-                body: <>Download the file, then in MetaTrader 5 use <code style={cx}>File → Open Data Folder</code> and drop it into the <code style={cx}>MQL5/Experts</code> folder.</>,
+                title: "Connect, then copy it into MQL5/Experts",
+                body: <>Connect on the home page, download the file from the robot&rsquo;s page, then in MetaTrader 5 use <code style={cx}>File → Open Data Folder</code> and drop it into <code style={cx}>MQL5/Experts</code>.</>,
               },
               {
                 title: "Allow the WebRequest",
@@ -212,17 +220,16 @@ export default function FreeMt5RobotDownload() {
 
         <Close
           title="Download it, run it on demo, decide afterwards"
-          cta="Connect Deriv MT5"
+          cta="Connect and download"
           links={[
-            { href: "/trading/deriv/mt5/generalmt5", label: "The bot's own page" },
             { href: "/trading/is-clunoid-legit", label: "Is Clunoid legit?" },
             { href: "/trading/free-deriv-bots", label: "Free Deriv bots" },
             { href: "/trading/ai-trading-robot", label: "What an AI trading robot does" },
           ]}
         >
           <p>
-            The files need nothing from us to work. If you want a Deriv MT5 account to run them on, the
-            connect step below opens one — otherwise just download and install.
+            Connect a broker account on the home page and the robots are yours — free, like everything
+            else here. Once installed they run on your own terminal and need nothing further from us.
           </p>
         </Close>
 
