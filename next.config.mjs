@@ -35,7 +35,7 @@ const nextConfig = {
    */
   async redirects() {
     return [
-      { source: "/trading/creator-program", destination: "/trading", permanent: false },
+      { source: "/trading/creator-program", destination: "/", permanent: false },
     ];
   },
 };

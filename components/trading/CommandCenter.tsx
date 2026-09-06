@@ -339,7 +339,7 @@ export function CommandCenter() {
       <div className="relative z-10 w-full px-6 py-5 sm:px-10 lg:px-16">
         {/* header */}
         <header className="flex flex-wrap items-center gap-3">
-          <Link href="/trading" className="flex items-center gap-1.5 text-[13px] font-medium transition hover:opacity-80" style={{ color: TC.muted }}>
+          <Link href="/" className="flex items-center gap-1.5 text-[13px] font-medium transition hover:opacity-80" style={{ color: TC.muted }}>
             <ArrowLeft size={15} /> Clunoid Trading
           </Link>
           <span className="h-4 w-px" style={{ background: TC.line }} />

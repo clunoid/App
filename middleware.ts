@@ -40,14 +40,35 @@ export function middleware(req: NextRequest) {
 
   // ── trading mode (default) ──
   const { pathname } = req.nextUrl;
-  if (pathname === "/trading" || pathname.startsWith("/trading/")) return NextResponse.next();
+
+  /* ONE front door, not two.
+     `/` rewrites to this page and `/trading` served it directly, so the same
+     landing answered on two URLs with the same title and the same description.
+     The canonical already named `/` as the original, but Bing still reported
+     the pair as duplicates — and it was right to: a second address that serves
+     a page rather than pointing at it is a second address.
+     `/trading` now sends people to `/`. Permanent, because it is: the root has
+     been the canonical since the sitemap was rewritten, and this is the URL
+     settling where the canonical always said it belonged. */
+  if (pathname === "/trading") {
+    const home = req.nextUrl.clone();
+    home.pathname = "/";
+    return NextResponse.redirect(home, 308);
+  }
+
+  if (pathname.startsWith("/trading/")) return NextResponse.next();
 
   const url = req.nextUrl.clone();
-  url.pathname = "/trading";
   url.search = "";
-  // `/` shows the platform in place (rewrite keeps clunoid.com in the bar);
-  // any other classic page is redirected to the trading front door.
-  return pathname === "/" ? NextResponse.rewrite(url) : NextResponse.redirect(url);
+  if (pathname === "/") {
+    // The platform shown in place — the rewrite keeps clunoid.com in the bar.
+    url.pathname = "/trading";
+    return NextResponse.rewrite(url);
+  }
+  /* Every other classic page goes to the root, not to /trading, which would
+     only bounce again off the redirect above. */
+  url.pathname = "/";
+  return NextResponse.redirect(url);
 }
 
 export const config = {
