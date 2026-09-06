@@ -268,6 +268,24 @@ export function CommandCenter() {
       }
     }
 
+    /* Nobody who has not connected belongs here.
+       This is an account screen; a stranger — or a crawler — arriving with no
+       session and nothing in flight is sent to the landing page, which is where
+       connecting starts.
+
+       Two exemptions, and both are real:
+         ?connect=1 is the landing page deliberately sending someone here to
+         answer the connect-or-create prompt, so turning it away would loop.
+         ?error is Deriv reporting a failed connection, and that message has to
+         be readable rather than redirected out of existence.
+
+       Every OAuth return has already been handled and returned above, so by
+       this line there is genuinely nothing happening. */
+    if (!restore() && qs.get("connect") !== "1" && !qs.get("error")) {
+      window.location.replace("/");
+      return;
+    }
+
     const s = restore();
     setSession(s);
     showSnapshot(s); // show the cached snapshot instantly, then refresh live

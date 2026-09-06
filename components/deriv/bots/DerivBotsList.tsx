@@ -44,7 +44,11 @@ export function DerivBotsList() {
   };
 
   useEffect(() => {
-    if (!loadDerivAccess()) { router.replace("/trading/command"); return; }
+    /* To the landing page, not the command centre. Connecting starts on the
+       front door — sending somebody to an account screen they have no account
+       on is a second dead end, and it is where a crawler ended up too, which is
+       how three bot URLs came to share the command centre's description. */
+    if (!loadDerivAccess()) { router.replace("/"); return; }
     setReady(true);
     // Arriving here from a paid page's "use free bots" exit while linked: greet
     // them with a success confirmation, then strip the flag so a refresh is clean.

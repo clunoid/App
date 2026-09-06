@@ -69,7 +69,8 @@ export function DerivBotRunner({ botId }: { botId: string }) {
   useEffect(() => {
     if (!meta) { router.replace("/trading/deriv/bots"); return; }
     const acc = loadDerivAccess();
-    if (!acc) { router.replace("/trading/command"); return; }
+    /* The landing page, where connecting starts — see DerivBotsList. */
+    if (!acc) { router.replace("/"); return; }
     setAccess(acc);
     let cached: ConnectedAccount[] = [];
     try {
@@ -124,7 +125,7 @@ export function DerivBotRunner({ botId }: { botId: string }) {
 
   const startBot = () => {
     if (!meta) return;
-    if (!access) { router.replace("/trading/command"); return; }
+    if (!access) { router.replace("/"); return; }
     if (!selected) { setStatus({ msg: `No ${mode} account found on your Deriv connection.`, kind: "error" }); return; }
     const v = validate();
     if (!v.ok) { setStatus({ msg: v.msg!, kind: "error" }); return; }
