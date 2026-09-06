@@ -66,9 +66,23 @@ export function middleware(req: NextRequest) {
     return NextResponse.rewrite(url);
   }
   /* Every other classic page goes to the root, not to /trading, which would
-     only bounce again off the redirect above. */
+     only bounce again off the redirect above.
+
+     Permanent, and that matters. This defaulted to 307, which tells a search
+     engine the move is temporary and the old address should be kept — so
+     Google still lists /features and /isaac under their old AI-host titles,
+     describing a product this domain no longer presents. A 308 is what asks
+     for the old URL to be dropped and its weight folded into the root.
+
+     The cost is that a browser caches a 308 indefinitely, and it does so
+     without asking the server again. An admin who has seen one of these
+     redirects and then switches to classic mode via /api/mode will still be
+     bounced by their own cache, because the cookie check above never runs.
+     A hard reload (Ctrl+Shift+R) clears it. That is a recoverable annoyance
+     for a handful of admins, weighed against every visitor arriving from a
+     search seeing the wrong product. */
   url.pathname = "/";
-  return NextResponse.redirect(url);
+  return NextResponse.redirect(url, 308);
 }
 
 export const config = {
