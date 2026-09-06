@@ -270,6 +270,13 @@ export function TradingLanding() {
         {/* ── footer ── */}
         <footer className="border-t px-5 py-6 text-center text-[12px] sm:px-8" style={{ borderColor: C.line, color: C.faint }}>
           Clunoid Trading — intelligent automated trading. Trading involves risk; you can lose money. Nothing here is financial advice.
+          <div className="mt-2">
+            Also from the same team:{" "}
+            <a href="https://www.evietrader.site/" style={{ color: C.profitSoft }}>
+              Evie Trader
+            </a>{" "}
+            — free fully automated AI trading bots.
+          </div>
         </footer>
       </div>
 

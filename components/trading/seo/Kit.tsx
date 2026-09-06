@@ -392,6 +392,13 @@ export function Disclaimer() {
           cannot afford to lose.
         </p>
         <p className="mt-2 text-[12.5px]" style={{ color: C.faint }}>
+          Also from the same team:{" "}
+          <a href="https://www.evietrader.site/" style={{ color: C.profitSoft }}>
+            Evie Trader
+          </a>{" "}
+          — free fully automated AI trading bots for MT5, MT4, Deriv, TradingView and Binance.
+        </p>
+        <p className="mt-2 text-[12.5px]" style={{ color: C.faint }}>
           © {new Date().getFullYear()} Clunoid Trading. All trademarks are the property of their respective owners.
         </p>
       </Wrap>
