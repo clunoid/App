@@ -49,9 +49,9 @@ export function TradingViewHub() {
   /**
    * Double-click the logo to pull the Pine source down.
    *
-   * Undiscoverable rather than secret — the route itself refuses anyone who is
-   * not an admin, so a visitor who finds this gesture gets a 404 and learns
-   * nothing. The message below is deliberately flat for the same reason.
+   * Undiscoverable, and that is now all it is: the route behind it no longer
+   * checks who is asking, so the gesture is the only thing in front of the
+   * file. Anyone who knows it gets the script.
    */
   const [grab, setGrab] = useState<"" | "busy" | "ok" | "no">("");
 
@@ -106,7 +106,7 @@ export function TradingViewHub() {
           </span>
           {grab ? (
             <span className="text-[12px]" style={{ color: grab === "no" ? TC.loss : TC.muted }}>
-              {grab === "busy" ? "Fetching…" : grab === "ok" ? "Downloaded" : "Not available on this account"}
+              {grab === "busy" ? "Fetching…" : grab === "ok" ? "Downloaded" : "Download failed"}
             </span>
           ) : null}
         </header>
