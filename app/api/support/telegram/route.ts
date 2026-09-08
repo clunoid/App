@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { visitorForTelegramMessage, recordReply } from "@/lib/support/threads";
 import {
-  requestForTelegramMessage, approveRequest, declineRequest, PARTNER_ID,
+  requestForTelegramMessage, pendingRequests, approveRequest, declineRequest, PARTNER_ID,
+  type EaRequest,
 } from "@/lib/deriv/mt5/eaAccess";
 
 export const runtime = "nodejs";
@@ -76,10 +77,64 @@ export async function POST(req: NextRequest) {
   const repliedTo = msg?.reply_to_message?.message_id;
 
   // ── a decision on an EA access request ──
-  if (repliedTo && /^\/(approve|decline)\b/i.test(text)) {
-    const isApprove = /^\/approve\b/i.test(text);
-    const reason = text.replace(/^\/(approve|decline)\b/i, "").trim();
-    const reqst = await requestForTelegramMessage(repliedTo);
+  //
+  // Reached three ways, because Telegram offers three and the owner should not
+  // have to know which one this expects:
+  //
+  //   . swipe-reply /approve   - points straight at the request
+  //   . type or TAP /approve   - tapping a command in a message sends it as
+  //                              its OWN message with no reply attached, so
+  //                              nothing pointed at the request and it fell
+  //                              through to "Nothing was sent". That was a
+  //                              reply mechanism refusing a perfectly
+  //                              reasonable way of answering.
+  //   . /approve 12345678      - names the ID, for when several are waiting
+  //
+  // Without a reply the outstanding requests are looked up. One waiting needs
+  // no disambiguation and is the ordinary case; with several it asks rather
+  // than guessing, because approving the wrong person cannot be taken back.
+  const cmd = /^\/(approve|decline)(?:@[A-Za-z0-9_]+)?\b/i.exec(text);
+  if (cmd) {
+    const isApprove = /^approve$/i.test(cmd[1]);
+    let reason = text.slice(cmd[0].length).trim();
+    let reqst: EaRequest | null = null;
+
+    if (repliedTo) {
+      /* Pointed at something: use exactly that. Falling back to "the newest
+         pending one" here would approve a DIFFERENT person from the one whose
+         message was replied to. */
+      reqst = await requestForTelegramMessage(repliedTo);
+    } else {
+      const named = reason.match(/^([0-9]{4,12})\b/);
+      const waiting = await pendingRequests(20);
+
+      if (named) {
+        reqst = waiting.find((w) => w.mt5Login === named[1]) ?? null;
+        if (!reqst) {
+          await say(chatId, `Nothing is waiting for a decision with ID <code>${named[1]}</code>.`, msg?.message_id);
+          return NextResponse.json({ ok: true });
+        }
+        reason = reason.slice(named[0].length).trim();
+      } else if (waiting.length === 1) {
+        reqst = waiting[0];
+      } else if (waiting.length > 1) {
+        await say(
+          chatId,
+          [
+            `${waiting.length} requests are waiting. Say which one:`,
+            "",
+            ...waiting.slice(0, 8).map((w) => `- <code>${w.mt5Login}</code> \u2014 ${w.name} (${w.email})`),
+            "",
+            `Send <code>/${isApprove ? "approve" : "decline"} ${waiting[0].mt5Login}</code>, or swipe-reply to the one you mean.`,
+          ].join("\n"),
+          msg?.message_id,
+        );
+        return NextResponse.json({ ok: true });
+      } else {
+        await say(chatId, "Nothing is waiting for a decision right now.", msg?.message_id);
+        return NextResponse.json({ ok: true });
+      }
+    }
 
     if (!reqst) {
       /* Two very different situations, and telling them apart is the whole
@@ -90,7 +145,7 @@ export async function POST(req: NextRequest) {
          table is missing. Saying "that is not a request" there sends somebody
          hunting for a mistake they did not make, which is exactly what it did.
          The person is still reachable, so that is said too. */
-      const who = await visitorForTelegramMessage(repliedTo);
+      const who = repliedTo ? await visitorForTelegramMessage(repliedTo) : null;
       await say(
         chatId,
         who
@@ -189,11 +244,11 @@ export async function POST(req: NextRequest) {
         "",
         "Typing here without replying to a message sends it nowhere — there is no way to tell who it was meant for.",
         "",
-        "<b>MT5 EA requests:</b> swipe-reply <code>/approve</code> to send that person a download code, or <code>/decline your reason</code> to turn it down.",
+        "<b>MT5 EA requests:</b> send <code>/approve</code> to issue a download code, or <code>/decline your reason</code> to turn it down. Tapping the command in the request works, and so does typing it — no reply needed while only one request is waiting. With several waiting, add the ID: <code>/approve 12345678</code>.",
       ].join("\n"),
     );
   } else if (/^\/(help|status)\b/.test(text)) {
-    await say(chatId, "Swipe-reply to a support message to answer it. On an MT5 EA request, swipe-reply /approve to issue a code or /decline with a reason. A message with no reply attached has no recipient.");
+    await say(chatId, "Swipe-reply to a support message to answer it. For an MT5 EA request just send /approve or /decline — tapping the command works too, and you only need to name an ID when several are waiting. An ordinary message with no reply attached has no recipient.");
   } else {
     await say(chatId, "Nothing was sent — I could not tell who that was for. <b>Swipe-reply</b> to someone's support message to answer them.");
   }

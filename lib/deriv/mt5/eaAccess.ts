@@ -225,6 +225,41 @@ export async function checkCode(code: string, visitorId: string): Promise<CodeCh
   return { ok: true, name: (row.name as string) ?? "" };
 }
 
+/**
+ * Everything still waiting for a decision, newest first.
+ *
+ * Needed because a swipe-reply is not the only way the owner answers. Tapping
+ * the /approve shown in the request sends it as its OWN message with no reply
+ * attached — Telegram works that way — so there is nothing pointing at the
+ * request and the reply had nowhere to land. With one request outstanding
+ * there is no ambiguity to resolve, and that is the ordinary case.
+ */
+export async function pendingRequests(limit = 20): Promise<EaRequest[]> {
+  const db = getSupabaseAdmin();
+  if (!db) return [];
+
+  const { data, error } = await db
+    .from(TABLE)
+    .select("id, visitor_id, mt5_login, name, email, status, code")
+    .eq("status", "pending")
+    .order("created_at", { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    console.error("[ea] pending lookup failed:", error.message);
+    return [];
+  }
+  return (data ?? []).map((d) => ({
+    id: d.id as string,
+    visitorId: d.visitor_id as string,
+    mt5Login: d.mt5_login as string,
+    name: d.name as string,
+    email: d.email as string,
+    status: d.status as EaRequest["status"],
+    code: (d.code as string) ?? null,
+  }));
+}
+
 /** How many times this browser has asked recently — a spam brake, not a rule. */
 export async function recentRequestCount(visitorId: string, withinMinutes = 60): Promise<number> {
   const db = getSupabaseAdmin();
