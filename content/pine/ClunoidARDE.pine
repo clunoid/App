@@ -970,6 +970,8 @@ clShowPanel = input.bool(true, 'Trend and status panel',       group = CL_VIEW)
 clKeep      = input.int(6, 'Keep last N signals drawn', minval = 1, maxval = 30, group = CL_VIEW)
 clAlertOn   = input.bool(true, 'Send an alert on entry', group = CL_VIEW,
      tooltip = 'One JSON object per signal, for a webhook. Create the alert on "Any alert() function call".')
+clAlertEnd  = input.bool(true, 'Send an alert on TP1 and on close', group = CL_VIEW,
+     tooltip = 'A signal nobody hears the end of is worse than no signal: a follower has no way to know the stop moved to entry, or that the trade is over. Same alert, same webhook — the payload carries an event field.')
 
 CL_LONG     = #00c853
 CL_SHORT    = #ff3d71
@@ -1018,6 +1020,13 @@ clBearOk  = clScore <= -clBiasMin and clTopOk_S
 
 // The range used for premium and discount is measured here rather than taken
 // from the zones above, so the filter works whether or not those are switched on.
+// The number of decimals this symbol quotes to, read from a formatted price
+// rather than guessed from the market. It travels with the payload so the
+// message shows 1.08421 rather than 1.08.
+clPxTxt   = str.tostring(close, format.mintick)
+clDotAt   = str.pos(clPxTxt, '.')
+clDigits  = na(clDotAt) ? 0 : str.length(clPxTxt) - clDotAt - 1
+
 clAtr     = ta.atr(14)
 clRangeHi = ta.highest(high, clRangeLen)
 clRangeLo = ta.lowest(low, clRangeLen)
@@ -1075,6 +1084,7 @@ var float clRr2    = na
 var bool  clHalf   = false
 var int   clBarIn  = 0
 var int   clKind   = 0
+var int   clOpened = 0          // entry time — the ticket, and unique per symbol
 var line  clSlLine = na
 
 var int   clTrades = 0
@@ -1086,7 +1096,9 @@ var array<label> clLabs  = array.new<label>()
 var array<box>   clBoxes = array.new<box>()
 
 clJustClosed = false
+clTp1Just    = false
 clClosedR    = 0.0
+clClosedPx   = 0.0
 clClosedWhy  = ''
 clClosedBars = 0
 clClosedDir  = 0
@@ -1100,14 +1112,16 @@ if clIn
             clJustClosed := true
             clClosedR    := clHalf ? 0.5 * clRr1 : -1.0
             clClosedWhy  := clHalf ? 'breakeven after TP1' : 'stop'
+            clClosedPx   := clSl
             clClosedBars := bar_index - clBarIn
             clClosedDir  := clDir
             clClosedKind := clKind
             clIn         := false
         else
             if not clHalf and high >= clTp1
-                clHalf := true
-                clSl   := clEntry
+                clHalf    := true
+                clTp1Just := true
+                clSl      := clEntry
                 if not na(clSlLine)
                     clSlLine.set_y1(clEntry)
                     clSlLine.set_y2(clEntry)
@@ -1116,6 +1130,7 @@ if clIn
                 clJustClosed := true
                 clClosedR    := 0.5 * clRr1 + 0.5 * clRr2
                 clClosedWhy  := 'both targets'
+                clClosedPx   := clTp2
                 clClosedBars := bar_index - clBarIn
                 clClosedDir  := clDir
                 clClosedKind := clKind
@@ -1125,14 +1140,16 @@ if clIn
             clJustClosed := true
             clClosedR    := clHalf ? 0.5 * clRr1 : -1.0
             clClosedWhy  := clHalf ? 'breakeven after TP1' : 'stop'
+            clClosedPx   := clSl
             clClosedBars := bar_index - clBarIn
             clClosedDir  := clDir
             clClosedKind := clKind
             clIn         := false
         else
             if not clHalf and low <= clTp1
-                clHalf := true
-                clSl   := clEntry
+                clHalf    := true
+                clTp1Just := true
+                clSl      := clEntry
                 if not na(clSlLine)
                     clSlLine.set_y1(clEntry)
                     clSlLine.set_y2(clEntry)
@@ -1141,6 +1158,7 @@ if clIn
                 clJustClosed := true
                 clClosedR    := 0.5 * clRr1 + 0.5 * clRr2
                 clClosedWhy  := 'both targets'
+                clClosedPx   := clTp2
                 clClosedBars := bar_index - clBarIn
                 clClosedDir  := clDir
                 clClosedKind := clKind
@@ -1151,6 +1169,43 @@ if clJustClosed
     clSumR   := clSumR + clClosedR
     if clClosedR > 0
         clWins := clWins + 1
+
+// ── telling people how it ended ───────────────────────────────────────────
+//
+// A signal nobody hears the end of is worse than no signal: somebody following
+// it has no way to know the stop moved to entry, or that the trade is over.
+//
+// These sit BEFORE the entry section deliberately. A bar that closes one trade
+// can open the next, and from that point clEntry and the rest describe the NEW
+// trade — so anything reported after it would name the wrong prices.
+
+clTicket = syminfo.ticker + '-' + str.tostring(clOpened)
+
+if clOn and clAlertEnd and clTp1Just
+    alert('{"source":"clunoid-smc","v":2,"event":"tp1"' +
+         ',"ticket":"' + clTicket + '"' +
+         ',"symbol":"' + syminfo.ticker + '"' +
+         ',"side":"'   + (clDir == 1 ? 'buy' : 'sell') + '"' +
+         ',"entry":'   + str.tostring(clEntry, format.mintick) +
+         ',"price":'   + str.tostring(clTp1, format.mintick) +
+         ',"r":'       + str.tostring(0.5 * clRr1, '#.##') +
+         ',"why":"half off, stop to entry"' +
+         ',"digits":'  + str.tostring(clDigits) +
+         ',"bar":'     + str.tostring(time) +
+         '}', alert.freq_once_per_bar_close)
+
+if clOn and clAlertEnd and clJustClosed
+    alert('{"source":"clunoid-smc","v":2,"event":"closed"' +
+         ',"ticket":"' + clTicket + '"' +
+         ',"symbol":"' + syminfo.ticker + '"' +
+         ',"side":"'   + (clClosedDir == 1 ? 'buy' : 'sell') + '"' +
+         ',"entry":'   + str.tostring(clEntry, format.mintick) +
+         ',"price":'   + str.tostring(clClosedPx, format.mintick) +
+         ',"r":'       + str.tostring(clClosedR, '#.##') +
+         ',"why":"'    + clClosedWhy + '"' +
+         ',"digits":'  + str.tostring(clDigits) +
+         ',"bar":'     + str.tostring(time) +
+         '}', alert.freq_once_per_bar_close)
 
 // ── entry ─────────────────────────────────────────────────────────────────
 
@@ -1204,6 +1259,7 @@ if clFireL or clFireS
     clRr2    := math.abs(clNewTp2 - clNewEntry) / clRisk
     clHalf   := false
     clBarIn  := bar_index
+    clOpened := time
     clKind   := clFireL ? clPlKind : clPsKind
     if clFireL
         clPlLive := false
@@ -1322,7 +1378,8 @@ if barstate.islast and clShowPanel and clOn
 
 if clOn and clAlertOn and (clFireL or clFireS)
     string clSide = clFireL ? 'buy' : 'sell'
-    string clJson = '{"source":"clunoid-smc","v":1' +
+    string clJson = '{"source":"clunoid-smc","v":2,"event":"entry"' +
+         ',"ticket":"'     + syminfo.ticker + '-' + str.tostring(clOpened) + '"' +
          ',"symbol":"'     + syminfo.ticker + '"' +
          ',"exchange":"'   + syminfo.prefix + '"' +
          ',"timeframe":"'  + timeframe.period + '"' +
@@ -1334,6 +1391,7 @@ if clOn and clAlertOn and (clFireL or clFireS)
          ',"rr1":'         + str.tostring(clRr1, '#.##') +
          ',"rr2":'         + str.tostring(clRr2, '#.##') +
          ',"trendScore":'  + str.tostring(clScore) +
+         ',"digits":'      + str.tostring(clDigits) +
          ',"bias":['       + str.tostring(nz(clB1)) + ',' + str.tostring(nz(clB2)) + ',' + str.tostring(nz(clB3)) + ',' + str.tostring(nz(clB4)) + ',' + str.tostring(nz(clB5)) + ']' +
          ',"bar":'         + str.tostring(time) +
          '}'
