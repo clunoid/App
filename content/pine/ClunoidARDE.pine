@@ -2,99 +2,160 @@
 // © Clunoid Trading — https://www.clunoid.com/trading/tradingview
 //
 // ═══════════════════════════════════════════════════════════════════════════
-//  CLUNOID ARDE — Adaptive Regime Dual-Engine · Forex Majors · 15m
+//  CLUNOID ARDE — Adaptive Regime Dual-Engine · Forex majors · intraday
 // ═══════════════════════════════════════════════════════════════════════════
 //
-//  This is not a new strategy invented for TradingView. It is a port of the
-//  engine Clunoid already runs on Deriv MT5 (lib/deriv/mt5/strategy.ts and
-//  ClunoidForexMT5.mq5), so a signal on this chart is the same signal the
-//  bots take. The pair basket below is the one that survived three years of
-//  backtesting — the expensive minors were dropped because the spread tax
-//  alone sank them under every configuration tried.
+//  This is a port of the engine Clunoid runs on Deriv MT5
+//  (lib/deriv/mt5/strategy.ts and ClunoidForexMT5.mq5), so a signal here is
+//  the same signal the bots take.
+//
+//  WHAT IT PUTS ON THE CHART
+//  ─────────────────────────
+//    · BUY / SELL markers at the bar that triggered them.
+//    · The entry, the stop that invalidates the trade, and two targets —
+//      drawn as lines and shaded so the risk and the reward are visible as
+//      areas rather than numbers to work out.
+//    · An EMA ribbon coloured by the trend, and a regime background.
+//    · A multi-timeframe panel: the trend on each timeframe a day trader
+//      actually watches, and whether they agree.
+//    · A month-by-month backtest table, and a summary of the whole run.
 //
 //  HOW IT DECIDES
 //  ──────────────
 //  A regime classifier routes every bar to one of three states, and the
-//  in-between state is the important one: it trades nothing. Standing aside
-//  when the market has not made up its mind is what removes most whipsaw.
+//  in-between state is the important one: it trades nothing.
 //
 //    TREND         EMA 8/21/55 stacked, ADX ≥ gate, Choppiness < 38.2
 //                  → Donchian(20) breakout, or a pullback to the Keltner
 //                    mid that then re-breaks Donchian(10).
-//                  → Stop at N×ATR. Target at minRR × that distance.
+//                  → Stop at N×ATR. Targets at minRR and minRR+1.
 //
 //    RANGE         ADX < 20 and Choppiness > 61.8
 //                  → Fade a z-score(20) extreme confirmed by RSI.
-//                  → Stop beyond the z≈±3 level, floored at 0.6×ATR so it
-//                    never collapses to a noise-width stop.
-//                  → Target the Bollinger mid — the mean it is reverting to.
+//                  → Stop beyond the z≈±3 level, floored at 0.6×ATR.
+//                  → First target the Bollinger mid — the mean it reverts to.
 //
 //    TRANSITIONAL  Anything else. No new entries (Aggressive may take
-//                  trend-direction trades at half size).
+//                  trend-direction trades).
 //
-//  WHY IT DOES NOT REPAINT
-//  ───────────────────────
-//  Every calculation reads closed-bar values, entries are evaluated on bar
-//  close, and alerts fire on barstate.isconfirmed. Nothing uses
-//  request.security(), so there is no higher-timeframe lookahead to leak.
-//  What you see on history is what you would have seen live. Most public
-//  scripts showing spectacular results fail exactly this test.
+//  Every entry must also agree with the higher timeframes: the EMA stack is
+//  read on each timeframe in the panel and the scores summed, and a trade is
+//  only taken when enough of them lean the same way.
+//
+//  LEARNING WHAT WORKS ON THIS MARKET
+//  ──────────────────────────────────
+//  The two engines are scored separately, on this symbol, from this chart's
+//  own closed trades. Until an engine has a minimum sample it takes every
+//  setup it finds — so nothing good is missed while it is learning. After
+//  that, an engine whose realised expectancy on this market is negative stops
+//  being allowed to trade it, and the summary says so. That is the whole of
+//  the adaptation: no optimiser, just this market's own record.
+//
+//  It is worth being plain about the limit of that. It is in-sample by
+//  construction — the trades it learns from are the same trades the backtest
+//  is made of — so the table's later months flatter the result somewhat.
+//
+//  WHAT REPAINTS, AND WHAT DOES NOT
+//  ────────────────────────────────
+//  Chart-timeframe calculations read closed-bar values and orders are
+//  processed on bar close. The higher-timeframe reads use the pattern
+//  TradingView's own documentation recommends — lookahead_on against an
+//  expression already offset by one bar — so a higher-timeframe value only
+//  becomes visible after that bar has closed, and history and realtime agree.
+//
+//  ABOUT THE FIVE YEARS
+//  ────────────────────
+//  The table shows five years of months, but a chart only backtests the bars
+//  TradingView loads, and on an intraday timeframe that is nowhere near five
+//  years on most plans — five years of 15m is well over a hundred thousand
+//  bars. Months with no data are left blank rather than filled with zeros,
+//  and the summary states the first date actually covered, so the table can
+//  never imply history that was not tested. For a real five-year intraday run
+//  you need Deep Backtesting, which is a paid-plan feature; otherwise run it
+//  on a higher timeframe, where the same number of bars reaches further back.
 //
 //  READ THIS BEFORE TRADING IT
 //  ───────────────────────────
-//  A backtest is a hypothesis, not a promise. Defaults here include realistic
-//  commission and slippage because a tester run without them is fiction.
-//  Optimising the inputs until the curve looks beautiful is called
-//  overfitting, and it is the most reliable way to lose money slowly. If you
-//  change the parameters, verify on a date range you did not tune on.
+//  A backtest is a hypothesis, not a promise. Defaults include commission and
+//  slippage because a tester run without them is fiction. Optimising the
+//  inputs until the curve looks beautiful is called overfitting, and it is
+//  the most reliable way to lose money slowly.
 //
 //  Trading carries risk and you can lose money. Nothing here is advice.
 //
 // ═══════════════════════════════════════════════════════════════════════════
 
 //@version=6
-strategy("Clunoid ARDE — Forex 15m",
-     shorttitle       = "ARDE",
-     overlay          = true,
-     initial_capital  = 1000,
-     default_qty_type = strategy.percent_of_equity,
-     default_qty_value= 100,
-     commission_type  = strategy.commission.percent,
-     commission_value = 0.002,
-     slippage         = 2,
-     pyramiding       = 0,
-     calc_on_every_tick = false,
+strategy("Clunoid ARDE — Adaptive Regime Dual-Engine",
+     shorttitle              = "ARDE",
+     overlay                 = true,
+     initial_capital         = 10000,
+     default_qty_type        = strategy.percent_of_equity,
+     default_qty_value       = 5,
+     commission_type         = strategy.commission.percent,
+     commission_value        = 0.002,
+     slippage                = 2,
+     pyramiding              = 0,
+     calc_on_every_tick      = false,
      process_orders_on_close = true,
-     margin_long      = 0,
-     margin_short     = 0)
+     margin_long             = 0,
+     margin_short            = 0,
+     max_lines_count         = 500,
+     max_labels_count        = 500,
+     max_boxes_count         = 500)
 
 // ── inputs ────────────────────────────────────────────────────────────────
 
 grpP = "Risk profile"
 profileIn = input.string("Moderate", "Profile", options = ["Conservative", "Moderate", "Aggressive"], group = grpP,
-     tooltip = "Conservative: ADX gate 30, RR 2.0, widest stops, fewest trades.\nModerate: gate 25, RR 1.75.\nAggressive: gate 21, RR 1.2, also trades the transitional regime at half size.")
+     tooltip = "Conservative: ADX gate 30, RR 2.0, widest stops, fewest trades.\nModerate: gate 25, RR 1.75.\nAggressive: gate 21, RR 1.2, also trades the transitional regime.")
+riskIn = input.float(0.75, "Risk per trade (% of equity)", minval = 0.05, maxval = 5.0, step = 0.05, group = grpP,
+     tooltip = "Position size is derived from this and the stop distance, so every trade risks the same share of the account whatever the volatility.")
 
 grpF = "Filters"
-useSession  = input.bool(true,  "Trade session only",  group = grpF)
-sessionIn   = input.session("0700-1900", "Session (exchange time)", group = grpF,
+useSession   = input.bool(true, "Trade session only", group = grpF)
+sessionIn    = input.session("0700-1900", "Session (exchange time)", group = grpF,
      tooltip = "Forex majors are worth trading when London and New York are awake. Outside those hours the spread is a larger share of a normal stop.")
-maxPerDay   = input.int(4, "Max entries per day", minval = 1, maxval = 20, group = grpF,
-     tooltip = "A day-trading cap. Without it a choppy session can produce a dozen marginal trades.")
-spreadPips  = input.float(0.0, "Typical spread (pips, 0 = auto)", minval = 0, step = 0.1, group = grpF,
-     tooltip = "Left at 0 the script uses a per-pair estimate calibrated from live Deriv bid/ask sampling. A signal is rejected when the spread is too large a share of its stop.")
-maxSpreadPct= input.float(8.0, "Reject if spread > % of stop", minval = 1, maxval = 40, group = grpF)
+maxPerDay    = input.int(4, "Max entries per day", minval = 1, maxval = 20, group = grpF)
+spreadPips   = input.float(0.0, "Typical spread (pips, 0 = auto)", minval = 0, step = 0.1, group = grpF,
+     tooltip = "Left at 0 the script uses a per-pair estimate calibrated from live Deriv bid/ask sampling.")
+maxSpreadPct = input.float(8.0, "Reject if spread > % of stop", minval = 1, maxval = 40, group = grpF)
+
+grpM = "Multi-timeframe trend"
+useMtf   = input.bool(true, "Require higher timeframes to agree", group = grpM)
+alignMin = input.int(3, "Minimum agreement score (of 5)", minval = 1, maxval = 5, group = grpM,
+     tooltip = "Each timeframe scores +1 for a rising EMA stack, -1 for a falling one, 0 for neither. A long needs the total at or above this; a short at or below its negative.")
+tfA = input.timeframe("5",   "Timeframe 1", group = grpM)
+tfB = input.timeframe("15",  "Timeframe 2", group = grpM)
+tfC = input.timeframe("60",  "Timeframe 3", group = grpM)
+tfD = input.timeframe("240", "Timeframe 4", group = grpM)
+tfE = input.timeframe("D",   "Timeframe 5", group = grpM)
+
+grpL = "Learning"
+useLearn  = input.bool(true, "Stop trading an engine this market rejects", group = grpL)
+minSample = input.int(20, "Trades before judging an engine", minval = 5, maxval = 200, group = grpL,
+     tooltip = "Below this the engine takes every setup, so a good one is never missed while the sample is too small to mean anything.")
+probeBars = input.int(2000, "Bars before re-testing a rejected engine", minval = 100, maxval = 20000, group = grpL,
+     tooltip = "A rejected engine is not switched off forever. Every so often it is allowed one trade, so a market that changes character can win it back. Without this, one bad early sample would lock an engine out permanently.")
 
 grpV = "On the chart"
-showZones   = input.bool(true, "Shade risk and reward", group = grpV)
-showLevels  = input.bool(true, "Draw entry / stop / target", group = grpV)
-showLabels  = input.bool(true, "Label each signal",    group = grpV)
-showRegime  = input.bool(true, "Regime background",    group = grpV)
-keepLast    = input.int(6, "Keep last N drawings", minval = 1, maxval = 40, group = grpV)
+showLevels = input.bool(true, "Draw entry / stop / targets", group = grpV)
+showZones  = input.bool(true, "Shade risk and reward",       group = grpV)
+showLabels = input.bool(true, "Label each signal",           group = grpV)
+showMarks  = input.bool(true, "BUY / SELL markers",          group = grpV)
+showRibbon = input.bool(true, "EMA ribbon",                  group = grpV)
+showRegime = input.bool(true, "Regime background",           group = grpV)
+keepLast   = input.int(6, "Keep last N drawings", minval = 1, maxval = 40, group = grpV)
+
+grpT = "Tables"
+showTfTab  = input.bool(true, "Multi-timeframe panel",  group = grpT)
+showMonTab = input.bool(true, "Monthly backtest table", group = grpT)
+showSumTab = input.bool(true, "Summary table",          group = grpT)
+yearsBack  = input.int(5, "Years of months to show", minval = 1, maxval = 12, group = grpT)
 
 grpA = "Alerts"
-alertsOn    = input.bool(true, "Send alerts", group = grpA)
-channelTag  = input.string("", "Channel tag", group = grpA,
-     tooltip = "Optional label carried in the alert payload — useful when several charts feed one webhook.")
+alertsOn   = input.bool(true, "Send alerts", group = grpA)
+channelTag = input.string("", "Channel tag", group = grpA)
 
 // ── profile parameters (mirrors lib/deriv/mt5/profiles.ts) ─────────────────
 
@@ -104,8 +165,8 @@ isMod  = profileIn == "Moderate"
 adxGate     = isCons ? 30.0 : isMod ? 25.0 : 21.0
 atrTrailMlt = isCons ? 3.0  : isMod ? 2.5  : 2.0
 minRR       = isCons ? 2.0  : isMod ? 1.75 : 1.2
-tradeTrans  = not isCons and not isMod          // Aggressive only
-riskPct     = isCons ? 0.4  : isMod ? 0.75 : 1.5
+tradeTrans  = not isCons and not isMod
+riskPct     = riskIn
 
 CHOP_TREND = 38.2
 CHOP_RANGE = 61.8
@@ -140,31 +201,63 @@ pipSize   = syminfo.mintick * 10
 spreadUse = spreadPips > 0 ? spreadPips : pairSpread()
 spreadAbs = spreadUse * pipSize
 
-// ── indicators ────────────────────────────────────────────────────────────
+// ── indicators, this timeframe ────────────────────────────────────────────
 
 e8  = ta.ema(close, 8)
 e21 = ta.ema(close, 21)
 e55 = ta.ema(close, 55)
 
 atr14 = ta.atr(14)
+
 // ta.dmi returns three values and Pine has no way to skip one, so the two
-// directional indices are named even though only ADX is read below.
+// directional indices are named even though only ADX is read.
 [diPlus, diMinus, adx14] = ta.dmi(14, 14)
 
-// Choppiness Index — Pine has no built-in, so compute it directly.
-chopLen = 14
-chop = 100 * math.log10(math.sum(ta.tr(true), chopLen) / (ta.highest(high, chopLen) - ta.lowest(low, chopLen))) / math.log10(chopLen)
+// Choppiness Index — Pine has no built-in, so compute it directly. The range
+// is guarded: a flat window would divide by zero and poison every downstream
+// regime test with na.
+chopLen   = 14
+chopRange = ta.highest(high, chopLen) - ta.lowest(low, chopLen)
+chop      = chopRange > 0 ? 100 * math.log10(math.sum(ta.tr(true), chopLen) / chopRange) / math.log10(chopLen) : 50.0
 
 dcHi = ta.highest(high, 20)
 dcLo = ta.lowest(low, 20)
 mcHi = ta.highest(high, 10)
 mcLo = ta.lowest(low, 10)
 
-kcMid = ta.ema(close, 20)
-bbMid = ta.sma(close, 20)
-bbDev = ta.stdev(close, 20)
+kcMid  = ta.ema(close, 20)
+bbMid  = ta.sma(close, 20)
+bbDev  = ta.stdev(close, 20)
 zScore = bbDev > 0 ? (close - bbMid) / bbDev : 0.0
-rsi14 = ta.rsi(close, 14)
+rsi14  = ta.rsi(close, 14)
+
+// ── the trend on every timeframe a day trader watches ─────────────────────
+//
+// The expression is built from close[1], so what comes back is the value of
+// the last CLOSED higher-timeframe bar. Paired with lookahead_on that is the
+// pattern TradingView's documentation recommends: no future data on history,
+// and the same series in realtime as the one the backtest saw.
+
+tfScore() =>
+    float f = ta.ema(close[1], 8)
+    float m = ta.ema(close[1], 21)
+    float s = ta.ema(close[1], 55)
+    int v = 0
+    if f > m and m > s
+        v := 1
+    else if f < m and m < s
+        v := -1
+    v
+
+sA = request.security(syminfo.tickerid, tfA, tfScore(), lookahead = barmerge.lookahead_on)
+sB = request.security(syminfo.tickerid, tfB, tfScore(), lookahead = barmerge.lookahead_on)
+sC = request.security(syminfo.tickerid, tfC, tfScore(), lookahead = barmerge.lookahead_on)
+sD = request.security(syminfo.tickerid, tfD, tfScore(), lookahead = barmerge.lookahead_on)
+sE = request.security(syminfo.tickerid, tfE, tfScore(), lookahead = barmerge.lookahead_on)
+
+mtfScore   = nz(sA) + nz(sB) + nz(sC) + nz(sD) + nz(sE)
+mtfLongOk  = not useMtf or mtfScore >= alignMin
+mtfShortOk = not useMtf or mtfScore <= -alignMin
 
 // ── regime ────────────────────────────────────────────────────────────────
 
@@ -188,157 +281,322 @@ if ta.change(time("D")) != 0
     dayCount := 0
 underDayCap = dayCount < maxPerDay
 
-flat = strategy.position_size == 0
+flat     = strategy.position_size == 0
 canEnter = warmedUp and inSession and underDayCap and flat and barstate.isconfirmed
 
-// ── TREND engine ──────────────────────────────────────────────────────────
-// Breakout of the 20-bar channel in the stack direction, or a pullback to the
-// Keltner mid that then re-breaks the 10-bar channel.
+// ── what this market has made of each engine ──────────────────────────────
+//
+// Read from this chart's own closed trades, incrementally: each trade is
+// counted once, on the bar it closes. The entry id says which engine opened
+// it, so the two are scored apart.
 
-trendSetup(bool isLong) =>
-    float stopD = atrTrailMlt * atr14
-    bool brokeOut = isLong ? close >= dcHi : close <= dcLo
-    bool pulled   = isLong ? close <= kcMid * 1.001 : close >= kcMid * 0.999
-    bool micro    = isLong ? close >= mcHi : close <= mcLo
-    bool trigger  = brokeOut or (pulled and micro)
-    float sl = isLong ? close - stopD : close + stopD
-    float tp = isLong ? close + minRR * stopD : close - minRR * stopD
-    [trigger and stopD > 0, sl, tp, stopD, brokeOut]
+var int   seenTrades = 0
+var int   nTrend = 0
+var int   wTrend = 0
+var float pTrend = 0.0
+var int   nRange = 0
+var int   wRange = 0
+var float pRange = 0.0
 
-// ── RANGE engine ──────────────────────────────────────────────────────────
-// Fade a stretched z-score confirmed by RSI, targeting the mean. Skip when
-// price is so stretched (|z| ≥ 3) that fading it is catching a falling knife.
+if strategy.closedtrades > seenTrades
+    for i = seenTrades to strategy.closedtrades - 1
+        string eid = strategy.closedtrades.entry_id(i)
+        float  pf  = strategy.closedtrades.profit(i)
+        if eid == "T-L" or eid == "T-S"
+            nTrend := nTrend + 1
+            pTrend := pTrend + pf
+            if pf > 0
+                wTrend := wTrend + 1
+        else
+            nRange := nRange + 1
+            pRange := pRange + pf
+            if pf > 0
+                wRange := wRange + 1
+    seenTrades := strategy.closedtrades
 
-rangeSetup() =>
-    bool  wantLong  = zScore <= -2 and rsi14 <= 30
-    bool  wantShort = zScore >=  2 and rsi14 >= 70
-    bool  tooFar    = math.abs(zScore) >= 3
-    bool  isLong    = wantLong
-    float sd        = math.abs(zScore) > 0 ? math.abs(close - bbMid) / math.abs(zScore) : atr14
-    float stopD     = math.max(0.6 * atr14, (3 - math.abs(zScore)) * sd)
-    float sl        = isLong ? close - stopD : close + stopD
-    float tp        = bbMid
-    float rr        = stopD > 0 ? math.abs(tp - close) / stopD : 0
-    [(wantLong or wantShort) and not tooFar and rr >= 1.0, isLong, sl, tp, stopD]
+// Below the sample size every setup is taken — that is the point of the
+// threshold. Above it, an engine this market has rejected stops trading.
+trendJudged = useLearn and nTrend >= minSample and pTrend <= 0
+rangeJudged = useLearn and nRange >= minSample and pRange <= 0
 
-// ── evaluate ──────────────────────────────────────────────────────────────
+// A rejected engine is not off forever, and this matters: it stops trading
+// precisely because it takes no more trades, so its own record can never
+// improve and the first bad sample would be its last word. Every probeBars it
+// gets one trade back. A market that has changed character can win its way in
+// again; one that has not simply loses the occasional probe.
+var int lastProbeT = -1000000
+var int lastProbeR = -1000000
+trendAllowed = not trendJudged or bar_index - lastProbeT >= probeBars
+rangeAllowed = not rangeJudged or bar_index - lastProbeR >= probeBars
 
-var float pendEntry = na
-var float pendSL    = na
-var float pendTP    = na
-var string pendWhy  = ""
-var int   pendConf  = 0
+// ── the two engines ───────────────────────────────────────────────────────
+//
+// Both are evaluated on every bar at global scope, so nothing depends on the
+// order of a conditional block and every intermediate value stays plottable.
 
-bool  goLong  = false
-bool  goShort = false
-float useSL   = na
-float useTP   = na
-float useStop = na
-string why    = ""
-int   conf    = 0
+// TREND: breakout of the 20-bar channel in the stack direction, or a pullback
+// to the Keltner mid that then re-breaks the 10-bar channel.
+tStop     = atrTrailMlt * atr14
+tBrokeUp  = close >= dcHi
+tBrokeDn  = close <= dcLo
+tPullUp   = close <= kcMid * 1.001 and close >= mcHi
+tPullDn   = close >= kcMid * 0.999 and close <= mcLo
+tLongSig  = isTrendUp   and (tBrokeUp or tPullUp) and tStop > 0
+tShortSig = isTrendDown and (tBrokeDn or tPullDn) and tStop > 0
 
-if canEnter
-    if isTrendUp or isTrendDown
-        bool isLong = isTrendUp
-        [ok, sl, tp, stopD, brokeOut] = trendSetup(isLong)
-        if ok
-            goLong  := isLong
-            goShort := not isLong
-            useSL   := sl
-            useTP   := tp
-            useStop := stopD
-            why     := "Trend " + (isLong ? "up" : "down") + " · ADX " + str.tostring(adx14, "#") + " · " + (brokeOut ? "channel breakout" : "pullback continuation")
-            conf    := math.round(math.min(95, 58 + math.min(1, math.max(0, (adx14 - adxGate) / 25)) * 34))
-    else if isRange
-        [ok, isLong, sl, tp, stopD] = rangeSetup()
-        if ok
-            goLong  := isLong
-            goShort := not isLong
-            useSL   := sl
-            useTP   := tp
-            useStop := stopD
-            why     := "Range fade · z " + str.tostring(zScore, "#.#") + " · RSI " + str.tostring(rsi14, "#")
-            conf    := math.round(math.min(88, 52 + (math.abs(zScore) - 2) * 20))
-    else if isTrans and tradeTrans and (stackUp or stackDown)
-        bool isLong = stackUp
-        [ok, sl, tp, stopD, brokeOut] = trendSetup(isLong)
-        if ok
-            goLong  := isLong
-            goShort := not isLong
-            useSL   := sl
-            useTP   := tp
-            useStop := stopD
-            why     := "Transitional " + (isLong ? "up" : "down") + " (half size) · " + (brokeOut ? "channel breakout" : "pullback continuation")
-            conf    := 62
+// RANGE: fade a stretched z-score confirmed by RSI, targeting the mean. Skip
+// when price is so stretched (|z| ≥ 3) that fading it catches a falling knife.
+rTooFar   = math.abs(zScore) >= 3
+rSd       = math.abs(zScore) > 0 ? math.abs(close - bbMid) / math.abs(zScore) : atr14
+rStop     = math.max(0.6 * atr14, (3 - math.abs(zScore)) * rSd)
+rLongRaw  = zScore <= -2 and rsi14 <= 30
+rShortRaw = zScore >= 2 and rsi14 >= 70
+rRR       = rStop > 0 ? math.abs(bbMid - close) / rStop : 0.0
+rLongSig  = isRange and rLongRaw  and not rTooFar and rRR >= 1.0 and rStop > 0
+rShortSig = isRange and rShortRaw and not rTooFar and rRR >= 1.0 and rStop > 0
+
+// TRANSITIONAL: the trend engine's trigger, in the stack's direction only.
+xLongSig  = isTrans and tradeTrans and stackUp   and (tBrokeUp or tPullUp) and tStop > 0
+xShortSig = isTrans and tradeTrans and stackDown and (tBrokeDn or tPullDn) and tStop > 0
+
+useTrendLong  = (tLongSig or xLongSig) and trendAllowed
+useTrendShort = (tShortSig or xShortSig) and trendAllowed
+useRangeLong  = rLongSig and rangeAllowed
+useRangeShort = rShortSig and rangeAllowed
+
+// The trend engine has priority: when both fire, the market is not in the
+// regime the range engine is built for.
+engineIsTrend = useTrendLong or useTrendShort
+rawLong       = useTrendLong or (not engineIsTrend and useRangeLong)
+rawShort      = useTrendShort or (not engineIsTrend and useRangeShort)
+
+useStop = engineIsTrend ? tStop : rStop
+entryPx = close
+slPx    = rawLong ? entryPx - useStop : entryPx + useStop
+tp1Px   = engineIsTrend ? (rawLong ? entryPx + minRR * useStop : entryPx - minRR * useStop) : bbMid
+tp2Px   = rawLong ? entryPx + (minRR + 1) * useStop : entryPx - (minRR + 1) * useStop
 
 // Cost gate — a stop the spread eats is not an edge, it is a donation.
-spreadOk = not na(useStop) and useStop > 0 and (spreadAbs / useStop) * 100 <= maxSpreadPct
-if (goLong or goShort) and not spreadOk
-    goLong  := false
-    goShort := false
+spreadOk = useStop > 0 and (spreadAbs / useStop) * 100 <= maxSpreadPct
+
+goLong  = canEnter and rawLong  and spreadOk and mtfLongOk
+goShort = canEnter and rawShort and spreadOk and mtfShortOk
+
+engineTag = engineIsTrend ? (isTrans ? "transitional" : "trend") : "range"
+whyTxt = engineIsTrend ? "Trend " + (rawLong ? "up" : "down") + " · ADX " + str.tostring(adx14, "#") + " · MTF " + str.tostring(mtfScore) : "Range fade · z " + str.tostring(zScore, "#.#") + " · RSI " + str.tostring(rsi14, "#")
+confPct = engineIsTrend ? math.round(math.min(95, 58 + math.min(1, math.max(0, (adx14 - adxGate) / 25)) * 34)) : math.round(math.min(88, 52 + (math.abs(zScore) - 2) * 20))
+
+// ── size it by the risk, not by the balance ───────────────────────────────
+// Quantity is in units of the base currency, and one unit moves one unit of
+// the quote currency per 1.0 of price — so risk ÷ stop distance is the size
+// that puts exactly riskPct of equity behind the stop. TradingView converts
+// the result where the quote currency is not the account's.
+
+riskMoney = strategy.equity * riskPct / 100
+qtyRaw    = useStop > 0 ? riskMoney / useStop : 0.0
+qtyOk     = not na(qtyRaw) and qtyRaw > 0
 
 // ── execute ───────────────────────────────────────────────────────────────
 
-if goLong
-    strategy.entry("L", strategy.long, comment = "ARDE long")
-    strategy.exit("L x", from_entry = "L", stop = useSL, limit = useTP, comment_loss = "SL", comment_profit = "TP")
+// The id names the engine, because it is what the learning above reads back
+// out of the closed-trade list. Half the position leaves at the first target
+// and the remainder runs to the second; both carry the same stop, so the
+// trade is invalidated at one price however much of it is still open.
+
+if goLong and qtyOk
+    string eid = engineIsTrend ? "T-L" : "R-L"
+    if engineIsTrend and trendJudged
+        lastProbeT := bar_index
+    if not engineIsTrend and rangeJudged
+        lastProbeR := bar_index
+    strategy.entry(eid, strategy.long, qty = qtyRaw, comment = engineTag + " long")
+    strategy.exit("x1 " + eid, from_entry = eid, qty_percent = 50, stop = slPx, limit = tp1Px, comment_loss = "SL", comment_profit = "TP1")
+    strategy.exit("x2 " + eid, from_entry = eid, qty_percent = 100, stop = slPx, limit = tp2Px, comment_loss = "SL", comment_profit = "TP2")
     dayCount := dayCount + 1
 
-if goShort
-    strategy.entry("S", strategy.short, comment = "ARDE short")
-    strategy.exit("S x", from_entry = "S", stop = useSL, limit = useTP, comment_loss = "SL", comment_profit = "TP")
+if goShort and qtyOk
+    string eid = engineIsTrend ? "T-S" : "R-S"
+    if engineIsTrend and trendJudged
+        lastProbeT := bar_index
+    if not engineIsTrend and rangeJudged
+        lastProbeR := bar_index
+    strategy.entry(eid, strategy.short, qty = qtyRaw, comment = engineTag + " short")
+    strategy.exit("x1 " + eid, from_entry = eid, qty_percent = 50, stop = slPx, limit = tp1Px, comment_loss = "SL", comment_profit = "TP1")
+    strategy.exit("x2 " + eid, from_entry = eid, qty_percent = 100, stop = slPx, limit = tp2Px, comment_loss = "SL", comment_profit = "TP2")
     dayCount := dayCount + 1
 
 // ── draw it ───────────────────────────────────────────────────────────────
 
-C_LONG  = color.new(#26a69a, 0)
-C_SHORT = color.new(#ef5350, 0)
+C_LONG  = #26a69a
+C_SHORT = #ef5350
 C_RISK  = color.new(#ef5350, 88)
 C_REW   = color.new(#26a69a, 88)
-C_TEXT  = color.new(#eaf2fb, 0)
+C_TEXT  = #eaf2fb
 
 var array<line>  lines = array.new<line>()
 var array<box>   boxes = array.new<box>()
 var array<label> labs  = array.new<label>()
 
-prune(array<line> ls, array<box> bs, array<label> lb) =>
-    while array.size(ls) > keepLast * 3
-        line.delete(array.shift(ls))
-    while array.size(bs) > keepLast * 2
-        box.delete(array.shift(bs))
-    while array.size(lb) > keepLast
-        label.delete(array.shift(lb))
-
-if (goLong or goShort)
-    col = goLong ? C_LONG : C_SHORT
+if goLong or goShort
+    col       = goLong ? C_LONG : C_SHORT
     rightEdge = bar_index + 24
 
     if showLevels
-        array.push(lines, line.new(bar_index, close,  rightEdge, close,  color = col,     width = 2, style = line.style_solid))
-        array.push(lines, line.new(bar_index, useSL,  rightEdge, useSL,  color = C_SHORT, width = 1, style = line.style_dashed))
-        array.push(lines, line.new(bar_index, useTP,  rightEdge, useTP,  color = C_LONG,  width = 1, style = line.style_dashed))
+        array.push(lines, line.new(bar_index, entryPx, rightEdge, entryPx, color = col, width = 2))
+        array.push(lines, line.new(bar_index, slPx, rightEdge, slPx, color = C_SHORT, width = 1, style = line.style_dashed))
+        array.push(lines, line.new(bar_index, tp1Px, rightEdge, tp1Px, color = C_LONG, width = 1, style = line.style_dashed))
+        array.push(lines, line.new(bar_index, tp2Px, rightEdge, tp2Px, color = C_LONG, width = 1, style = line.style_dotted))
+        array.push(labs, label.new(rightEdge, slPx, "SL · invalidates", color = color.new(C_SHORT, 25), textcolor = C_TEXT, style = label.style_label_left, size = size.tiny))
+        array.push(labs, label.new(rightEdge, tp1Px, "TP1 · half off", color = color.new(C_LONG, 25), textcolor = C_TEXT, style = label.style_label_left, size = size.tiny))
+        array.push(labs, label.new(rightEdge, tp2Px, "TP2 · runner", color = color.new(C_LONG, 40), textcolor = C_TEXT, style = label.style_label_left, size = size.tiny))
 
     if showZones
-        array.push(boxes, box.new(bar_index, close, rightEdge, useSL, border_color = color.new(#ef5350, 60), bgcolor = C_RISK))
-        array.push(boxes, box.new(bar_index, close, rightEdge, useTP, border_color = color.new(#26a69a, 60), bgcolor = C_REW))
+        array.push(boxes, box.new(bar_index, entryPx, rightEdge, slPx, border_color = color.new(C_SHORT, 60), bgcolor = C_RISK))
+        array.push(boxes, box.new(bar_index, entryPx, rightEdge, tp2Px, border_color = color.new(C_LONG, 60), bgcolor = C_REW))
 
     if showLabels
-        rrTxt = str.tostring(math.abs(useTP - close) / math.max(useStop, syminfo.mintick), "#.##")
-        txt = (goLong ? "▲ LONG " : "▼ SHORT ") + syminfo.ticker + "\n" +
-              "Entry " + str.tostring(close, format.mintick) + "\n" +
-              "Stop  " + str.tostring(useSL, format.mintick) + "\n" +
-              "Target " + str.tostring(useTP, format.mintick) + "\n" +
-              "RR " + rrTxt + " · confidence " + str.tostring(conf) + "%"
-        array.push(labs, label.new(bar_index, goLong ? low : high,
-             text = txt, color = color.new(col, 12), textcolor = C_TEXT, size = size.small,
-             style = goLong ? label.style_label_up : label.style_label_down))
+        rrTxt = str.tostring(math.abs(tp1Px - entryPx) / math.max(useStop, syminfo.mintick), "#.##")
+        txt = (goLong ? "▲ BUY " : "▼ SELL ") + syminfo.ticker + "  (" + engineTag + ")\n" + "Entry  " + str.tostring(entryPx, format.mintick) + "\n" + "Stop   " + str.tostring(slPx, format.mintick) + "\n" + "TP1    " + str.tostring(tp1Px, format.mintick) + "\n" + "TP2    " + str.tostring(tp2Px, format.mintick) + "\n" + "RR " + rrTxt + " · MTF " + str.tostring(mtfScore) + " · conf " + str.tostring(confPct) + "%"
+        array.push(labs, label.new(bar_index, goLong ? low : high, text = txt, color = color.new(col, 12), textcolor = C_TEXT, size = size.small, style = goLong ? label.style_label_up : label.style_label_down))
 
-    prune(lines, boxes, labs)
+    while array.size(lines) > keepLast * 4
+        line.delete(array.shift(lines))
+    while array.size(boxes) > keepLast * 2
+        box.delete(array.shift(boxes))
+    while array.size(labs) > keepLast * 4
+        label.delete(array.shift(labs))
 
-bgcolor(showRegime ? (isTrendUp ? color.new(#26a69a, 94) : isTrendDown ? color.new(#ef5350, 94) : isRange ? color.new(#42a5f5, 95) : na) : na)
+plotshape(showMarks and goLong, title = "Buy", style = shape.triangleup, location = location.belowbar, color = C_LONG, size = size.small)
+plotshape(showMarks and goShort, title = "Sell", style = shape.triangledown, location = location.abovebar, color = C_SHORT, size = size.small)
 
-plot(e21, "EMA 21", color = color.new(#38bdf8, 45), linewidth = 1)
-plot(e55, "EMA 55", color = color.new(#93a7bd, 60), linewidth = 1)
+pFast = plot(showRibbon ? e8 : na, "EMA 8", color = color.new(#38bdf8, 55), linewidth = 1)
+pMid  = plot(showRibbon ? e21 : na, "EMA 21", color = color.new(#38bdf8, 35), linewidth = 1)
+plot(showRibbon ? e55 : na, "EMA 55", color = color.new(#93a7bd, 55), linewidth = 2)
+fill(pFast, pMid, color = stackUp ? color.new(C_LONG, 82) : stackDown ? color.new(C_SHORT, 82) : na, title = "Ribbon")
+
+bgcolor(showRegime ? (isTrendUp ? color.new(C_LONG, 94) : isTrendDown ? color.new(C_SHORT, 94) : isRange ? color.new(#42a5f5, 95) : na) : na, title = "Regime")
+
+// ── the backtest, month by month ──────────────────────────────────────────
+//
+// Return is measured from equity, not from summed trade profits, so an open
+// position is marked to market exactly as the tester marks it. The current
+// month's cell is rewritten on every bar, which means it is always current
+// and there is no month-boundary special case to get wrong.
+
+var int   baseYear   = 0
+var int   monthIdx   = -1
+var float monthStart = na
+var array<float> mRet   = array.new<float>(180, na)
+var array<int>   mCount = array.new<int>(180, 0)
+
+if baseYear == 0
+    baseYear := year
+
+isNewMonth = ta.change(time("M")) != 0
+if isNewMonth or na(monthStart)
+    monthStart := strategy.equity
+    monthIdx   := (year - baseYear) * 12 + month - 1
+
+inRange = monthIdx >= 0 and monthIdx < array.size(mRet)
+if inRange and monthStart > 0
+    array.set(mRet, monthIdx, (strategy.equity / monthStart - 1) * 100)
+if inRange and (goLong or goShort)
+    array.set(mCount, monthIdx, array.get(mCount, monthIdx) + 1)
+
+// Peak-to-trough on the equity curve, which is the drawdown a person actually
+// lives through — not the closed-trade drawdown, which is always kinder.
+var float peakEq = na
+peakEq := na(peakEq) ? strategy.equity : math.max(peakEq, strategy.equity)
+var float maxDD = 0.0
+ddNow = peakEq > 0 ? (peakEq - strategy.equity) / peakEq * 100 : 0.0
+maxDD := math.max(maxDD, ddNow)
+
+var int firstBarTime = 0
+if firstBarTime == 0
+    firstBarTime := time
+
+heat(float v) =>
+    color c = color.new(color.gray, 92)
+    if not na(v)
+        if v >= 4
+            c := color.new(#26a69a, 20)
+        else if v >= 1.5
+            c := color.new(#26a69a, 45)
+        else if v > 0
+            c := color.new(#26a69a, 70)
+        else if v == 0
+            c := color.new(color.gray, 85)
+        else if v > -1.5
+            c := color.new(#ef5350, 70)
+        else if v > -4
+            c := color.new(#ef5350, 45)
+        else
+            c := color.new(#ef5350, 20)
+    c
+
+var table monTab = table.new(position.bottom_right, 14, 14, border_width = 1, frame_width = 1, frame_color = color.new(color.gray, 60))
+var table sumTab = table.new(position.bottom_left, 2, 14, border_width = 1, frame_width = 1, frame_color = color.new(color.gray, 60))
+var table tfTab  = table.new(position.top_right, 2, 7, border_width = 1, frame_width = 1, frame_color = color.new(color.gray, 60))
+
+if barstate.islast
+    headBg = color.new(#1b2430, 15)
+    cellBg = color.new(#0f1620, 25)
+    months = array.from("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+
+    if showMonTab
+        table.cell(monTab, 0, 0, "Year", bgcolor = headBg, text_color = C_TEXT, text_size = size.tiny)
+        for m = 0 to 11
+            table.cell(monTab, m + 1, 0, array.get(months, m), bgcolor = headBg, text_color = C_TEXT, text_size = size.tiny)
+        table.cell(monTab, 13, 0, "Year %", bgcolor = headBg, text_color = C_TEXT, text_size = size.tiny)
+
+        for y = 0 to yearsBack - 1
+            int yr  = year - yearsBack + 1 + y
+            int row = y + 1
+            table.cell(monTab, 0, row, str.tostring(yr), bgcolor = headBg, text_color = C_TEXT, text_size = size.tiny)
+            float comp = 1.0
+            bool  any  = false
+            for m = 0 to 11
+                int   idx = (yr - baseYear) * 12 + m
+                float v   = na
+                int   n   = 0
+                if idx >= 0 and idx < array.size(mRet)
+                    v := array.get(mRet, idx)
+                    n := array.get(mCount, idx)
+                string cellTxt = na(v) ? "·" : str.tostring(v, "#.#") + "%\n" + str.tostring(n) + "t"
+                table.cell(monTab, m + 1, row, cellTxt, bgcolor = heat(v), text_color = C_TEXT, text_size = size.tiny)
+                if not na(v)
+                    comp := comp * (1 + v / 100)
+                    any  := true
+            float yearPct = any ? (comp - 1) * 100 : na
+            table.cell(monTab, 13, row, na(yearPct) ? "·" : str.tostring(yearPct, "#.#") + "%", bgcolor = heat(yearPct), text_color = C_TEXT, text_size = size.tiny)
+
+    if showSumTab
+        int   closed  = strategy.closedtrades
+        float winPct  = closed > 0 ? 100.0 * strategy.wintrades / closed : na
+        float pfactor = strategy.grossloss > 0 ? strategy.grossprofit / strategy.grossloss : na
+        float netPct  = strategy.initial_capital > 0 ? strategy.netprofit / strategy.initial_capital * 100 : na
+        float expect  = closed > 0 ? strategy.netprofit / closed : na
+        string trendLine = str.tostring(nTrend) + " trades · " + (nTrend > 0 ? str.tostring(100.0 * wTrend / nTrend, "#") + "% win · " : "") + str.tostring(pTrend, "#.#")
+        string rangeLine = str.tostring(nRange) + " trades · " + (nRange > 0 ? str.tostring(100.0 * wRange / nRange, "#") + "% win · " : "") + str.tostring(pRange, "#.#")
+
+        keys = array.from("Symbol", "Data from", "Net profit", "Trades", "Win rate", "Profit factor", "Max drawdown", "Per trade", "Trend engine", "Range engine", "Trend allowed", "Range allowed", "MTF score")
+        vals = array.from(syminfo.ticker + " · " + timeframe.period, str.format_time(firstBarTime, "yyyy-MM-dd", syminfo.timezone), na(netPct) ? "·" : str.tostring(netPct, "#.#") + "%", str.tostring(closed), na(winPct) ? "·" : str.tostring(winPct, "#.#") + "%", na(pfactor) ? "·" : str.tostring(pfactor, "#.##"), str.tostring(maxDD, "#.#") + "%", na(expect) ? "·" : str.tostring(expect, "#.##"), trendLine, rangeLine, trendJudged ? "rejected — re-tested periodically" : "yes", rangeJudged ? "rejected — re-tested periodically" : "yes", str.tostring(mtfScore) + " of 5")
+
+        for r = 0 to array.size(keys) - 1
+            table.cell(sumTab, 0, r, array.get(keys, r), bgcolor = headBg, text_color = C_TEXT, text_size = size.tiny, text_halign = text.align_left)
+            table.cell(sumTab, 1, r, array.get(vals, r), bgcolor = cellBg, text_color = C_TEXT, text_size = size.tiny, text_halign = text.align_left)
+
+    if showTfTab
+        table.cell(tfTab, 0, 0, "Timeframe", bgcolor = headBg, text_color = C_TEXT, text_size = size.tiny)
+        table.cell(tfTab, 1, 0, "Trend", bgcolor = headBg, text_color = C_TEXT, text_size = size.tiny)
+        tfs    = array.from(tfA, tfB, tfC, tfD, tfE)
+        scores = array.from(nz(sA), nz(sB), nz(sC), nz(sD), nz(sE))
+        for r = 0 to 4
+            int sc = array.get(scores, r)
+            table.cell(tfTab, 0, r + 1, array.get(tfs, r), bgcolor = cellBg, text_color = C_TEXT, text_size = size.tiny)
+            table.cell(tfTab, 1, r + 1, sc > 0 ? "▲ up" : sc < 0 ? "▼ down" : "— flat", bgcolor = sc > 0 ? color.new(#26a69a, 55) : sc < 0 ? color.new(#ef5350, 55) : color.new(color.gray, 80), text_color = C_TEXT, text_size = size.tiny)
+        table.cell(tfTab, 0, 6, "Agreement", bgcolor = headBg, text_color = C_TEXT, text_size = size.tiny)
+        table.cell(tfTab, 1, 6, str.tostring(mtfScore) + " of 5", bgcolor = math.abs(mtfScore) >= alignMin ? color.new(#26a69a, 55) : color.new(color.gray, 80), text_color = C_TEXT, text_size = size.tiny)
 
 // ── alerts ────────────────────────────────────────────────────────────────
 // One JSON object, so the receiving webhook parses rather than guesses. The
@@ -347,23 +605,26 @@ plot(e55, "EMA 55", color = color.new(#93a7bd, 60), linewidth = 1)
 
 if alertsOn and (goLong or goShort) and barstate.isconfirmed
     side = goLong ? "buy" : "sell"
-    rr   = math.abs(useTP - close) / math.max(useStop, syminfo.mintick)
-    json = '{"source":"clunoid-arde","v":1' +
+    rr   = math.abs(tp1Px - entryPx) / math.max(useStop, syminfo.mintick)
+    json = '{"source":"clunoid-arde","v":2' +
          ',"symbol":"'    + syminfo.ticker + '"' +
          ',"exchange":"'  + syminfo.prefix + '"' +
          ',"timeframe":"' + timeframe.period + '"' +
          ',"side":"'      + side + '"' +
+         ',"engine":"'    + engineTag + '"' +
          ',"regime":"'    + regimeName + '"' +
          ',"profile":"'   + profileIn + '"' +
-         ',"entry":'      + str.tostring(close,  format.mintick) +
-         ',"stop":'       + str.tostring(useSL,  format.mintick) +
-         ',"target":'     + str.tostring(useTP,  format.mintick) +
+         ',"entry":'      + str.tostring(entryPx, format.mintick) +
+         ',"stop":'       + str.tostring(slPx, format.mintick) +
+         ',"tp1":'        + str.tostring(tp1Px, format.mintick) +
+         ',"tp2":'        + str.tostring(tp2Px, format.mintick) +
          ',"rr":'         + str.tostring(rr, "#.##") +
          ',"riskPct":'    + str.tostring(riskPct, "#.##") +
-         ',"confidence":' + str.tostring(conf) +
+         ',"confidence":' + str.tostring(confPct) +
          ',"adx":'        + str.tostring(adx14, "#.#") +
-         ',"chop":'       + str.tostring(chop,  "#.#") +
-         ',"reason":"'    + why + '"' +
+         ',"chop":'       + str.tostring(chop, "#.#") +
+         ',"mtf":'        + str.tostring(mtfScore) +
+         ',"reason":"'    + whyTxt + '"' +
          ',"tag":"'       + channelTag + '"' +
          ',"bar":'        + str.tostring(time) +
          '}'
