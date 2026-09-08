@@ -951,6 +951,10 @@ clNeedTop   = input.bool(true, 'The highest timeframe may never disagree', group
 clSlBuffer  = input.float(0.15, 'Stop buffer (× ATR14)', minval = 0.0, maxval = 2.0, step = 0.05, group = CL_RISK,
      tooltip = 'Placed beyond the far edge of the order block, so the stop is not sitting exactly where everyone else has left theirs.')
 clMinRR     = input.float(1.5, 'Minimum reward for the risk', minval = 0.5, maxval = 10, step = 0.1, group = CL_RISK)
+clMaxRR     = input.float(4.0, 'Cap the first target at (× risk)', minval = 1.0, maxval = 20, step = 0.5, group = CL_RISK,
+     tooltip = 'Liquidity can sit a very long way off. A first target eight or ten times the risk is not a target anybody reaches — it is a lottery ticket that also stops the breakeven rule from ever engaging. Past this multiple the fixed target is used instead.')
+clMinStop   = input.float(0.5, 'Minimum stop distance (× ATR14)', minval = 0.0, maxval = 5.0, step = 0.05, group = CL_RISK,
+     tooltip = 'An order block on a 15-minute chart can be a single small candle, and a stop that tight sits inside the noise: it is hit by the spread and a normal wobble, not by the idea being wrong. The stop is widened to at least this before anything else is measured.')
 clTp1R      = input.float(2.0, 'First target (× risk) when no liquidity is in reach', minval = 0.5, step = 0.1, group = CL_RISK)
 clTp2R      = input.float(3.5, 'Second target (× risk)', minval = 1.0, step = 0.1, group = CL_RISK)
 clUseLoc    = input.bool(true, 'Buy discount only, sell premium only', group = CL_RISK,
@@ -1219,11 +1223,20 @@ clNewTp2   = 0.0
 if clOn and not clIn and clInHours and barstate.isconfirmed
     if clPlLive and bar_index > clPlBar and clBullOk and low <= clPlTop
         float e = math.min(clPlTop, open)
-        float s = clPlBot - clSlBuffer * clAtr
+        // The block's own edge, but never tighter than the noise floor.
+        float s = math.min(clPlBot - clSlBuffer * clAtr, e - clMinStop * clAtr)
         float r = e - s
         if r > 0 and (not clUseLoc or e <= clEq)
-            float liq = math.max(nz(trailing.top, swingHigh.currentLevel), nz(swingHigh.currentLevel, trailing.top))
-            float t1 = not na(liq) and liq > e and (liq - e) / r >= clMinRR ? liq : e + clTp1R * r
+            // The NEAREST liquidity above, not the furthest. This took the
+            // furthest and it is the single reason the first target came out
+            // eight and ten times the risk.
+            float liq = na
+            if not na(trailing.top) and trailing.top > e
+                liq := trailing.top
+            if not na(swingHigh.currentLevel) and swingHigh.currentLevel > e and (na(liq) or swingHigh.currentLevel < liq)
+                liq := swingHigh.currentLevel
+            bool liqOk = not na(liq) and (liq - e) / r >= clMinRR and (liq - e) / r <= clMaxRR
+            float t1 = liqOk ? liq : e + clTp1R * r
             float t2 = math.max(e + clTp2R * r, t1 + r)
             if (t1 - e) / r >= clMinRR
                 clFireL    := true
@@ -1233,11 +1246,16 @@ if clOn and not clIn and clInHours and barstate.isconfirmed
                 clNewTp2   := t2
     if not clFireL and clPsLive and bar_index > clPsBar and clBearOk and high >= clPsBot
         float e = math.max(clPsBot, open)
-        float s = clPsTop + clSlBuffer * clAtr
+        float s = math.max(clPsTop + clSlBuffer * clAtr, e + clMinStop * clAtr)
         float r = s - e
         if r > 0 and (not clUseLoc or e >= clEq)
-            float liq = math.min(nz(trailing.bottom, swingLow.currentLevel), nz(swingLow.currentLevel, trailing.bottom))
-            float t1 = not na(liq) and liq < e and (e - liq) / r >= clMinRR ? liq : e - clTp1R * r
+            float liq = na
+            if not na(trailing.bottom) and trailing.bottom < e
+                liq := trailing.bottom
+            if not na(swingLow.currentLevel) and swingLow.currentLevel < e and (na(liq) or swingLow.currentLevel > liq)
+                liq := swingLow.currentLevel
+            bool liqOk = not na(liq) and (e - liq) / r >= clMinRR and (e - liq) / r <= clMaxRR
+            float t1 = liqOk ? liq : e - clTp1R * r
             float t2 = math.min(e - clTp2R * r, t1 - r)
             if (e - t1) / r >= clMinRR
                 clFireS    := true
