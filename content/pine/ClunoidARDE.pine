@@ -1388,7 +1388,11 @@ clShowMonths = input.bool(true, 'Month-by-month table', group = CL_PROOF)
 clShowStats  = input.bool(true, 'Summary table',        group = CL_PROOF)
 clYears      = input.int(5, 'Years of months to show', minval = 1, maxval = 12, group = CL_PROOF,
      tooltip = 'A chart only tests the bars TradingView loads it with, which on an intraday timeframe is far short of five years on most plans. Months with no data stay blank rather than being filled with zeros.')
-clOosStart   = input.time(timestamp(2025, 1, 1, 0, 0), 'Out-of-sample starts', group = CL_PROOF,
+// The default is written as epoch milliseconds because it has to be: input.time
+// wants a "const int" and timestamp() returns a "simple int", so the obvious
+// timestamp(2025, 1, 1, 0, 0) will not compile. The figure below is
+// 2025-01-01 00:00 UTC. The field itself is still a date picker.
+clOosStart   = input.time(1735689600000, 'Out-of-sample starts', group = CL_PROOF,
      tooltip = 'Trades closing on or after this date are reported separately. Judge the engine on that column.')
 
 // ── the record ────────────────────────────────────────────────────────────
