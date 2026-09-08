@@ -2,13 +2,21 @@
 // https://creativecommons.org/licenses/by-nc-sa/4.0/
 // © LuxAlgo
 //
-// Smart Money Concepts [LuxAlgo], redistributed unchanged by Clunoid Trading
+// CLUNOID SMC — SIGNAL ENGINE
 // https://www.clunoid.com/trading/tradingview
 //
-// The attribution above is not decoration: the licence this is published under
-// asks for credit, non-commercial use, and that anything derived from it
-// carries the same terms. Clunoid gives it away and sells nothing, so keeping
-// the line is the whole of what is owed.
+// A derivative work. The market-structure layer below — swings, BOS and CHoCH,
+// order blocks, fair value gaps, equal highs and lows, premium and discount —
+// is LuxAlgo's Smart Money Concepts, used under the licence named above. The
+// signal engine built on top of it is Clunoid's: the multi-timeframe trend
+// read, the entry, the invalidation, the two targets, the trade record, the
+// month-by-month proof and the per-market learning. Roughly eight hundred and
+// fifty lines of it, and none of it is LuxAlgo's.
+//
+// The attribution above is not decoration. The licence asks for credit,
+// non-commercial use, and that anything derived carries the same terms — so
+// this file does, and the credit stays in the source where the licence expects
+// it. Clunoid gives the script away and sells nothing.
 //
 // Migrated to Pine v6. One change to the code, and it is a v6 requirement
 // rather than a preference: getStyle() now has a default branch, because v6
@@ -16,7 +24,7 @@
 // without it, an unmatched style would hand line.new() an na style.
 
 //@version=6
-indicator('Smart Money Concepts [LuxAlgo]', 'LuxAlgo - SMC',
+indicator('Clunoid SMC — Signal Engine', 'Clunoid',
      overlay = true, max_labels_count = 500, max_lines_count = 500, max_boxes_count = 500)
 //---------------------------------------------------------------------------------------------------------------------}
 //CONSTANTS & STRINGS & INPUTS
@@ -979,10 +987,45 @@ clShowLabel = input.bool(true, 'Label each signal',            group = CL_VIEW)
 clShowPend  = input.bool(true, 'Outline setups still waiting', group = CL_VIEW)
 clShowPanel = input.bool(true, 'Trend and status panel',       group = CL_VIEW)
 clKeep      = input.int(6, 'Keep last N signals drawn', minval = 1, maxval = 30, group = CL_VIEW)
+// Every table was size.tiny, which is unreadable on anything but a large
+// monitor, and the engine panel sat top-left underneath the chart's own symbol
+// and indicator legend. Both are now yours to set, because the right answer
+// depends on the screen and there is no default that suits every one.
+clTblSize   = input.string('Small', 'Table text size', options = ['Tiny', 'Small', 'Normal', 'Large', 'Huge'], group = CL_VIEW)
+clPanelPos  = input.string('Bottom left',   'Trend panel position',   options = ['Top left','Top centre','Top right','Middle left','Middle right','Bottom left','Bottom centre','Bottom right'], group = CL_VIEW)
+clStatPos   = input.string('Bottom centre', 'Summary position',       options = ['Top left','Top centre','Top right','Middle left','Middle right','Bottom left','Bottom centre','Bottom right'], group = CL_VIEW)
+clMonPos    = input.string('Bottom right',  'Month table position',   options = ['Top left','Top centre','Top right','Middle left','Middle right','Bottom left','Bottom centre','Bottom right'], group = CL_VIEW)
+
 clAlertOn   = input.bool(true, 'Send an alert on entry', group = CL_VIEW,
      tooltip = 'One JSON object per signal, for a webhook. Create the alert on "Any alert() function call".')
 clAlertEnd  = input.bool(true, 'Send an alert on TP1 and on close', group = CL_VIEW,
      tooltip = 'A signal nobody hears the end of is worse than no signal: a follower has no way to know the stop moved to entry, or that the trade is over. Same alert, same webhook — the payload carries an event field.')
+
+// @function    The chosen text size. A switch needs a default in v6, and this
+//              one is reached only if the options list and this list disagree.
+clSizeOf(string v) =>
+    switch v
+        'Tiny'   => size.tiny
+        'Small'  => size.small
+        'Normal' => size.normal
+        'Large'  => size.large
+        'Huge'   => size.huge
+        => size.small
+
+// @function    The chosen corner, as a position constant.
+clPosOf(string v) =>
+    switch v
+        'Top left'      => position.top_left
+        'Top centre'    => position.top_center
+        'Top right'     => position.top_right
+        'Middle left'   => position.middle_left
+        'Middle right'  => position.middle_right
+        'Bottom left'   => position.bottom_left
+        'Bottom centre' => position.bottom_center
+        'Bottom right'  => position.bottom_right
+        => position.bottom_left
+
+clTxt = clSizeOf(clTblSize)
 
 CL_LONG     = #00c853
 CL_SHORT    = #ff3d71
@@ -1406,36 +1449,37 @@ if barstate.islast
 clWord(int b) => b > 0 ? '▲ up' : b < 0 ? '▼ down' : '— flat'
 clTint(int b) => b > 0 ? color.new(CL_LONG, 60) : b < 0 ? color.new(CL_SHORT, 60) : color.new(GRAY, 80)
 
-var table clPanel = table.new(position.top_left, 2, 11, border_width = 1, frame_width = 1, frame_color = color.new(GRAY, 50))
+var table clPanel = table.new(position.bottom_left, 2, 11, border_width = 1, frame_width = 1, frame_color = color.new(GRAY, 50))
 
 if barstate.islast and clShowPanel and clOn
+    table.set_position(clPanel, clPosOf(clPanelPos))
     color head = color.new(#101822, 10)
     color cell = color.new(#0b131c, 25)
 
-    table.cell(clPanel, 0, 0, 'Clunoid engine', bgcolor = head, text_color = CL_INK, text_size = size.tiny, text_halign = text.align_left)
-    table.cell(clPanel, 1, 0, syminfo.ticker,   bgcolor = head, text_color = CL_INK, text_size = size.tiny, text_halign = text.align_left)
+    table.cell(clPanel, 0, 0, 'Clunoid engine', bgcolor = head, text_color = CL_INK, text_size = clTxt, text_halign = text.align_left)
+    table.cell(clPanel, 1, 0, syminfo.ticker,   bgcolor = head, text_color = CL_INK, text_size = clTxt, text_halign = text.align_left)
 
     array<string> clTfs = array.from(clTf1, clTf2, clTf3, clTf4, clTf5)
     array<int>    clBs  = array.from(nz(clB1), nz(clB2), nz(clB3), nz(clB4), nz(clB5))
     for i = 0 to 4
         int b = array.get(clBs, i)
-        table.cell(clPanel, 0, i + 1, array.get(clTfs, i), bgcolor = cell, text_color = CL_INK, text_size = size.tiny, text_halign = text.align_left)
-        table.cell(clPanel, 1, i + 1, clWord(b), bgcolor = clTint(b), text_color = CL_INK, text_size = size.tiny, text_halign = text.align_left)
+        table.cell(clPanel, 0, i + 1, array.get(clTfs, i), bgcolor = cell, text_color = CL_INK, text_size = clTxt, text_halign = text.align_left)
+        table.cell(clPanel, 1, i + 1, clWord(b), bgcolor = clTint(b), text_color = CL_INK, text_size = clTxt, text_halign = text.align_left)
 
-    table.cell(clPanel, 0, 6, 'Trend score', bgcolor = head, text_color = CL_INK, text_size = size.tiny, text_halign = text.align_left)
+    table.cell(clPanel, 0, 6, 'Trend score', bgcolor = head, text_color = CL_INK, text_size = clTxt, text_halign = text.align_left)
     table.cell(clPanel, 1, 6, str.tostring(clScore) + ' of 5' + (clBullOk ? ' · longs armed' : clBearOk ? ' · shorts armed' : ' · stand aside'),
-         bgcolor = clBullOk ? color.new(CL_LONG, 60) : clBearOk ? color.new(CL_SHORT, 60) : color.new(GRAY, 80), text_color = CL_INK, text_size = size.tiny, text_halign = text.align_left)
+         bgcolor = clBullOk ? color.new(CL_LONG, 60) : clBearOk ? color.new(CL_SHORT, 60) : color.new(GRAY, 80), text_color = CL_INK, text_size = clTxt, text_halign = text.align_left)
 
-    table.cell(clPanel, 0, 7, 'Price is', bgcolor = head, text_color = CL_INK, text_size = size.tiny, text_halign = text.align_left)
-    table.cell(clPanel, 1, 7, close > clEq ? 'premium — sells only' : 'discount — buys only', bgcolor = cell, text_color = CL_INK, text_size = size.tiny, text_halign = text.align_left)
+    table.cell(clPanel, 0, 7, 'Price is', bgcolor = head, text_color = CL_INK, text_size = clTxt, text_halign = text.align_left)
+    table.cell(clPanel, 1, 7, close > clEq ? 'premium — sells only' : 'discount — buys only', bgcolor = cell, text_color = CL_INK, text_size = clTxt, text_halign = text.align_left)
 
     string state = not showInternalOrderBlocksInput ? 'turn on Internal Order Blocks' : clIn ? (clDir == 1 ? 'LONG open' : 'SHORT open') + (clHalf ? ', stop at entry' : '') : clPlLive and clPsLive ? 'two setups waiting' : clPlLive ? 'long setup waiting' : clPsLive ? 'short setup waiting' : 'nothing set up'
-    table.cell(clPanel, 0, 8, 'Right now', bgcolor = head, text_color = CL_INK, text_size = size.tiny, text_halign = text.align_left)
-    table.cell(clPanel, 1, 8, state, bgcolor = cell, text_color = CL_INK, text_size = size.tiny, text_halign = text.align_left)
+    table.cell(clPanel, 0, 8, 'Right now', bgcolor = head, text_color = CL_INK, text_size = clTxt, text_halign = text.align_left)
+    table.cell(clPanel, 1, 8, state, bgcolor = cell, text_color = CL_INK, text_size = clTxt, text_halign = text.align_left)
 
     string record = clTrades == 0 ? 'no closed signals yet' : str.tostring(clTrades) + ' closed · ' + str.tostring(100.0 * clWins / clTrades, '#') + '% won · ' + str.tostring(clSumR, '#.##') + 'R total'
-    table.cell(clPanel, 0, 9, 'On this chart', bgcolor = head, text_color = CL_INK, text_size = size.tiny, text_halign = text.align_left)
-    table.cell(clPanel, 1, 9, record, bgcolor = cell, text_color = CL_INK, text_size = size.tiny, text_halign = text.align_left)
+    table.cell(clPanel, 0, 9, 'On this chart', bgcolor = head, text_color = CL_INK, text_size = clTxt, text_halign = text.align_left)
+    table.cell(clPanel, 1, 9, record, bgcolor = cell, text_color = CL_INK, text_size = clTxt, text_halign = text.align_left)
 
     string dropped = ''
     if clTypeOff(0)
@@ -1446,9 +1490,9 @@ if barstate.islast and clShowPanel and clOn
         dropped := dropped + (str.length(dropped) > 0 ? ', ' : '') + 'BOS long'
     if clTypeOff(3)
         dropped := dropped + (str.length(dropped) > 0 ? ', ' : '') + 'BOS short'
-    table.cell(clPanel, 0, 10, 'Dropped here', bgcolor = head, text_color = CL_INK, text_size = size.tiny, text_halign = text.align_left)
+    table.cell(clPanel, 0, 10, 'Dropped here', bgcolor = head, text_color = CL_INK, text_size = clTxt, text_halign = text.align_left)
     table.cell(clPanel, 1, 10, str.length(dropped) > 0 ? dropped : 'none — all four trading',
-         bgcolor = str.length(dropped) > 0 ? color.new(CL_SHORT, 60) : cell, text_color = CL_INK, text_size = size.tiny, text_halign = text.align_left)
+         bgcolor = str.length(dropped) > 0 ? color.new(CL_SHORT, 60) : cell, text_color = CL_INK, text_size = clTxt, text_halign = text.align_left)
 
 // ── the alert ─────────────────────────────────────────────────────────────
 // One JSON object per signal. Create the alert on "Any alert() function call"
@@ -1626,7 +1670,7 @@ clLine(int n, int w, float r) =>
     n == 0 ? '—' : str.tostring(n) + ' · ' + str.tostring(100.0 * w / n, '#') + '% · ' + clR(r, '#.#')
 
 var table clMonTab = table.new(position.bottom_right, 14, 14, border_width = 1, frame_width = 1, frame_color = color.new(GRAY, 50))
-var table clStatTab = table.new(position.bottom_left, 2, 20, border_width = 1, frame_width = 1, frame_color = color.new(GRAY, 50))
+var table clStatTab = table.new(position.bottom_center, 2, 20, border_width = 1, frame_width = 1, frame_color = color.new(GRAY, 50))
 
 // @function    One row of the summary. This began as two array.from() calls, a
 //              column of keys and a column of values, and Pine rejected it:
@@ -1635,24 +1679,25 @@ var table clStatTab = table.new(position.bottom_left, 2, 20, border_width = 1, f
 //              row at a time, every value is type-checked where it is written,
 //              which is also where anyone reading it would look.
 clStat(int r, string k, string v, color kb, color vb) =>
-    table.cell(clStatTab, 0, r, k, bgcolor = kb, text_color = CL_INK, text_size = size.tiny, text_halign = text.align_left)
-    table.cell(clStatTab, 1, r, v, bgcolor = vb, text_color = CL_INK, text_size = size.tiny, text_halign = text.align_left)
+    table.cell(clStatTab, 0, r, k, bgcolor = kb, text_color = CL_INK, text_size = clTxt, text_halign = text.align_left)
+    table.cell(clStatTab, 1, r, v, bgcolor = vb, text_color = CL_INK, text_size = clTxt, text_halign = text.align_left)
 
 if barstate.islast and clOn
     color pHead = color.new(#101822, 10)
     color pCell = color.new(#0b131c, 25)
 
     if clShowMonths
+        table.set_position(clMonTab, clPosOf(clMonPos))
         array<string> clMonNames = array.from('Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec')
-        table.cell(clMonTab, 0, 0, 'Year', bgcolor = pHead, text_color = CL_INK, text_size = size.tiny)
+        table.cell(clMonTab, 0, 0, 'Year', bgcolor = pHead, text_color = CL_INK, text_size = clTxt)
         for m = 0 to 11
-            table.cell(clMonTab, m + 1, 0, array.get(clMonNames, m), bgcolor = pHead, text_color = CL_INK, text_size = size.tiny)
-        table.cell(clMonTab, 13, 0, 'Year', bgcolor = pHead, text_color = CL_INK, text_size = size.tiny)
+            table.cell(clMonTab, m + 1, 0, array.get(clMonNames, m), bgcolor = pHead, text_color = CL_INK, text_size = clTxt)
+        table.cell(clMonTab, 13, 0, 'Year', bgcolor = pHead, text_color = CL_INK, text_size = clTxt)
 
         for y = 0 to clYears - 1
             int yr  = year - clYears + 1 + y
             int row = y + 1
-            table.cell(clMonTab, 0, row, str.tostring(yr), bgcolor = pHead, text_color = CL_INK, text_size = size.tiny)
+            table.cell(clMonTab, 0, row, str.tostring(yr), bgcolor = pHead, text_color = CL_INK, text_size = clTxt)
 
             float yearR = 0.0
             int   yearN = 0
@@ -1666,12 +1711,13 @@ if barstate.islast and clOn
                     mn := array.get(clMonN, idx)
                     mb := array.get(clMonB, idx)
                 string cellTxt = mb == 0 ? '' : mn == 0 ? '–' : clR(mr, '#.#') + '\n' + str.tostring(mn) + 't'
-                table.cell(clMonTab, m + 1, row, cellTxt, bgcolor = clHeat(mr, mn), text_color = CL_INK, text_size = size.tiny)
+                table.cell(clMonTab, m + 1, row, cellTxt, bgcolor = clHeat(mr, mn), text_color = CL_INK, text_size = clTxt)
                 yearR := yearR + mr
                 yearN := yearN + mn
-            table.cell(clMonTab, 13, row, yearN == 0 ? '' : clR(yearR, '#.#'), bgcolor = clHeat(yearR, yearN), text_color = CL_INK, text_size = size.tiny)
+            table.cell(clMonTab, 13, row, yearN == 0 ? '' : clR(yearR, '#.#'), bgcolor = clHeat(yearR, yearN), text_color = CL_INK, text_size = clTxt)
 
     if clShowStats
+        table.set_position(clStatTab, clPosOf(clStatPos))
         int   n       = clTrades
         float winPct  = n > 0 ? 100.0 * clWins / n : na
         float expect  = n > 0 ? clSumR / n : na
