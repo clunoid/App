@@ -936,6 +936,13 @@ clOn        = input.bool(true, 'Enable the signal engine', group = CL_GROUP,
 clUseChoch  = input.bool(true, 'Trade CHoCH (reversals)', group = CL_GROUP)
 clUseBos    = input.bool(true, 'Trade BOS (continuations)', group = CL_GROUP)
 
+clLearn     = input.bool(true, 'Drop a setup type this market rejects', group = CL_GROUP,
+     tooltip = 'The four types — CHoCH long, CHoCH short, BOS long, BOS short — are scored separately on THIS symbol and timeframe. Under the sample size below every one of them trades, so nothing is missed while the record means nothing. Past it, a type whose realised expectancy here is negative stops firing.')
+clLearnMin  = input.int(12, 'Trades before judging a type', minval = 5, maxval = 100, group = CL_GROUP,
+     tooltip = 'Twelve is a compromise: enough that a run of bad luck alone is unlikely to condemn a type, few enough that a genuinely broken one is caught before it has cost much.')
+clProbeBars = input.int(500, 'Bars before re-testing a dropped type', minval = 50, maxval = 20000, group = CL_GROUP,
+     tooltip = 'A dropped type takes no trades, so its record can never improve and the first bad run would be its last word. Every so often it is allowed one trade back.')
+
 clTf1       = input.timeframe('5',   'Trend timeframe 1', group = CL_BIAS)
 clTf2       = input.timeframe('15',  'Trend timeframe 2', group = CL_BIAS)
 clTf3       = input.timeframe('60',  'Trend timeframe 3', group = CL_BIAS)
@@ -1095,6 +1102,15 @@ var int   clTrades = 0
 var int   clWins   = 0
 var float clSumR   = 0.0
 
+// The record kept per setup TYPE, on this symbol and this timeframe:
+//   0 CHoCH long · 1 CHoCH short · 2 BOS long · 3 BOS short
+// Filled in by the proof section further down; read by the entry gate below,
+// which is why it is declared up here.
+var array<int>   clKindN   = array.new<int>(4, 0)
+var array<int>   clKindW   = array.new<int>(4, 0)
+var array<float> clKindR   = array.new<float>(4, 0.0)
+var array<int>   clProbeAt = array.new<int>(4, -1000000)
+
 var array<line>  clLines = array.new<line>()
 var array<label> clLabs  = array.new<label>()
 var array<box>   clBoxes = array.new<box>()
@@ -1211,6 +1227,35 @@ if clOn and clAlertEnd and clJustClosed
          ',"bar":'     + str.tostring(time) +
          '}', alert.freq_once_per_bar_close)
 
+// ── has this market paid for this kind of setup? ──────────────────────────
+//
+// EURUSD on the hourly took sixteen CHoCH longs, won three, and lost 7R doing
+// it. GBPUSD on the same timeframe took eight and won five. Same setup, same
+// code, opposite answer — so the question is not "does this setup work", it is
+// "does it work HERE", and only this chart can answer it.
+//
+// Under the sample size every type trades, because a record of four is not a
+// record. Past it, a type this market has rejected stops firing — and is let
+// back in for one trade every so often, because a type that never trades can
+// never improve its own record, and the first bad run would otherwise be its
+// last word.
+//
+// This is in-sample by construction: the trades it learns from are the same
+// trades the table above counts. It will flatter the total. Judge it on the
+// out-of-sample row, which is the one place the adaptation has not been.
+
+// @function    true if this setup type is allowed to trade on this market now
+// @param k     0 CHoCH long · 1 CHoCH short · 2 BOS long · 3 BOS short
+clTypeOk(int k) =>
+    int   n      = array.get(clKindN, k)
+    float r      = array.get(clKindR, k)
+    bool  judged = clLearn and n >= clLearnMin and r <= 0
+    not judged or bar_index - array.get(clProbeAt, k) >= clProbeBars
+
+// @function    true if this type is currently switched off by its own record
+clTypeOff(int k) =>
+    clLearn and array.get(clKindN, k) >= clLearnMin and array.get(clKindR, k) <= 0
+
 // ── entry ─────────────────────────────────────────────────────────────────
 
 clFireL = false
@@ -1221,7 +1266,7 @@ clNewTp1   = 0.0
 clNewTp2   = 0.0
 
 if clOn and not clIn and clInHours and barstate.isconfirmed
-    if clPlLive and bar_index > clPlBar and clBullOk and low <= clPlTop
+    if clPlLive and bar_index > clPlBar and clBullOk and clTypeOk(clPlKind * 2) and low <= clPlTop
         float e = math.min(clPlTop, open)
         // The block's own edge, but never tighter than the noise floor.
         float s = math.min(clPlBot - clSlBuffer * clAtr, e - clMinStop * clAtr)
@@ -1244,7 +1289,7 @@ if clOn and not clIn and clInHours and barstate.isconfirmed
                 clNewSl    := s
                 clNewTp1   := t1
                 clNewTp2   := t2
-    if not clFireL and clPsLive and bar_index > clPsBar and clBearOk and high >= clPsBot
+    if not clFireL and clPsLive and bar_index > clPsBar and clBearOk and clTypeOk(clPsKind * 2 + 1) and high >= clPsBot
         float e = math.max(clPsBot, open)
         float s = math.max(clPsTop + clSlBuffer * clAtr, e + clMinStop * clAtr)
         float r = s - e
@@ -1279,6 +1324,9 @@ if clFireL or clFireS
     clBarIn  := bar_index
     clOpened := time
     clKind   := clFireL ? clPlKind : clPsKind
+    int clK  = clKind * 2 + (clFireL ? 0 : 1)
+    if clTypeOff(clK)
+        array.set(clProbeAt, clK, bar_index)   // that was the probe, spend it
     if clFireL
         clPlLive := false
     else
@@ -1358,7 +1406,7 @@ if barstate.islast
 clWord(int b) => b > 0 ? '▲ up' : b < 0 ? '▼ down' : '— flat'
 clTint(int b) => b > 0 ? color.new(CL_LONG, 60) : b < 0 ? color.new(CL_SHORT, 60) : color.new(GRAY, 80)
 
-var table clPanel = table.new(position.top_left, 2, 10, border_width = 1, frame_width = 1, frame_color = color.new(GRAY, 50))
+var table clPanel = table.new(position.top_left, 2, 11, border_width = 1, frame_width = 1, frame_color = color.new(GRAY, 50))
 
 if barstate.islast and clShowPanel and clOn
     color head = color.new(#101822, 10)
@@ -1388,6 +1436,19 @@ if barstate.islast and clShowPanel and clOn
     string record = clTrades == 0 ? 'no closed signals yet' : str.tostring(clTrades) + ' closed · ' + str.tostring(100.0 * clWins / clTrades, '#') + '% won · ' + str.tostring(clSumR, '#.##') + 'R total'
     table.cell(clPanel, 0, 9, 'On this chart', bgcolor = head, text_color = CL_INK, text_size = size.tiny, text_halign = text.align_left)
     table.cell(clPanel, 1, 9, record, bgcolor = cell, text_color = CL_INK, text_size = size.tiny, text_halign = text.align_left)
+
+    string dropped = ''
+    if clTypeOff(0)
+        dropped := dropped + (str.length(dropped) > 0 ? ', ' : '') + 'CHoCH long'
+    if clTypeOff(1)
+        dropped := dropped + (str.length(dropped) > 0 ? ', ' : '') + 'CHoCH short'
+    if clTypeOff(2)
+        dropped := dropped + (str.length(dropped) > 0 ? ', ' : '') + 'BOS long'
+    if clTypeOff(3)
+        dropped := dropped + (str.length(dropped) > 0 ? ', ' : '') + 'BOS short'
+    table.cell(clPanel, 0, 10, 'Dropped here', bgcolor = head, text_color = CL_INK, text_size = size.tiny, text_halign = text.align_left)
+    table.cell(clPanel, 1, 10, str.length(dropped) > 0 ? dropped : 'none — all four trading',
+         bgcolor = str.length(dropped) > 0 ? color.new(CL_SHORT, 60) : cell, text_color = CL_INK, text_size = size.tiny, text_halign = text.align_left)
 
 // ── the alert ─────────────────────────────────────────────────────────────
 // One JSON object per signal. Create the alert on "Any alert() function call"
@@ -1494,9 +1555,6 @@ var float clMaxDD    = 0.0
 var int   clRun      = 0
 var int   clWorstRun = 0
 var int   clBarsSum  = 0
-var array<int>   clKindN = array.new<int>(4, 0)     // CHoCH long, CHoCH short, BOS long, BOS short
-var array<int>   clKindW = array.new<int>(4, 0)
-var array<float> clKindR = array.new<float>(4, 0.0)
 var array<int>   clSplitN = array.new<int>(2, 0)    // in sample, out of sample
 var array<int>   clSplitW = array.new<int>(2, 0)
 var array<float> clSplitR = array.new<float>(2, 0.0)
@@ -1639,10 +1697,10 @@ if barstate.islast and clOn
         clStat(10, 'Max drawdown',      str.tostring(clMaxDD, '#.##') + 'R',                                pHead, pCell)
         clStat(11, 'Longest losing run', str.tostring(clWorstRun) + ' in a row',                            pHead, pCell)
         clStat(12, 'Average bars held', na(avgBars) ? '—' : str.tostring(avgBars, '#'),                     pHead, pCell)
-        clStat(13, 'CHoCH long',        clLine(array.get(clKindN, 0), array.get(clKindW, 0), array.get(clKindR, 0)), pHead, pCell)
-        clStat(14, 'CHoCH short',       clLine(array.get(clKindN, 1), array.get(clKindW, 1), array.get(clKindR, 1)), pHead, pCell)
-        clStat(15, 'BOS long',          clLine(array.get(clKindN, 2), array.get(clKindW, 2), array.get(clKindR, 2)), pHead, pCell)
-        clStat(16, 'BOS short',         clLine(array.get(clKindN, 3), array.get(clKindW, 3), array.get(clKindR, 3)), pHead, pCell)
+        clStat(13, 'CHoCH long',        clLine(array.get(clKindN, 0), array.get(clKindW, 0), array.get(clKindR, 0)) + (clTypeOff(0) ? '  · dropped' : ''), pHead, clTypeOff(0) ? color.new(CL_SHORT, 70) : pCell)
+        clStat(14, 'CHoCH short',       clLine(array.get(clKindN, 1), array.get(clKindW, 1), array.get(clKindR, 1)) + (clTypeOff(1) ? '  · dropped' : ''), pHead, clTypeOff(1) ? color.new(CL_SHORT, 70) : pCell)
+        clStat(15, 'BOS long',          clLine(array.get(clKindN, 2), array.get(clKindW, 2), array.get(clKindR, 2)) + (clTypeOff(2) ? '  · dropped' : ''), pHead, clTypeOff(2) ? color.new(CL_SHORT, 70) : pCell)
+        clStat(16, 'BOS short',         clLine(array.get(clKindN, 3), array.get(clKindW, 3), array.get(clKindR, 3)) + (clTypeOff(3) ? '  · dropped' : ''), pHead, clTypeOff(3) ? color.new(CL_SHORT, 70) : pCell)
         clStat(17, oosLabel,            clLine(array.get(clSplitN, 0), array.get(clSplitW, 0), array.get(clSplitR, 0)), pHead, pCell)
         clStat(18, 'After that date',   clLine(array.get(clSplitN, 1), array.get(clSplitW, 1), array.get(clSplitR, 1)), pHead, oosBg)
         clStat(19, 'Waiting now',       clIn ? (clDir == 1 ? 'long open' : 'short open') : clPlLive or clPsLive ? 'setup armed' : 'nothing', pHead, pCell)
