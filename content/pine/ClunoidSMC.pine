@@ -1,0 +1,545 @@
+// © Clunoid Trading — https://www.clunoid.com/trading/tradingview
+//
+// ═══════════════════════════════════════════════════════════════════════════
+//  CLUNOID SMC — market structure, order blocks, imbalance
+// ═══════════════════════════════════════════════════════════════════════════
+//
+//  Clunoid's own implementation of the Smart Money Concepts vocabulary: swing
+//  and internal structure with BOS and CHoCH, order blocks, fair value gaps,
+//  equal highs and lows, strong and weak extremes, premium and discount, and
+//  previous-period levels.
+//
+//  Those ideas are public and belong to nobody. This code is not: it was
+//  written here, from the definitions, and it is deliberately not a port of
+//  any published script. Where a well-known indicator does the job it is used
+//  rather than reinvented — swings come from ta.pivothigh/ta.pivotlow, not a
+//  hand-rolled leg counter.
+//
+//  WHAT EACH MARK MEANS
+//  ────────────────────
+//    BOS      Break of Structure. Price closed through the last swing point
+//             in the direction it was already going. Continuation.
+//
+//    CHoCH    Change of Character. Price closed through the last swing point
+//             AGAINST the prevailing direction. This is the first evidence of
+//             a turn, and it is the one worth waiting for.
+//
+//    OB       Order Block. The last opposing candle before the move that broke
+//             structure — where the move was actually initiated. Drawn from
+//             that candle's high to its low, extended until price trades back
+//             through it, at which point it is spent and removed.
+//
+//    FVG      Fair Value Gap. A three-candle imbalance where the middle bar
+//             moved so fast the wicks never overlapped. Removed once filled.
+//
+//    EQH/EQL  Equal Highs / Lows. Two swings at effectively the same price —
+//             resting liquidity, and a common target.
+//
+//    Strong / Weak High and Low
+//             The extreme that produced the current structure. A high is
+//             strong while the trend is down (it held) and weak while the
+//             trend is up (it is likely to go).
+//
+//  HOW TO READ IT AS A DAY TRADER
+//  ──────────────────────────────
+//  Wait for a CHoCH on the swing structure — that is the story changing. Then
+//  look for the pullback into an order block or a fair value gap left behind
+//  by the move that caused it, ideally on the discount side of the range for a
+//  long and the premium side for a short. The stop belongs beyond the level
+//  that would prove the idea wrong, which is the far side of the block, not a
+//  fixed distance.
+//
+//  WHAT REPAINTS, AND WHAT DOES NOT
+//  ────────────────────────────────
+//  A swing point cannot be known until `length` bars have closed after it —
+//  that is what a pivot is, and no indicator escapes it. Structure lines are
+//  therefore drawn back to a bar that is already history, and they never move
+//  once drawn. Breaks are tested on closes. Previous-period levels use the
+//  documented non-repainting pattern: an expression already offset one bar,
+//  read with lookahead_on, so the value only appears once that period closed.
+//
+//  Nothing here is advice, and no marking is a signal on its own. Trading
+//  carries risk and you can lose money.
+//
+// ═══════════════════════════════════════════════════════════════════════════
+
+//@version=6
+indicator("Clunoid SMC", "Clunoid SMC", overlay = true,
+     max_labels_count = 500, max_lines_count = 500, max_boxes_count = 500)
+
+// ── constants ─────────────────────────────────────────────────────────────
+
+BULL =  1
+BEAR = -1
+
+C_UP     = #089981
+C_DOWN   = #f23645
+C_LEVEL  = #2962ff
+C_NEUTRAL = #787b86
+
+G_STRUCT = "Structure"
+G_INTERNAL = "Internal structure"
+G_OB     = "Order blocks"
+G_FVG    = "Fair value gaps"
+G_EQ     = "Equal highs & lows"
+G_RANGE  = "Premium & discount"
+G_LEVELS = "Previous period levels"
+G_TREND  = "Trend ribbon"
+
+S_SOLID  = "Solid"
+S_DASHED = "Dashed"
+S_DOTTED = "Dotted"
+
+M_WICK  = "Wick"
+M_CLOSE = "Close"
+
+// ── inputs ────────────────────────────────────────────────────────────────
+
+showSwing     = input.bool(true, "Swing structure", group = G_STRUCT,
+     tooltip = "BOS and CHoCH on the major swings. This is the structure to trade from.")
+swingLen      = input.int(25, "Swing length", minval = 3, maxval = 100, group = G_STRUCT,
+     tooltip = "Bars either side of a pivot. Larger means fewer, more significant swings — and a longer wait before one is confirmed.")
+showSwingPts  = input.bool(true, "Label swing points (HH/HL/LH/LL)", group = G_STRUCT)
+showExtremes  = input.bool(true, "Strong / weak high and low", group = G_STRUCT)
+keepHistory   = input.bool(true, "Keep historical structure", group = G_STRUCT,
+     tooltip = "Off leaves only the most recent break on the chart, which is easier to read when you are trading rather than reviewing.")
+
+showInternal  = input.bool(true, "Internal structure", group = G_INTERNAL,
+     tooltip = "The same logic on a much shorter pivot. Useful for entries inside a swing leg; noisy if traded on its own.")
+internalLen   = input.int(5, "Internal length", minval = 2, maxval = 50, group = G_INTERNAL)
+
+showOB        = input.bool(true, "Order blocks", group = G_OB)
+obCount       = input.int(5, "How many to keep", minval = 1, maxval = 20, group = G_OB)
+obFromInternal= input.bool(false, "Also from internal structure", group = G_OB,
+     tooltip = "Many more blocks, most of them small. Off by default.")
+obMitigation  = input.string(M_WICK, "Mitigated by", options = [M_WICK, M_CLOSE], group = G_OB,
+     tooltip = "Wick removes the block the moment price touches through it. Close waits for a bar to close beyond it, which keeps blocks alive through a single spike.")
+obBullColor   = input.color(color.new(#089981, 80), "Bullish", group = G_OB)
+obBearColor   = input.color(color.new(#f23645, 80), "Bearish", group = G_OB)
+
+showFVG       = input.bool(true, "Fair value gaps", group = G_FVG)
+fvgMinAtr     = input.float(0.25, "Minimum size (× ATR)", minval = 0, maxval = 3, step = 0.05, group = G_FVG,
+     tooltip = "Filters out the constant small imbalances that carry no information. 0 shows every one.")
+fvgExtend     = input.int(12, "Extend (bars)", minval = 0, maxval = 200, group = G_FVG)
+fvgBullColor  = input.color(color.new(#089981, 82), "Bullish", group = G_FVG)
+fvgBearColor  = input.color(color.new(#f23645, 82), "Bearish", group = G_FVG)
+
+showEq        = input.bool(true, "Equal highs & lows", group = G_EQ)
+eqThreshold   = input.float(0.1, "Tolerance (× ATR)", minval = 0.01, maxval = 1, step = 0.01, group = G_EQ,
+     tooltip = "How close two swings must be to count as equal. Lower is stricter and returns fewer, better levels.")
+
+showRange     = input.bool(false, "Premium / discount", group = G_RANGE,
+     tooltip = "Splits the current swing range. Longs belong in discount, shorts in premium — taking either from the wrong half is paying up for the trade.")
+
+showPDH       = input.bool(true, "Previous day", group = G_LEVELS, inline = "d")
+showPWH       = input.bool(false, "Previous week", group = G_LEVELS, inline = "w")
+showPMH       = input.bool(false, "Previous month", group = G_LEVELS, inline = "m")
+levelStyle    = input.string(S_DASHED, "Style", options = [S_SOLID, S_DASHED, S_DOTTED], group = G_LEVELS)
+levelColor    = input.color(#2962ff, "Colour", group = G_LEVELS)
+
+showRibbon    = input.bool(true, "EMA ribbon", group = G_TREND,
+     tooltip = "Three EMAs, filled between the fastest two. Not a signal — a way to see the slope without reading it off the candles.")
+emaFastLen    = input.int(8,  "Fast", minval = 2, group = G_TREND, inline = "ema")
+emaMidLen     = input.int(21, "Mid",  minval = 2, group = G_TREND, inline = "ema")
+emaSlowLen    = input.int(55, "Slow", minval = 2, group = G_TREND, inline = "ema")
+
+// ── shared measures ───────────────────────────────────────────────────────
+
+atr = ta.atr(200)
+
+lineStyleOf(string s) =>
+    switch s
+        S_SOLID  => line.style_solid
+        S_DASHED => line.style_dashed
+        S_DOTTED => line.style_dotted
+        => line.style_solid          // v6 requires a default that returns the type
+
+// ── types ─────────────────────────────────────────────────────────────────
+
+// A zone with a life: it is drawn when created and removed when price has
+// used it up. Both order blocks and fair value gaps are this shape, but they
+// die differently, so they stay separate.
+
+type zone
+    float top
+    float bot
+    int   dir
+    box   b
+
+// ── state ─────────────────────────────────────────────────────────────────
+
+var float swHigh    = na          // last confirmed swing high
+var int   swHighBar = na
+var float swHighPrev = na
+var bool  swHighUsed = true       // already broken?
+
+var float swLow     = na
+var int   swLowBar  = na
+var float swLowPrev = na
+var bool  swLowUsed = true
+
+var int   swBias    = 0           // BULL / BEAR, from the last swing break
+
+var float inHigh    = na          // the same, on the internal pivot
+var int   inHighBar = na
+var bool  inHighUsed = true
+var float inLow     = na
+var int   inLowBar  = na
+var bool  inLowUsed = true
+var int   inBias    = 0
+
+var array<zone> blocks = array.new<zone>()
+var array<zone> gaps   = array.new<zone>()
+
+// The running extremes of the current leg, for strong/weak and for the range.
+var float legTop    = na
+var int   legTopBar = na
+var float legBot    = na
+var int   legBotBar = na
+
+// Kept so "keep historical structure = off" can remove the previous one.
+var line  lastSwingLine  = na
+var label lastSwingLabel = na
+var line  lastInLine     = na
+var label lastInLabel    = na
+
+// Alert flags, recomputed every bar.
+bosUp   = false
+bosDown = false
+chochUp = false
+chochDown = false
+obNew   = false
+fvgNew  = false
+eqhNew  = false
+eqlNew  = false
+
+// ── swing detection ───────────────────────────────────────────────────────
+//
+// ta.pivothigh(n, n) returns the pivot n bars ago once n bars have closed on
+// both sides of it. That delay is the honest cost of knowing a swing happened
+// at all, and it is why everything below is drawn back to a bar in the past
+// rather than at the right edge.
+
+ph = ta.pivothigh(swingLen, swingLen)
+pl = ta.pivotlow(swingLen, swingLen)
+iph = ta.pivothigh(internalLen, internalLen)
+ipl = ta.pivotlow(internalLen, internalLen)
+
+// ── equal highs and lows ──────────────────────────────────────────────────
+
+drawEqual(float a, int aBar, float b, int bBar, bool isHigh) =>
+    lvl = math.avg(a, b)
+    col = isHigh ? C_DOWN : C_UP
+    line.new(aBar, lvl, bBar, lvl, color = col, style = line.style_dotted, width = 1)
+    label.new(math.round(math.avg(aBar, bBar)), lvl, isHigh ? "EQH" : "EQL",
+         style = isHigh ? label.style_label_down : label.style_label_up,
+         color = color(na), textcolor = col, size = size.tiny)
+
+if not na(ph)
+    swHighPrev := swHigh
+    swHigh     := ph
+    swHighBar  := bar_index - swingLen
+    swHighUsed := false
+    legTop     := ph
+    legTopBar  := swHighBar
+
+    if showSwingPts
+        label.new(swHighBar, ph, na(swHighPrev) or ph > swHighPrev ? "HH" : "LH",
+             style = label.style_label_down, color = color(na), textcolor = C_DOWN, size = size.tiny)
+
+    if showEq and not na(swHighPrev) and math.abs(ph - swHighPrev) < eqThreshold * atr
+        eqhNew := true
+        drawEqual(swHighPrev, swHighBar, ph, swHighBar, true)
+
+if not na(pl)
+    swLowPrev := swLow
+    swLow     := pl
+    swLowBar  := bar_index - swingLen
+    swLowUsed := false
+    legBot    := pl
+    legBotBar := swLowBar
+
+    if showSwingPts
+        label.new(swLowBar, pl, na(swLowPrev) or pl < swLowPrev ? "LL" : "HL",
+             style = label.style_label_up, color = color(na), textcolor = C_UP, size = size.tiny)
+
+    if showEq and not na(swLowPrev) and math.abs(pl - swLowPrev) < eqThreshold * atr
+        eqlNew := true
+        drawEqual(swLowPrev, swLowBar, pl, swLowBar, false)
+
+if not na(iph)
+    inHigh     := iph
+    inHighBar  := bar_index - internalLen
+    inHighUsed := false
+
+if not na(ipl)
+    inLow     := ipl
+    inLowBar  := bar_index - internalLen
+    inLowUsed := false
+
+// The leg extremes track past the pivot too, so "strong high" follows price
+// rather than freezing at the last confirmed swing.
+legTop := na(legTop) ? high : math.max(legTop, high)
+legBot := na(legBot) ? low  : math.min(legBot, low)
+if legTop == high
+    legTopBar := bar_index
+if legBot == low
+    legBotBar := bar_index
+
+// ── order blocks ──────────────────────────────────────────────────────────
+//
+// The block is the last candle that opposed the move, between the swing that
+// was broken and the bar that broke it. That candle is where the move was
+// initiated: everything after it is the move itself.
+
+lastOpposingBar(int fromBar, int dir) =>
+    int found = -1
+    int span  = math.min(bar_index - fromBar, 300)
+    if span > 0
+        for i = 0 to span
+            // a bullish break looks back for the last DOWN candle
+            bool opposing = dir == BULL ? close[i] < open[i] : close[i] > open[i]
+            if opposing and found == -1
+                found := i
+    found
+
+addBlock(int fromBar, int dir) =>
+    idx = lastOpposingBar(fromBar, dir)
+    if idx >= 0
+        col = dir == BULL ? obBullColor : obBearColor
+        b = box.new(bar_index - idx, high[idx], bar_index, low[idx],
+             border_color = color.new(col, 40), bgcolor = col, extend = extend.right)
+        blocks.push(zone.new(high[idx], low[idx], dir, b))
+        // oldest first: keep the list to the requested depth
+        while blocks.size() > obCount
+            zone dead = blocks.shift()
+            dead.b.delete()
+
+// ── structure breaks ──────────────────────────────────────────────────────
+
+markBreak(float lvl, int fromBar, int dir, bool internal, string tag) =>
+    col = dir == BULL ? C_UP : C_DOWN
+    l = line.new(fromBar, lvl, bar_index, lvl, color = col,
+         style = internal ? line.style_dashed : line.style_solid, width = 1)
+    t = label.new(math.round(math.avg(fromBar, bar_index)), lvl, tag,
+         style = dir == BULL ? label.style_label_down : label.style_label_up,
+         color = color(na), textcolor = col, size = internal ? size.tiny : size.small)
+    [l, t]
+
+// Swing structure: the one to trade from.
+if showSwing and not swHighUsed and not na(swHigh) and close > swHigh
+    tag = swBias == BEAR ? "CHoCH" : "BOS"
+    if tag == "CHoCH"
+        chochUp := true
+    else
+        bosUp := true
+    swHighUsed := true
+    swBias     := BULL
+    if not keepHistory
+        line.delete(lastSwingLine)
+        label.delete(lastSwingLabel)
+    [l, t] = markBreak(swHigh, swHighBar, BULL, false, tag)
+    lastSwingLine  := l
+    lastSwingLabel := t
+    if showOB
+        addBlock(swHighBar, BULL)
+        obNew := true
+    legBot    := low          // a new leg starts here
+    legBotBar := bar_index
+
+if showSwing and not swLowUsed and not na(swLow) and close < swLow
+    tag = swBias == BULL ? "CHoCH" : "BOS"
+    if tag == "CHoCH"
+        chochDown := true
+    else
+        bosDown := true
+    swLowUsed := true
+    swBias    := BEAR
+    if not keepHistory
+        line.delete(lastSwingLine)
+        label.delete(lastSwingLabel)
+    [l, t] = markBreak(swLow, swLowBar, BEAR, false, tag)
+    lastSwingLine  := l
+    lastSwingLabel := t
+    if showOB
+        addBlock(swLowBar, BEAR)
+        obNew := true
+    legTop    := high
+    legTopBar := bar_index
+
+// Internal structure: the same idea, smaller. Only drawn where it disagrees
+// with nothing — a break of an internal level that is also the swing level is
+// the swing break, and marking it twice says nothing new.
+if showInternal and not inHighUsed and not na(inHigh) and close > inHigh and inHigh != swHigh
+    tag = inBias == BEAR ? "CHoCH" : "BOS"
+    inHighUsed := true
+    inBias     := BULL
+    if not keepHistory
+        line.delete(lastInLine)
+        label.delete(lastInLabel)
+    [l, t] = markBreak(inHigh, inHighBar, BULL, true, tag)
+    lastInLine  := l
+    lastInLabel := t
+    if showOB and obFromInternal
+        addBlock(inHighBar, BULL)
+
+if showInternal and not inLowUsed and not na(inLow) and close < inLow and inLow != swLow
+    tag = inBias == BULL ? "CHoCH" : "BOS"
+    inLowUsed := true
+    inBias    := BEAR
+    if not keepHistory
+        line.delete(lastInLine)
+        label.delete(lastInLabel)
+    [l, t] = markBreak(inLow, inLowBar, BEAR, true, tag)
+    lastInLine  := l
+    lastInLabel := t
+    if showOB and obFromInternal
+        addBlock(inLowBar, BEAR)
+
+// ── mitigation: a block is spent once price trades back through it ────────
+//
+// Iterated backwards. In v6 a for loop re-reads its end boundary every pass,
+// so removing from the front while counting up would step over an element.
+
+if blocks.size() > 0
+    float upSrc   = obMitigation == M_CLOSE ? close : low
+    float downSrc = obMitigation == M_CLOSE ? close : high
+    for i = blocks.size() - 1 to 0
+        zone z = blocks.get(i)
+        bool spent = z.dir == BULL ? upSrc < z.bot : downSrc > z.top
+        if spent
+            z.b.delete()
+            blocks.remove(i)
+
+// ── fair value gaps ───────────────────────────────────────────────────────
+//
+// Three bars: the gap is what the middle one skipped. It is a gap only if the
+// outer two never overlapped, and only worth drawing if it is big enough to
+// matter, which is what the ATR filter decides.
+
+if showFVG and bar_index > 2
+    float minSize = fvgMinAtr * atr
+    bool bull = low > high[2] and (low - high[2]) > minSize
+    bool bear = high < low[2] and (low[2] - high) > minSize
+    if bull
+        fvgNew := true
+        b = box.new(bar_index - 2, low, bar_index + fvgExtend, high[2],
+             border_color = color(na), bgcolor = fvgBullColor)
+        gaps.push(zone.new(low, high[2], BULL, b))
+    if bear
+        fvgNew := true
+        b = box.new(bar_index - 2, low[2], bar_index + fvgExtend, high,
+             border_color = color(na), bgcolor = fvgBearColor)
+        gaps.push(zone.new(low[2], high, BEAR, b))
+
+if gaps.size() > 0
+    for i = gaps.size() - 1 to 0
+        zone g = gaps.get(i)
+        // filled: price has traded all the way back across the imbalance
+        bool filled = g.dir == BULL ? low <= g.bot : high >= g.top
+        if filled
+            g.b.delete()
+            gaps.remove(i)
+
+// ── strong / weak extremes ────────────────────────────────────────────────
+//
+// A high that held while the market turned down is strong; the same high with
+// the market pushing up into it is weak, and is what price is likely reaching
+// for. The naming follows the trend, not the price.
+
+if showExtremes and barstate.islast and not na(legTop) and not na(legBot)
+    var line  hiLine = na
+    var label hiLab  = na
+    var line  loLine = na
+    var label loLab  = na
+    line.delete(hiLine)
+    label.delete(hiLab)
+    line.delete(loLine)
+    label.delete(loLab)
+    right = bar_index + 20
+    hiLine := line.new(legTopBar, legTop, right, legTop, color = C_DOWN, style = line.style_dashed)
+    hiLab  := label.new(right, legTop, swBias == BEAR ? "Strong High" : "Weak High",
+         style = label.style_label_left, color = color(na), textcolor = C_DOWN, size = size.small)
+    loLine := line.new(legBotBar, legBot, right, legBot, color = C_UP, style = line.style_dashed)
+    loLab  := label.new(right, legBot, swBias == BULL ? "Strong Low" : "Weak Low",
+         style = label.style_label_left, color = color(na), textcolor = C_UP, size = size.small)
+
+// ── premium / discount ────────────────────────────────────────────────────
+
+if showRange and barstate.islast and not na(legTop) and not na(legBot) and legTop > legBot
+    var box premBox = na
+    var box discBox = na
+    var line eqLine = na
+    var label eqLab = na
+    box.delete(premBox)
+    box.delete(discBox)
+    line.delete(eqLine)
+    label.delete(eqLab)
+    left  = math.min(legTopBar, legBotBar)
+    mid   = math.avg(legTop, legBot)
+    premBox := box.new(left, legTop, bar_index, mid + (legTop - mid) * 0.5,
+         border_color = color(na), bgcolor = color.new(C_DOWN, 90), text = "Premium",
+         text_color = color.new(C_DOWN, 30), text_size = size.small, text_halign = text.align_right)
+    discBox := box.new(left, mid - (mid - legBot) * 0.5, bar_index, legBot,
+         border_color = color(na), bgcolor = color.new(C_UP, 90), text = "Discount",
+         text_color = color.new(C_UP, 30), text_size = size.small, text_halign = text.align_right)
+    eqLine := line.new(left, mid, bar_index, mid, color = C_NEUTRAL, style = line.style_dotted)
+    eqLab  := label.new(bar_index, mid, "Equilibrium", style = label.style_label_left,
+         color = color(na), textcolor = C_NEUTRAL, size = size.small)
+
+// ── previous period levels ────────────────────────────────────────────────
+//
+// high[1]/low[1] read with lookahead_on: the value of the period that has
+// already finished, which is the only version of this that does not quietly
+// show tomorrow's high on yesterday's bar.
+
+[pdh, pdl] = request.security(syminfo.tickerid, "D", [high[1], low[1]], lookahead = barmerge.lookahead_on)
+[pwh, pwl] = request.security(syminfo.tickerid, "W", [high[1], low[1]], lookahead = barmerge.lookahead_on)
+[pmh, pml] = request.security(syminfo.tickerid, "M", [high[1], low[1]], lookahead = barmerge.lookahead_on)
+
+drawLevel(float lvl, string tag, bool on) =>
+    var line  l = na
+    var label t = na
+    if on and not na(lvl) and barstate.islast
+        line.delete(l)
+        label.delete(t)
+        l := line.new(bar_index - 300, lvl, bar_index + 20, lvl, color = levelColor,
+             style = lineStyleOf(levelStyle), width = 1)
+        t := label.new(bar_index + 20, lvl, tag, style = label.style_label_left,
+             color = color(na), textcolor = levelColor, size = size.tiny)
+
+fitsDaily   = timeframe.in_seconds() < timeframe.in_seconds("D")
+fitsWeekly  = timeframe.in_seconds() < timeframe.in_seconds("W")
+fitsMonthly = timeframe.in_seconds() < timeframe.in_seconds("M")
+
+drawLevel(pdh, "PDH", showPDH and fitsDaily)
+drawLevel(pdl, "PDL", showPDH and fitsDaily)
+drawLevel(pwh, "PWH", showPWH and fitsWeekly)
+drawLevel(pwl, "PWL", showPWH and fitsWeekly)
+drawLevel(pmh, "PMH", showPMH and fitsMonthly)
+drawLevel(pml, "PML", showPMH and fitsMonthly)
+
+// ── trend ribbon ──────────────────────────────────────────────────────────
+
+emaFast = ta.ema(close, emaFastLen)
+emaMid  = ta.ema(close, emaMidLen)
+emaSlow = ta.ema(close, emaSlowLen)
+
+pFast = plot(showRibbon ? emaFast : na, "EMA fast", color = color.new(#2962ff, 40), linewidth = 1)
+pMid  = plot(showRibbon ? emaMid  : na, "EMA mid",  color = color.new(#2962ff, 60), linewidth = 1)
+plot(showRibbon ? emaSlow : na, "EMA slow", color = color.new(C_NEUTRAL, 40), linewidth = 2)
+
+stackUp   = emaFast > emaMid and emaMid > emaSlow
+stackDown = emaFast < emaMid and emaMid < emaSlow
+fill(pFast, pMid, color = stackUp ? color.new(C_UP, 85) : stackDown ? color.new(C_DOWN, 85) : na, title = "Ribbon")
+
+// ── alerts ────────────────────────────────────────────────────────────────
+
+alertcondition(chochUp,   "Bullish CHoCH", "Clunoid SMC — bullish change of character")
+alertcondition(chochDown, "Bearish CHoCH", "Clunoid SMC — bearish change of character")
+alertcondition(bosUp,     "Bullish BOS",   "Clunoid SMC — bullish break of structure")
+alertcondition(bosDown,   "Bearish BOS",   "Clunoid SMC — bearish break of structure")
+alertcondition(obNew,     "New order block", "Clunoid SMC — order block formed")
+alertcondition(fvgNew,    "New fair value gap", "Clunoid SMC — fair value gap formed")
+alertcondition(eqhNew,    "Equal highs",   "Clunoid SMC — equal highs")
+alertcondition(eqlNew,    "Equal lows",    "Clunoid SMC — equal lows")
