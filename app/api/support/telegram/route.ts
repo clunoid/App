@@ -82,7 +82,28 @@ export async function POST(req: NextRequest) {
     const reqst = await requestForTelegramMessage(repliedTo);
 
     if (!reqst) {
-      await say(chatId, "That is not an EA access request, so there is nothing to approve. Swipe-reply to the request itself.", msg?.message_id);
+      /* Two very different situations, and telling them apart is the whole
+         value of this branch.
+    
+         If the message IS a support message but has no EA request behind it,
+         the request was never recorded — which happens when the ea_requests
+         table is missing. Saying "that is not a request" there sends somebody
+         hunting for a mistake they did not make, which is exactly what it did.
+         The person is still reachable, so that is said too. */
+      const who = await visitorForTelegramMessage(repliedTo);
+      await say(
+        chatId,
+        who
+          ? [
+              "This request was never recorded, so there is no code to issue against it.",
+              "",
+              "That means the <code>trading_ea_requests</code> table is missing — apply the migration, then ask them to send the form again.",
+              "",
+              "They are still reachable: anything you type here WITHOUT a slash goes to them as a normal reply.",
+            ].join("\n")
+          : "That is not an EA access request, so there is nothing to approve. Swipe-reply to the request itself.",
+        msg?.message_id,
+      );
       return NextResponse.json({ ok: true });
     }
 
@@ -96,7 +117,7 @@ export async function POST(req: NextRequest) {
       const delivered = await recordReply(
         reqst.visitorId,
         [
-          `Your MT5 login ${reqst.mt5Login} is confirmed under our community — here is your download code:`,
+          `Your ID ${reqst.mt5Login} is confirmed under our community — here is your download code:`,
           "",
           code,
           "",
@@ -107,7 +128,7 @@ export async function POST(req: NextRequest) {
       await say(
         chatId,
         delivered
-          ? `✅ Approved. Code <code>${code}</code> sent to ${reqst.name} (${reqst.email}), login <code>${reqst.mt5Login}</code>.`
+          ? `✅ Approved. Code <code>${code}</code> sent to ${reqst.name} (${reqst.email}), ID <code>${reqst.mt5Login}</code>.`
           : `⚠️ Code <code>${code}</code> was issued but could not be delivered. Send it to ${reqst.email} yourself.`,
         msg?.message_id,
       );
@@ -118,7 +139,7 @@ export async function POST(req: NextRequest) {
     const delivered = await recordReply(
       reqst.visitorId,
       [
-        `We could not find MT5 login ${reqst.mt5Login} under our community, so we cannot send a code for it yet.`,
+        `We could not find ID ${reqst.mt5Login} under our community, so we cannot send a code for it yet.`,
         reason ? "" : "",
         reason,
         "",

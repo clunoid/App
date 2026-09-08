@@ -107,15 +107,6 @@ export function SupportChat({ source, email: known, name: knownName, country }: 
     return () => { alive = false; };
   }, [open, known, email, editWho]);
 
-  /* Anything on the page can ask for the bubble. The EA request uses it: the
-     answer to that request arrives here, so the window it arrives in is opened
-     rather than left for somebody to go looking for. */
-  useEffect(() => {
-    const onAsk = () => setOpen(true);
-    window.addEventListener("clunoid:support-open", onAsk);
-    return () => window.removeEventListener("clunoid:support-open", onAsk);
-  }, []);
-
   useEffect(() => {
     if (!open) return;
     const t = setTimeout(() => boxRef.current?.focus(), 120);
@@ -133,6 +124,34 @@ export function SupportChat({ source, email: known, name: knownName, country }: 
       return next;
     });
   }, []);
+
+  /* Anything on the page can ask for the bubble, and hand it what was just
+     sent on the page's behalf.
+    
+     The EA request uses this. It posts the request itself — it has to, because
+     it also records the row a code is issued against — but the person then
+     needs to SEE it here, in the thread the answer will arrive in. Without
+     that they open the bubble onto an empty conversation and cannot tell
+     whether anything happened. So the name and email it collected fill the
+     fields, and the message it sent is added to the thread as sent. */
+  useEffect(() => {
+    const onAsk = (e: Event) => {
+      const d = (e as CustomEvent).detail as
+        | { name?: string; email?: string; text?: string }
+        | undefined;
+      if (d?.name) { setName(d.name); saveIdentity({ name: d.name }); }
+      if (d?.email && isEmail(d.email)) { setEmail(d.email); saveIdentity({ email: d.email }); }
+      if (d?.text) {
+        remember({
+          id: crypto.randomUUID?.() ?? String(Math.random()),
+          text: d.text, at: new Date().toISOString(), from: "them", sent: true,
+        });
+      }
+      setOpen(true);
+    };
+    window.addEventListener("clunoid:support-open", onAsk);
+    return () => window.removeEventListener("clunoid:support-open", onAsk);
+  }, [remember]);
 
   /**
    * Collect anything the owner has replied.

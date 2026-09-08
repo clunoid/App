@@ -9,7 +9,7 @@
  * whoever finds the page.
  *
  * Four steps, and the order matters — an account first, because everything
- * after it is about that account; then the login, so it can be checked; then a
+ * after it is about that account; then the ID, so it can be checked; then a
  * name and an email, so there is a way to answer; then the code.
  *
  * Between step three and step four somebody has to look at a list on Deriv. So
@@ -30,7 +30,7 @@ type Phase = "form" | "sent" | "done";
 
 export function EaAccessModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [visitorId, setVisitorId] = useState("");
-  const [login, setLogin] = useState("");
+  const [clientId, setClientId] = useState("");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
@@ -62,7 +62,7 @@ export function EaAccessModal({ open, onClose }: { open: boolean; onClose: () =>
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          visitorId, mt5Login: login.trim(), name: name.trim(), email: email.trim(),
+          visitorId, mt5Login: clientId.trim(), name: name.trim(), email: email.trim(),
           page: typeof window !== "undefined" ? window.location.pathname : "",
         }),
       });
@@ -71,13 +71,22 @@ export function EaAccessModal({ open, onClose }: { open: boolean; onClose: () =>
 
       saveIdentity({ name: name.trim(), email: email.trim() });
       setPhase("sent");
-      /* Open the support bubble so the place the answer will appear is already
-         in front of them, rather than being somewhere they have to find. */
-      window.dispatchEvent(new CustomEvent("clunoid:support-open"));
+
+      /* Hand the bubble what was just sent, so it opens onto the conversation
+         with the request already in it and the name and email filled in —
+         rather than onto an empty window that gives no sign anything happened.
+         The answer arrives in this same thread. */
+      window.dispatchEvent(new CustomEvent("clunoid:support-open", {
+        detail: {
+          name: name.trim(),
+          email: email.trim(),
+          text: `Requested the General MT5 EA — client / MT5 ID ${clientId.trim()}.`,
+        },
+      }));
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Could not send that.");
     } finally { setBusy(false); }
-  }, [visitorId, login, name, email]);
+  }, [visitorId, clientId, name, email]);
 
   const redeem = useCallback(async () => {
     setBusy(true); setErr(null);
@@ -106,7 +115,7 @@ export function EaAccessModal({ open, onClose }: { open: boolean; onClose: () =>
 
   if (!open) return null;
 
-  const formOk = /^[0-9]{4,12}$/.test(login.trim()) && name.trim().length > 1 &&
+  const formOk = /^[0-9]{4,12}$/.test(clientId.trim()) && name.trim().length > 1 &&
     /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email.trim());
 
   return (
@@ -169,15 +178,15 @@ export function EaAccessModal({ open, onClose }: { open: boolean; onClose: () =>
                 </a>
               </Step>
 
-              <Step n={2} title="Your MT5 login" done={phase === "sent"}>
+              <Step n={2} title="Client ID or MT5 ID" done={phase === "sent"}>
                 <input
-                  value={login} onChange={(e) => setLogin(e.target.value)}
+                  value={clientId} onChange={(e) => setClientId(e.target.value)}
                   inputMode="numeric" placeholder="e.g. 12345678" disabled={phase === "sent"}
                   className="w-full rounded-xl border px-3 py-2.5 text-[13px] outline-none"
                   style={{ borderColor: TC.line, background: TC.bg, color: TC.text }}
                 />
                 <p className="mt-1.5 text-[11.5px]" style={{ color: TC.faint }}>
-                  The account number Deriv shows on your MT5 account — not your email.
+                  Either one works — the number Deriv shows for your account. Not your email.
                 </p>
               </Step>
 
@@ -209,7 +218,7 @@ export function EaAccessModal({ open, onClose }: { open: boolean; onClose: () =>
               {phase === "sent" && (
                 <div className="mb-4 rounded-xl border p-3.5 text-[12.5px] leading-relaxed"
                   style={{ borderColor: "rgba(34,197,94,0.35)", background: "rgba(34,197,94,0.08)", color: TC.text }}>
-                  <b>Sent.</b> We are checking your login against our community list now.
+                  <b>Sent.</b> We are checking your ID against our community list now.
                   Your code arrives in the <b>support window</b> — it has opened at the corner of
                   this page, and the reply lands there.
                 </div>
@@ -241,7 +250,7 @@ export function EaAccessModal({ open, onClose }: { open: boolean; onClose: () =>
               )}
 
               <p className="mt-4 border-t pt-3.5 text-[11.5px] leading-relaxed" style={{ borderColor: TC.line, color: TC.faint }}>
-                We check every login against our Deriv partner list. If yours is not under us,
+                We check every ID against our Deriv partner list. If yours is not under us,
                 we will say so and ask you to contact Deriv support to be added under{" "}
                 <code className="rounded px-1 py-0.5" style={{ background: TC.bg, color: TC.muted }}>{PARTNER_ID}</code>{" "}
                 — then reply in the support window and we will check again.
