@@ -1490,6 +1490,16 @@ clLine(int n, int w, float r) =>
 var table clMonTab = table.new(position.bottom_right, 14, 14, border_width = 1, frame_width = 1, frame_color = color.new(GRAY, 50))
 var table clStatTab = table.new(position.bottom_left, 2, 20, border_width = 1, frame_width = 1, frame_color = color.new(GRAY, 50))
 
+// @function    One row of the summary. This began as two array.from() calls, a
+//              column of keys and a column of values, and Pine rejected it:
+//              inside array.from it could not infer a type through a string
+//              concatenation, so one argument came out "unknown". Written as a
+//              row at a time, every value is type-checked where it is written,
+//              which is also where anyone reading it would look.
+clStat(int r, string k, string v, color kb, color vb) =>
+    table.cell(clStatTab, 0, r, k, bgcolor = kb, text_color = CL_INK, text_size = size.tiny, text_halign = text.align_left)
+    table.cell(clStatTab, 1, r, v, bgcolor = vb, text_color = CL_INK, text_size = size.tiny, text_halign = text.align_left)
+
 if barstate.islast and clOn
     color pHead = color.new(#101822, 10)
     color pCell = color.new(#0b131c, 25)
@@ -1532,42 +1542,29 @@ if barstate.islast and clOn
         float avgLoss = clLossN > 0 ? clLossSum / clLossN : na
         float avgBars = n > 0 ? 1.0 * clBarsSum / n : na
 
-        array<string> pk = array.from(
-             'Symbol', 'Data from', 'Data to', 'Signals closed', 'Win rate', 'Total', 'Per signal',
-             'Profit factor', 'Average win', 'Average loss', 'Max drawdown', 'Longest losing run',
-             'Average bars held', 'CHoCH long', 'CHoCH short', 'BOS long', 'BOS short',
-             'Up to ' + str.format_time(clOosStart, 'yyyy-MM-dd', syminfo.timezone),
-             'After that date', 'Waiting now')
+        string oosLabel = 'Up to ' + str.format_time(clOosStart, 'yyyy-MM-dd', syminfo.timezone)
+        color  totalBg  = clSumR > 0 ? color.new(CL_LONG, 65) : clSumR < 0 ? color.new(CL_SHORT, 65) : pCell
+        color  oosBg    = array.get(clSplitN, 1) == 0 ? pCell : array.get(clSplitR, 1) > 0 ? color.new(CL_LONG, 55) : color.new(CL_SHORT, 55)
 
-        array<string> pv = array.from(
-             syminfo.ticker + ' · ' + timeframe.period,
-             str.format_time(initialTime, 'yyyy-MM-dd', syminfo.timezone),
-             str.format_time(time, 'yyyy-MM-dd', syminfo.timezone),
-             str.tostring(n),
-             na(winPct) ? '—' : str.tostring(winPct, '#.#') + '%',
-             clR(clSumR, '#.##'),
-             na(expect) ? '—' : clR(expect, '#.###'),
-             na(pFactor) ? '—' : str.tostring(pFactor, '#.##'),
-             na(avgWin) ? '—' : str.tostring(avgWin, '#.##') + 'R',
-             na(avgLoss) ? '—' : str.tostring(avgLoss, '#.##') + 'R',
-             str.tostring(clMaxDD, '#.##') + 'R',
-             str.tostring(clWorstRun) + ' in a row',
-             na(avgBars) ? '—' : str.tostring(avgBars, '#'),
-             clLine(array.get(clKindN, 0), array.get(clKindW, 0), array.get(clKindR, 0)),
-             clLine(array.get(clKindN, 1), array.get(clKindW, 1), array.get(clKindR, 1)),
-             clLine(array.get(clKindN, 2), array.get(clKindW, 2), array.get(clKindR, 2)),
-             clLine(array.get(clKindN, 3), array.get(clKindW, 3), array.get(clKindR, 3)),
-             clLine(array.get(clSplitN, 0), array.get(clSplitW, 0), array.get(clSplitR, 0)),
-             clLine(array.get(clSplitN, 1), array.get(clSplitW, 1), array.get(clSplitR, 1)),
-             clIn ? (clDir == 1 ? 'long open' : 'short open') : clPlLive or clPsLive ? 'setup armed' : 'nothing')
-
-        for r = 0 to array.size(pk) - 1
-            color rowBg = pCell
-            if r == 5 or r == 6
-                rowBg := clSumR > 0 ? color.new(CL_LONG, 65) : clSumR < 0 ? color.new(CL_SHORT, 65) : pCell
-            if r == 18
-                rowBg := array.get(clSplitR, 1) > 0 ? color.new(CL_LONG, 55) : array.get(clSplitN, 1) == 0 ? pCell : color.new(CL_SHORT, 55)
-            table.cell(clStatTab, 0, r, array.get(pk, r), bgcolor = pHead, text_color = CL_INK, text_size = size.tiny, text_halign = text.align_left)
-            table.cell(clStatTab, 1, r, array.get(pv, r), bgcolor = rowBg, text_color = CL_INK, text_size = size.tiny, text_halign = text.align_left)
+        clStat(0,  'Symbol',            syminfo.ticker + ' · ' + timeframe.period,                          pHead, pCell)
+        clStat(1,  'Data from',         str.format_time(initialTime, 'yyyy-MM-dd', syminfo.timezone),       pHead, pCell)
+        clStat(2,  'Data to',           str.format_time(time, 'yyyy-MM-dd', syminfo.timezone),              pHead, pCell)
+        clStat(3,  'Signals closed',    str.tostring(n),                                                    pHead, pCell)
+        clStat(4,  'Win rate',          na(winPct) ? '—' : str.tostring(winPct, '#.#') + '%',               pHead, pCell)
+        clStat(5,  'Total',             clR(clSumR, '#.##'),                                                pHead, totalBg)
+        clStat(6,  'Per signal',        na(expect) ? '—' : clR(expect, '#.###'),                            pHead, totalBg)
+        clStat(7,  'Profit factor',     na(pFactor) ? '—' : str.tostring(pFactor, '#.##'),                  pHead, pCell)
+        clStat(8,  'Average win',       na(avgWin) ? '—' : str.tostring(avgWin, '#.##') + 'R',              pHead, pCell)
+        clStat(9,  'Average loss',      na(avgLoss) ? '—' : str.tostring(avgLoss, '#.##') + 'R',            pHead, pCell)
+        clStat(10, 'Max drawdown',      str.tostring(clMaxDD, '#.##') + 'R',                                pHead, pCell)
+        clStat(11, 'Longest losing run', str.tostring(clWorstRun) + ' in a row',                            pHead, pCell)
+        clStat(12, 'Average bars held', na(avgBars) ? '—' : str.tostring(avgBars, '#'),                     pHead, pCell)
+        clStat(13, 'CHoCH long',        clLine(array.get(clKindN, 0), array.get(clKindW, 0), array.get(clKindR, 0)), pHead, pCell)
+        clStat(14, 'CHoCH short',       clLine(array.get(clKindN, 1), array.get(clKindW, 1), array.get(clKindR, 1)), pHead, pCell)
+        clStat(15, 'BOS long',          clLine(array.get(clKindN, 2), array.get(clKindW, 2), array.get(clKindR, 2)), pHead, pCell)
+        clStat(16, 'BOS short',         clLine(array.get(clKindN, 3), array.get(clKindW, 3), array.get(clKindR, 3)), pHead, pCell)
+        clStat(17, oosLabel,            clLine(array.get(clSplitN, 0), array.get(clSplitW, 0), array.get(clSplitR, 0)), pHead, pCell)
+        clStat(18, 'After that date',   clLine(array.get(clSplitN, 1), array.get(clSplitW, 1), array.get(clSplitR, 1)), pHead, oosBg)
+        clStat(19, 'Waiting now',       clIn ? (clDir == 1 ? 'long open' : 'short open') : clPlLive or clPsLive ? 'setup armed' : 'nothing', pHead, pCell)
 
 //---------------------------------------------------------------------------------------------------------------------}
