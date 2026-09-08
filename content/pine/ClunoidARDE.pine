@@ -940,7 +940,7 @@ CL_RISK     = 'Clunoid · Entry, Stop & Targets'
 CL_VIEW     = 'Clunoid · Display'
 
 clOn        = input.bool(true, 'Enable the signal engine', group = CL_GROUP,
-     tooltip = 'Turn this off to leave the script exactly as LuxAlgo published it.')
+     tooltip = 'Turn this off to leave only the market-structure layer drawn — no entries, no targets, no alerts, no tables.')
 clUseChoch  = input.bool(true, 'Trade CHoCH (reversals)', group = CL_GROUP)
 clUseBos    = input.bool(true, 'Trade BOS (continuations)', group = CL_GROUP)
 
