@@ -862,3 +862,460 @@ alertcondition(currentAlerts.bullishFairValueGap,       'Bullish FVG',          
 alertcondition(currentAlerts.bearishFairValueGap,       'Bearish FVG',                  'Bearish FVG formed')
 
 //---------------------------------------------------------------------------------------------------------------------}
+
+//---------------------------------------------------------------------------------------------------------------------}
+//CLUNOID SIGNAL ENGINE
+//---------------------------------------------------------------------------------------------------------------------{
+//
+// Everything above this point is LuxAlgo's Smart Money Concepts, unchanged.
+// Nothing in it is removed, disabled or rewritten — this section only reads
+// what it has already worked out and turns it into a trade with a price to
+// enter at, a price that says the idea was wrong, and prices to take.
+//
+// THE SETUP IT LOOKS FOR
+// ──────────────────────
+// One idea, and it is the one every part of the script above already serves:
+//
+//   1. Higher timeframes agree on a direction. Structure, not an oscillator:
+//      each timeframe is bullish once price closes through its last swing
+//      high, bearish once it closes through its last swing low.
+//
+//   2. Structure shifts on this timeframe in that direction — a CHoCH (the
+//      first evidence of a turn) or a BOS (continuation of one already under
+//      way). Both are already detected above; this only listens.
+//
+//   3. That shift leaves an order block behind — the candle the move came
+//      from. The script above already finds and stores it.
+//
+//   4. Price comes BACK to that order block. That retrace is the entry, and
+//      waiting for it is the whole point: it is the difference between paying
+//      for a move that has already happened and being paid to wait for it.
+//
+// WHERE THE THREE PRICES COME FROM
+// ────────────────────────────────
+//   Entry   The top of the order block for a long, the bottom for a short —
+//           where the retrace reaches it. Not the close of a signal candle.
+//
+//   Stop    Beyond the far side of that same order block, plus a buffer. This
+//           is a real invalidation, not a round number or an ATR guess: if
+//           price trades through the block that caused the shift, the reason
+//           for the trade no longer exists. Nothing else about the setup
+//           decides where it goes.
+//
+//   Targets Liquidity first — the strong high or the last swing high, because
+//           that is where resting orders actually are and where price is
+//           actually drawn. Only when no such level sits far enough away does
+//           it fall back to a multiple of the risk. Half comes off at the
+//           first target and the stop moves to breakeven; the rest runs.
+//
+// WHAT IT REFUSES
+// ───────────────
+//   · Longs in the top half of the range and shorts in the bottom half.
+//     Buying premium is how a good idea becomes a bad trade.
+//   · Anything whose first target is not at least the minimum reward for the
+//     risk, measured from the real stop rather than a convenient one.
+//   · A second trade while one is open.
+//   · A setup that grew stale, or one price broke before it ever triggered.
+//
+// WHAT IT DOES NOT PRETEND
+// ────────────────────────
+// When a bar touches both the stop and a target, which came first is not
+// knowable from open/high/low/close. This assumes the STOP came first, every
+// time. That makes the running record here pessimistic on those bars, which
+// is the only honest direction for an error of that kind to run.
+//
+//---------------------------------------------------------------------------------------------------------------------{
+
+CL_GROUP    = 'Clunoid Signal Engine'
+CL_BIAS     = 'Clunoid · Multi-Timeframe Trend'
+CL_RISK     = 'Clunoid · Entry, Stop & Targets'
+CL_VIEW     = 'Clunoid · Display'
+
+clOn        = input.bool(true, 'Enable the signal engine', group = CL_GROUP,
+     tooltip = 'Turn this off to leave the script exactly as LuxAlgo published it.')
+clUseChoch  = input.bool(true, 'Trade CHoCH (reversals)', group = CL_GROUP)
+clUseBos    = input.bool(true, 'Trade BOS (continuations)', group = CL_GROUP)
+
+clTf1       = input.timeframe('5',   'Trend timeframe 1', group = CL_BIAS)
+clTf2       = input.timeframe('15',  'Trend timeframe 2', group = CL_BIAS)
+clTf3       = input.timeframe('60',  'Trend timeframe 3', group = CL_BIAS)
+clTf4       = input.timeframe('240', 'Trend timeframe 4', group = CL_BIAS)
+clTf5       = input.timeframe('D',   'Trend timeframe 5', group = CL_BIAS)
+clBiasLen   = input.int(5, 'Swing length for trend', minval = 2, maxval = 50, group = CL_BIAS,
+     tooltip = 'How many bars either side of a pivot are needed to call it a swing point on each of those timeframes.')
+clBiasMin   = input.int(3, 'Timeframes that must agree', minval = 1, maxval = 5, group = CL_BIAS,
+     tooltip = 'Each timeframe scores +1 bullish, -1 bearish, 0 undecided. A long needs the total at or above this figure, a short at or below its negative.')
+clNeedTop   = input.bool(true, 'The highest timeframe may never disagree', group = CL_BIAS,
+     tooltip = 'A hard veto, separate from the score: trend timeframe 5 can be undecided, but it can never point the other way.')
+
+clSlBuffer  = input.float(0.15, 'Stop buffer (× ATR14)', minval = 0.0, maxval = 2.0, step = 0.05, group = CL_RISK,
+     tooltip = 'Placed beyond the far edge of the order block, so the stop is not sitting exactly where everyone else has left theirs.')
+clMinRR     = input.float(1.5, 'Minimum reward for the risk', minval = 0.5, maxval = 10, step = 0.1, group = CL_RISK)
+clTp1R      = input.float(2.0, 'First target (× risk) when no liquidity is in reach', minval = 0.5, step = 0.1, group = CL_RISK)
+clTp2R      = input.float(3.5, 'Second target (× risk)', minval = 1.0, step = 0.1, group = CL_RISK)
+clUseLoc    = input.bool(true, 'Buy discount only, sell premium only', group = CL_RISK,
+     tooltip = 'Rejects a long whose entry sits above the midpoint of the recent range, and a short whose entry sits below it.')
+clRangeLen  = input.int(100, 'Bars defining that range', minval = 20, maxval = 500, group = CL_RISK)
+clExpiry    = input.int(30, 'Bars a setup stays live', minval = 3, maxval = 200, group = CL_RISK,
+     tooltip = 'If price has not come back to the order block within this many bars, the setup is dropped rather than taken late.')
+clUseHours  = input.bool(false, 'Trade session hours only', group = CL_RISK,
+     tooltip = 'Off by default because this runs on markets that never close. Turn it on for forex and indices.')
+clHours     = input.session('0700-1900', 'Session (exchange time)', group = CL_RISK)
+
+clShowLines = input.bool(true, 'Draw entry, stop and targets', group = CL_VIEW)
+clShowZones = input.bool(true, 'Shade risk and reward',        group = CL_VIEW)
+clShowLabel = input.bool(true, 'Label each signal',            group = CL_VIEW)
+clShowPend  = input.bool(true, 'Outline setups still waiting', group = CL_VIEW)
+clShowPanel = input.bool(true, 'Trend and status panel',       group = CL_VIEW)
+clKeep      = input.int(6, 'Keep last N signals drawn', minval = 1, maxval = 30, group = CL_VIEW)
+clAlertOn   = input.bool(true, 'Send an alert on entry', group = CL_VIEW,
+     tooltip = 'One JSON object per signal, for a webhook. Create the alert on "Any alert() function call".')
+
+CL_LONG     = #00c853
+CL_SHORT    = #ff3d71
+CL_STOP     = #ff5252
+CL_INK      = #eaf2fb
+
+// @function        Directional bias of one timeframe, read from its own structure.
+//                  Bullish once price closes through the last swing high, bearish
+//                  once it closes through the last swing low. The level is consumed
+//                  when it breaks, so the bias only changes again on a NEW swing
+//                  being taken — which is what makes it structure rather than a
+//                  moving average with extra steps.
+// @param len       bars either side of a pivot
+// @returns         int, +1 bullish, -1 bearish, 0 undecided
+clBiasOf(int len) =>
+    var float lastHigh = na
+    var float lastLow  = na
+    var int   b        = 0
+    float ph = ta.pivothigh(len, len)
+    float pl = ta.pivotlow(len, len)
+    if not na(ph)
+        lastHigh := ph
+    if not na(pl)
+        lastLow := pl
+    if not na(lastHigh) and close > lastHigh
+        b        := 1
+        lastHigh := na
+    if not na(lastLow) and close < lastLow
+        b       := -1
+        lastLow := na
+    b
+
+// lookahead_off, so each of these is the value of the last CLOSED bar on that
+// timeframe and history shows what was actually knowable at the time.
+clB1 = request.security(syminfo.tickerid, clTf1, clBiasOf(clBiasLen), lookahead = barmerge.lookahead_off)
+clB2 = request.security(syminfo.tickerid, clTf2, clBiasOf(clBiasLen), lookahead = barmerge.lookahead_off)
+clB3 = request.security(syminfo.tickerid, clTf3, clBiasOf(clBiasLen), lookahead = barmerge.lookahead_off)
+clB4 = request.security(syminfo.tickerid, clTf4, clBiasOf(clBiasLen), lookahead = barmerge.lookahead_off)
+clB5 = request.security(syminfo.tickerid, clTf5, clBiasOf(clBiasLen), lookahead = barmerge.lookahead_off)
+
+clScore   = nz(clB1) + nz(clB2) + nz(clB3) + nz(clB4) + nz(clB5)
+clTopOk_L = not clNeedTop or nz(clB5) >= 0
+clTopOk_S = not clNeedTop or nz(clB5) <= 0
+clBullOk  = clScore >= clBiasMin and clTopOk_L
+clBearOk  = clScore <= -clBiasMin and clTopOk_S
+
+// The range used for premium and discount is measured here rather than taken
+// from the zones above, so the filter works whether or not those are switched on.
+clAtr     = ta.atr(14)
+clRangeHi = ta.highest(high, clRangeLen)
+clRangeLo = ta.lowest(low, clRangeLen)
+clEq      = math.avg(clRangeHi, clRangeLo)
+clInHours = not clUseHours or not na(time(timeframe.period, clHours))
+
+// ── setups waiting for a retrace ──────────────────────────────────────────
+// One live setup per direction: the freshest structure shift is the one that
+// matters, and an older block that price never came back to is not improved by
+// being kept.
+
+var bool  clPlLive = false
+var float clPlTop  = na
+var float clPlBot  = na
+var int   clPlBar  = 0
+var bool  clPsLive = false
+var float clPsTop  = na
+var float clPsBot  = na
+var int   clPsBar  = 0
+
+clShift_L = (clUseChoch and currentAlerts.internalBullishCHoCH) or (clUseBos and currentAlerts.internalBullishBOS)
+clShift_S = (clUseChoch and currentAlerts.internalBearishCHoCH) or (clUseBos and currentAlerts.internalBearishBOS)
+
+if clOn and clShift_L and internalOrderBlocks.size() > 0
+    orderBlock clOb = internalOrderBlocks.get(0)
+    if clOb.bias == BULLISH
+        clPlTop  := clOb.barHigh
+        clPlBot  := clOb.barLow
+        clPlBar  := bar_index
+        clPlLive := true
+
+if clOn and clShift_S and internalOrderBlocks.size() > 0
+    orderBlock clOb = internalOrderBlocks.get(0)
+    if clOb.bias == BEARISH
+        clPsTop  := clOb.barHigh
+        clPsBot  := clOb.barLow
+        clPsBar  := bar_index
+        clPsLive := true
+
+// ── the open trade ────────────────────────────────────────────────────────
+
+var bool  clIn     = false
+var int   clDir    = 0
+var float clEntry  = na
+var float clSl     = na
+var float clTp1    = na
+var float clTp2    = na
+var float clRisk   = na
+var float clRr1    = na
+var float clRr2    = na
+var bool  clHalf   = false
+var int   clBarIn  = 0
+var line  clSlLine = na
+
+var int   clTrades = 0
+var int   clWins   = 0
+var float clSumR   = 0.0
+
+var array<line>  clLines = array.new<line>()
+var array<label> clLabs  = array.new<label>()
+var array<box>   clBoxes = array.new<box>()
+
+clJustClosed = false
+clClosedR    = 0.0
+clClosedWhy  = ''
+
+// Managed BEFORE any new entry, so a bar that closes one trade cannot also open
+// the next on the same bar's prices.
+if clIn
+    if clDir == 1
+        if low <= clSl
+            clJustClosed := true
+            clClosedR    := clHalf ? 0.5 * clRr1 : -1.0
+            clClosedWhy  := clHalf ? 'breakeven after TP1' : 'stop'
+            clIn         := false
+        else
+            if not clHalf and high >= clTp1
+                clHalf := true
+                clSl   := clEntry
+                if not na(clSlLine)
+                    clSlLine.set_y1(clEntry)
+                    clSlLine.set_y2(clEntry)
+                    clSlLine.set_color(GRAY)
+            if clHalf and high >= clTp2
+                clJustClosed := true
+                clClosedR    := 0.5 * clRr1 + 0.5 * clRr2
+                clClosedWhy  := 'both targets'
+                clIn         := false
+    else
+        if high >= clSl
+            clJustClosed := true
+            clClosedR    := clHalf ? 0.5 * clRr1 : -1.0
+            clClosedWhy  := clHalf ? 'breakeven after TP1' : 'stop'
+            clIn         := false
+        else
+            if not clHalf and low <= clTp1
+                clHalf := true
+                clSl   := clEntry
+                if not na(clSlLine)
+                    clSlLine.set_y1(clEntry)
+                    clSlLine.set_y2(clEntry)
+                    clSlLine.set_color(GRAY)
+            if clHalf and low <= clTp2
+                clJustClosed := true
+                clClosedR    := 0.5 * clRr1 + 0.5 * clRr2
+                clClosedWhy  := 'both targets'
+                clIn         := false
+
+if clJustClosed
+    clTrades := clTrades + 1
+    clSumR   := clSumR + clClosedR
+    if clClosedR > 0
+        clWins := clWins + 1
+
+// ── entry ─────────────────────────────────────────────────────────────────
+
+clFireL = false
+clFireS = false
+clNewEntry = 0.0
+clNewSl    = 0.0
+clNewTp1   = 0.0
+clNewTp2   = 0.0
+
+if clOn and not clIn and clInHours and barstate.isconfirmed
+    if clPlLive and bar_index > clPlBar and clBullOk and low <= clPlTop
+        float e = math.min(clPlTop, open)
+        float s = clPlBot - clSlBuffer * clAtr
+        float r = e - s
+        if r > 0 and (not clUseLoc or e <= clEq)
+            float liq = math.max(nz(trailing.top, swingHigh.currentLevel), nz(swingHigh.currentLevel, trailing.top))
+            float t1 = not na(liq) and liq > e and (liq - e) / r >= clMinRR ? liq : e + clTp1R * r
+            float t2 = math.max(e + clTp2R * r, t1 + r)
+            if (t1 - e) / r >= clMinRR
+                clFireL    := true
+                clNewEntry := e
+                clNewSl    := s
+                clNewTp1   := t1
+                clNewTp2   := t2
+    if not clFireL and clPsLive and bar_index > clPsBar and clBearOk and high >= clPsBot
+        float e = math.max(clPsBot, open)
+        float s = clPsTop + clSlBuffer * clAtr
+        float r = s - e
+        if r > 0 and (not clUseLoc or e >= clEq)
+            float liq = math.min(nz(trailing.bottom, swingLow.currentLevel), nz(swingLow.currentLevel, trailing.bottom))
+            float t1 = not na(liq) and liq < e and (e - liq) / r >= clMinRR ? liq : e - clTp1R * r
+            float t2 = math.min(e - clTp2R * r, t1 - r)
+            if (e - t1) / r >= clMinRR
+                clFireS    := true
+                clNewEntry := e
+                clNewSl    := s
+                clNewTp1   := t1
+                clNewTp2   := t2
+
+if clFireL or clFireS
+    clSlLine := na          // never move a line belonging to the last trade
+    clIn     := true
+    clDir    := clFireL ? 1 : -1
+    clEntry  := clNewEntry
+    clSl     := clNewSl
+    clTp1    := clNewTp1
+    clTp2    := clNewTp2
+    clRisk   := math.abs(clNewEntry - clNewSl)
+    clRr1    := math.abs(clNewTp1 - clNewEntry) / clRisk
+    clRr2    := math.abs(clNewTp2 - clNewEntry) / clRisk
+    clHalf   := false
+    clBarIn  := bar_index
+    if clFireL
+        clPlLive := false
+    else
+        clPsLive := false
+
+// Stale, or broken before it ever triggered. This sits AFTER the entry check on
+// purpose: a bar that reached into the block and then closed beyond it was a
+// fill and then a loss, not a setup that never happened, and dropping it here
+// would quietly remove losing trades from the record.
+if clPlLive and (bar_index - clPlBar > clExpiry or close < clPlBot)
+    clPlLive := false
+if clPsLive and (bar_index - clPsBar > clExpiry or close > clPsTop)
+    clPsLive := false
+
+// ── draw it ───────────────────────────────────────────────────────────────
+
+if (clFireL or clFireS)
+    color  dirColor = clFireL ? CL_LONG : CL_SHORT
+    int    rightBar = bar_index + 30
+
+    if clShowLines
+        array.push(clLines, line.new(bar_index, clEntry, rightBar, clEntry, color = dirColor, width = 2))
+        clSlLine := line.new(bar_index, clSl, rightBar, clSl, color = CL_STOP, width = 1, style = line.style_dashed)
+        array.push(clLines, clSlLine)
+        array.push(clLines, line.new(bar_index, clTp1, rightBar, clTp1, color = dirColor, width = 1, style = line.style_dashed))
+        array.push(clLines, line.new(bar_index, clTp2, rightBar, clTp2, color = dirColor, width = 1, style = line.style_dotted))
+        array.push(clLabs, label.new(rightBar, clSl,  'STOP · idea is wrong here', color = color.new(CL_STOP, 20), textcolor = CL_INK, style = label.style_label_left, size = size.tiny))
+        array.push(clLabs, label.new(rightBar, clTp1, 'TP1 · half off, stop to entry', color = color.new(dirColor, 20), textcolor = CL_INK, style = label.style_label_left, size = size.tiny))
+        array.push(clLabs, label.new(rightBar, clTp2, 'TP2 · the rest', color = color.new(dirColor, 40), textcolor = CL_INK, style = label.style_label_left, size = size.tiny))
+
+    if clShowZones
+        array.push(clBoxes, box.new(bar_index, clEntry, rightBar, clSl,  border_color = color.new(CL_STOP, 65), bgcolor = color.new(CL_STOP, 88)))
+        array.push(clBoxes, box.new(bar_index, clEntry, rightBar, clTp2, border_color = color.new(dirColor, 65), bgcolor = color.new(dirColor, 90)))
+
+    if clShowLabel
+        string txt = (clFireL ? '▲ LONG ' : '▼ SHORT ') + syminfo.ticker + '\n' +
+             'Entry  ' + str.tostring(clEntry, format.mintick) + '\n' +
+             'Stop   ' + str.tostring(clSl,    format.mintick) + '\n' +
+             'TP1    ' + str.tostring(clTp1,   format.mintick) + '  (' + str.tostring(clRr1, '#.##') + 'R)\n' +
+             'TP2    ' + str.tostring(clTp2,   format.mintick) + '  (' + str.tostring(clRr2, '#.##') + 'R)\n' +
+             'Trend  ' + str.tostring(clScore) + ' of 5'
+        array.push(clLabs, label.new(bar_index, clFireL ? low : high, txt, color = color.new(dirColor, 12), textcolor = CL_INK,
+             style = clFireL ? label.style_label_up : label.style_label_down, size = size.small))
+
+    while array.size(clLines) > clKeep * 4
+        line.delete(array.shift(clLines))
+    while array.size(clLabs) > clKeep * 4
+        label.delete(array.shift(clLabs))
+    while array.size(clBoxes) > clKeep * 2
+        box.delete(array.shift(clBoxes))
+
+plotshape(clOn and clFireL, title = 'Clunoid long',  style = shape.triangleup,   location = location.belowbar, color = CL_LONG,  size = size.small)
+plotshape(clOn and clFireS, title = 'Clunoid short', style = shape.triangledown, location = location.abovebar, color = CL_SHORT, size = size.small)
+
+// The setup that has not triggered yet, so the zone price is travelling toward
+// is visible before it gets there rather than only in hindsight.
+var box clPendLBox = box.new(na, na, na, na, xloc = xloc.bar_index, border_color = color.new(CL_LONG, 40), bgcolor = color.new(CL_LONG, 92), border_style = line.style_dotted)
+var box clPendSBox = box.new(na, na, na, na, xloc = xloc.bar_index, border_color = color.new(CL_SHORT, 40), bgcolor = color.new(CL_SHORT, 92), border_style = line.style_dotted)
+
+if barstate.islast
+    if clOn and clShowPend and clPlLive
+        clPendLBox.set_lefttop(clPlBar, clPlTop)
+        clPendLBox.set_rightbottom(bar_index + 10, clPlBot)
+    else
+        clPendLBox.set_lefttop(na, na)
+        clPendLBox.set_rightbottom(na, na)
+
+    if clOn and clShowPend and clPsLive
+        clPendSBox.set_lefttop(clPsBar, clPsTop)
+        clPendSBox.set_rightbottom(bar_index + 10, clPsBot)
+    else
+        clPendSBox.set_lefttop(na, na)
+        clPendSBox.set_rightbottom(na, na)
+
+// ── the panel ─────────────────────────────────────────────────────────────
+
+clWord(int b) => b > 0 ? '▲ up' : b < 0 ? '▼ down' : '— flat'
+clTint(int b) => b > 0 ? color.new(CL_LONG, 60) : b < 0 ? color.new(CL_SHORT, 60) : color.new(GRAY, 80)
+
+var table clPanel = table.new(position.top_left, 2, 10, border_width = 1, frame_width = 1, frame_color = color.new(GRAY, 50))
+
+if barstate.islast and clShowPanel and clOn
+    color head = color.new(#101822, 10)
+    color cell = color.new(#0b131c, 25)
+
+    table.cell(clPanel, 0, 0, 'Clunoid engine', bgcolor = head, text_color = CL_INK, text_size = size.tiny, text_halign = text.align_left)
+    table.cell(clPanel, 1, 0, syminfo.ticker,   bgcolor = head, text_color = CL_INK, text_size = size.tiny, text_halign = text.align_left)
+
+    array<string> clTfs = array.from(clTf1, clTf2, clTf3, clTf4, clTf5)
+    array<int>    clBs  = array.from(nz(clB1), nz(clB2), nz(clB3), nz(clB4), nz(clB5))
+    for i = 0 to 4
+        int b = array.get(clBs, i)
+        table.cell(clPanel, 0, i + 1, array.get(clTfs, i), bgcolor = cell, text_color = CL_INK, text_size = size.tiny, text_halign = text.align_left)
+        table.cell(clPanel, 1, i + 1, clWord(b), bgcolor = clTint(b), text_color = CL_INK, text_size = size.tiny, text_halign = text.align_left)
+
+    table.cell(clPanel, 0, 6, 'Trend score', bgcolor = head, text_color = CL_INK, text_size = size.tiny, text_halign = text.align_left)
+    table.cell(clPanel, 1, 6, str.tostring(clScore) + ' of 5' + (clBullOk ? ' · longs armed' : clBearOk ? ' · shorts armed' : ' · stand aside'),
+         bgcolor = clBullOk ? color.new(CL_LONG, 60) : clBearOk ? color.new(CL_SHORT, 60) : color.new(GRAY, 80), text_color = CL_INK, text_size = size.tiny, text_halign = text.align_left)
+
+    table.cell(clPanel, 0, 7, 'Price is', bgcolor = head, text_color = CL_INK, text_size = size.tiny, text_halign = text.align_left)
+    table.cell(clPanel, 1, 7, close > clEq ? 'premium — sells only' : 'discount — buys only', bgcolor = cell, text_color = CL_INK, text_size = size.tiny, text_halign = text.align_left)
+
+    string state = not showInternalOrderBlocksInput ? 'turn on Internal Order Blocks' : clIn ? (clDir == 1 ? 'LONG open' : 'SHORT open') + (clHalf ? ', stop at entry' : '') : clPlLive and clPsLive ? 'two setups waiting' : clPlLive ? 'long setup waiting' : clPsLive ? 'short setup waiting' : 'nothing set up'
+    table.cell(clPanel, 0, 8, 'Right now', bgcolor = head, text_color = CL_INK, text_size = size.tiny, text_halign = text.align_left)
+    table.cell(clPanel, 1, 8, state, bgcolor = cell, text_color = CL_INK, text_size = size.tiny, text_halign = text.align_left)
+
+    string record = clTrades == 0 ? 'no closed signals yet' : str.tostring(clTrades) + ' closed · ' + str.tostring(100.0 * clWins / clTrades, '#') + '% won · ' + str.tostring(clSumR, '#.##') + 'R total'
+    table.cell(clPanel, 0, 9, 'On this chart', bgcolor = head, text_color = CL_INK, text_size = size.tiny, text_halign = text.align_left)
+    table.cell(clPanel, 1, 9, record, bgcolor = cell, text_color = CL_INK, text_size = size.tiny, text_halign = text.align_left)
+
+// ── the alert ─────────────────────────────────────────────────────────────
+// One JSON object per signal. Create the alert on "Any alert() function call"
+// and point the webhook at your own endpoint — never put a secret in here, it
+// belongs in the webhook URL, which a published chart never shows.
+
+if clOn and clAlertOn and (clFireL or clFireS)
+    string clSide = clFireL ? 'buy' : 'sell'
+    string clJson = '{"source":"clunoid-smc","v":1' +
+         ',"symbol":"'     + syminfo.ticker + '"' +
+         ',"exchange":"'   + syminfo.prefix + '"' +
+         ',"timeframe":"'  + timeframe.period + '"' +
+         ',"side":"'       + clSide + '"' +
+         ',"entry":'       + str.tostring(clEntry, format.mintick) +
+         ',"stop":'        + str.tostring(clSl,    format.mintick) +
+         ',"tp1":'         + str.tostring(clTp1,   format.mintick) +
+         ',"tp2":'         + str.tostring(clTp2,   format.mintick) +
+         ',"rr1":'         + str.tostring(clRr1, '#.##') +
+         ',"rr2":'         + str.tostring(clRr2, '#.##') +
+         ',"trendScore":'  + str.tostring(clScore) +
+         ',"bias":['       + str.tostring(nz(clB1)) + ',' + str.tostring(nz(clB2)) + ',' + str.tostring(nz(clB3)) + ',' + str.tostring(nz(clB4)) + ',' + str.tostring(nz(clB5)) + ']' +
+         ',"bar":'         + str.tostring(time) +
+         '}'
+    alert(clJson, alert.freq_once_per_bar_close)
+
+//---------------------------------------------------------------------------------------------------------------------}
