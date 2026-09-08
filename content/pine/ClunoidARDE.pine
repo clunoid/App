@@ -147,7 +147,9 @@ e21 = ta.ema(close, 21)
 e55 = ta.ema(close, 55)
 
 atr14 = ta.atr(14)
-[, , adx14] = ta.dmi(14, 14)
+// ta.dmi returns three values and Pine has no way to skip one, so the two
+// directional indices are named even though only ADX is read below.
+[diPlus, diMinus, adx14] = ta.dmi(14, 14)
 
 // Choppiness Index — Pine has no built-in, so compute it directly.
 chopLen = 14
@@ -280,12 +282,12 @@ if (goLong or goShort) and not spreadOk
 if goLong
     strategy.entry("L", strategy.long, comment = "ARDE long")
     strategy.exit("L x", from_entry = "L", stop = useSL, limit = useTP, comment_loss = "SL", comment_profit = "TP")
-    dayCount += 1
+    dayCount := dayCount + 1
 
 if goShort
     strategy.entry("S", strategy.short, comment = "ARDE short")
     strategy.exit("S x", from_entry = "S", stop = useSL, limit = useTP, comment_loss = "SL", comment_profit = "TP")
-    dayCount += 1
+    dayCount := dayCount + 1
 
 // ── draw it ───────────────────────────────────────────────────────────────
 
