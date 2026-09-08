@@ -107,6 +107,15 @@ export function SupportChat({ source, email: known, name: knownName, country }: 
     return () => { alive = false; };
   }, [open, known, email, editWho]);
 
+  /* Anything on the page can ask for the bubble. The EA request uses it: the
+     answer to that request arrives here, so the window it arrives in is opened
+     rather than left for somebody to go looking for. */
+  useEffect(() => {
+    const onAsk = () => setOpen(true);
+    window.addEventListener("clunoid:support-open", onAsk);
+    return () => window.removeEventListener("clunoid:support-open", onAsk);
+  }, []);
+
   useEffect(() => {
     if (!open) return;
     const t = setTimeout(() => boxRef.current?.focus(), 120);

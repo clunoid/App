@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { visitorForTelegramMessage, recordReply } from "@/lib/support/threads";
+import {
+  requestForTelegramMessage, approveRequest, declineRequest, PARTNER_ID,
+} from "@/lib/deriv/mt5/eaAccess";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,6 +20,12 @@ export const dynamic = "force-dynamic";
  * Telegram will POST to this from the open internet, so the shared secret it
  * was registered with is checked on every call. Without that anyone who guesses
  * the path can make the bot say things.
+ *
+ * Two replies mean something more than "send this on". Swipe-reply /approve to
+ * a request for the General MT5 EA and it mints that person a code and posts it
+ * into their support window; /decline tells them no, with the reason typed
+ * after it. Both are addressed the same way as any other answer — by the
+ * message they reply to — so there is nothing new to remember.
  */
 
 const API = "https://api.telegram.org";
@@ -64,8 +73,69 @@ export async function POST(req: NextRequest) {
   // someone we want putting words in front of our visitors.
   if (String(chatId) !== process.env.TELEGRAM_CHAT_ID) return NextResponse.json({ ok: true });
 
-  // ── a reply to a support message: deliver it ──
   const repliedTo = msg?.reply_to_message?.message_id;
+
+  // ── a decision on an EA access request ──
+  if (repliedTo && /^\/(approve|decline)\b/i.test(text)) {
+    const isApprove = /^\/approve\b/i.test(text);
+    const reason = text.replace(/^\/(approve|decline)\b/i, "").trim();
+    const reqst = await requestForTelegramMessage(repliedTo);
+
+    if (!reqst) {
+      await say(chatId, "That is not an EA access request, so there is nothing to approve. Swipe-reply to the request itself.", msg?.message_id);
+      return NextResponse.json({ ok: true });
+    }
+
+    if (isApprove) {
+      const code = await approveRequest(reqst.id);
+      if (!code) {
+        await say(chatId, "⚠️ Could not issue a code just now. Nothing was sent — try again in a moment.", msg?.message_id);
+        return NextResponse.json({ ok: true });
+      }
+
+      const delivered = await recordReply(
+        reqst.visitorId,
+        [
+          `Your MT5 login ${reqst.mt5Login} is confirmed under our community — here is your download code:`,
+          "",
+          code,
+          "",
+          "Paste it into step 4 on the bot's page to unlock the download. It works only on this browser.",
+        ].join("\n"),
+      );
+
+      await say(
+        chatId,
+        delivered
+          ? `✅ Approved. Code <code>${code}</code> sent to ${reqst.name} (${reqst.email}), login <code>${reqst.mt5Login}</code>.`
+          : `⚠️ Code <code>${code}</code> was issued but could not be delivered. Send it to ${reqst.email} yourself.`,
+        msg?.message_id,
+      );
+      return NextResponse.json({ ok: true });
+    }
+
+    await declineRequest(reqst.id);
+    const delivered = await recordReply(
+      reqst.visitorId,
+      [
+        `We could not find MT5 login ${reqst.mt5Login} under our community, so we cannot send a code for it yet.`,
+        reason ? "" : "",
+        reason,
+        "",
+        `If you believe this is wrong, ask Deriv support to move your account under partner ${PARTNER_ID}, then reply here and we will check again.`,
+      ].filter(Boolean).join("\n"),
+    );
+    await say(
+      chatId,
+      delivered
+        ? `Declined. ${reqst.name} (${reqst.email}) has been told, with the Deriv instruction.`
+        : `Declined, but the message could not be delivered — tell ${reqst.email} yourself.`,
+      msg?.message_id,
+    );
+    return NextResponse.json({ ok: true });
+  }
+
+  // ── a reply to a support message: deliver it ──
   if (repliedTo && text && !text.startsWith("/")) {
     const who = await visitorForTelegramMessage(repliedTo);
 
@@ -97,10 +167,12 @@ export async function POST(req: NextRequest) {
         "<b>To answer someone, swipe-reply to their message.</b> Your reply appears in their support window on the site within seconds.",
         "",
         "Typing here without replying to a message sends it nowhere — there is no way to tell who it was meant for.",
+        "",
+        "<b>MT5 EA requests:</b> swipe-reply <code>/approve</code> to send that person a download code, or <code>/decline your reason</code> to turn it down.",
       ].join("\n"),
     );
   } else if (/^\/(help|status)\b/.test(text)) {
-    await say(chatId, "Swipe-reply to a support message to answer it. The reply is delivered to that person on the site. A message with no reply attached has no recipient.");
+    await say(chatId, "Swipe-reply to a support message to answer it. On an MT5 EA request, swipe-reply /approve to issue a code or /decline with a reason. A message with no reply attached has no recipient.");
   } else {
     await say(chatId, "Nothing was sent — I could not tell who that was for. <b>Swipe-reply</b> to someone's support message to answer them.");
   }

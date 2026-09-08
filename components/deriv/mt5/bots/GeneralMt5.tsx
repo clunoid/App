@@ -14,6 +14,8 @@ import {
   Layers, Download, CheckCircle2, CircleDashed,
 } from "lucide-react";
 import { TC, DOT_GRID, monoFont } from "@/lib/trading/theme";
+import { EaAccessModal } from "@/components/deriv/mt5/EaAccessModal";
+import { SupportChat } from "@/components/support/SupportChat";
 import { PROFILE_LIST } from "@/lib/deriv/mt5/profiles";
 import { LIVE_CATEGORIES } from "@/lib/deriv/mt5/markets";
 import type { RiskProfile, Side } from "@/lib/deriv/mt5/types";
@@ -44,6 +46,7 @@ export function GeneralMt5() {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [updatedAt, setUpdatedAt] = useState<number>(0);
+  const [eaOpen, setEaOpen] = useState(false);
   const started = useRef(false);
 
   const load = useCallback(async (p: RiskProfile) => {
@@ -112,9 +115,9 @@ export function GeneralMt5() {
         <Section n={1} title="Get it running">
           <div className="rounded-2xl border p-5" style={{ borderColor: TC.line, background: TC.panel }}>
             <div className="flex flex-wrap items-center gap-3">
-              <a href="/deriv/ClunoidMT5.mq5" download className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-[13px] font-semibold transition hover:opacity-90" style={{ background: ACCENT, color: TC.ink }}>
+              <button type="button" onClick={() => setEaOpen(true)} className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-[13px] font-semibold transition hover:opacity-90" style={{ background: ACCENT, color: TC.ink }}>
                 <Download size={15} /> Download Clunoid EA
-              </a>
+              </button>
               <span className="text-[11.5px]" style={{ color: TC.faint }}>One EA, one chart — no per-market setup.</span>
             </div>
 
@@ -197,6 +200,12 @@ export function GeneralMt5() {
           Trading carries risk. This is an automated tool, not financial advice or a profit guarantee. Never risk more than you can afford to lose.
         </p>
       </div>
+
+      <EaAccessModal open={eaOpen} onClose={() => setEaOpen(false)} />
+
+      {/* The access code arrives as a support reply, so the bubble has to exist
+          on this page for there to be somewhere for it to land. */}
+      <SupportChat source="MT5 bots" />
     </main>
   );
 }
