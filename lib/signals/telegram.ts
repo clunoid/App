@@ -45,6 +45,7 @@ export type Setup = {
   rr2: number;
   trendScore: number;
   digits: number;
+  test?: boolean;
 };
 
 /** What happened to it afterwards. */
@@ -58,6 +59,7 @@ export type Followup = {
   r: number;
   why: string;
   digits: number;
+  test?: boolean;
 };
 
 export function signalsConfigured(): boolean {
@@ -85,6 +87,21 @@ const pretty = (symbol: string) => symbol.replace(/^([A-Z]{3})([A-Z]{3})$/, "$1/
 const signed = (r: number) => `${r > 0 ? "+" : ""}${r.toFixed(2)}R`;
 
 /**
+ * A test message has to be unmistakable.
+ *
+ * This channel is read by people who copy what appears in it with real money,
+ * so a test that merely looks slightly odd is not safe — somebody will trade
+ * it. The banner goes both above and below: a message read on a phone can be
+ * collapsed to its first lines or arrive already scrolled, and either half
+ * alone has to say the same thing.
+ */
+const TEST_TOP = "🧪 <b>TEST MESSAGE — NOT A SIGNAL. DO NOT TRADE THIS.</b>";
+const TEST_END = "🧪 <i>End of test. Nothing above is a real setup.</i>";
+
+const wrap = (body: string, test?: boolean) =>
+  test ? [TEST_TOP, "", body, "", TEST_END].join("\n") : body;
+
+/**
  * The message people actually read.
  *
  * Levels first, because that is what somebody copying it needs. Then what the
@@ -97,7 +114,7 @@ export function formatSetup(s: Setup): string {
   const dir = s.side === "buy" ? "🟢 BUY" : "🔴 SELL";
   const p = (v: number) => price(v, s.digits);
 
-  return [
+  return wrap([
     `<b>${dir} ${esc(pretty(s.symbol))}</b>  ·  ${esc(s.timeframe)}`,
     ``,
     `<b>Entry</b>  <code>${p(s.entry)}</code>`,
@@ -109,7 +126,7 @@ export function formatSetup(s: Setup): string {
     `Higher timeframes agreeing: <b>${Math.abs(s.trendScore)} of 5</b>`,
     ``,
     `<i>Not advice. Trading carries risk and you can lose money — never risk more than you can afford to lose. Set the stop when you open the trade.</i>`,
-  ].join("\n");
+  ].join("\n"), s.test);
 }
 
 /** The follow-up. Short, and it names the setup by its entry so nobody guesses. */
@@ -118,21 +135,21 @@ export function formatFollowup(f: Followup): string {
   const head = `${esc(pretty(f.symbol))} ${dir} from <code>${price(f.entry, f.digits)}</code>`;
 
   if (f.event === "tp1") {
-    return [
+    return wrap([
       `🎯 <b>TP1 hit</b> — ${head}`,
       `Half closed at <code>${price(f.price, f.digits)}</code> for <b>${signed(f.r)}</b>.`,
       `Stop is now at entry: the rest of this trade cannot lose.`,
-    ].join("\n");
+    ].join("\n"), f.test);
   }
 
   const won = f.r > 0;
   const icon = won ? "✅" : f.r === 0 ? "⚖️" : "🛑";
   const verb = f.why === "stop" ? "Stopped out" : f.why === "both targets" ? "TP2 hit" : "Closed at entry";
 
-  return [
+  return wrap([
     `${icon} <b>${verb}</b> — ${head}`,
     `Out at <code>${price(f.price, f.digits)}</code> for <b>${signed(f.r)}</b>.`,
-  ].join("\n");
+  ].join("\n"), f.test);
 }
 
 async function send(text: string, tag: string): Promise<boolean> {

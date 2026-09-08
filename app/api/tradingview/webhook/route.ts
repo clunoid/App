@@ -88,6 +88,11 @@ function parse(raw: unknown): Parsed {
   if (symbol.length < 3) return { kind: "bad", why: "symbol missing" };
 
   const ticket = text(b.ticket, 48) || `${symbol}-${text(b.bar, 20)}`;
+
+  // A deliberate test post. It is banner-marked at both ends of the message,
+  // because this channel is read by people who copy what appears in it with
+  // real money and a test that merely looks odd is not safe.
+  const test = b.test === true;
   const digits = Math.max(0, Math.min(10, Math.round(num(b.digits) ?? 5)));
   const event = b.event === "entry" || b.event === "tp1" || b.event === "closed" ? b.event : null;
   if (!event) return { kind: "bad", why: "event must be entry, tp1 or closed" };
@@ -114,6 +119,7 @@ function parse(raw: unknown): Parsed {
         r: Math.round(r * 100) / 100,
         why: text(b.why, 40),
         digits,
+        test,
       },
     };
   }
@@ -153,6 +159,7 @@ function parse(raw: unknown): Parsed {
       rr2: Math.round((num(b.rr2) ?? Math.abs(tp2 - entry) / risk) * 100) / 100,
       trendScore: Math.max(-5, Math.min(5, Math.round(num(b.trendScore) ?? 0))),
       digits,
+      test,
     },
   };
 }
@@ -213,8 +220,8 @@ export async function POST(req: NextRequest) {
   // three separate messages while a retry of any of them is one.
   const key =
     parsed.kind === "setup"
-      ? `${parsed.setup.ticket}|entry`
-      : `${parsed.followup.ticket}|${parsed.followup.event}`;
+      ? `${parsed.setup.ticket}|entry${parsed.setup.test ? "|test" : ""}`
+      : `${parsed.followup.ticket}|${parsed.followup.event}${parsed.followup.test ? "|test" : ""}`;
   if (seenBefore(key)) return NextResponse.json({ ok: true, duplicate: true });
 
   const sent =
