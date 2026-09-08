@@ -1033,10 +1033,12 @@ var bool  clPlLive = false
 var float clPlTop  = na
 var float clPlBot  = na
 var int   clPlBar  = 0
+var int   clPlKind = 0          // 0 = CHoCH, a reversal · 1 = BOS, a continuation
 var bool  clPsLive = false
 var float clPsTop  = na
 var float clPsBot  = na
 var int   clPsBar  = 0
+var int   clPsKind = 0
 
 clShift_L = (clUseChoch and currentAlerts.internalBullishCHoCH) or (clUseBos and currentAlerts.internalBullishBOS)
 clShift_S = (clUseChoch and currentAlerts.internalBearishCHoCH) or (clUseBos and currentAlerts.internalBearishBOS)
@@ -1047,6 +1049,7 @@ if clOn and clShift_L and internalOrderBlocks.size() > 0
         clPlTop  := clOb.barHigh
         clPlBot  := clOb.barLow
         clPlBar  := bar_index
+        clPlKind := currentAlerts.internalBullishCHoCH ? 0 : 1
         clPlLive := true
 
 if clOn and clShift_S and internalOrderBlocks.size() > 0
@@ -1055,6 +1058,7 @@ if clOn and clShift_S and internalOrderBlocks.size() > 0
         clPsTop  := clOb.barHigh
         clPsBot  := clOb.barLow
         clPsBar  := bar_index
+        clPsKind := currentAlerts.internalBearishCHoCH ? 0 : 1
         clPsLive := true
 
 // ── the open trade ────────────────────────────────────────────────────────
@@ -1070,6 +1074,7 @@ var float clRr1    = na
 var float clRr2    = na
 var bool  clHalf   = false
 var int   clBarIn  = 0
+var int   clKind   = 0
 var line  clSlLine = na
 
 var int   clTrades = 0
@@ -1083,6 +1088,9 @@ var array<box>   clBoxes = array.new<box>()
 clJustClosed = false
 clClosedR    = 0.0
 clClosedWhy  = ''
+clClosedBars = 0
+clClosedDir  = 0
+clClosedKind = 0
 
 // Managed BEFORE any new entry, so a bar that closes one trade cannot also open
 // the next on the same bar's prices.
@@ -1092,6 +1100,9 @@ if clIn
             clJustClosed := true
             clClosedR    := clHalf ? 0.5 * clRr1 : -1.0
             clClosedWhy  := clHalf ? 'breakeven after TP1' : 'stop'
+            clClosedBars := bar_index - clBarIn
+            clClosedDir  := clDir
+            clClosedKind := clKind
             clIn         := false
         else
             if not clHalf and high >= clTp1
@@ -1105,12 +1116,18 @@ if clIn
                 clJustClosed := true
                 clClosedR    := 0.5 * clRr1 + 0.5 * clRr2
                 clClosedWhy  := 'both targets'
+                clClosedBars := bar_index - clBarIn
+                clClosedDir  := clDir
+                clClosedKind := clKind
                 clIn         := false
     else
         if high >= clSl
             clJustClosed := true
             clClosedR    := clHalf ? 0.5 * clRr1 : -1.0
             clClosedWhy  := clHalf ? 'breakeven after TP1' : 'stop'
+            clClosedBars := bar_index - clBarIn
+            clClosedDir  := clDir
+            clClosedKind := clKind
             clIn         := false
         else
             if not clHalf and low <= clTp1
@@ -1124,6 +1141,9 @@ if clIn
                 clJustClosed := true
                 clClosedR    := 0.5 * clRr1 + 0.5 * clRr2
                 clClosedWhy  := 'both targets'
+                clClosedBars := bar_index - clBarIn
+                clClosedDir  := clDir
+                clClosedKind := clKind
                 clIn         := false
 
 if clJustClosed
@@ -1184,6 +1204,7 @@ if clFireL or clFireS
     clRr2    := math.abs(clNewTp2 - clNewEntry) / clRisk
     clHalf   := false
     clBarIn  := bar_index
+    clKind   := clFireL ? clPlKind : clPsKind
     if clFireL
         clPlLive := false
     else
@@ -1317,5 +1338,236 @@ if clOn and clAlertOn and (clFireL or clFireS)
          ',"bar":'         + str.tostring(time) +
          '}'
     alert(clJson, alert.freq_once_per_bar_close)
+
+//---------------------------------------------------------------------------------------------------------------------}
+
+//---------------------------------------------------------------------------------------------------------------------}
+//CLUNOID PROOF — what this engine actually did on this market
+//---------------------------------------------------------------------------------------------------------------------{
+//
+// Part 1 produces signals. This part is the only thing that can tell you
+// whether they are worth acting on, so it is deliberately unflattering.
+//
+// EVERYTHING IS COUNTED IN R
+// ──────────────────────────
+// One R is the distance from entry to stop — the amount risked. Counting in R
+// rather than in currency means the record says something about the SIGNALS
+// rather than about a position size somebody chose, and it reads the same on
+// gold as on a forex pair. A trade stopped before its first target is exactly
+// -1R. One that reaches the first target banks half at that reward and moves
+// its stop to entry, so the worst it can then do is +0.5 × that reward and the
+// best is that plus half the second target.
+//
+// WHAT THE COLUMNS MEAN, AND WHY THE LAST ONE MATTERS MOST
+// ───────────────────────────────────────────────────────
+// The summary splits the record at a date you choose. Nothing in this engine
+// was fitted to data — there is no optimiser, no parameter search, and the
+// defaults were picked from how the setup works rather than from what scored
+// well — so the split is not a test for curve-fitting. It is a test for
+// something more useful: whether the edge is still there in a stretch of
+// market the design never saw. An edge that lives entirely in the first half
+// is a description of the past, not a system.
+//
+// AND THE PART NOBODY LIKES
+// ─────────────────────────
+// Max drawdown is measured peak-to-trough on the running R curve, and the
+// longest losing run is counted alongside it, because those two numbers — not
+// the total — are what decide whether a person can actually follow a system.
+// A record of +40R with a 12R drawdown and nine losses in a row is a system
+// most people would abandon at the eighth.
+//
+// The monthly table leaves a month blank when the chart has no bars there, and
+// prints a dash when there were bars but no setups. Those are different facts
+// and a zero would hide both.
+//
+//---------------------------------------------------------------------------------------------------------------------{
+
+CL_PROOF = 'Clunoid · Proof'
+
+clShowMonths = input.bool(true, 'Month-by-month table', group = CL_PROOF)
+clShowStats  = input.bool(true, 'Summary table',        group = CL_PROOF)
+clYears      = input.int(5, 'Years of months to show', minval = 1, maxval = 12, group = CL_PROOF,
+     tooltip = 'A chart only tests the bars TradingView loads it with, which on an intraday timeframe is far short of five years on most plans. Months with no data stay blank rather than being filled with zeros.')
+clOosStart   = input.time(timestamp(2025, 1, 1, 0, 0), 'Out-of-sample starts', group = CL_PROOF,
+     tooltip = 'Trades closing on or after this date are reported separately. Judge the engine on that column.')
+
+// ── the record ────────────────────────────────────────────────────────────
+
+var int   clBaseYear = 0
+var array<float> clMonR  = array.new<float>(180, 0.0)
+var array<int>   clMonN  = array.new<int>(180, 0)
+var array<int>   clMonB  = array.new<int>(180, 0)
+
+if clBaseYear == 0
+    clBaseYear := year
+
+clMonIdx = (year - clBaseYear) * 12 + month - 1
+clMonOk  = clMonIdx >= 0 and clMonIdx < 180
+if clMonOk
+    array.set(clMonB, clMonIdx, array.get(clMonB, clMonIdx) + 1)
+
+var float clWinSum   = 0.0      // sum of the winning R
+var float clLossSum  = 0.0      // sum of the losing R, unsigned
+var int   clLossN    = 0
+var float clPeakR    = 0.0
+var float clMaxDD    = 0.0
+var int   clRun      = 0
+var int   clWorstRun = 0
+var int   clBarsSum  = 0
+var array<int>   clKindN = array.new<int>(4, 0)     // CHoCH long, CHoCH short, BOS long, BOS short
+var array<int>   clKindW = array.new<int>(4, 0)
+var array<float> clKindR = array.new<float>(4, 0.0)
+var array<int>   clSplitN = array.new<int>(2, 0)    // in sample, out of sample
+var array<int>   clSplitW = array.new<int>(2, 0)
+var array<float> clSplitR = array.new<float>(2, 0.0)
+
+if clJustClosed
+    float r = clClosedR
+
+    if r > 0
+        clWinSum := clWinSum + r
+        clRun    := 0
+    else
+        clLossSum := clLossSum + math.abs(r)
+        clLossN   := clLossN + 1
+        clRun     := clRun + 1
+        clWorstRun := math.max(clWorstRun, clRun)
+
+    // clSumR was already advanced by Part 1, so it is the running total here
+    clPeakR   := math.max(clPeakR, clSumR)
+    clMaxDD   := math.max(clMaxDD, clPeakR - clSumR)
+    clBarsSum := clBarsSum + clClosedBars
+
+    int k = clClosedKind * 2 + (clClosedDir == 1 ? 0 : 1)
+    array.set(clKindN, k, array.get(clKindN, k) + 1)
+    array.set(clKindR, k, array.get(clKindR, k) + r)
+    if r > 0
+        array.set(clKindW, k, array.get(clKindW, k) + 1)
+
+    int sp = time >= clOosStart ? 1 : 0
+    array.set(clSplitN, sp, array.get(clSplitN, sp) + 1)
+    array.set(clSplitR, sp, array.get(clSplitR, sp) + r)
+    if r > 0
+        array.set(clSplitW, sp, array.get(clSplitW, sp) + 1)
+
+    if clMonOk
+        array.set(clMonR, clMonIdx, array.get(clMonR, clMonIdx) + r)
+        array.set(clMonN, clMonIdx, array.get(clMonN, clMonIdx) + 1)
+
+// ── rendering ─────────────────────────────────────────────────────────────
+
+// @function    Cell colour for a result in R. Fixed steps rather than a computed
+//              transparency, so no arithmetic can hand a colour function a value
+//              it will not take.
+clHeat(float v, int n) =>
+    color c = color.new(GRAY, 92)
+    if n > 0
+        if v >= 4
+            c := color.new(CL_LONG, 25)
+        else if v >= 1
+            c := color.new(CL_LONG, 50)
+        else if v > 0
+            c := color.new(CL_LONG, 72)
+        else if v == 0
+            c := color.new(GRAY, 80)
+        else if v > -1
+            c := color.new(CL_SHORT, 72)
+        else if v > -4
+            c := color.new(CL_SHORT, 50)
+        else
+            c := color.new(CL_SHORT, 25)
+    c
+
+// @function    A signed R figure. The sign is prefixed rather than formatted:
+//              str.tostring takes a format string, and the positive;negative
+//              subpattern is not something the docs promise it understands.
+clR(float v, string fmt) => (v > 0 ? '+' : '') + str.tostring(v, fmt) + 'R'
+
+// @function    n · win% · R, or a plain dash when there is nothing to report.
+clLine(int n, int w, float r) =>
+    n == 0 ? '—' : str.tostring(n) + ' · ' + str.tostring(100.0 * w / n, '#') + '% · ' + clR(r, '#.#')
+
+var table clMonTab = table.new(position.bottom_right, 14, 14, border_width = 1, frame_width = 1, frame_color = color.new(GRAY, 50))
+var table clStatTab = table.new(position.bottom_left, 2, 20, border_width = 1, frame_width = 1, frame_color = color.new(GRAY, 50))
+
+if barstate.islast and clOn
+    color pHead = color.new(#101822, 10)
+    color pCell = color.new(#0b131c, 25)
+
+    if clShowMonths
+        array<string> clMonNames = array.from('Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec')
+        table.cell(clMonTab, 0, 0, 'Year', bgcolor = pHead, text_color = CL_INK, text_size = size.tiny)
+        for m = 0 to 11
+            table.cell(clMonTab, m + 1, 0, array.get(clMonNames, m), bgcolor = pHead, text_color = CL_INK, text_size = size.tiny)
+        table.cell(clMonTab, 13, 0, 'Year', bgcolor = pHead, text_color = CL_INK, text_size = size.tiny)
+
+        for y = 0 to clYears - 1
+            int yr  = year - clYears + 1 + y
+            int row = y + 1
+            table.cell(clMonTab, 0, row, str.tostring(yr), bgcolor = pHead, text_color = CL_INK, text_size = size.tiny)
+
+            float yearR = 0.0
+            int   yearN = 0
+            for m = 0 to 11
+                int idx = (yr - clBaseYear) * 12 + m
+                float mr = 0.0
+                int   mn = 0
+                int   mb = 0
+                if idx >= 0 and idx < 180
+                    mr := array.get(clMonR, idx)
+                    mn := array.get(clMonN, idx)
+                    mb := array.get(clMonB, idx)
+                string cellTxt = mb == 0 ? '' : mn == 0 ? '–' : clR(mr, '#.#') + '\n' + str.tostring(mn) + 't'
+                table.cell(clMonTab, m + 1, row, cellTxt, bgcolor = clHeat(mr, mn), text_color = CL_INK, text_size = size.tiny)
+                yearR := yearR + mr
+                yearN := yearN + mn
+            table.cell(clMonTab, 13, row, yearN == 0 ? '' : clR(yearR, '#.#'), bgcolor = clHeat(yearR, yearN), text_color = CL_INK, text_size = size.tiny)
+
+    if clShowStats
+        int   n       = clTrades
+        float winPct  = n > 0 ? 100.0 * clWins / n : na
+        float expect  = n > 0 ? clSumR / n : na
+        float pFactor = clLossSum > 0 ? clWinSum / clLossSum : na
+        float avgWin  = clWins > 0 ? clWinSum / clWins : na
+        float avgLoss = clLossN > 0 ? clLossSum / clLossN : na
+        float avgBars = n > 0 ? 1.0 * clBarsSum / n : na
+
+        array<string> pk = array.from(
+             'Symbol', 'Data from', 'Data to', 'Signals closed', 'Win rate', 'Total', 'Per signal',
+             'Profit factor', 'Average win', 'Average loss', 'Max drawdown', 'Longest losing run',
+             'Average bars held', 'CHoCH long', 'CHoCH short', 'BOS long', 'BOS short',
+             'Up to ' + str.format_time(clOosStart, 'yyyy-MM-dd', syminfo.timezone),
+             'After that date', 'Waiting now')
+
+        array<string> pv = array.from(
+             syminfo.ticker + ' · ' + timeframe.period,
+             str.format_time(initialTime, 'yyyy-MM-dd', syminfo.timezone),
+             str.format_time(time, 'yyyy-MM-dd', syminfo.timezone),
+             str.tostring(n),
+             na(winPct) ? '—' : str.tostring(winPct, '#.#') + '%',
+             clR(clSumR, '#.##'),
+             na(expect) ? '—' : clR(expect, '#.###'),
+             na(pFactor) ? '—' : str.tostring(pFactor, '#.##'),
+             na(avgWin) ? '—' : str.tostring(avgWin, '#.##') + 'R',
+             na(avgLoss) ? '—' : str.tostring(avgLoss, '#.##') + 'R',
+             str.tostring(clMaxDD, '#.##') + 'R',
+             str.tostring(clWorstRun) + ' in a row',
+             na(avgBars) ? '—' : str.tostring(avgBars, '#'),
+             clLine(array.get(clKindN, 0), array.get(clKindW, 0), array.get(clKindR, 0)),
+             clLine(array.get(clKindN, 1), array.get(clKindW, 1), array.get(clKindR, 1)),
+             clLine(array.get(clKindN, 2), array.get(clKindW, 2), array.get(clKindR, 2)),
+             clLine(array.get(clKindN, 3), array.get(clKindW, 3), array.get(clKindR, 3)),
+             clLine(array.get(clSplitN, 0), array.get(clSplitW, 0), array.get(clSplitR, 0)),
+             clLine(array.get(clSplitN, 1), array.get(clSplitW, 1), array.get(clSplitR, 1)),
+             clIn ? (clDir == 1 ? 'long open' : 'short open') : clPlLive or clPsLive ? 'setup armed' : 'nothing')
+
+        for r = 0 to array.size(pk) - 1
+            color rowBg = pCell
+            if r == 5 or r == 6
+                rowBg := clSumR > 0 ? color.new(CL_LONG, 65) : clSumR < 0 ? color.new(CL_SHORT, 65) : pCell
+            if r == 18
+                rowBg := array.get(clSplitR, 1) > 0 ? color.new(CL_LONG, 55) : array.get(clSplitN, 1) == 0 ? pCell : color.new(CL_SHORT, 55)
+            table.cell(clStatTab, 0, r, array.get(pk, r), bgcolor = pHead, text_color = CL_INK, text_size = size.tiny, text_halign = text.align_left)
+            table.cell(clStatTab, 1, r, array.get(pv, r), bgcolor = rowBg, text_color = CL_INK, text_size = size.tiny, text_halign = text.align_left)
 
 //---------------------------------------------------------------------------------------------------------------------}
