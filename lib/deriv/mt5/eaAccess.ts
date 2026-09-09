@@ -272,6 +272,29 @@ export async function pendingRequests(limit = 20): Promise<EaRequest[]> {
   }));
 }
 
+/**
+ * How many times this browser has been declined, this decision included.
+ *
+ * A second decline should not repeat the first word for word. Somebody who
+ * checked their ID, wrote to Deriv and came back to the same paragraph has no
+ * way to tell whether anything happened — so the count decides which message
+ * they get, and the repeat one says plainly that it is still not found.
+ */
+export async function declineCount(visitorId: string): Promise<number> {
+  const db = getSupabaseAdmin();
+  if (!db) return 0;
+  const { count, error } = await db
+    .from(TABLE)
+    .select("id", { count: "exact", head: true })
+    .eq("visitor_id", visitorId)
+    .eq("status", "declined");
+  if (error) {
+    console.error("[ea] decline count failed:", error.message);
+    return 0;
+  }
+  return count ?? 0;
+}
+
 /** How many times this browser has asked recently — a spam brake, not a rule. */
 export async function recentRequestCount(visitorId: string, withinMinutes = 60): Promise<number> {
   const db = getSupabaseAdmin();

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { visitorForTelegramMessage, recordReply } from "@/lib/support/threads";
 import {
   requestForTelegramMessage, pendingRequests, approveRequest, declineRequest, PARTNER_ID,
-  DERIV_PROFILE, EXAMPLE_CLIENT_ID,
+  DERIV_PROFILE, EXAMPLE_CLIENT_ID, DERIV_SIGNUP, declineCount,
   type EaRequest,
 } from "@/lib/deriv/mt5/eaAccess";
 
@@ -193,51 +193,82 @@ export async function POST(req: NextRequest) {
 
     await declineRequest(reqst.id);
 
-    /* TWO messages, not one.
+    /* A REPEAT decline is not the first one said again.
      *
-     * A decline carries two different UUIDs — the one they should check is
-     * theirs, and the one they must quote to Deriv is OURS — and in a single
-     * bubble they sat a few lines apart and read as the same kind of thing.
-     * Somebody who then wrote to Deriv could quote the wrong one, which is the
-     * worst outcome available: a ticket that goes nowhere, and which looks to
-     * them like we sent them there.
+     * Somebody who checked their ID, wrote to Deriv and came back to the same
+     * three paragraphs cannot tell whether anything happened at all — it reads
+     * like an autoreply, and it is the point at which people give up. The count
+     * includes the decision just made, so >1 means they have been here before.
      *
-     * So: the first message is what to check yourself. The second is what to do
-     * if that was already right, and it says plainly whose ID it is quoting. */
-    const first = await recordReply(
-      reqst.visitorId,
-      [
-        `We could not find ID ${reqst.mt5Login} under our community, so we cannot send a code for it yet.`,
-        reason,
-        "",
-        "First, check you sent the right one. Your own client ID is on your Deriv profile — open it, copy the ID shown there, and reply here with it:",
-        DERIV_PROFILE,
-        "",
-        `(It looks like ${EXAMPLE_CLIENT_ID})`,
-      ]
-        /* Only a missing reason is dropped; the blank lines are the paragraph
-           breaks, and filtering those out ran the whole thing together. */
-        .filter((line, i) => i !== 1 || line !== "")
-        .join("\n"),
-    );
+     * The first-time version is two messages because it carries two different
+     * UUIDs — theirs to check, ours to quote — and in one bubble they read as
+     * the same kind of thing, which is how somebody ends up giving Deriv the
+     * wrong one. The repeat is a single short message: they already know to
+     * check, so it just restates what is still missing and what to send. */
+    const times = await declineCount(reqst.visitorId);
 
-    const second = await recordReply(
-      reqst.visitorId,
-      [
-        "If that ID was already the right one, then your account is not under us yet — and only Deriv can move it.",
-        "",
-        "Ask Deriv support to place your account under this partner ID:",
-        PARTNER_ID,
-        "",
-        "That is OUR partner ID, not yours — give them that one. Once they confirm it, reply here and we will check again.",
-      ].join("\n"),
-    );
+    const ASK = "\"Deriv support requires a full referral URL (from domains like track.deriv.com or t.deriv.link) instead of just the partner ID to link my MT5 account. Please provide my correct partner referral link.\"";
+
+    const first = times > 1
+      ? await recordReply(
+          reqst.visitorId,
+          [
+            `We checked again and ${reqst.mt5Login} is still not showing under our team.`,
+            reason,
+            "",
+            "Deriv has to add it — we cannot do it from our side. Send them both of these:",
+            "",
+            `Partner ID: ${PARTNER_ID}`,
+            `Referral link: ${DERIV_SIGNUP}`,
+            "",
+            `They usually ask for the link rather than the ID, so it helps to say: ${ASK}`,
+            "",
+            "Reply here once they confirm and we will check again.",
+          ].filter((line, i) => i !== 1 || line !== "").join("\n"),
+        )
+      : await recordReply(
+          reqst.visitorId,
+          [
+            `We could not find ID ${reqst.mt5Login} under our community, so we cannot send a code for it yet.`,
+            reason,
+            "",
+            "First, check you sent the right one. Your own client ID is on your Deriv profile — open it, copy the ID shown there, and reply here with it:",
+            DERIV_PROFILE,
+            "",
+            `(It looks like ${EXAMPLE_CLIENT_ID})`,
+          ]
+            /* Only a missing reason is dropped; the blank lines are the
+               paragraph breaks, and filtering those out ran it all together. */
+            .filter((line, i) => i !== 1 || line !== "")
+            .join("\n"),
+        );
+
+    /* The repeat says everything in one message, so there is no second one. */
+    const second = times > 1
+      ? true
+      : await recordReply(
+          reqst.visitorId,
+          [
+            "If that ID was already the right one, then your account is not under us yet — and only Deriv can move it.",
+            "",
+            "Ask Deriv support to place your account under this partner ID:",
+            PARTNER_ID,
+            "",
+            "That is OUR partner ID, not yours — give them that one.",
+            "",
+            `Deriv usually want the referral link rather than the ID, so send them this too: ${DERIV_SIGNUP}`,
+            "",
+            `If they ask for it, say: ${ASK}`,
+            "",
+            "Reply here once they confirm and we will check again.",
+          ].join("\n"),
+        );
 
     const delivered = first && second;
     await say(
       chatId,
       delivered
-        ? `Declined. ${reqst.name} (${reqst.email}) has been told, with the Deriv instruction.`
+        ? `Declined. ${reqst.name} (${reqst.email}) has been told, with the partner ID and referral link.${times > 1 ? ` This is decline #${times} for them — they got the follow-up wording, not the first one again.` : ""}`
         : `Declined, but the message could not be delivered — tell ${reqst.email} yourself.`,
       msg?.message_id,
     );
