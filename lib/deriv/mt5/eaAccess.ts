@@ -301,6 +301,56 @@ export async function pendingRequests(limit = 20): Promise<EaRequest[]> {
 }
 
 /**
+ * This person's request, found from the PERSON rather than the message.
+ *
+ * A swipe-reply is addressed to one Telegram message, and only the request
+ * message itself carries a request. Reply to anything else in a thread — their
+ * last question, an answer you sent, a message from three days ago — and the
+ * pointer led nowhere, so /approve reported that the request was never
+ * recorded. It always had been; the reply was simply aimed at a different
+ * message in the same conversation.
+ *
+ * A decision is about a person, not about which message you happened to have on
+ * screen. So: their oldest still-pending request, and failing that their most
+ * recent one of any status, which is what makes re-approving or re-declining
+ * after the fact work.
+ */
+export async function requestForVisitor(visitorId: string): Promise<EaRequest | null> {
+  const db = getSupabaseAdmin();
+  if (!db || !visitorId) return null;
+
+  const pick = async (pendingOnly: boolean) => {
+    let q = db
+      .from(TABLE)
+      .select("id, visitor_id, mt5_login, name, email, status, code")
+      .eq("visitor_id", visitorId);
+    if (pendingOnly) q = q.eq("status", "pending");
+    const { data, error } = await q
+      .order("created_at", { ascending: pendingOnly })
+      .limit(1)
+      .maybeSingle();
+    if (error) {
+      console.error("[ea] visitor request lookup failed:", error.message);
+      return null;
+    }
+    return data ?? null;
+  };
+
+  const d = (await pick(true)) ?? (await pick(false));
+  if (!d) return null;
+
+  return {
+    id: d.id as string,
+    visitorId: d.visitor_id as string,
+    mt5Login: d.mt5_login as string,
+    name: d.name as string,
+    email: d.email as string,
+    status: d.status as EaRequest["status"],
+    code: (d.code as string) ?? null,
+  };
+}
+
+/**
  * The live code this browser already holds, if any.
  *
  * Asked before a new request is recorded: somebody who has been approved does

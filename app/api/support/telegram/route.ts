@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { visitorForTelegramMessage, recordReply, listPeople } from "@/lib/support/threads";
 import { isBanned, banPerson, unbanPerson, listBans, clearBans, findBan } from "@/lib/support/bans";
 import {
-  requestForTelegramMessage, pendingRequests, approveRequest, declineRequest, PARTNER_ID,
+  requestForTelegramMessage, requestForVisitor, pendingRequests, approveRequest, declineRequest, PARTNER_ID,
   DERIV_PROFILE, EXAMPLE_CLIENT_ID, DERIV_SIGNUP, declineCount,
   type EaRequest,
 } from "@/lib/deriv/mt5/eaAccess";
@@ -106,6 +106,20 @@ export async function POST(req: NextRequest) {
          pending one" here would approve a DIFFERENT person from the one whose
          message was replied to. */
       reqst = await requestForTelegramMessage(repliedTo);
+
+      /* The message you reply to is usually NOT the request message. A
+         conversation runs on: they ask something, you answer, they write
+         again, and later you reply to whatever is in front of you rather than
+         scrolling back to find the form. That pointer led nowhere and the
+         command failed, claiming nothing had ever been recorded.
+
+         So if the message is not itself a request, ask who it belongs to and
+         take THEIR request. Same person either way — only the message
+         differs, and which message you had on screen should decide nothing. */
+      if (!reqst) {
+        const who = await visitorForTelegramMessage(repliedTo);
+        if (who) reqst = await requestForVisitor(who.visitorId);
+      }
     } else {
       /* Any ID, not just digits. This matched 4-12 digits only, while the
          prompt above it offers whatever the person typed — a UUID, or the
@@ -155,13 +169,13 @@ export async function POST(req: NextRequest) {
         chatId,
         who
           ? [
-              "This request was never recorded, so there is no code to issue against it.",
+              `${who.email || "This person"} has never sent the EA form, so there is no request to ${isApprove ? "approve" : "decline"}.`,
               "",
-              "That means the <code>trading_ea_requests</code> table is missing — apply the migration, then ask them to send the form again.",
+              "Ask them to open the bot’s page and fill it in — then the request lands here and this command works.",
               "",
-              "They are still reachable: anything you type here WITHOUT a slash goes to them as a normal reply.",
+              "They are reachable meanwhile: anything you type here WITHOUT a slash goes to them as a normal reply.",
             ].join("\n")
-          : "That is not an EA access request, so there is nothing to approve. Swipe-reply to the request itself.",
+          : "That is not an EA access request, so there is nothing to approve. Swipe-reply to the request itself, or to anything that person sent.",
         msg?.message_id,
       );
       return NextResponse.json({ ok: true });
@@ -211,7 +225,7 @@ export async function POST(req: NextRequest) {
      * check, so it just restates what is still missing and what to send. */
     const times = await declineCount(reqst.visitorId);
 
-    const ASK = "\"Deriv support requires a full referral URL (from domains like track.deriv.com or t.deriv.link) instead of just the partner ID to link my MT5 account. Please provide my correct partner referral link.\"";
+    const ASK = "\"Deriv support requires a full referral URL (from domains like track.deriv.com or t.deriv.link) instead of just the partner ID to link my MT5 account. Please provide the correct partner referral link.\"";
 
     const first = times > 1
       ? await recordReply(
