@@ -28,6 +28,22 @@ export const PARTNER_ID = "019cafdd-b40f-7552-83a9-a0d5d69125d5";
 /** Where somebody without an account is sent to open one under us. */
 export const DERIV_SIGNUP = "https://t.deriv.link?t=8FJ7FBEALQBP";
 
+/**
+ * Where the client ID is copied from, carrying the same token.
+ *
+ * It is NOT the t.deriv.link tracking link, and that is deliberate: that link
+ * always redirects to /dashboard/signup whatever you pass it — url, redirect,
+ * path and page are all handed through untouched and ignored — so sending
+ * somebody there to fetch their ID would land them on a signup form for an
+ * account they already have. The token rides on the real destination instead.
+ * Attribution is done by the signup link in step 1, which is the moment it
+ * actually counts.
+ */
+export const DERIV_PROFILE = "https://home.deriv.com/dashboard/profile?t=8FJ7FBEALQBP";
+
+/** What one looks like, so nobody has to guess which number we mean. */
+export const EXAMPLE_CLIENT_ID = "019cafdd-b40f-7552-83a9-a0d5d69125d5";
+
 /** The file itself, which now lives outside public/ like every gated EA. */
 export const EA_FILE = "ClunoidMT5.mq5";
 

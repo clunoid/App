@@ -26,6 +26,12 @@ import { loadIdentity, saveIdentity } from "@/lib/support/identity";
 const DERIV_SIGNUP = "https://t.deriv.link?t=8FJ7FBEALQBP";
 const PARTNER_ID = "019cafdd-b40f-7552-83a9-a0d5d69125d5";
 
+/* Not the tracking link: that one always lands on /dashboard/signup no matter
+   what you pass it, so it would send somebody with an account to a signup form
+   for one they already have. The token rides on the real page instead. */
+const DERIV_PROFILE = "https://home.deriv.com/dashboard/profile?t=8FJ7FBEALQBP";
+const EXAMPLE_CLIENT_ID = "019cafdd-b40f-7552-83a9-a0d5d69125d5";
+
 type Phase = "form" | "sent" | "done";
 
 export function EaAccessModal({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -115,7 +121,12 @@ export function EaAccessModal({ open, onClose }: { open: boolean; onClose: () =>
 
   if (!open) return null;
 
-  const formOk = /^[0-9]{4,12}$/.test(clientId.trim()) && name.trim().length > 1 &&
+  /* The same two shapes the server accepts: a UUID client ID, or a short
+     numeric MT5 ID. They have to agree, or the button greys out on something
+     the server would have taken. */
+  const idOk = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(clientId.trim())
+    || /^[0-9]{4,12}$/.test(clientId.trim());
+  const formOk = idOk && name.trim().length > 1 &&
     /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email.trim());
 
   return (
@@ -181,13 +192,19 @@ export function EaAccessModal({ open, onClose }: { open: boolean; onClose: () =>
               <Step n={2} title="Client ID or MT5 ID" done={phase === "sent"}>
                 <input
                   value={clientId} onChange={(e) => setClientId(e.target.value)}
-                  inputMode="numeric" placeholder="e.g. 12345678" disabled={phase === "sent"}
+                  placeholder={EXAMPLE_CLIENT_ID} disabled={phase === "sent"}
                   className="w-full rounded-xl border px-3 py-2.5 text-[13px] outline-none"
                   style={{ borderColor: TC.line, background: TC.bg, color: TC.text }}
                 />
-                <p className="mt-1.5 text-[11.5px]" style={{ color: TC.faint }}>
-                  Either one works — the number Deriv shows for your account. Not your email.
+                <p className="mt-1.5 text-[11.5px] leading-relaxed" style={{ color: TC.faint }}>
+                  Either works. A <b style={{ color: TC.muted }}>client ID</b> looks like the example
+                  above; an <b style={{ color: TC.muted }}>MT5 ID</b> is a short run of digits. Not your email.
                 </p>
+                <a href={DERIV_PROFILE} target="_blank" rel="noopener noreferrer"
+                  className="mt-2 inline-flex items-center gap-1.5 text-[11.5px] font-semibold underline underline-offset-2"
+                  style={{ color: TC.profit }}>
+                  Copy it from your Deriv profile <ExternalLink size={11} />
+                </a>
               </Step>
 
               <Step n={3} title="Name and email" done={phase === "sent"}>

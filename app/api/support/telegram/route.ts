@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { visitorForTelegramMessage, recordReply } from "@/lib/support/threads";
 import {
   requestForTelegramMessage, pendingRequests, approveRequest, declineRequest, PARTNER_ID,
+  DERIV_PROFILE, EXAMPLE_CLIENT_ID,
   type EaRequest,
 } from "@/lib/deriv/mt5/eaAccess";
 
@@ -198,7 +199,12 @@ export async function POST(req: NextRequest) {
         reason ? "" : "",
         reason,
         "",
-        `If you believe this is wrong, ask Deriv support to move your account under partner ${PARTNER_ID}, then reply here and we will check again.`,
+        /* Said before the partner instruction on purpose: the commonest reason
+           an ID is not found is that it was the wrong number, and that is the
+           one thing the person can fix themselves in a minute. */
+        `Check it is the right one first — your client ID looks like ${EXAMPLE_CLIENT_ID}, and you can copy it from your Deriv profile: ${DERIV_PROFILE}`,
+        "",
+        `If the ID is right, ask Deriv support to move your account under partner ${PARTNER_ID}, then reply here and we will check again.`,
       ].filter(Boolean).join("\n"),
     );
     await say(
