@@ -26,10 +26,7 @@ import { loadIdentity, saveIdentity } from "@/lib/support/identity";
 const DERIV_SIGNUP = "https://t.deriv.link?t=8FJ7FBEALQBP";
 const PARTNER_ID = "019cafdd-b40f-7552-83a9-a0d5d69125d5";
 
-/* Not the tracking link: that one always lands on /dashboard/signup no matter
-   what you pass it, so it would send somebody with an account to a signup form
-   for one they already have. The token rides on the real page instead. */
-const DERIV_PROFILE = "https://home.deriv.com/dashboard/profile?t=8FJ7FBEALQBP";
+const DERIV_PROFILE = "https://home.deriv.com/dashboard/profile";
 const EXAMPLE_CLIENT_ID = "019cafdd-b40f-7552-83a9-a0d5d69125d5";
 
 type Phase = "form" | "sent" | "done";
@@ -140,10 +137,10 @@ export function EaAccessModal({ open, onClose }: { open: boolean; onClose: () =>
         className="w-full max-w-lg overflow-hidden rounded-t-2xl border sm:rounded-2xl"
         style={{ borderColor: TC.line, background: TC.panel, boxShadow: "0 24px 60px rgba(0,0,0,0.5)" }}
       >
-        <header className="flex items-start gap-3 border-b p-5" style={{ borderColor: TC.line }}>
+        <header className="flex items-start gap-3 border-b p-4" style={{ borderColor: TC.line }}>
           <div className="min-w-0 flex-1">
-            <h2 className="text-[17px] font-bold" style={{ color: TC.text }}>Get the Clunoid EA</h2>
-            <p className="mt-1 text-[12.5px] leading-relaxed" style={{ color: TC.muted }}>
+            <h2 className="text-[16px] font-bold" style={{ color: TC.text }}>Get the Clunoid EA</h2>
+            <p className="mt-1 text-[12px] leading-snug" style={{ color: TC.muted }}>
               The EA runs on <b style={{ color: TC.text }}>clunoid.com technology</b> — it asks our trading engine
               for its signals as it trades. We share it with our own community only, so there are
               a few steps first.
@@ -156,7 +153,7 @@ export function EaAccessModal({ open, onClose }: { open: boolean; onClose: () =>
           </button>
         </header>
 
-        <div className="max-h-[70vh] overflow-y-auto p-5">
+        <div className="max-h-[70vh] overflow-y-auto px-4 py-4">
           {phase === "done" ? (
             <div className="text-center">
               <div className="mx-auto grid h-12 w-12 place-items-center rounded-full" style={{ background: "rgba(34,197,94,0.15)" }}>
@@ -174,11 +171,11 @@ export function EaAccessModal({ open, onClose }: { open: boolean; onClose: () =>
           ) : (
             <>
               <Step n={1} title="Open an MT5 account with Deriv" done={phase === "sent"}>
-                <p className="text-[12.5px] leading-relaxed" style={{ color: TC.muted }}>
+                <p className="text-[12px] leading-snug" style={{ color: TC.muted }}>
                   Already have one under Clunoid? Skip to step 2.
                 </p>
                 <a href={DERIV_SIGNUP} target="_blank" rel="noopener noreferrer"
-                  className="mt-2.5 inline-flex items-center gap-2 rounded-xl border px-3.5 py-2.5 text-[12.5px] font-semibold transition hover:bg-white/5"
+                  className="mt-1.5 inline-flex items-center gap-2 rounded-xl border px-3.5 py-2.5 text-[12.5px] font-semibold transition hover:bg-white/5"
                   style={{ borderColor: TC.line, color: TC.text }}>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src="/logos/metatrader5.svg" alt="MetaTrader 5" className="h-4 w-auto" style={{ maxWidth: 108 }} />
@@ -194,15 +191,15 @@ export function EaAccessModal({ open, onClose }: { open: boolean; onClose: () =>
                   className="w-full rounded-xl border px-3 py-2.5 text-[13px] outline-none"
                   style={{ borderColor: TC.line, background: TC.bg, color: TC.text }}
                 />
-                <p className="mt-1.5 text-[11.5px] leading-relaxed" style={{ color: TC.faint }}>
-                  Either works. A <b style={{ color: TC.muted }}>client ID</b> looks like the example
-                  above; an <b style={{ color: TC.muted }}>MT5 ID</b> is a short run of digits. Not your email.
+                <p className="mt-1.5 text-[11.5px] leading-snug" style={{ color: TC.faint }}>
+                  Either works — a client ID looks like the example above, an MT5 ID is a short run
+                  of digits.{" "}
+                  <a href={DERIV_PROFILE} target="_blank" rel="noopener noreferrer"
+                    className="font-semibold underline underline-offset-2" style={{ color: TC.profit }}>
+                    Copy it from your Deriv profile
+                  </a>
+                  <ExternalLink size={10} className="ml-1 inline align-[-1px]" style={{ color: TC.profit }} />
                 </p>
-                <a href={DERIV_PROFILE} target="_blank" rel="noopener noreferrer"
-                  className="mt-2 inline-flex items-center gap-1.5 text-[11.5px] font-semibold underline underline-offset-2"
-                  style={{ color: TC.profit }}>
-                  Copy it from your Deriv profile <ExternalLink size={11} />
-                </a>
               </Step>
 
               <Step n={3} title="Name and email" done={phase === "sent"}>
@@ -222,7 +219,7 @@ export function EaAccessModal({ open, onClose }: { open: boolean; onClose: () =>
 
                 {phase === "form" && (
                   <button type="button" onClick={send} disabled={!formOk || busy}
-                    className="mt-3 inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-[13px] font-semibold transition disabled:opacity-45"
+                    className="mt-2.5 inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-[13px] font-semibold transition disabled:opacity-45"
                     style={{ background: TC.profit, color: TC.ink }}>
                     {busy ? <Loader2 size={15} className="animate-spin" /> : <ShieldCheck size={15} />}
                     Send for checking
@@ -231,7 +228,7 @@ export function EaAccessModal({ open, onClose }: { open: boolean; onClose: () =>
               </Step>
 
               {phase === "sent" && (
-                <div className="mb-4 rounded-xl border p-3.5 text-[12.5px] leading-relaxed"
+                <div className="mb-3 rounded-xl border p-3 text-[12px] leading-snug"
                   style={{ borderColor: "rgba(34,197,94,0.35)", background: "rgba(34,197,94,0.08)", color: TC.text }}>
                   <b>Sent.</b> We are checking your ID against our community list now.
                   Your code arrives in the <b>support window</b> — it has opened at the corner of
@@ -264,7 +261,7 @@ export function EaAccessModal({ open, onClose }: { open: boolean; onClose: () =>
                 </div>
               )}
 
-              <p className="mt-4 border-t pt-3.5 text-[11.5px] leading-relaxed" style={{ borderColor: TC.line, color: TC.faint }}>
+              <p className="mt-3 border-t pt-3 text-[11px] leading-snug" style={{ borderColor: TC.line, color: TC.faint }}>
                 We check every ID against our Deriv partner list. If yours is not under us,
                 we will say so and ask you to contact Deriv support to be added under{" "}
                 <code className="rounded px-1 py-0.5" style={{ background: TC.bg, color: TC.muted }}>{PARTNER_ID}</code>{" "}
@@ -282,8 +279,8 @@ function Step({ n, title, done, children }: {
   n: number; title: string; done: boolean; children: React.ReactNode;
 }) {
   return (
-    <section className="mb-4">
-      <div className="mb-2 flex items-center gap-2.5">
+    <section className="mb-3">
+      <div className="mb-1.5 flex items-center gap-2.5">
         <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-[11.5px] font-bold"
           style={done
             ? { background: "rgba(34,197,94,0.18)", color: TC.profit }

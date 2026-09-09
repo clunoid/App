@@ -29,17 +29,13 @@ export const PARTNER_ID = "019cafdd-b40f-7552-83a9-a0d5d69125d5";
 export const DERIV_SIGNUP = "https://t.deriv.link?t=8FJ7FBEALQBP";
 
 /**
- * Where the client ID is copied from, carrying the same token.
+ * Where the client ID is copied from.
  *
- * It is NOT the t.deriv.link tracking link, and that is deliberate: that link
- * always redirects to /dashboard/signup whatever you pass it — url, redirect,
- * path and page are all handed through untouched and ignored — so sending
- * somebody there to fetch their ID would land them on a signup form for an
- * account they already have. The token rides on the real destination instead.
- * Attribution is done by the signup link in step 1, which is the moment it
- * actually counts.
+ * Plain, with no token on it. This is a page somebody already signed in is
+ * being sent to look something up on — attribution belongs on the step 1
+ * signup link, which is the click that actually counts.
  */
-export const DERIV_PROFILE = "https://home.deriv.com/dashboard/profile?t=8FJ7FBEALQBP";
+export const DERIV_PROFILE = "https://home.deriv.com/dashboard/profile";
 
 /** What one looks like, so nobody has to guess which number we mean. */
 export const EXAMPLE_CLIENT_ID = "019cafdd-b40f-7552-83a9-a0d5d69125d5";

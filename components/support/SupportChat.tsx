@@ -489,12 +489,44 @@ export function SupportChat({ source, email: known, name: knownName, country }: 
  * accent edge, and a label saying who it is from — so it can never be mistaken
  * for the greeting it sits underneath.
  */
+/**
+ * A reply with its links clickable.
+ *
+ * Replies are plain text — they are typed into Telegram — so a URL in one
+ * arrived as something to select and copy by hand, on a phone, out of a chat
+ * bubble. The decline message sends people to their Deriv profile, and asking
+ * somebody to hand-copy a link before they can do the thing you just asked
+ * them to do is where they stop.
+ *
+ * Only http(s) is linked, and only what the owner typed: nothing here comes
+ * from the visitor.
+ */
+const URLS = /(https?:\/\/[^\s<>()]+[^\s<>().,;:!?])/g;
+
+function linkify(text: string): React.ReactNode {
+  const parts = text.split(URLS);
+  if (parts.length === 1) return text;
+  return parts.map((part, i) =>
+    i % 2 === 1 ? (
+      <a key={i} href={part} target="_blank" rel="noopener noreferrer"
+        className="font-semibold underline underline-offset-2 break-all"
+        style={{ color: A }}>
+        {part}
+      </a>
+    ) : (
+      <span key={i}>{part}</span>
+    ),
+  );
+}
+
 function Bubble({ children, system }: { from: "us"; children: React.ReactNode; system?: boolean }) {
+  const body = typeof children === "string" ? linkify(children) : children;
+
   if (system) {
     return (
       <div className="max-w-[88%] rounded-2xl rounded-tl-md border px-3.5 py-2.5 text-[12.5px] leading-relaxed"
         style={{ borderColor: TC.line, background: "rgba(0,0,0,0.3)", color: TC.muted }}>
-        {children}
+        {body}
       </div>
     );
   }
@@ -515,7 +547,7 @@ function Bubble({ children, system }: { from: "us"; children: React.ReactNode; s
           whiteSpace: "pre-wrap",
         }}
       >
-        {children}
+        {body}
       </div>
     </div>
   );

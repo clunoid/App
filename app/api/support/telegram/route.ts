@@ -192,21 +192,48 @@ export async function POST(req: NextRequest) {
     }
 
     await declineRequest(reqst.id);
-    const delivered = await recordReply(
+
+    /* TWO messages, not one.
+     *
+     * A decline carries two different UUIDs — the one they should check is
+     * theirs, and the one they must quote to Deriv is OURS — and in a single
+     * bubble they sat a few lines apart and read as the same kind of thing.
+     * Somebody who then wrote to Deriv could quote the wrong one, which is the
+     * worst outcome available: a ticket that goes nowhere, and which looks to
+     * them like we sent them there.
+     *
+     * So: the first message is what to check yourself. The second is what to do
+     * if that was already right, and it says plainly whose ID it is quoting. */
+    const first = await recordReply(
       reqst.visitorId,
       [
         `We could not find ID ${reqst.mt5Login} under our community, so we cannot send a code for it yet.`,
-        reason ? "" : "",
         reason,
         "",
-        /* Said before the partner instruction on purpose: the commonest reason
-           an ID is not found is that it was the wrong number, and that is the
-           one thing the person can fix themselves in a minute. */
-        `Check it is the right one first — your client ID looks like ${EXAMPLE_CLIENT_ID}, and you can copy it from your Deriv profile: ${DERIV_PROFILE}`,
+        "First, check you sent the right one. Your own client ID is on your Deriv profile — open it, copy the ID shown there, and reply here with it:",
+        DERIV_PROFILE,
         "",
-        `If the ID is right, ask Deriv support to move your account under partner ${PARTNER_ID}, then reply here and we will check again.`,
-      ].filter(Boolean).join("\n"),
+        `(It looks like ${EXAMPLE_CLIENT_ID} — that is the shape, not your number.)`,
+      ]
+        /* Only a missing reason is dropped; the blank lines are the paragraph
+           breaks, and filtering those out ran the whole thing together. */
+        .filter((line, i) => i !== 1 || line !== "")
+        .join("\n"),
     );
+
+    const second = await recordReply(
+      reqst.visitorId,
+      [
+        "If that ID was already the right one, then your account is not under us yet — and only Deriv can move it.",
+        "",
+        "Ask Deriv support to place your account under this partner ID:",
+        PARTNER_ID,
+        "",
+        "That is OUR partner ID, not yours — give them that one. Once they confirm it, reply here and we will check again.",
+      ].join("\n"),
+    );
+
+    const delivered = first && second;
     await say(
       chatId,
       delivered
