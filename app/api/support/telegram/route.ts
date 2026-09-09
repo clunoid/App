@@ -213,7 +213,7 @@ export async function POST(req: NextRequest) {
         "First, check you sent the right one. Your own client ID is on your Deriv profile — open it, copy the ID shown there, and reply here with it:",
         DERIV_PROFILE,
         "",
-        `(It looks like ${EXAMPLE_CLIENT_ID} — that is the shape, not your number.)`,
+        `(It looks like ${EXAMPLE_CLIENT_ID})`,
       ]
         /* Only a missing reason is dropped; the blank lines are the paragraph
            breaks, and filtering those out ran the whole thing together. */

@@ -58,7 +58,9 @@ export default function sitemap(): MetadataRoute.Sitemap {
      * exactly how the MT5 side above already works. */
 
     // The standalone MetaTrader 5 platform + its available automations.
-    { url: `${BASE}/trading/mt5`, lastModified: now, changeFrequency: "weekly", priority: 0.9 },
+    /* /trading/mt5 redirects to the Deriv front door, so it is not listed —
+       a sitemap URL that answers 307 is a contradiction to a crawler. The bot
+       pages under it are still real pages and stay. */
     ...MT5_AUTOS.filter((b) => b.status === "available").map((b) => ({
       url: `${BASE}/trading/mt5/${b.id}`,
       lastModified: now,

@@ -58,7 +58,7 @@ export default function manifest(): MetadataRoute.Manifest {
     // Long-pressing the installed icon jumps straight to these.
     shortcuts: [
       { name: "Deriv bots", short_name: "Bots", url: "/trading/deriv/bots" },
-      { name: "MT5 bots", short_name: "MT5", url: "/trading/mt5" },
+      { name: "MT5 bots", short_name: "MT5", url: "/trading/deriv/mt5" },
       { name: "Get paid to post", short_name: "Creators", url: "/trading/creators" },
     ],
 

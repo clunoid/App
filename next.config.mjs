@@ -36,6 +36,12 @@ const nextConfig = {
   async redirects() {
     return [
       { source: "/trading/creator-program", destination: "/", permanent: false },
+
+      /* The MT5 front door is the connected Deriv one now. This matches the
+         exact path only, so the seven standalone bot pages under it still
+         answer at their own URLs — the page component stays where it is, and
+         307 rather than 308 keeps that reversible. */
+      { source: "/trading/mt5", destination: "/trading/deriv/mt5", permanent: false },
     ];
   },
 };
