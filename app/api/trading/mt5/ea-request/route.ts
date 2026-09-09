@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sendSupportMessage } from "@/lib/support/telegram";
 import { recordInbound, historyFor } from "@/lib/support/threads";
-import { createRequest, attachTelegramMessage, recentRequestCount, PARTNER_ID, EXAMPLE_CLIENT_ID } from "@/lib/deriv/mt5/eaAccess";
+import { createRequest, attachTelegramMessage, recentRequestCount, PARTNER_ID } from "@/lib/deriv/mt5/eaAccess";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -27,15 +27,14 @@ export const dynamic = "force-dynamic";
 const MAX_BODY = 8 * 1024;
 
 /**
- * Either id Deriv shows, because people have both and either identifies them.
+ * Whatever they paste is taken.
  *
- * A client ID is a UUID — 019cafdd-b40f-7552-83a9-a0d5d69125d5 — and an MT5 ID
- * is a short run of digits. This accepted only the digits, so the moment the
- * page started telling people to copy their client ID it would have rejected
- * exactly what it asked for.
+ * There was a shape check here — UUID or a short run of digits — and it was
+ * wrong: client IDs are not all one shape, and an ID guessed at by a regex is
+ * an ID refused from somebody holding the real thing. Nothing downstream needs
+ * the shape either. It is read by a person against the partner list, and a
+ * wrong one simply gets declined, which is a reply rather than a wall.
  */
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const looksLikeId = (v: string) => UUID.test(v) || /^[0-9]{4,12}$/.test(v);
 const looksLikeEmail = (v: string) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v);
 
 const clean = (v: unknown, max: number): string =>
@@ -53,14 +52,16 @@ export async function POST(req: NextRequest) {
   }
 
   const visitorId = clean(body.visitorId, 64);
-  const mt5Login = clean(body.mt5Login, 32).replace(/\s/g, "");
+  /* 64, not 32: a UUID client ID is 36 characters, so the old cap chopped the
+     tail off one and sent a truncated ID for checking. */
+  const mt5Login = clean(body.mt5Login, 64).replace(/\s/g, "");
   const name = clean(body.name, 80);
   const email = clean(body.email, 160);
   const page = clean(body.page, 200);
 
   if (!visitorId) return NextResponse.json({ error: "Reload the page and try again." }, { status: 400 });
-  if (!looksLikeId(mt5Login)) {
-    return NextResponse.json({ error: `That does not look like a client ID or MT5 ID. A client ID looks like ${EXAMPLE_CLIENT_ID} and an MT5 ID is a short run of digits — both are on your Deriv profile page.` }, { status: 422 });
+  if (!mt5Login) {
+    return NextResponse.json({ error: "Please paste your client ID or MT5 ID." }, { status: 422 });
   }
   if (name.length < 2) return NextResponse.json({ error: "Please give us a name to put to the account." }, { status: 422 });
   if (!looksLikeEmail(email)) return NextResponse.json({ error: "That email does not look right." }, { status: 422 });

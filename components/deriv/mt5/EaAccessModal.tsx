@@ -121,11 +121,9 @@ export function EaAccessModal({ open, onClose }: { open: boolean; onClose: () =>
 
   if (!open) return null;
 
-  /* The same two shapes the server accepts: a UUID client ID, or a short
-     numeric MT5 ID. They have to agree, or the button greys out on something
-     the server would have taken. */
-  const idOk = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(clientId.trim())
-    || /^[0-9]{4,12}$/.test(clientId.trim());
+  /* Only that they typed something. Client IDs come in more than one shape, so
+     any check tighter than this greys the button out on a real one. */
+  const idOk = clientId.trim().length > 0;
   const formOk = idOk && name.trim().length > 1 &&
     /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email.trim());
 
