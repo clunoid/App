@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { visitorForTelegramMessage, recordReply } from "@/lib/support/threads";
+import { visitorForTelegramMessage, recordReply, listPeople } from "@/lib/support/threads";
+import { isBanned, banPerson, unbanPerson, listBans, clearBans, findBan } from "@/lib/support/bans";
 import {
   requestForTelegramMessage, pendingRequests, approveRequest, declineRequest, PARTNER_ID,
   DERIV_PROFILE, EXAMPLE_CLIENT_ID, DERIV_SIGNUP, declineCount,
@@ -106,7 +107,10 @@ export async function POST(req: NextRequest) {
          message was replied to. */
       reqst = await requestForTelegramMessage(repliedTo);
     } else {
-      const named = reason.match(/^([0-9]{4,12})\b/);
+      /* Any ID, not just digits. This matched 4-12 digits only, while the
+         prompt above it offers whatever the person typed — a UUID, or the
+         placeholder text — so the command it told you to send bounced. */
+      const named = reason.match(/^(\S{4,64})\b/);
       const waiting = await pendingRequests(20);
 
       if (named) {
@@ -295,6 +299,151 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true });
   }
 
+  // ── the door: /ban, /unban, /bans ──
+  //
+  // Addressed the same way a decision is: swipe-reply to somebody's message to
+  // act on THEM, or name an email. A swipe-reply is the safer of the two and
+  // the one to prefer, because it cannot land on the wrong person.
+  const doorCmd = /^\/(ban|unban)(?:@[A-Za-z0-9_]+)?\b/i.exec(text);
+  if (doorCmd) {
+    const banning = /^ban$/i.test(doorCmd[1]);
+    const rest = text.slice(doorCmd[0].length).trim();
+
+    let visitorId: string | null = null;
+    let email: string | null = null;
+    let name: string | null = null;
+    let reason = rest;
+
+    if (repliedTo) {
+      const who = await visitorForTelegramMessage(repliedTo);
+      if (!who) {
+        await say(chatId, "That is not a support message, so there is nobody to act on. Swipe-reply to a message from the person you mean, or send <code>/BANCMD their@email</code>.".replace("BANCMD", banning ? "ban" : "unban"), msg?.message_id);
+        return NextResponse.json({ ok: true });
+      }
+      visitorId = who.visitorId;
+      email = who.email;
+    } else {
+      const named = rest.match(/^(\S+@\S+\.\S+|[A-Za-z0-9-]{6,})\b/);
+      if (!named) {
+        await say(chatId, `Say who. Swipe-reply to their message, or send <code>/${banning ? "ban" : "unban"} their@email</code>.`, msg?.message_id);
+        return NextResponse.json({ ok: true });
+      }
+      if (named[1].includes("@")) email = named[1];
+      else visitorId = named[1];
+      reason = rest.slice(named[0].length).trim();
+    }
+
+    if (banning) {
+      const done = await banPerson({ visitorId, email, name, reason: reason || null });
+      await say(
+        chatId,
+        done
+          ? [
+              `Banned ${done.email || done.visitorId}.`,
+              done.reason ? `Reason: ${done.reason}` : "",
+              "",
+              "Their messages and EA requests stop reaching you. Nothing tells them so — the window just goes quiet.",
+              "Undo with <code>/unban " + (done.email || done.visitorId) + "</code>.",
+            ].filter(Boolean).join("\n")
+          : "Could not record that ban.",
+        msg?.message_id,
+      );
+      return NextResponse.json({ ok: true });
+    }
+
+    const key = email || visitorId || "";
+    const lifted = await unbanPerson(key);
+    await say(
+      chatId,
+      lifted
+        ? `Unbanned ${lifted.email || lifted.visitorId}. They can write in again. The row stays in <code>/bans</code> so the history is not lost.`
+        : `No active ban found for <code>${key}</code>.`,
+      msg?.message_id,
+    );
+    return NextResponse.json({ ok: true });
+  }
+
+  // ── the list, and emptying it ──
+  if (/^\/bans\b/i.test(text)) {
+    const arg = text.replace(/^\/bans(?:@[A-Za-z0-9_]+)?/i, "").trim().toLowerCase();
+
+    if (arg === "clear" || arg === "clear lifted" || arg === "clear all") {
+      const which = arg === "clear all" ? "all" : "lifted";
+      const gone = await clearBans(which as "lifted" | "all");
+      await say(
+        chatId,
+        which === "all"
+          ? `Cleared the whole list — ${gone} row${gone === 1 ? "" : "s"} deleted. Everyone who was banned is unbanned.`
+          : `Cleared ${gone} lifted ban${gone === 1 ? "" : "s"}. Active bans are untouched — <code>/bans clear all</code> removes those too.`,
+        msg?.message_id,
+      );
+      return NextResponse.json({ ok: true });
+    }
+
+    const rows = await listBans(40);
+    if (!rows.length) {
+      await say(chatId, "Nobody is banned, and nobody has been.", msg?.message_id);
+      return NextResponse.json({ ok: true });
+    }
+
+    const live = rows.filter((r) => r.active);
+    await say(
+      chatId,
+      [
+        `<b>Bans</b> — ${live.length} active of ${rows.length}`,
+        "",
+        ...rows.slice(0, 25).map((r) => {
+          const who = r.email || r.visitorId || "?";
+          const day = r.bannedAt.slice(0, 10);
+          return r.active
+            ? `⛔ <code>${who}</code> — ${day}${r.reason ? ` — ${r.reason}` : ""}`
+            : `✓ <code>${who}</code> — banned ${day}, lifted ${(r.unbannedAt || "").slice(0, 10)}`;
+        }),
+        rows.length > 25 ? `
+…and ${rows.length - 25} more.` : "",
+        "",
+        "<code>/bans clear</code> removes the lifted ones, <code>/bans clear all</code> empties it entirely.",
+      ].filter(Boolean).join("\n"),
+      msg?.message_id,
+    );
+    return NextResponse.json({ ok: true });
+  }
+
+  // ── who has written in ──
+  if (/^\/users\b/i.test(text)) {
+    const people = await listPeople(40);
+    if (!people.length) {
+      await say(chatId, "Nobody has written in yet.", msg?.message_id);
+      return NextResponse.json({ ok: true });
+    }
+
+    /* Banned people are marked rather than hidden: a list that quietly omits
+       them makes you wonder where somebody went. */
+    const marks = await Promise.all(people.map((u) => isBanned(u.visitorId, u.email)));
+
+    await say(
+      chatId,
+      [
+        `<b>People</b> — ${people.length}`,
+        "",
+        ...people.slice(0, 30).map((u, i) => {
+          const when = u.last.slice(0, 10);
+          const since = u.first.slice(0, 10);
+          const span = since === when ? when : `${since} → ${when}`;
+          return [
+            `${marks[i] ? "⛔ " : ""}<b>${u.name || "(no name)"}</b>`,
+            `  ${u.email || "(no email)"}`,
+            `  ${span} · ${u.messages} msg${u.messages === 1 ? "" : "s"}`,
+          ].join("\n");
+        }),
+        people.length > 30 ? `
+…and ${people.length - 30} more.` : "",
+      ].filter(Boolean).join("\n"),
+      msg?.message_id,
+    );
+    return NextResponse.json({ ok: true });
+  }
+
   // ── commands and stray messages ──
   if (/^\/start\b/.test(text)) {
     await say(
@@ -308,11 +457,15 @@ export async function POST(req: NextRequest) {
         "",
         "Typing here without replying to a message sends it nowhere — there is no way to tell who it was meant for.",
         "",
-        "<b>MT5 EA requests:</b> send <code>/approve</code> to issue a download code, or <code>/decline your reason</code> to turn it down. Tapping the command in the request works, and so does typing it — no reply needed while only one request is waiting. With several waiting, add the ID: <code>/approve 12345678</code>.",
+        "<b>MT5 EA requests:</b> send <code>/approve</code> to issue a download code, or <code>/decline your reason</code> to turn it down. Tapping the command in the request works, and so does typing it — no reply needed while only one request is waiting. With several waiting, add the ID: <code>/approve 12345678</code>. Anybody already approved is not listed — they hold a code, so there is nothing left to decide.",
+        "",
+        "<b>Keeping people out:</b> swipe-reply and send <code>/ban</code> (add a reason if you want one recorded), or <code>/ban their@email</code>. Their messages and requests stop reaching you and they are told nothing. <code>/unban</code> lifts it. <code>/bans</code> is the list, <code>/bans clear</code> tidies the lifted ones and <code>/bans clear all</code> empties it.",
+        "",
+        "<b>Who has written in:</b> <code>/users</code> — names, emails and dates, banned ones marked.",
       ].join("\n"),
     );
   } else if (/^\/(help|status)\b/.test(text)) {
-    await say(chatId, "Swipe-reply to a support message to answer it. For an MT5 EA request just send /approve or /decline — tapping the command works too, and you only need to name an ID when several are waiting. An ordinary message with no reply attached has no recipient.");
+    await say(chatId, "Swipe-reply to a support message to answer it. For an MT5 EA request send /approve or /decline — you only need to name an ID when several are waiting, and people already approved are never listed. /ban and /unban control who gets through, /bans is that list, /users is everyone who has written in. An ordinary message with no reply attached has no recipient.");
   } else {
     await say(chatId, "Nothing was sent — I could not tell who that was for. <b>Swipe-reply</b> to someone's support message to answer them.");
   }

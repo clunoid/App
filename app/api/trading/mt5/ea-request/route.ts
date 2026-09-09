@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sendSupportMessage } from "@/lib/support/telegram";
-import { recordInbound, historyFor } from "@/lib/support/threads";
-import { createRequest, attachTelegramMessage, recentRequestCount, PARTNER_ID } from "@/lib/deriv/mt5/eaAccess";
+import { recordInbound, historyFor, recordReply } from "@/lib/support/threads";
+import { createRequest, attachTelegramMessage, recentRequestCount, approvedCodeFor, PARTNER_ID } from "@/lib/deriv/mt5/eaAccess";
+import { isBanned } from "@/lib/support/bans";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -65,6 +66,40 @@ export async function POST(req: NextRequest) {
   }
   if (name.length < 2) return NextResponse.json({ error: "Please give us a name to put to the account." }, { status: 422 });
   if (!looksLikeEmail(email)) return NextResponse.json({ error: "That email does not look right." }, { status: 422 });
+
+  /* Barred people are turned away before anything is recorded or sent, so a
+     ban is quiet: nothing reaches Telegram and no row accumulates. The wording
+     does not say "banned" — there is nothing to gain from arguing about it, and
+     somebody who has been shown the door does not need a target. */
+  if (await isBanned(visitorId, email)) {
+    return NextResponse.json(
+      { error: "We cannot take this request. If you think that is a mistake, reach us through the website." },
+      { status: 403 },
+    );
+  }
+
+  /* ALREADY APPROVED — send the code back, do not queue them again.
+   *
+   * The form has no memory of having been answered, so somebody who returns to
+   * the page fills it in a second time. That used to record a fresh pending row
+   * and put a person who was approved an hour ago back in the decision queue,
+   * where they showed up as a request waiting on a decision that had already
+   * been made. There is nothing to decide: they hold a code, and what they
+   * actually need is to be told it again. */
+  const already = await approvedCodeFor(visitorId);
+  if (already) {
+    await recordReply(
+      visitorId,
+      [
+        "You are already approved — here is your code again:",
+        "",
+        already,
+        "",
+        "Paste it into step 4 on the bot's page to unlock the download. It works only on this browser.",
+      ].join("\n"),
+    );
+    return NextResponse.json({ ok: true, already: true });
+  }
 
   /* A brake rather than a rule: somebody who mistypes their ID twice should
      be able to fix it, somebody scripting the form should not get far. */

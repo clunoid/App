@@ -255,21 +255,75 @@ export async function pendingRequests(limit = 20): Promise<EaRequest[]> {
     .select("id, visitor_id, mt5_login, name, email, status, code")
     .eq("status", "pending")
     .order("created_at", { ascending: false })
-    .limit(limit);
+    .limit(limit * 3);
 
   if (error) {
     console.error("[ea] pending lookup failed:", error.message);
     return [];
   }
-  return (data ?? []).map((d) => ({
-    id: d.id as string,
-    visitorId: d.visitor_id as string,
-    mt5Login: d.mt5_login as string,
-    name: d.name as string,
-    email: d.email as string,
-    status: d.status as EaRequest["status"],
-    code: (d.code as string) ?? null,
-  }));
+
+  /* Somebody who already holds a code is NOT waiting for a decision.
+   *
+   * They were listed, because the row they sent afterwards is still marked
+   * pending — and it is easy to send another: the form does not know it has
+   * already been answered, so a second visit fills it in again. The queue then
+   * offered a person who was approved an hour ago as somebody to decide about,
+   * and asked which of two to act on when only one was real.
+   *
+   * The fix is on the way out rather than in the query, because "approved" is a
+   * fact about the PERSON and pending is a fact about the ROW. */
+  const rows = (data ?? []) as Record<string, unknown>[];
+  const visitors = [...new Set(rows.map((d) => d.visitor_id as string).filter(Boolean))];
+
+  const settled = new Set<string>();
+  if (visitors.length) {
+    const { data: done } = await db
+      .from(TABLE)
+      .select("visitor_id")
+      .eq("status", "approved")
+      .not("code", "is", null)
+      .in("visitor_id", visitors);
+    for (const d of done ?? []) settled.add(d.visitor_id as string);
+  }
+
+  return rows
+    .filter((d) => !settled.has(d.visitor_id as string))
+    .slice(0, limit)
+    .map((d) => ({
+      id: d.id as string,
+      visitorId: d.visitor_id as string,
+      mt5Login: d.mt5_login as string,
+      name: d.name as string,
+      email: d.email as string,
+      status: d.status as EaRequest["status"],
+      code: (d.code as string) ?? null,
+    }));
+}
+
+/**
+ * The live code this browser already holds, if any.
+ *
+ * Asked before a new request is recorded: somebody who has been approved does
+ * not need a second decision, they need the code they were already given. It is
+ * the same question the queue asks, from the other end.
+ */
+export async function approvedCodeFor(visitorId: string): Promise<string | null> {
+  const db = getSupabaseAdmin();
+  if (!db || !visitorId) return null;
+  const { data, error } = await db
+    .from(TABLE)
+    .select("code")
+    .eq("visitor_id", visitorId)
+    .eq("status", "approved")
+    .not("code", "is", null)
+    .order("decided_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) {
+    console.error("[ea] approved lookup failed:", error.message);
+    return null;
+  }
+  return (data?.code as string) ?? null;
 }
 
 /**

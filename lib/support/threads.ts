@@ -157,3 +157,71 @@ export async function historyFor(visitorId: string, limit = 10): Promise<{ from:
       at: r.created_at as string,
     }));
 }
+
+export type Person = {
+  visitorId: string;
+  name: string | null;
+  email: string | null;
+  first: string;
+  last: string;
+  messages: number;
+};
+
+/**
+ * Everyone who has ever written in, newest activity first.
+ *
+ * Built from the inbound messages rather than kept as a separate table of
+ * people: a second table would be another thing to write to on every path that
+ * can create a person, and the first time one of those paths forgot, the list
+ * would quietly stop being the truth. Derived from the messages it cannot
+ * disagree with them.
+ *
+ * Grouped by visitor, because that is what a conversation is keyed on. One
+ * person on two devices is two rows, which is honest — they are two threads,
+ * and answering one does not reach the other.
+ */
+export async function listPeople(limit = 40): Promise<Person[]> {
+  const db = getSupabaseAdmin();
+  if (!db) return [];
+
+  const { data, error } = await db
+    .from(TABLE)
+    .select("visitor_id, name, email, created_at")
+    .eq("direction", "in")
+    .order("created_at", { ascending: false })
+    .limit(1000);
+
+  if (error) {
+    console.error("[support] people list failed:", error.message);
+    return [];
+  }
+
+  const by = new Map<string, Person>();
+  for (const r of data ?? []) {
+    const id = r.visitor_id as string;
+    if (!id) continue;
+    const at = r.created_at as string;
+    const seen = by.get(id);
+
+    if (!seen) {
+      by.set(id, {
+        visitorId: id,
+        name: (r.name as string) ?? null,
+        email: (r.email as string) ?? null,
+        first: at,
+        last: at,
+        messages: 1,
+      });
+      continue;
+    }
+
+    seen.messages += 1;
+    // Rows arrive newest first, so anything after the first is older.
+    seen.first = at;
+    // A later message may carry details an earlier one lacked.
+    seen.name = seen.name ?? ((r.name as string) ?? null);
+    seen.email = seen.email ?? ((r.email as string) ?? null);
+  }
+
+  return [...by.values()].sort((a, b) => b.last.localeCompare(a.last)).slice(0, limit);
+}

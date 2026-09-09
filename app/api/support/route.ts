@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/requireUser";
 import { sendSupportMessage, MAX_UPLOAD_BYTES, ALLOWED_TYPES } from "@/lib/support/telegram";
 import { recordInbound, historyFor } from "@/lib/support/threads";
+import { isBanned } from "@/lib/support/bans";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -125,6 +126,16 @@ export async function POST(req: NextRequest) {
   const email = (user?.email ?? p.email).toLowerCase();
   if (!looksLikeEmail(email)) {
     return NextResponse.json({ error: "Add the email address we should reply to." }, { status: 400 });
+  }
+
+  /* Barred: accepted to the sender's eye, delivered nowhere.
+   *
+   * Answering with an error would tell somebody exactly what to change to get
+   * back in — a different address, a private window — and turn one nuisance
+   * into a game. Nothing is recorded and nothing is sent; the window simply
+   * goes quiet, which is what being ignored looks like from the outside. */
+  if (await isBanned(p.visitorId, email)) {
+    return NextResponse.json({ ok: true, email });
   }
 
   // What we have already said to this person. Fetched BEFORE the new message is
