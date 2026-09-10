@@ -15,7 +15,15 @@ const API = "https://api.telegram.org";
 /** Telegram's own ceilings. Worth respecting rather than discovering. */
 const CAPTION_LIMIT = 1024;
 export const MAX_UPLOAD_BYTES = 8 * 1024 * 1024;
-export const ALLOWED_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"];
+export const ALLOWED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"];
+
+/* Documents as well as screenshots: people are asked for a set file, a log or a
+   statement, and previously had nowhere to put it. Held to formats that do
+   nothing when opened — an executable, or an archive that might contain one, is
+   not something to invite into an inbox. */
+export const ALLOWED_DOC_TYPES = ["application/pdf", "text/plain", "text/csv", "application/json"];
+
+export const ALLOWED_TYPES = [...ALLOWED_IMAGE_TYPES, ...ALLOWED_DOC_TYPES];
 
 /** Configured or not — used to fail loudly in logs, quietly on screen. */
 export function supportConfigured(): boolean {
@@ -158,10 +166,15 @@ export async function sendSupportMessage(m: SupportMessage): Promise<number | nu
     form.append("chat_id", chat);
     // Short on purpose: the detail is in the message directly above it, and a
     // caption over Telegram's limit is rejected outright.
-    form.append("caption", `Screenshot from ${m.email}`.slice(0, CAPTION_LIMIT));
-    form.append("photo", new Blob([m.photo.data], { type: m.photo.type }), m.photo.filename);
+    const isImage = ALLOWED_IMAGE_TYPES.includes(m.photo.type);
+    form.append("caption", `${isImage ? "Screenshot" : m.photo.filename} from ${m.email}`.slice(0, CAPTION_LIMIT));
+
+    /* sendPhoto for an image, sendDocument for anything else. Sending a PDF as
+       a photo is simply rejected by Telegram, and it took the file with it. */
+    const blob = new Blob([m.photo.data], { type: m.photo.type });
+    form.append(isImage ? "photo" : "document", blob, m.photo.filename);
     // Its own failure is logged but not fatal — the words already arrived.
-    await call("sendPhoto", form);
+    await call(isImage ? "sendPhoto" : "sendDocument", form);
   }
 
   return sent;

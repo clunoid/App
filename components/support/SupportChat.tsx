@@ -25,7 +25,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { MessageCircle, X, Send, Loader2, Check, Mail, CircleAlert, ImagePlus, UserRound } from "lucide-react";
+import { MessageCircle, X, Send, Loader2, Check, Mail, CircleAlert, ImagePlus, Paperclip, UserRound } from "lucide-react";
 import { TC, monoFont } from "@/lib/trading/theme";
 import {
   loadIdentity, saveIdentity, isEmail, isJustAGreeting, type SupportSource,
@@ -40,11 +40,22 @@ const NUDGED_KEY = "cln_support_nudged";
 const THREAD_KEY = "cln_support_thread";
 
 const MAX_BYTES = 8 * 1024 * 1024;
-const OK_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"];
+const OK_IMAGES = ["image/png", "image/jpeg", "image/webp", "image/gif"];
+/* Documents too, not only screenshots: a set file, a log, a statement — the
+   things people are asked for and then have nowhere to put. Kept to formats
+   that are inert when opened; an .exe or a .zip full of one is not something to
+   invite into a support inbox. */
+const OK_DOCS = ["application/pdf", "text/plain", "text/csv", "application/json"];
+const OK_TYPES = [...OK_IMAGES, ...OK_DOCS];
+
+type Attached = { url: string; name: string; type: string } | null;
 
 type Line = {
   id: string; text: string; at: string;
   shot?: string | null;
+  /** A file the owner sent back — rendered inline when it is an image, and as
+   *  something to open when it is not. */
+  file?: Attached;
   from: "them" | "us";
   /** False for something we held back — a bare "hi" was never delivered, and
    *  telling them it was is the one thing this widget must not do. */
@@ -173,12 +184,12 @@ export function SupportChat({ source, email: known, name: knownName, country }: 
       try {
         const r = await fetch(`/api/support/replies?visitorId=${encodeURIComponent(visitorId)}`, { cache: "no-store" });
         if (!r.ok) return;
-        const d = (await r.json()) as { replies?: { id: string; body: string; createdAt: string }[] };
+        const d = (await r.json()) as { replies?: { id: string; body: string; createdAt: string; attachment?: Attached }[] };
         const fresh = d.replies ?? [];
         if (!alive || fresh.length === 0) return;
 
         for (const rep of fresh) {
-          remember({ id: rep.id, text: rep.body, at: rep.createdAt, from: "us" });
+          remember({ id: rep.id, text: rep.body, at: rep.createdAt, from: "us", file: rep.attachment ?? null });
         }
         if (!open) setUnread((n) => n + fresh.length);
       } catch { /* offline, or the tab is asleep — try again next tick */ }
@@ -196,7 +207,7 @@ export function SupportChat({ source, email: known, name: knownName, country }: 
   function pick(f: File | null) {
     setErr(null);
     if (!f) { setFile(null); return; }
-    if (!OK_TYPES.includes(f.type)) { setErr("Screenshots only — PNG, JPG, WEBP or GIF."); return; }
+    if (!OK_TYPES.includes(f.type)) { setErr("Send a screenshot (PNG, JPG, WEBP, GIF) or a document (PDF, TXT, CSV, JSON)."); return; }
     if (f.size > MAX_BYTES) { setErr("That image is too large — keep it under 8MB."); return; }
     setFile(f);
   }
@@ -326,7 +337,7 @@ export function SupportChat({ source, email: known, name: knownName, country }: 
 
             {thread.map((l) => (
               l.from === "us" ? (
-                <Bubble key={l.id} from="us" system={l.system}>{l.text}</Bubble>
+                <Bubble key={l.id} from="us" system={l.system} file={l.file ?? null}>{l.text}</Bubble>
               ) : (
                 <div key={l.id} className="ml-auto max-w-[85%]">
                   <div className="rounded-2xl rounded-br-md px-3.5 py-2.5 text-[12.5px] leading-relaxed"
@@ -519,7 +530,31 @@ function linkify(text: string): React.ReactNode {
   );
 }
 
-function Bubble({ children, system }: { from: "us"; children: React.ReactNode; system?: boolean }) {
+function Attachment({ file }: { file: NonNullable<Attached> }) {
+  /* An image is shown, because a screenshot you have to click is a screenshot
+     you do not look at. Anything else is a link with its real name on it — the
+     name is what tells you whether it is the file you were promised. */
+  if (file.type.startsWith("image/")) {
+    return (
+      <a href={file.url} target="_blank" rel="noopener noreferrer" className="mt-2 block">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={file.url} alt={file.name}
+          className="max-h-[280px] w-auto max-w-full rounded-xl border"
+          style={{ borderColor: TC.line }} />
+      </a>
+    );
+  }
+  return (
+    <a href={file.url} target="_blank" rel="noopener noreferrer"
+      className="mt-2 inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-[12px] font-semibold transition hover:bg-white/5"
+      style={{ borderColor: TC.line, color: TC.text }}>
+      <Paperclip size={13} style={{ color: A }} />
+      <span className="max-w-[200px] truncate">{file.name}</span>
+    </a>
+  );
+}
+
+function Bubble({ children, system, file }: { from: "us"; children: React.ReactNode; system?: boolean; file?: Attached }) {
   const body = typeof children === "string" ? linkify(children) : children;
 
   if (system) {
@@ -527,6 +562,7 @@ function Bubble({ children, system }: { from: "us"; children: React.ReactNode; s
       <div className="max-w-[88%] rounded-2xl rounded-tl-md border px-3.5 py-2.5 text-[12.5px] leading-relaxed"
         style={{ borderColor: TC.line, background: "rgba(0,0,0,0.3)", color: TC.muted }}>
         {body}
+        {file && <Attachment file={file} />}
       </div>
     );
   }
@@ -548,6 +584,7 @@ function Bubble({ children, system }: { from: "us"; children: React.ReactNode; s
         }}
       >
         {body}
+        {file && <Attachment file={file} />}
       </div>
     </div>
   );

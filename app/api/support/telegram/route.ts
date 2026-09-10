@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { visitorForTelegramMessage, recordReply, listPeople } from "@/lib/support/threads";
 import { isBanned, banPerson, unbanPerson, listBans, clearBans, findBan } from "@/lib/support/bans";
+import { saveTelegramFile, type Attachment } from "@/lib/support/files";
 import {
   requestForTelegramMessage, requestForVisitor, pendingRequests, approveRequest, declineRequest,
   markAnswered, PARTNER_ID,
@@ -63,6 +64,13 @@ export async function POST(req: NextRequest) {
     message?: {
       chat?: { id?: number };
       text?: string;
+      /* A photo or a document arrives with `caption` instead of `text`, and
+         nothing in `text` at all. Reading only `text` is why sending a
+         screenshot answered "I could not tell who that was for" — the reply
+         was addressed perfectly well, it just looked empty. */
+      caption?: string;
+      photo?: { file_id?: string; file_size?: number }[];
+      document?: { file_id?: string; file_name?: string; mime_type?: string; file_size?: number };
       message_id?: number;
       reply_to_message?: { message_id?: number };
     };
@@ -70,7 +78,7 @@ export async function POST(req: NextRequest) {
 
   const msg = update.message;
   const chatId = msg?.chat?.id;
-  const text = (msg?.text ?? "").trim();
+  const text = (msg?.text ?? msg?.caption ?? "").trim();
   if (typeof chatId !== "number") return NextResponse.json({ ok: true });
 
   // Only the owner's chat is listened to. A stranger who finds the bot is not
@@ -307,8 +315,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true });
   }
 
-  // ── a reply to a support message: deliver it ──
-  if (repliedTo && text && !text.startsWith("/")) {
+  /* Telegram gives several sizes of a photo, smallest first; the last is the
+     full one. A document keeps its own name and mime type, which is what makes
+     a PDF arrive as a PDF rather than as bytes with a guessed extension. */
+  const photoId = msg?.photo?.length ? msg.photo[msg.photo.length - 1]?.file_id : undefined;
+  const docId = msg?.document?.file_id;
+  const hasFile = !!(photoId || docId);
+
+  // ── a reply to a support message: deliver it, with whatever came attached ──
+  if (repliedTo && (text || hasFile) && !text.startsWith("/")) {
     const who = await visitorForTelegramMessage(repliedTo);
 
     if (!who) {
@@ -316,7 +331,19 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true });
     }
 
-    const stored = await recordReply(who.visitorId, text);
+    /* Fetched and re-hosted before the message is recorded, because a link to
+       Telegram's own copy carries our bot token in the URL — handing that to
+       every visitor who opens the support window. */
+    let file: Attachment | null = null;
+    if (photoId) file = await saveTelegramFile(photoId, "screenshot.jpg", "image/jpeg");
+    else if (docId) {
+      file = await saveTelegramFile(docId, msg?.document?.file_name || "file", msg?.document?.mime_type);
+    }
+
+    /* A file that would not store must not take the words down with it: the
+       text still goes, and the failure is reported rather than swallowed. */
+    const fileFailed = hasFile && !file;
+    const stored = (text || file) ? await recordReply(who.visitorId, text, file) : false;
 
     /* Answering somebody IS dealing with them.
      *
@@ -333,11 +360,15 @@ export async function POST(req: NextRequest) {
       stored
         ? [
             `✅ Delivered to <code>${who.visitorId}</code>. They will see it in the support window on the site${who.email ? ` — ${who.email}` : ""}.`,
+            file ? `📎 ${file.name} went with it.` : "",
+            fileFailed ? "⚠️ The attachment could not be stored, so only your text went. Try sending the file again." : "",
             cleared
               ? `Their EA request is off the waiting list — you have answered them. <code>/approve</code> or <code>/decline</code> still work on it from any message of theirs.`
               : "",
           ].filter(Boolean).join("\n")
-        : "⚠️ Could not deliver that just now. Nothing was sent — try again in a moment.",
+        : fileFailed && !text
+          ? "⚠️ That attachment could not be stored, so nothing was sent. Try again in a moment."
+          : "⚠️ Could not deliver that just now. Nothing was sent — try again in a moment.",
       msg?.message_id,
     );
     return NextResponse.json({ ok: true });
@@ -512,6 +543,8 @@ export async function POST(req: NextRequest) {
     );
   } else if (/^\/(help|status)\b/.test(text)) {
     await say(chatId, "Swipe-reply to a support message to answer it. For an MT5 EA request send /approve or /decline — you only need to name an ID when several are waiting, and people already approved are never listed. /ban and /unban control who gets through, /bans is that list, /users is everyone who has written in. An ordinary message with no reply attached has no recipient.");
+  } else if (hasFile) {
+    await say(chatId, "That file went nowhere — I could not tell who it was for. <b>Swipe-reply</b> with it to the message from the person you are answering, and it will appear in their support window.");
   } else {
     await say(chatId, "Nothing was sent — I could not tell who that was for. <b>Swipe-reply</b> to someone's support message to answer them.");
   }

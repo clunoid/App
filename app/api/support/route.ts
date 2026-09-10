@@ -80,10 +80,10 @@ async function parse(req: NextRequest): Promise<Parsed> {
     const file = form.get("file");
     if (file && typeof file !== "string") {
       if (!ALLOWED_TYPES.includes(file.type)) {
-        return { ...out, error: "Attach a screenshot as a PNG, JPG, WEBP or GIF." };
+        return { ...out, error: "Attach a screenshot (PNG, JPG, WEBP, GIF) or a document (PDF, TXT, CSV, JSON)." };
       }
       if (file.size > MAX_UPLOAD_BYTES) {
-        return { ...out, error: "That image is too large — keep it under 8MB." };
+        return { ...out, error: "That file is too large — keep it under 8MB." };
       }
       out.photo = {
         data: await file.arrayBuffer(),

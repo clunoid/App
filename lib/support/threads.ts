@@ -17,7 +17,8 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 const TABLE = "trading_support_messages";
 
-export type OutboundReply = { id: string; body: string; createdAt: string };
+export type Attached = { url: string; name: string; type: string } | null;
+export type OutboundReply = { id: string; body: string; createdAt: string; attachment: Attached };
 
 /** Record a message the visitor sent, against the Telegram message it became. */
 export async function recordInbound(m: {
@@ -71,7 +72,11 @@ export async function visitorForTelegramMessage(tgMessageId: number): Promise<{ 
 }
 
 /** Park the owner's reply for the visitor to collect. */
-export async function recordReply(visitorId: string, body: string): Promise<boolean> {
+export async function recordReply(
+  visitorId: string,
+  body: string,
+  attachment?: Attached,
+): Promise<boolean> {
   const db = getSupabaseAdmin();
   if (!db) return false;
 
@@ -79,6 +84,12 @@ export async function recordReply(visitorId: string, body: string): Promise<bool
     visitor_id: visitorId,
     direction: "out",
     body: body.slice(0, 4000),
+    /* A file with no words is a complete answer — a marked-up screenshot says
+       what a paragraph would have taken three tries to. So the text may be
+       empty here, and the widget renders whichever parts are present. */
+    attachment_url: attachment?.url ?? null,
+    attachment_name: attachment?.name ?? null,
+    attachment_type: attachment?.type ?? null,
   });
   if (error) {
     console.error("[support] could not record reply:", error.message);
@@ -100,7 +111,7 @@ export async function collectReplies(visitorId: string): Promise<OutboundReply[]
 
   const { data, error } = await db
     .from(TABLE)
-    .select("id, body, created_at")
+    .select("id, body, created_at, attachment_url, attachment_name, attachment_type")
     .eq("visitor_id", visitorId)
     .eq("direction", "out")
     .is("seen_at", null)
@@ -117,7 +128,18 @@ export async function collectReplies(visitorId: string): Promise<OutboundReply[]
   const { error: markErr } = await db.from(TABLE).update({ seen_at: new Date().toISOString() }).in("id", ids);
   if (markErr) console.error("[support] could not mark seen:", markErr.message);
 
-  return data.map((r) => ({ id: r.id as string, body: r.body as string, createdAt: r.created_at as string }));
+  return data.map((r) => ({
+    id: r.id as string,
+    body: r.body as string,
+    createdAt: r.created_at as string,
+    attachment: r.attachment_url
+      ? {
+          url: r.attachment_url as string,
+          name: (r.attachment_name as string) ?? "file",
+          type: (r.attachment_type as string) ?? "application/octet-stream",
+        }
+      : null,
+  }));
 }
 
 /**
