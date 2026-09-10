@@ -254,6 +254,10 @@ export async function pendingRequests(limit = 20): Promise<EaRequest[]> {
     .from(TABLE)
     .select("id, visitor_id, mt5_login, name, email, status, code")
     .eq("status", "pending")
+    /* Answered by hand is not waiting. Replying to somebody puts their request
+       in your hands without deciding it, and the queue has to agree or it keeps
+       offering back people you have already dealt with. */
+    .is("answered_at", null)
     .order("created_at", { ascending: false })
     .limit(limit * 3);
 
@@ -298,6 +302,35 @@ export async function pendingRequests(limit = 20): Promise<EaRequest[]> {
       status: d.status as EaRequest["status"],
       code: (d.code as string) ?? null,
     }));
+}
+
+/**
+ * Take this person's open requests out of the decision queue.
+ *
+ * Called when the owner answers somebody by hand, or shuts the door on them.
+ * Either way the request is dealt with: it is no longer a thing sitting there
+ * waiting to be decided, and leaving it in the queue meant the same people were
+ * offered again every time a decision was made about anybody.
+ *
+ * It does NOT decide anything — the status is untouched, so /approve and
+ * /decline still work on them afterwards and still say what happened. Returns
+ * how many rows it covered, which is what lets the reply say so out loud.
+ */
+export async function markAnswered(visitorId: string): Promise<number> {
+  const db = getSupabaseAdmin();
+  if (!db || !visitorId) return 0;
+  const { data, error } = await db
+    .from(TABLE)
+    .update({ answered_at: new Date().toISOString() })
+    .eq("visitor_id", visitorId)
+    .eq("status", "pending")
+    .is("answered_at", null)
+    .select("id");
+  if (error) {
+    console.error("[ea] could not mark answered:", error.message);
+    return 0;
+  }
+  return (data ?? []).length;
 }
 
 /**

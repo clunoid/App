@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { visitorForTelegramMessage, recordReply, listPeople } from "@/lib/support/threads";
 import { isBanned, banPerson, unbanPerson, listBans, clearBans, findBan } from "@/lib/support/bans";
 import {
-  requestForTelegramMessage, requestForVisitor, pendingRequests, approveRequest, declineRequest, PARTNER_ID,
+  requestForTelegramMessage, requestForVisitor, pendingRequests, approveRequest, declineRequest,
+  markAnswered, PARTNER_ID,
   DERIV_PROFILE, EXAMPLE_CLIENT_ID, DERIV_SIGNUP, declineCount,
   type EaRequest,
 } from "@/lib/deriv/mt5/eaAccess";
@@ -181,6 +182,19 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true });
     }
 
+    /* A DECISION IS ABOUT THE PERSON, so it settles everything of theirs.
+     *
+     * One person often has several rows: the form has no memory, so returning
+     * to the page and filling it in again makes another. Deciding used to touch
+     * only the row you happened to resolve, and the duplicates stayed pending —
+     * which is why people you had already answered kept reappearing in "3
+     * requests are waiting", each one an individual asking for a decision that
+     * had in fact been made.
+     *
+     * Marked answered rather than decided: the row you acted on carries the
+     * real outcome, and the others were never separately judged. */
+    const alsoSettled = await markAnswered(reqst.visitorId);
+
     if (isApprove) {
       const code = await approveRequest(reqst.id);
       if (!code) {
@@ -202,7 +216,7 @@ export async function POST(req: NextRequest) {
       await say(
         chatId,
         delivered
-          ? `✅ Approved. Code <code>${code}</code> sent to ${reqst.name} (${reqst.email}), ID <code>${reqst.mt5Login}</code>.`
+          ? `✅ Approved. Code <code>${code}</code> sent to ${reqst.name} (${reqst.email}), ID <code>${reqst.mt5Login}</code>.${alsoSettled > 1 ? ` Their ${alsoSettled - 1} other open request${alsoSettled === 2 ? "" : "s"} left the waiting list with it.` : ""}`
           : `⚠️ Code <code>${code}</code> was issued but could not be delivered. Send it to ${reqst.email} yourself.`,
         msg?.message_id,
       );
@@ -286,7 +300,7 @@ export async function POST(req: NextRequest) {
     await say(
       chatId,
       delivered
-        ? `Declined. ${reqst.name} (${reqst.email}) has been told, with the partner ID and referral link.${times > 1 ? ` This is decline #${times} for them — they got the follow-up wording, not the first one again.` : ""}`
+        ? `Declined. ${reqst.name} (${reqst.email}) has been told, with the partner ID and referral link.${alsoSettled > 1 ? ` Their ${alsoSettled - 1} other open request${alsoSettled === 2 ? "" : "s"} left the waiting list with it.` : ""}${times > 1 ? ` This is decline #${times} for them — they got the follow-up wording, not the first one again.` : ""}`
         : `Declined, but the message could not be delivered — tell ${reqst.email} yourself.`,
       msg?.message_id,
     );
@@ -303,10 +317,26 @@ export async function POST(req: NextRequest) {
     }
 
     const stored = await recordReply(who.visitorId, text);
+
+    /* Answering somebody IS dealing with them.
+     *
+     * Their EA request stayed `pending` until a slash command touched it, so
+     * people who had been written to kept coming back in the "3 requests are
+     * waiting" list — and the list only grew, because most conversations are
+     * handled by talking rather than by deciding. A reply now takes their open
+     * requests out of the queue. It decides nothing: /approve and /decline
+     * still work on them afterwards, from any message in the thread. */
+    const cleared = stored ? await markAnswered(who.visitorId) : 0;
+
     await say(
       chatId,
       stored
-        ? `✅ Delivered to <code>${who.visitorId}</code>. They will see it in the support window on the site${who.email ? ` — ${who.email}` : ""}.`
+        ? [
+            `✅ Delivered to <code>${who.visitorId}</code>. They will see it in the support window on the site${who.email ? ` — ${who.email}` : ""}.`,
+            cleared
+              ? `Their EA request is off the waiting list — you have answered them. <code>/approve</code> or <code>/decline</code> still work on it from any message of theirs.`
+              : "",
+          ].filter(Boolean).join("\n")
         : "⚠️ Could not deliver that just now. Nothing was sent — try again in a moment.",
       msg?.message_id,
     );
@@ -349,6 +379,8 @@ export async function POST(req: NextRequest) {
 
     if (banning) {
       const done = await banPerson({ visitorId, email, name, reason: reason || null });
+      /* Somebody shown the door is not somebody you still owe a decision. */
+      if (done?.visitorId) await markAnswered(done.visitorId);
       await say(
         chatId,
         done
