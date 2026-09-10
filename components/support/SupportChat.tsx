@@ -39,6 +39,73 @@ const BAD = "#f2607d";
 const NUDGED_KEY = "cln_support_nudged";
 const THREAD_KEY = "cln_support_thread";
 
+/* Which replies this person has actually READ.
+ *
+ * The unread count used to be React state and nothing else, so it lived
+ * exactly as long as the page did. A reply collected on one page put a "1" on
+ * the launcher; navigating anywhere cleared it, and it could never come back,
+ * because collecting a reply marks it seen on the server and the next poll
+ * rightly says there is nothing new. The count now comes from comparing the
+ * stored thread against the ids of what has been read, both of which survive a
+ * reload — so the badge stays until the panel is actually opened. */
+const READ_KEY = "cln_support_read";
+
+/** Local time, short. The date is added only when it is not today, because
+ *  "14:32" is what you want for a reply that just arrived and useless on its
+ *  own for one from Tuesday. */
+function clockOf(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const time = d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+  const today = new Date();
+  const sameDay = d.toDateString() === today.toDateString();
+  if (sameDay) return time;
+  const yesterday = new Date(today.getTime() - 86400000);
+  if (d.toDateString() === yesterday.toDateString()) return `Yesterday ${time}`;
+  return `${d.toLocaleDateString(undefined, { day: "numeric", month: "short" })} ${time}`;
+}
+
+/**
+ * The arrival sound.
+ *
+ * Built rather than fetched: two soft notes a fifth apart, which is the shape
+ * every messaging app uses because it reads as "something for you" and not as
+ * an alarm. No asset to host, nothing to load before it can play.
+ *
+ * Browsers refuse audio until the person has interacted with the page, and
+ * this is inside a widget they had to click and type into, so by the time a
+ * reply arrives the gesture has happened. Where it has not, the call throws
+ * and is swallowed — a missing chime is not worth a broken bubble.
+ */
+function chime() {
+  try {
+    type WithAudio = Window & { AudioContext?: typeof AudioContext; webkitAudioContext?: typeof AudioContext };
+    const w = window as WithAudio;
+    const Ctx = w.AudioContext ?? w.webkitAudioContext;
+    if (!Ctx) return;
+    const ctx = new Ctx();
+
+    const note = (freq: number, at: number, len: number) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.value = freq;
+      // Eased in and out: a square-edged envelope clicks, and the click is the
+      // part that sounds cheap.
+      gain.gain.setValueAtTime(0.0001, ctx.currentTime + at);
+      gain.gain.exponentialRampToValueAtTime(0.16, ctx.currentTime + at + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + at + len);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(ctx.currentTime + at);
+      osc.stop(ctx.currentTime + at + len + 0.02);
+    };
+
+    note(784, 0, 0.16);    // G5
+    note(1175, 0.13, 0.22); // D6
+    setTimeout(() => { void ctx.close(); }, 900);
+  } catch { /* no audio permission, or no audio at all */ }
+}
+
 const MAX_BYTES = 8 * 1024 * 1024;
 const OK_IMAGES = ["image/png", "image/jpeg", "image/webp", "image/gif"];
 /* Documents too, not only screenshots: a set file, a log, a statement — the
@@ -81,7 +148,10 @@ export function SupportChat({ source, email: known, name: knownName, country }: 
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [nudged, setNudged] = useState(false);
-  const [unread, setUnread] = useState(0);
+  /* Ids of replies already read, persisted. `unread` is derived from these
+     rather than counted as events, so it cannot drift: whatever is in the
+     thread and not in here is unread, on this page load or any later one. */
+  const [read, setRead] = useState<string[]>([]);
   const [editWho, setEditWho] = useState(false);
 
   const boxRef = useRef<HTMLTextAreaElement | null>(null);
@@ -98,6 +168,8 @@ export function SupportChat({ source, email: known, name: knownName, country }: 
       const saved = JSON.parse(localStorage.getItem(THREAD_KEY) || "[]");
       if (Array.isArray(saved)) setThread(saved.filter((l) => l && typeof l.text === "string"));
       if (localStorage.getItem(NUDGED_KEY) === "1") setNudged(true);
+      const seen = JSON.parse(localStorage.getItem(READ_KEY) || "[]");
+      if (Array.isArray(seen)) setRead(seen.filter((x) => typeof x === "string"));
     } catch { /* nothing saved */ }
   }, []);
 
@@ -233,18 +305,51 @@ export function SupportChat({ source, email: known, name: knownName, country }: 
         if (!alive || fresh.length === 0) return;
 
         mergeReplies(fresh);
-        if (!open) setUnread((n) => n + fresh.length);
+        /* No counting here. The badge is derived from the thread, so a reply
+           that arrives while the panel is shut simply is not in `read` yet. */
       } catch { /* offline, or the tab is asleep — try again next tick */ }
     };
 
     void tick();
-    const every = open ? 7000 : 45000;
+    /* 45s when shut was too slow to feel like support: a reply could sit for
+       most of a minute before the badge appeared, and the sound with it. 20s
+       shut, and the request is one cheap read. */
+    const every = open ? 7000 : 20000;
     const timer = setInterval(() => void tick(), every);
     return () => { alive = false; clearInterval(timer); };
   }, [visitorId, thread.length, open, mergeReplies]);
 
-  // Opening the panel is reading them.
-  useEffect(() => { if (open) setUnread(0); }, [open]);
+  /* Everything from us that has not been read yet. Derived, not counted. */
+  const unreadLines = thread.filter((l) => l.from === "us" && !read.includes(l.id));
+  const unread = unreadLines.length;
+
+  // Opening the panel is reading them — every one currently in the thread.
+  useEffect(() => {
+    if (!open) return;
+    const ids = thread.filter((l) => l.from === "us").map((l) => l.id);
+    if (!ids.length) return;
+    setRead((prev) => {
+      const merged = [...new Set([...prev, ...ids])].slice(-80);
+      if (merged.length === prev.length && ids.every((i) => prev.includes(i))) return prev;
+      try { localStorage.setItem(READ_KEY, JSON.stringify(merged)); } catch { /* private mode */ }
+      return merged;
+    });
+  }, [open, thread]);
+
+  /* Sound the arrival, once per reply.
+   *
+   * Keyed on the newest unread id rather than on the count: a count can go up
+   * for reasons that are not an arrival — a merge repairing an old line, a
+   * second tab writing to storage — and each of those would have rung the bell
+   * again for something the person had already been told about. */
+  const rungFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (open || !unread) return;
+    const newest = unreadLines[unreadLines.length - 1]?.id;
+    if (!newest || rungFor.current === newest) return;
+    rungFor.current = newest;
+    chime();
+  }, [unread, open, unreadLines]);
 
   function pick(f: File | null) {
     setErr(null);
@@ -338,6 +443,11 @@ export function SupportChat({ source, email: known, name: knownName, country }: 
             style={{ background: GOOD, color: "#04202e", border: "2px solid " + TC.bg }}
           >
             {unread > 9 ? "9+" : unread}
+            {/* A ring that fades outward once a second. The badge alone is easy
+                to miss on a page somebody is reading; motion is what a phone in
+                a pocket cannot deliver and a screen can. */}
+            <span aria-hidden className="absolute inset-0 animate-ping rounded-full"
+              style={{ background: GOOD, opacity: 0.55 }} />
           </span>
         )}
       </button>
@@ -379,7 +489,8 @@ export function SupportChat({ source, email: known, name: knownName, country }: 
 
             {thread.map((l) => (
               l.from === "us" ? (
-                <Bubble key={l.id} from="us" system={l.system} file={l.file ?? null}>{l.text}</Bubble>
+                <Bubble key={l.id} from="us" system={l.system} file={l.file ?? null}
+                  at={l.at} fresh={!l.system && !read.includes(l.id)}>{l.text}</Bubble>
               ) : (
                 <div key={l.id} className="ml-auto max-w-[85%]">
                   <div className="rounded-2xl rounded-br-md px-3.5 py-2.5 text-[12.5px] leading-relaxed"
@@ -393,7 +504,8 @@ export function SupportChat({ source, email: known, name: knownName, country }: 
                   </div>
                   {l.sent !== false && (
                     <div className="mt-1 flex items-center justify-end gap-1 text-[10.5px]" style={{ color: GOOD }}>
-                      <Check size={11} /> Sent · check back here or your email
+                      <Check size={11} /> Sent
+                      <span style={{ color: TC.faint }}>· {clockOf(l.at)}</span>
                     </div>
                   )}
                 </div>
@@ -596,7 +708,7 @@ function Attachment({ file, bare }: { file: NonNullable<Attached>; bare?: boolea
   );
 }
 
-function Bubble({ children, system, file }: { from: "us"; children: React.ReactNode; system?: boolean; file?: Attached }) {
+function Bubble({ children, system, file, at, fresh }: { from: "us"; children: React.ReactNode; system?: boolean; file?: Attached; at?: string; fresh?: boolean }) {
   /* A picture on its own is a whole answer, and a reply that is only a picture
      used to render as a bubble around an empty string — the "tiny empty card"
      with nothing in it. There is no text to lay out in that case, so there is
@@ -620,6 +732,18 @@ function Bubble({ children, system, file }: { from: "us"; children: React.ReactN
       <div className="mb-1 flex items-center gap-1.5 text-[10.5px] font-bold uppercase tracking-[0.12em]" style={{ color: A }}>
         <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: GOOD }} />
         Clunoid support
+        {/* Marked on the reply itself, not only on the launcher: somebody who
+            opens the bubble onto a conversation they have read before needs to
+            see WHICH message is the new one. */}
+        {fresh && (
+          <span className="rounded-full px-1.5 py-px text-[9px] font-bold tracking-normal"
+            style={{ background: GOOD, color: "#04202e" }}>NEW</span>
+        )}
+        {at && (
+          <span className="ml-auto font-medium normal-case tracking-normal" style={{ color: TC.faint }}>
+            {clockOf(at)}
+          </span>
+        )}
       </div>
       <div
         className={`rounded-2xl rounded-tl-md border text-[13.5px] font-medium leading-[1.6] ${pad}`}
