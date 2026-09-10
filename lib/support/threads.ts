@@ -143,6 +143,55 @@ export async function collectReplies(visitorId: string): Promise<OutboundReply[]
 }
 
 /**
+ * The last few replies to this person, WITHOUT marking anything seen.
+ *
+ * collectReplies is one-shot by design: it hands a reply over and marks it,
+ * because a reply shown twice is worse than one whose receipt is optimistic.
+ * The cost of that showed up the first time the shape of a reply changed —
+ * browsers running the older widget collected the new attachment-carrying
+ * replies, kept only the text, and marked them seen. The file was then
+ * unreachable: the row said delivered, and the only copy of what had been
+ * delivered was a line in that browser's localStorage with no picture in it.
+ *
+ * So there is a way to ask again. Idempotent, marks nothing, and the widget
+ * merges what comes back over what it has by id — which repairs a line that
+ * was stored before the field existed, and costs one request when the bubble
+ * is opened.
+ */
+export async function recentReplies(visitorId: string, limit = 20): Promise<OutboundReply[]> {
+  const db = getSupabaseAdmin();
+  if (!db || !visitorId) return [];
+
+  const { data, error } = await db
+    .from(TABLE)
+    .select("id, body, created_at, attachment_url, attachment_name, attachment_type")
+    .eq("visitor_id", visitorId)
+    .eq("direction", "out")
+    .order("created_at", { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    console.error("[support] recent replies failed:", error.message);
+    return [];
+  }
+
+  return (data ?? [])
+    .map((r) => ({
+      id: r.id as string,
+      body: r.body as string,
+      createdAt: r.created_at as string,
+      attachment: r.attachment_url
+        ? {
+            url: r.attachment_url as string,
+            name: (r.attachment_name as string) ?? "file",
+            type: (r.attachment_type as string) ?? "application/octet-stream",
+          }
+        : null,
+    }))
+    .reverse();
+}
+
+/**
  * What has already been said to this person, oldest first.
  *
  * Attached to their next message so the answer can be written without

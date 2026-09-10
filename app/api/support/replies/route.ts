@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { collectReplies } from "@/lib/support/threads";
+import { collectReplies, recentReplies } from "@/lib/support/threads";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,6 +23,15 @@ const ID = /^[0-9A-F]{8}$/;
 export async function GET(req: NextRequest) {
   const visitorId = (req.nextUrl.searchParams.get("visitorId") ?? "").toUpperCase();
   if (!ID.test(visitorId)) return NextResponse.json({ replies: [] });
+
+  /* ?recent=1 asks again for what has already been delivered, marking nothing.
+     The widget calls it when the bubble opens, and merges the answer over what
+     it has stored by id — which is how a line saved before attachments existed
+     gets its picture, and how anything lost from localStorage comes back. */
+  if (req.nextUrl.searchParams.get("recent") === "1") {
+    const recent = await recentReplies(visitorId);
+    return NextResponse.json({ replies: recent }, { headers: { "Cache-Control": "no-store" } });
+  }
 
   const replies = await collectReplies(visitorId);
   return NextResponse.json(

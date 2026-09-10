@@ -128,6 +128,50 @@ export function SupportChat({ source, email: known, name: knownName, country }: 
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" }); }, [thread, open]);
 
+  /* Merge server-side replies over what is stored, matching on id.
+   *
+   * Not an append: the same reply may already be in the thread from an earlier
+   * poll — possibly saved by an older version of this widget that knew nothing
+   * about attachments and kept only the text. Patching by id repairs those
+   * lines instead of showing them twice. */
+  const mergeReplies = useCallback((reps: { id: string; body: string; createdAt: string; attachment?: Attached }[]) => {
+    if (!reps.length) return;
+    setThread((t) => {
+      const next = [...t];
+      for (const rep of reps) {
+        const line: Line = {
+          id: rep.id, text: rep.body, at: rep.createdAt, from: "us",
+          file: rep.attachment ?? null,
+        };
+        const at = next.findIndex((l) => l.id === rep.id);
+        if (at >= 0) next[at] = { ...next[at], ...line };
+        else next.push(line);
+      }
+      next.sort((a, b) => a.at.localeCompare(b.at));
+      const trimmed = next.slice(-30);
+      try { localStorage.setItem(THREAD_KEY, JSON.stringify(trimmed)); } catch { /* private mode */ }
+      return trimmed;
+    });
+  }, []);
+
+  /* Opening the bubble re-asks for the recent replies.
+   *
+   * Cheap, marks nothing, and it is the only way a browser recovers from
+   * having stored a reply in an older shape — the row was already marked seen,
+   * so the ordinary poll will never offer it again. It also fills the thread
+   * back in on a device that cleared its storage. */
+  useEffect(() => {
+    if (!open || !visitorId) return;
+    let alive = true;
+    fetch(`/api/support/replies?visitorId=${encodeURIComponent(visitorId)}&recent=1`, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { replies?: { id: string; body: string; createdAt: string; attachment?: Attached }[] } | null) => {
+        if (alive && d?.replies?.length) mergeReplies(d.replies);
+      })
+      .catch(() => { /* offline — the poll will catch up */ });
+    return () => { alive = false; };
+  }, [open, visitorId, mergeReplies]);
+
   const remember = useCallback((line: Line) => {
     setThread((t) => {
       const next = [...t, line].slice(-30);
@@ -188,9 +232,7 @@ export function SupportChat({ source, email: known, name: knownName, country }: 
         const fresh = d.replies ?? [];
         if (!alive || fresh.length === 0) return;
 
-        for (const rep of fresh) {
-          remember({ id: rep.id, text: rep.body, at: rep.createdAt, from: "us", file: rep.attachment ?? null });
-        }
+        mergeReplies(fresh);
         if (!open) setUnread((n) => n + fresh.length);
       } catch { /* offline, or the tab is asleep — try again next tick */ }
     };
@@ -199,7 +241,7 @@ export function SupportChat({ source, email: known, name: knownName, country }: 
     const every = open ? 7000 : 45000;
     const timer = setInterval(() => void tick(), every);
     return () => { alive = false; clearInterval(timer); };
-  }, [visitorId, thread.length, open, remember]);
+  }, [visitorId, thread.length, open, mergeReplies]);
 
   // Opening the panel is reading them.
   useEffect(() => { if (open) setUnread(0); }, [open]);
@@ -530,13 +572,13 @@ function linkify(text: string): React.ReactNode {
   );
 }
 
-function Attachment({ file }: { file: NonNullable<Attached> }) {
+function Attachment({ file, bare }: { file: NonNullable<Attached>; bare?: boolean }) {
   /* An image is shown, because a screenshot you have to click is a screenshot
      you do not look at. Anything else is a link with its real name on it — the
      name is what tells you whether it is the file you were promised. */
   if (file.type.startsWith("image/")) {
     return (
-      <a href={file.url} target="_blank" rel="noopener noreferrer" className="mt-2 block">
+      <a href={file.url} target="_blank" rel="noopener noreferrer" className={bare ? "block" : "mt-2 block"}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={file.url} alt={file.name}
           className="max-h-[280px] w-auto max-w-full rounded-xl border"
@@ -546,7 +588,7 @@ function Attachment({ file }: { file: NonNullable<Attached> }) {
   }
   return (
     <a href={file.url} target="_blank" rel="noopener noreferrer"
-      className="mt-2 inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-[12px] font-semibold transition hover:bg-white/5"
+      className={`inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-[12px] font-semibold transition hover:bg-white/5 ${bare ? "" : "mt-2"}`}
       style={{ borderColor: TC.line, color: TC.text }}>
       <Paperclip size={13} style={{ color: A }} />
       <span className="max-w-[200px] truncate">{file.name}</span>
@@ -555,14 +597,20 @@ function Attachment({ file }: { file: NonNullable<Attached> }) {
 }
 
 function Bubble({ children, system, file }: { from: "us"; children: React.ReactNode; system?: boolean; file?: Attached }) {
-  const body = typeof children === "string" ? linkify(children) : children;
+  /* A picture on its own is a whole answer, and a reply that is only a picture
+     used to render as a bubble around an empty string — the "tiny empty card"
+     with nothing in it. There is no text to lay out in that case, so there is
+     no text element and no padding held open for one. */
+  const hasText = typeof children === "string" ? children.trim().length > 0 : !!children;
+  const body = hasText && typeof children === "string" ? linkify(children) : hasText ? children : null;
+  const pad = hasText ? "px-3.5 py-3" : "p-1.5";
 
   if (system) {
     return (
-      <div className="max-w-[88%] rounded-2xl rounded-tl-md border px-3.5 py-2.5 text-[12.5px] leading-relaxed"
+      <div className={`max-w-[88%] rounded-2xl rounded-tl-md border text-[12.5px] leading-relaxed ${hasText ? "px-3.5 py-2.5" : "p-1.5"}`}
         style={{ borderColor: TC.line, background: "rgba(0,0,0,0.3)", color: TC.muted }}>
         {body}
-        {file && <Attachment file={file} />}
+        {file && <Attachment file={file} bare={!hasText} />}
       </div>
     );
   }
@@ -574,7 +622,7 @@ function Bubble({ children, system, file }: { from: "us"; children: React.ReactN
         Clunoid support
       </div>
       <div
-        className="rounded-2xl rounded-tl-md border px-3.5 py-3 text-[13.5px] font-medium leading-[1.6]"
+        className={`rounded-2xl rounded-tl-md border text-[13.5px] font-medium leading-[1.6] ${pad}`}
         style={{
           borderColor: `${A}55`,
           borderLeft: `3px solid ${A}`,
@@ -584,7 +632,7 @@ function Bubble({ children, system, file }: { from: "us"; children: React.ReactN
         }}
       >
         {body}
-        {file && <Attachment file={file} />}
+        {file && <Attachment file={file} bare={!hasText} />}
       </div>
     </div>
   );
