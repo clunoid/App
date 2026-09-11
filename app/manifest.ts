@@ -16,11 +16,13 @@ import type { MetadataRoute } from "next";
  * under "/trading" — where start_url points — and the prompt would still never
  * fire. Nothing is cached either way. A stale balance is worse than a slow one.
  *
- * `start_url` is /trading, not /. Middleware rewrites `/` to the trading
- * landing and redirects every classic page there, so launching the installed
- * app at the real URL saves a redirect on every cold start — and a manifest
- * whose start_url redirects is the usual reason an install "opens the website"
- * instead of the app.
+ * `start_url` is `/`. It was /trading when that path served the landing
+ * directly; the middleware has since turned /trading into a permanent redirect
+ * to `/`, which made every cold start of the installed app pay for a 308 round
+ * trip before a byte of the page arrived — and a manifest whose start_url
+ * redirects is the usual reason an install "opens the website" instead of the
+ * app. The worker's scope moved to `/` with it, so the page the app lands on
+ * is the page the worker controls.
  *
  * `id` is set explicitly and must never change: browsers key an installed app
  * on it, and changing it later turns an update into a second, duplicate app on
@@ -38,7 +40,7 @@ export default function manifest(): MetadataRoute.Manifest {
     description:
       "Free automated trading bots for MT5 and Deriv. Run them on your own account, watch them work, and get paid to post about them.",
 
-    start_url: "/trading",
+    start_url: "/",
     scope: "/",
     display: "standalone",
     orientation: "portrait-primary",

@@ -30,7 +30,17 @@ const ARM_KEY = "cln_install_on_connect";
    second one — but it happens for everybody, not only for the people who have
    turned alerts on. */
 const SW_URL = "/trading-sw.js";
-const SW_SCOPE = "/trading";
+const SW_SCOPE = "/";
+/* The scope this worker used to be registered under. A registration at the
+   narrower scope would shadow the root one for every URL under /trading, so
+   it is dropped the first time the new one is registered. */
+const OLD_SW_SCOPE = "/trading";
+function dropOldScope(): Promise<void> {
+  if (!("serviceWorker" in navigator)) return Promise.resolve();
+  return navigator.serviceWorker.getRegistration(OLD_SW_SCOPE).then((reg) => {
+    if (reg && reg.scope.endsWith("/trading")) return reg.unregister().then(() => undefined);
+  }).catch(() => undefined);
+}
 
 export type InstallMode = "prompt" | "ios" | "none";
 
@@ -148,7 +158,7 @@ function start() {
      app's worker, not only the prompt's, and the push side wants it too. */
   if ("serviceWorker" in navigator) {
     window.addEventListener("load", () => {
-      navigator.serviceWorker.register(SW_URL, { scope: SW_SCOPE }).catch(() => {
+      dropOldScope().then(() => navigator.serviceWorker.register(SW_URL, { scope: SW_SCOPE })).catch(() => {
         /* private mode, or a policy that forbids workers. The menu install
            still works; only the prompt is lost. */
       });

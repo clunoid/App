@@ -6,7 +6,17 @@
  * load, so the bell can never read OFF while the user has alerts enabled.
  */
 const SW_URL = "/trading-sw.js";
-const SW_SCOPE = "/trading";
+const SW_SCOPE = "/";
+/* The scope this worker used to be registered under. A registration at the
+   narrower scope would shadow the root one for every URL under /trading, so
+   it is dropped the first time the new one is registered. */
+const OLD_SW_SCOPE = "/trading";
+function dropOldScope(): Promise<void> {
+  if (!("serviceWorker" in navigator)) return Promise.resolve();
+  return navigator.serviceWorker.getRegistration(OLD_SW_SCOPE).then((reg) => {
+    if (reg && reg.scope.endsWith("/trading")) return reg.unregister().then(() => undefined);
+  }).catch(() => undefined);
+}
 // Local record of the user's INTENT (survives tab close). Distinguishes "the
 // browser transiently dropped the subscription" (→ recreate it) from "the user
 // turned alerts off" (→ leave them off). Never a security boundary — the server
@@ -46,6 +56,7 @@ function urlBase64ToUint8Array(base64: string): Uint8Array<ArrayBuffer> {
 async function getRegistration(): Promise<ServiceWorkerRegistration> {
   const existing = await navigator.serviceWorker.getRegistration(SW_SCOPE);
   if (existing) return existing;
+  await dropOldScope();
   return navigator.serviceWorker.register(SW_URL, { scope: SW_SCOPE });
 }
 
@@ -65,7 +76,7 @@ export async function ensurePush(): Promise<boolean> {
   try {
     await Promise.race([navigator.serviceWorker.ready, new Promise((r) => setTimeout(r, 2500))]);
     let reg = await navigator.serviceWorker.getRegistration(SW_SCOPE);
-    if (!reg) reg = await navigator.serviceWorker.register(SW_URL, { scope: SW_SCOPE });
+    if (!reg) { await dropOldScope(); reg = await navigator.serviceWorker.register(SW_URL, { scope: SW_SCOPE }); }
     const existing = await reg.pushManager.getSubscription();
     if (existing) return true; // already subscribed — the common reopen path
     if (!wantsAlerts()) return false; // user turned it off — stay off
