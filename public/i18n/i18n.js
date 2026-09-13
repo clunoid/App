@@ -213,13 +213,13 @@
   /* ── the observer: what arrives later gets the same treatment ─────────── */
   var observing = false;
   var quiet = false; // our own writes must not re-trigger us
-  var mo = null;
+  var mo = null, ho = null;
   /* Records for our own writes are queued and delivered AFTER the quiet flag
      is back down, so the flag alone does not keep them out. They are taken off
      the queue and dropped the moment we finish writing. Without this, the
      observer saw its own translation as "a script rewrote this", forgot the
      English it had stored, and the second switch had nothing to restore. */
-  function dropOwnRecords() { if (mo) mo.takeRecords(); }
+  function dropOwnRecords() { if (mo) mo.takeRecords(); if (ho) ho.takeRecords(); }
   function observe() {
     if (observing || !window.MutationObserver) return;
     observing = true;
@@ -256,6 +256,21 @@
       } finally { dropOwnRecords(); quiet = false; }
     });
     mo.observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ATTRS });
+    var lastHead = null;
+    ho = new MutationObserver(function () {
+      if (!dict || quiet) return;
+      var md = document.querySelector('meta[name="description"]');
+      var sig = document.title + "|" + (md ? md.getAttribute("content") : "");
+      if (sig === lastHead) return;
+      quiet = true;
+      try {
+        document.__origTitle = document.title;
+        if (md) md.__orig = md.getAttribute("content");
+        translateHead();
+        lastHead = document.title + "|" + (md ? md.getAttribute("content") : "");
+      } finally { ho.takeRecords(); quiet = false; }
+    });
+    ho.observe(document.head, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["content"] });
   }
 
   /* ── loading + applying ───────────────────────────────────────────────── */
