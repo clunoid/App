@@ -227,7 +227,7 @@ export function CreatorsHub() {
             {[
               { v: "$100", l: "first month on accounts you have" },
               { v: "+$50", l: "more every month after" },
-              { v: "$750", l: "monthly ceiling" },
+              { v: "$1,250", l: "monthly ceiling" },
               { v: "+$500", l: "bonus for 10k+ views" },
             ].map((c) => (
               <div key={c.l} className="rounded-xl border px-3.5 py-2.5" style={{ borderColor: "rgba(167,139,250,0.35)", background: "rgba(167,139,250,0.08)" }}>

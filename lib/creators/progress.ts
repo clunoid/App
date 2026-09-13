@@ -207,9 +207,9 @@ export function computeProgress(firstPostAt: string | null, posts: PostRow[], no
 
 /**
  * What a month pays, before any bonus.
- * $100 normally, $50 for brand-new accounts, then +$50 a month to a $750 ceiling.
+ * $100 normally, $50 for brand-new accounts, then +$50 a month to a $1,250 ceiling.
  */
 export function baseForMonth(month: number, newAccounts: boolean): number {
   if (month <= 1) return newAccounts ? 50 : 100;
-  return Math.min(100 + (month - 1) * 50, 750);
+  return Math.min(100 + (month - 1) * 50, 1250);
 }

@@ -22,7 +22,7 @@ import { PAYOUTS, A, GOOD } from "./content";
 /** Everything that is not a coin sits on the top row. */
 const CRYPTO_KEYS = ["usdt"];
 
-const money = (n: number) => "$" + n.toFixed(n % 1 === 0 ? 0 : 2);
+const money = (n: number) => "$" + n.toLocaleString("en-US", { minimumFractionDigits: n % 1 === 0 ? 0 : 2, maximumFractionDigits: 2 });
 
 export function PayoutMethods({
   value,

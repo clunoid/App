@@ -34,7 +34,7 @@ import { t, useLang } from "@/lib/i18n/t";
 const card = "rounded-2xl border p-4 sm:p-5";
 const cardStyle = { borderColor: TC.line, background: TC.panel } as const;
 const labelCls = "text-[10.5px] font-semibold uppercase tracking-wider";
-const money = (n: number) => "$" + n.toFixed(0);
+const money = (n: number) => "$" + n.toLocaleString("en-US", { maximumFractionDigits: 0 });
 
 /** Which wordings this creator starred. Their device, their preference. */
 const FAVES_KEY = "cln_invite_faves";

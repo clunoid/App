@@ -71,7 +71,7 @@ export const LADDER = [
   { m: "Month 5", pay: 300, note: "" },
   { m: "Month 6", pay: 350, note: "" },
   { m: "…", pay: null as number | null, note: "+$50 every month" },
-  { m: "Month 14+", pay: 750, note: "Maximum base" },
+  { m: "Month 24+", pay: 1250, note: "Maximum base" },
 ];
 
 export const STEPS = [
@@ -414,7 +414,7 @@ export const REMINDERS = [
   },
   {
     t: "You get paid more every month",
-    d: "Finish your first 30 days and you get paid. Every month after that adds $50: your second payout is $150, your third is $200, and so on up to $750.",
+    d: "Finish your first 30 days and you get paid. Every month after that adds $50: your second payout is $150, your third is $200, and so on up to $1,250.",
   },
   {
     t: "Already have accounts? You get $100",
@@ -505,7 +505,7 @@ export const TEMPLATES = [
  * Whoever receives one of these decides in about two seconds whether it is an
  * opportunity or something to ignore, so they lead with the real thing and stay
  * short. Every number is true: $100 is the real first month, $1,250 is the real
- * ceiling ($750 base plus the $500 views bonus), one video a day is the real ask.
+ * ceiling ($1,250 base plus the $500 views bonus), one video a day is the real ask.
  *
  * Several of them, deliberately. The same wording sent by fifty people reads as
  * a chain letter — and the right tone for a close friend is not the right tone

@@ -84,7 +84,7 @@ type TabKey = (typeof TABS)[number]["key"];
 const card = "rounded-2xl border p-4 sm:p-5";
 const cardStyle = { borderColor: TC.line, background: TC.panel } as const;
 const labelCls = "text-[10.5px] font-semibold uppercase tracking-wider";
-const money = (n: number) => "$" + n.toFixed(n % 1 === 0 ? 0 : 2);
+const money = (n: number) => "$" + n.toLocaleString("en-US", { minimumFractionDigits: n % 1 === 0 ? 0 : 2, maximumFractionDigits: 2 });
 
 /** Money asked for but not yet in their hands. Amber, because it is neither. */
 const PENDING = "#f5c451";
@@ -291,7 +291,7 @@ function Overview({ me, progress, token, onRefresh, now, setTab, show }: {
             </div>
             <div className="mt-2 text-[13px]" style={{ color: TC.muted }}>
               Finish these 30 days and you get <b style={{ color: GOOD }}>{nextPayout ? money(nextPayout.baseUsd) : "paid"}</b>
-              {nextPayout && nextPayout.baseUsd < 750 ? (
+              {nextPayout && nextPayout.baseUsd < 1250 ? (
                 <> — then <b style={{ color: TC.text }}>{money(nextPayout.baseUsd + 50)}</b> the month after, and $50 more every month after that.</>
               ) : (
                 <> — the top of the ladder.</>
