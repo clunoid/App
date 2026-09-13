@@ -21,6 +21,7 @@ import { DerivBot } from "@/lib/deriv/bots/engine";
 import { getBot } from "@/lib/deriv/bots/registry";
 import { RunnerStyles } from "./RunnerStyles";
 import type { BotUI, BotStats, TradeRow } from "@/lib/deriv/bots/types";
+import { t, useLang } from "@/lib/i18n/t";
 
 type StatusKind = "info" | "success" | "warning" | "error";
 type Mode = "demo" | "real";
@@ -30,6 +31,7 @@ const onlyOptions = (accts: ConnectedAccount[]) => accts.filter((a) => a.kind ==
 const RECOMMENDED_BALANCE = 1000;
 
 export function DerivBotRunner({ botId }: { botId: string }) {
+  useLang(); // renders again when the reader's language changes
   const router = useRouter();
   const meta = getBot(botId);
 
@@ -250,7 +252,7 @@ export function DerivBotRunner({ botId }: { botId: string }) {
                   <Square size={15} /> Stop bot
                 </button>
               )}
-              {runningState && <div className="mt-2 inline-flex items-center gap-1.5 text-[12px]" style={{ color: TC.profit }}><Loader2 size={13} className="animate-spin" /> running on {mode}</div>}
+              {runningState && <div className="mt-2 inline-flex items-center gap-1.5 text-[12px]" style={{ color: TC.profit }}><Loader2 size={13} className="animate-spin" /> {t("running on {mode}", { mode: t(mode) })}</div>}
               {effStatus && <div className="mt-2 text-[12px] leading-snug" style={{ color: effStatus.kind === "error" ? TC.loss : effStatus.kind === "success" ? TC.profit : effStatus.kind === "warning" ? "#f5c451" : TC.muted }}>{effStatus.msg}</div>}
               <p className="mt-3 text-[10.5px] leading-relaxed" style={{ color: TC.faint }}>
                 Stops automatically at your take-profit or stop-loss (realised P/L).

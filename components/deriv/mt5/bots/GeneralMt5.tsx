@@ -19,6 +19,7 @@ import { SupportChat } from "@/components/support/SupportChat";
 import { PROFILE_LIST } from "@/lib/deriv/mt5/profiles";
 import { LIVE_CATEGORIES } from "@/lib/deriv/mt5/markets";
 import type { RiskProfile, Side } from "@/lib/deriv/mt5/types";
+import { t, useLang } from "@/lib/i18n/t";
 
 type ApiSignal = {
   symbol: string; name: string; side: Side; regime: string; confidence: number;
@@ -41,6 +42,7 @@ const PROFILE_ICON: Record<RiskProfile, typeof Shield> = {
 };
 
 export function GeneralMt5() {
+  useLang(); // renders again when the reader's language changes
   const [profile, setProfile] = useState<RiskProfile>("aggressive");
   const [data, setData] = useState<ApiResult | null>(null);
   const [loading, setLoading] = useState(false);
@@ -95,7 +97,7 @@ export function GeneralMt5() {
             <Bot size={16} style={{ color: ACCENT }} /> MT5 AUTOMATIONS
           </span>
           <div className="ml-auto flex items-center gap-2">
-            {updatedAt > 0 && <span className="text-[11px]" style={{ color: TC.faint }}>updated {new Date(updatedAt).toLocaleTimeString()} · auto every 60s</span>}
+            {updatedAt > 0 && <span className="text-[11px]" style={{ color: TC.faint }}>{t("updated {time} · auto every 60s", { time: new Date(updatedAt).toLocaleTimeString() })}</span>}
             <button onClick={() => void load(profile)} disabled={loading} className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12.5px] font-medium transition hover:bg-white/5 disabled:opacity-50" style={{ borderColor: TC.line, color: TC.muted }}>
               {loading ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />} Refresh
             </button>
@@ -182,7 +184,7 @@ export function GeneralMt5() {
           )}
           {data && data.standAside.length > 0 && (
             <details className="mt-3 rounded-xl border p-3" style={{ borderColor: TC.line, background: TC.panel }}>
-              <summary className="cursor-pointer text-[12px] font-medium" style={{ color: TC.muted }}>Standing aside on {data.standAside.length} markets</summary>
+              <summary className="cursor-pointer text-[12px] font-medium" style={{ color: TC.muted }}>{t("Standing aside on {n} markets", { n: data.standAside.length })}</summary>
               <div className="mt-2 grid gap-1.5 sm:grid-cols-2">
                 {data.standAside.map((a) => (
                   <div key={a.symbol} className="flex items-center justify-between gap-2 text-[11px]" style={{ color: TC.faint }}>
@@ -252,7 +254,7 @@ function SignalCard({ s }: { s: ApiSignal }) {
         ))}
       </div>
       <div className="mt-2.5 flex items-center justify-between text-[10.5px]" style={{ color: TC.faint }}>
-        <span>Risk {s.riskPct}% · {s.regime.replace("_", " ")}</span>
+        <span>{t("Risk {pct}% · {regime}", { pct: s.riskPct, regime: t(s.regime.replace("_", " ")) })}</span>
         <span className="inline-flex items-center gap-1.5">
           <span className="h-1.5 w-16 overflow-hidden rounded-full" style={{ background: "rgba(255,255,255,0.08)" }}>
             <span className="block h-full rounded-full" style={{ width: `${s.confidence}%`, background: color }} />

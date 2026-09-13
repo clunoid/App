@@ -36,6 +36,7 @@ import {
   DEFAULT_PLATFORMS, PLATFORMS_REQUIRED, platformInfo,
   DISCLAIMER,
 } from "./content";
+import { t, useLang } from "@/lib/i18n/t";
 
 /** Where this browser remembers which creator it belongs to. */
 const TOKEN_KEY = "cln_creator_token";
@@ -50,6 +51,7 @@ function readRefCode(): string {
 }
 
 export function CreatorsHub() {
+  useLang(); // renders again when the reader's language changes
   const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
   const [start, setStart] = useState(today);
 
@@ -270,7 +272,7 @@ export function CreatorsHub() {
                 <div className="flex flex-col gap-1.5">
                   <span className={label} style={{ color: TC.faint }}>Country</span>
                   <CountryPicker value={f.country} onChange={(v) => { setF((p) => ({ ...p, country: v })); show(v + " selected"); }} accent={A} />
-                  {f.country && <FieldOk>{f.country} selected</FieldOk>}
+                  {f.country && <FieldOk>{t("{country} selected", { country: t(f.country) })}</FieldOk>}
                 </div>
                 <label className="flex flex-col gap-1.5">
                   <span className={label} style={{ color: TC.faint }}>

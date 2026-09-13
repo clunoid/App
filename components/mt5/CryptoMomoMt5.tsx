@@ -9,6 +9,7 @@ import Link from "next/link";
 import { ArrowLeft, Bot, Shield, Zap, Gauge, CheckCircle2, CircleDashed, Clock } from "lucide-react";
 import { TC, DOT_GRID, monoFont } from "@/lib/trading/theme";
 import { Mt5Testing } from "@/components/mt5/Mt5Testing";
+import { t, useLang } from "@/lib/i18n/t";
 
 const ACCENT = "#a78bfa";
 
@@ -29,6 +30,7 @@ const BENEFITS = [
 const DISCLAIMER = "Trading carries risk. This is an automated tool, not financial advice or a profit guarantee. Never risk more than you can afford to lose.";
 
 export function CryptoMomoMt5() {
+  useLang(); // renders again when the reader's language changes
   const [profile, setProfile] = useState<Profile["key"]>("moderate");
   return (
     <main className="relative min-h-[100dvh] w-full overflow-x-hidden" style={{ background: TC.bg, color: TC.text }}>
@@ -105,7 +107,7 @@ export function CryptoMomoMt5() {
                     {on && <CheckCircle2 size={15} className="ml-auto" style={{ color: ACCENT }} />}
                   </div>
                   <p className="mt-1.5 text-[11.5px] leading-relaxed" style={{ color: TC.muted }}>{p.blurb}</p>
-                  <div className="mt-2.5 text-[10.5px]" style={{ ...monoFont, color: TC.faint }}>Risk {p.risk}</div>
+                  <div className="mt-2.5 text-[10.5px]" style={{ ...monoFont, color: TC.faint }}>{t("Risk {risk}", { risk: p.risk })}</div>
                 </button>
               );
             })}

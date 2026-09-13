@@ -30,6 +30,7 @@ import { TC, monoFont } from "@/lib/trading/theme";
 import {
   loadIdentity, saveIdentity, isEmail, isJustAGreeting, type SupportSource,
 } from "@/lib/support/identity";
+import { t, useLang } from "@/lib/i18n/t";
 
 const A = "#a78bfa";
 const GOOD = "#34d399";
@@ -138,6 +139,7 @@ export function SupportChat({ source, email: known, name: knownName, country }: 
   name?: string | null;
   country?: string | null;
 }) {
+  useLang(); // renders again when the reader's language changes
   const [open, setOpen] = useState(false);
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
@@ -483,8 +485,7 @@ export function SupportChat({ source, email: known, name: knownName, country }: 
           {/* thread */}
           <div className="flex-1 space-y-3 overflow-y-auto px-4 py-4">
             <Bubble from="us" system>
-              Hi{name ? ` ${name.split(" ")[0]}` : ""} — ask us anything. Tell us what happened and what you
-              expected, and add a screenshot if you have one. The answer comes back here.
+              {t("Hi{name} — ask us anything. Tell us what happened and what you expected, and add a screenshot if you have one. The answer comes back here.", { name: name ? ` ${name.split(" ")[0]}` : "" })}
             </Bubble>
 
             {thread.map((l) => (

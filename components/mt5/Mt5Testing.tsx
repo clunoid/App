@@ -19,12 +19,14 @@ import { useRouter } from "next/navigation";
 import { FlaskConical, BellRing } from "lucide-react";
 import { TC } from "@/lib/trading/theme";
 import { loadDerivAccess } from "@/lib/deriv/oauth";
+import { t, useLang } from "@/lib/i18n/t";
 
 /** The two channels the release gets announced on. Live, and checked. */
 export const TELEGRAM_CHANNEL = "https://t.me/magicabofficialchannel";
 export const WHATSAPP_CHANNEL = "https://whatsapp.com/channel/0029Vb6sxFG9xVJWbyIwL110";
 
 export function Mt5Testing({ botName }: { botName: string }) {
+  useLang(); // renders again when the reader's language changes
   const router = useRouter();
 
   // The same way out the purchase popup offered, and for the same reason: a
@@ -51,7 +53,7 @@ export function Mt5Testing({ botName }: { botName: string }) {
       <p className="mt-2.5 flex items-start gap-1.5 text-[12px] leading-relaxed" style={{ color: TC.muted }}>
         <BellRing size={13} className="mt-0.5 shrink-0" style={{ color: "#fbbf24" }} />
         <span>
-          <b style={{ color: TC.text }}>{botName} is not ready to download yet.</b> Join either channel — Telegram or
+          <b style={{ color: TC.text }}>{t("{bot} is not ready to download yet.", { bot: botName })}</b> Join either channel — Telegram or
           WhatsApp, whichever you use — and we will tell you there the moment testing finishes and it is ready to
           download. You only need one of them.
         </span>
@@ -84,7 +86,7 @@ function Channel({ href, logo, label, tint }: { href: string; logo: string; labe
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img src={logo} alt="" aria-hidden className="h-[18px] w-[18px]" />
-      Join {label}
+      {t("Join {label}", { label })}
     </a>
   );
 }

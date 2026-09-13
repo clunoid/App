@@ -17,6 +17,7 @@ import { getSimBalance, setSimBalance as persistSimBalance } from "@/lib/deriv/b
 import { getBot } from "@/lib/deriv/bots/registry";
 import { RunnerStyles } from "./RunnerStyles";
 import type { BotUI, BotStats, TradeRow } from "@/lib/deriv/bots/types";
+import { t, useLang } from "@/lib/i18n/t";
 
 type StatusKind = "info" | "success" | "warning" | "error";
 const RECOMMENDED_BALANCE = 1000;
@@ -42,6 +43,7 @@ export function DerivBotSimRunner({
    */
   guide?: boolean;
 }) {
+  useLang(); // renders again when the reader's language changes
   const router = useRouter();
   const meta = getBot(botId);
 
@@ -588,7 +590,7 @@ function GuideRow({ text, suggestion, onUse }: { text: string; suggestion: numbe
       <button type="button" onClick={onUse}
         className="mt-2 rounded-lg px-2.5 py-1.5 text-[12px] font-bold transition hover:opacity-90"
         style={{ ...monoFont, background: TC.profit, color: TC.ink }}>
-        Use {suggestion.toFixed(2)}
+        {t("Use {n}", { n: suggestion.toFixed(2) })}
       </button>
       <p className="mt-1.5 text-[11px]" style={{ color: TC.faint }}>Or just type your own — it applies as you type.</p>
     </div>

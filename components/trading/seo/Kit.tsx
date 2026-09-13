@@ -399,7 +399,7 @@ export function Disclaimer() {
           — free fully automated AI trading bots for MT5, MT4, Deriv, TradingView and Binance.
         </p>
         <p className="mt-2 text-[12.5px]" style={{ color: C.faint }}>
-          © {new Date().getFullYear()} Clunoid Trading. All trademarks are the property of their respective owners.
+          <span>© {new Date().getFullYear()}</span> <span>Clunoid Trading. All trademarks are the property of their respective owners.</span>
         </p>
       </Wrap>
     </footer>

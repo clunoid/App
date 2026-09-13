@@ -29,6 +29,7 @@ import {
 import { TC, monoFont } from "@/lib/trading/theme";
 import { A, GOOD, BAD, fmt, INVITE_VARIANTS } from "./content";
 import type { Me } from "./CreatorDashboard";
+import { t, useLang } from "@/lib/i18n/t";
 
 const card = "rounded-2xl border p-4 sm:p-5";
 const cardStyle = { borderColor: TC.line, background: TC.panel } as const;
@@ -43,6 +44,7 @@ type Variant = (typeof INVITE_VARIANTS)[number];
 export function TeamPanel({ me, show, onRefresh, token }: {
   me: Me; show: (t: string, tone?: "ok" | "bad") => void; onRefresh: () => Promise<void>; token: string;
 }) {
+  useLang(); // renders again when the reader's language changes
   const { creator, team, teamTotals } = me;
   const [copied, setCopied] = useState<string | null>(null);
   const [picking, setPicking] = useState(false);
@@ -113,7 +115,7 @@ export function TeamPanel({ me, show, onRefresh, token }: {
         </h2>
         <p className="mt-2 max-w-3xl text-[13px] leading-relaxed" style={{ color: TC.muted }}>
           Share your link with friends, other creators, anyone. Whoever joins through it becomes part of your team —
-          and the moment one of them gets paid, <b style={{ color: GOOD }}>you get {money(teamTotals.perPersonUsd)}</b>{" "}
+          and the moment one of them gets paid, <b style={{ color: GOOD }}>{t("you get {amount}", { amount: money(teamTotals.perPersonUsd) })}</b>{" "}
           for that person. There is no limit on how many people you bring, and it does not touch what they earn.
         </p>
       </section>
@@ -182,7 +184,7 @@ export function TeamPanel({ me, show, onRefresh, token }: {
       {/* ── who is in it ──────────────────────────────────────────────────── */}
       <section className={card} style={cardStyle}>
         <h2 className={`flex items-center gap-2 ${labelCls}`} style={{ color: TC.faint }}>
-          <Users size={14} style={{ color: A }} /> Your team ({team.length})
+          <Users size={14} style={{ color: A }} /> {t("Your team ({n})", { n: team.length })}
         </h2>
 
         {team.length === 0 ? (

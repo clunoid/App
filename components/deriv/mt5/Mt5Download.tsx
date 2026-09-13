@@ -28,6 +28,7 @@ import { Download, Loader2, Lock, X, Sparkles, ShieldCheck, CheckCircle2 } from 
 import { TC } from "@/lib/trading/theme";
 import { useClunoid } from "@/lib/store/useClunoid";
 import { loadDerivAccess } from "@/lib/deriv/oauth";
+import { t, useLang } from "@/lib/i18n/t";
 
 type Access = { paid: boolean; signedIn: boolean; owned: boolean; paidAsGuest: boolean; priceUsd: number | null };
 
@@ -46,6 +47,7 @@ export function Mt5Download({
   freeLabel?: string;
   freeBlurb?: React.ReactNode;
 }) {
+  useLang(); // renders again when the reader's language changes
   const isAuthed = useClunoid((s) => s.user.isAuthed);
   const openAuth = useClunoid((s) => s.openAuth);
   const router = useRouter();
@@ -184,7 +186,7 @@ export function Mt5Download({
   } else {
     control = (
       <button onClick={() => setPopup(true)} className={btnBase} style={{ background: accent, color: TC.ink }}>
-        <Lock size={14} /> Get it{price ? ` — ${price}` : ""}
+        <Lock size={14} /> {price ? t("Get it — {price}", { price }) : t("Get it")}
       </button>
     );
   }
@@ -207,7 +209,7 @@ export function Mt5Download({
             <span className="grid h-11 w-11 place-items-center rounded-xl" style={{ background: `${accent}22` }}>
               <Sparkles size={20} style={{ color: accent }} />
             </span>
-            <h3 id="mt5-buy-title" className="mt-3 text-[17px] font-bold">Unlock {botName}</h3>
+            <h3 id="mt5-buy-title" className="mt-3 text-[17px] font-bold">{t("Unlock {bot}", { bot: botName })}</h3>
             <p className="mt-1.5 text-[12.5px] leading-relaxed" style={{ color: TC.muted }}>
               A one-time purchase{price ? ` of ${price}` : ""}, tax included. Buy it once and it&rsquo;s tied to your
               account — download it and run it on your own MT5 terminal, any time.

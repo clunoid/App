@@ -34,6 +34,7 @@ import { Reminders } from "./Reminders";
 import { FieldOk, useToast } from "./Feedback";
 import { computeProgress, GRACE_DAYS, QUALIFYING_DAYS_NEEDED, type Progress } from "@/lib/creators/progress";
 import { loadDerivAccess } from "@/lib/deriv/oauth";
+import { t, useLang } from "@/lib/i18n/t";
 
 // ── the shape /api/creators/me returns ──────────────────────────────────────
 export type Creator = {
@@ -100,6 +101,7 @@ function savedMap(creator: Creator): Record<string, string | null> {
 }
 
 export function CreatorDashboard({ me, token, onRefresh, justRegistered = false }: { me: Me; token: string; onRefresh: () => Promise<void>; justRegistered?: boolean }) {
+  useLang(); // renders again when the reader's language changes
   const [tab, setTab] = useState<TabKey>("overview");
   const { creator } = me;
   const { show, node: toast } = useToast();
@@ -151,7 +153,7 @@ export function CreatorDashboard({ me, token, onRefresh, justRegistered = false 
                 ? { background: `${GOOD}1f`, color: GOOD, boxShadow: `inset 0 0 0 1px ${GOOD}55` }
                 : { background: `${A}1f`, color: A, boxShadow: `inset 0 0 0 1px ${A}55` }}>
               <span className="h-1.5 w-1.5 rounded-full" style={{ background: started ? GOOD : A }} />
-              {started ? `Day ${progress.day} of ${QUALIFYING_DAYS_NEEDED}` : "Not started"}
+              {started ? t("Day {n} of {total}", { n: progress.day, total: QUALIFYING_DAYS_NEEDED }) : "Not started"}
             </span>
           </span>
         </header>
@@ -243,7 +245,7 @@ function Sidebar({ tab, setTab, progress, started }: { tab: TabKey; setTab: (t: 
             <div className="h-full rounded-full transition-all" style={{ width: `${progress.percent}%`, background: A }} />
           </div>
           <div className="mt-2 text-[11.5px]" style={{ color: TC.muted }}>
-            <b style={{ color: TC.text }}>{progress.qualifyingDays}</b> of {QUALIFYING_DAYS_NEEDED} days posted
+            <b style={{ color: TC.text }}>{progress.qualifyingDays}</b> {t("of {total} days posted", { total: QUALIFYING_DAYS_NEEDED })}
           </div>
         </div>
       )}
@@ -303,8 +305,8 @@ function Overview({ me, progress, token, onRefresh, now, setTab, show }: {
           <div className="h-full rounded-full transition-all" style={{ width: `${progress.percent}%`, background: `linear-gradient(90deg, ${A}, ${GOOD})` }} />
         </div>
         <div className="mt-1.5 flex flex-wrap justify-between gap-2 text-[11.5px]" style={{ color: TC.faint }}>
-          <span>{progress.percent}% of the month&rsquo;s videos delivered</span>
-          <span>{progress.daysLeft > 0 ? "Finishes" : "Finished"} {progress.finishDate ? fmt(progress.finishDate) : "—"}</span>
+          <span>{t("{pct}% of the month’s videos delivered", { pct: progress.percent })}</span>
+          <span>{t(progress.daysLeft > 0 ? "Finishes {date}" : "Finished {date}", { date: progress.finishDate ? fmt(progress.finishDate) : "—" })}</span>
         </div>
       </section>
 
@@ -318,8 +320,8 @@ function Overview({ me, progress, token, onRefresh, now, setTab, show }: {
             </h2>
             <p className="mt-1 text-[12.5px] leading-relaxed" style={{ color: TC.muted }}>
               {done
-                ? `${progress.doneToday} of ${progress.requiredToday} logged. Come back tomorrow — the streak is what gets paid.`
-                : `${progress.doneToday} of ${progress.requiredToday} logged. Each video goes to all ${me.creator.platforms.length} of your platforms; that counts as one.`}
+                ? t("{done} of {req} logged. Come back tomorrow — the streak is what gets paid.", { done: progress.doneToday, req: progress.requiredToday })
+                : t("{done} of {req} logged. Each video goes to all {n} of your platforms; that counts as one.", { done: progress.doneToday, req: progress.requiredToday, n: me.creator.platforms.length })}
             </p>
           </div>
           <button type="button" onClick={() => setTab("posts")}
@@ -351,7 +353,7 @@ function Overview({ me, progress, token, onRefresh, now, setTab, show }: {
               {nextPayout ? money(nextPayout.baseUsd) : "—"}
             </span>
             <span className="pb-0.5 text-[12px]" style={{ color: TC.faint }}>
-              for your month {nextPayout?.month ?? 1}{nextPayout?.month === 1 ? (creator.new_accounts ? " — brand-new accounts" : " — accounts you already had") : ""}
+              {t(nextPayout?.month === 1 ? (creator.new_accounts ? "for your month {n} — brand-new accounts" : "for your month {n} — accounts you already had") : "for your month {n}", { n: nextPayout?.month ?? 1 })}
             </span>
           </div>
           <p className="mt-2 text-[12.5px] leading-relaxed" style={{ color: TC.muted }}>
@@ -377,7 +379,7 @@ function Overview({ me, progress, token, onRefresh, now, setTab, show }: {
       <section className={card} style={cardStyle}>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className={`flex items-center gap-2 ${labelCls}`} style={{ color: TC.faint }}>
-            <Rocket size={14} style={{ color: A }} /> What days {phase.from}–{phase.to} are for
+            <Rocket size={14} style={{ color: A }} /> {t("What days {a}–{b} are for", { a: phase.from, b: phase.to })}
           </h2>
           <button type="button" onClick={() => setTab("plan")} className="text-[12px] font-medium transition hover:opacity-80" style={{ color: A }}>
             See the whole month →
@@ -608,7 +610,7 @@ function StartCard({ me, token, onRefresh, setTab, show }: { me: Me; token: stri
         </p>
         <div className="mt-3 flex flex-wrap gap-2 text-[12px]" style={{ color: TC.faint }}>
           <span className="rounded-lg px-2.5 py-1.5" style={{ background: "rgba(0,0,0,0.28)" }}>
-            Registered {fmt(creator.applied_at)}
+            {t("Registered {date}", { date: fmt(creator.applied_at) })}
           </span>
           <span className="rounded-lg px-2.5 py-1.5" style={{ background: "rgba(0,0,0,0.28)" }}>
             Clock starts on your first post
@@ -654,8 +656,7 @@ function StartCard({ me, token, onRefresh, setTab, show }: { me: Me; token: stri
           Confirm your first video is live
         </h2>
         <p className="mt-1.5 text-[12.5px] leading-relaxed" style={{ color: TC.muted }}>
-          Tick each platform it is up on. All {platforms.length} are needed — one video on all of them is what
-          counts as one post.
+          {t("Tick each platform it is up on. All {n} are needed — one video on all of them is what counts as one post.", { n: platforms.length })}
         </p>
         <div className="mt-3 grid gap-2.5 sm:grid-cols-3">
           {platforms.map((key) => {
@@ -677,7 +678,7 @@ function StartCard({ me, token, onRefresh, setTab, show }: { me: Me; token: stri
         </div>
         {allPlatforms && (
           <div className="mt-2.5">
-            <FieldOk>All {platforms.length} confirmed — press start and your 30 days begin</FieldOk>
+            <FieldOk>{t("All {n} confirmed — press start and your 30 days begin", { n: platforms.length })}</FieldOk>
           </div>
         )}
 
@@ -697,7 +698,7 @@ function StartCard({ me, token, onRefresh, setTab, show }: { me: Me; token: stri
           {busy ? "Starting…" : "Start my 30 days"}
         </button>
         {!allHandles && <p className="mt-2 text-[11.5px]" style={{ color: TC.faint }}>Add a handle for each of your {PLATFORMS_REQUIRED} platforms first.</p>}
-        {allHandles && !allPlatforms && <p className="mt-2 text-[11.5px]" style={{ color: TC.faint }}>Tick all {platforms.length} platforms once the video is up on each.</p>}
+        {allHandles && !allPlatforms && <p className="mt-2 text-[11.5px]" style={{ color: TC.faint }}>{t("Tick all {n} platforms once the video is up on each.", { n: platforms.length })}</p>}
       </section>
 
       <Reminders title="Read this before your first post" />
@@ -749,7 +750,7 @@ function PlanPanel({ progress, token, onRefresh, show }: {
                 : { ...cardStyle, opacity: past ? 0.72 : 1 }}>
               <div className="flex flex-wrap items-center gap-2">
                 <span className="rounded-lg px-2 py-1 text-[11px] font-bold" style={{ background: current ? `${A}26` : "rgba(255,255,255,0.06)", color: current ? A : TC.faint, ...monoFont }}>
-                  Days {p.from}–{p.to}
+                  {t("Days {a}–{b}", { a: p.from, b: p.to })}
                 </span>
                 <h3 className="text-[15px] font-bold">{p.title}</h3>
                 {current && <span className="rounded-lg px-2 py-1 text-[10.5px] font-bold uppercase tracking-wider" style={{ background: `${A}26`, color: A }}>You are here</span>}
@@ -812,7 +813,7 @@ function DayGrid({ progress, token, onRefresh, show, title = "Your calendar" }: 
           <CalendarRange size={14} style={{ color: A }} /> {title}
         </h2>
         <span className="text-[12px]" style={{ ...monoFont, color: A }}>
-          {progress.qualifyingDays} / {QUALIFYING_DAYS_NEEDED} days done
+          {t("{a} / {b} days done", { a: progress.qualifyingDays, b: QUALIFYING_DAYS_NEEDED })}
         </span>
       </div>
 
@@ -937,17 +938,17 @@ function PostsPanel({ me, progress, token, onRefresh, show }: { me: Me; progress
       <section className={card} style={cardStyle}>
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h2 className="text-[16px] font-bold">
-            Log a video for today <span style={{ color: TC.faint }}>· day {progress.day}</span>
+            Log a video for today <span style={{ color: TC.faint }}>{t("· day {n}", { n: progress.day })}</span>
           </h2>
           <span className="text-[12px]" style={{ ...monoFont, color: progress.todayDone ? GOOD : A }}>
-            {progress.doneToday}/{progress.requiredToday} done
+            {t("{a}/{b} done", { a: progress.doneToday, b: progress.requiredToday })}
           </span>
         </div>
 
         {roomToday ? (
           <>
             <p className="mt-1.5 text-[12.5px] leading-relaxed" style={{ color: TC.muted }}>
-              Tick every platform the video is live on. All {mine.length} are needed for it to count.
+              {t("Tick every platform the video is live on. All {n} are needed for it to count.", { n: mine.length })}
             </p>
             <div className="mt-3 grid gap-2.5 sm:grid-cols-3">
               {mine.map((key) => {
@@ -969,7 +970,7 @@ function PostsPanel({ me, progress, token, onRefresh, show }: { me: Me; progress
             </div>
             {allPlatforms && (
               <div className="mt-2.5">
-                <FieldOk>All {mine.length} confirmed — this will count as one post</FieldOk>
+                <FieldOk>{t("All {n} confirmed — this will count as one post", { n: mine.length })}</FieldOk>
               </div>
             )}
             <label className="mt-3 flex flex-col gap-1.5">
@@ -996,7 +997,7 @@ function PostsPanel({ me, progress, token, onRefresh, show }: { me: Me; progress
 
       <section className={card} style={cardStyle}>
         <h2 className={`flex items-center gap-2 ${labelCls}`} style={{ color: TC.faint }}>
-          <ListChecks size={14} style={{ color: A }} /> Everything you have posted ({me.posts.length})
+          <ListChecks size={14} style={{ color: A }} /> {t("Everything you have posted ({n})", { n: me.posts.length })}
         </h2>
         <p className="mt-1.5 text-[11.5px] leading-relaxed" style={{ color: TC.faint }}>
           Undo is for something logged by mistake. Removing an entry can cost you the qualifying day, so it asks first.
@@ -1673,7 +1674,7 @@ function DetailsPanel({ me, token, onRefresh, show }: { me: Me; token: string; o
         {platforms.length !== PLATFORMS_REQUIRED && (
           <div className="mt-2.5">
             <FieldOk tone="bad">
-              Pick {PLATFORMS_REQUIRED} to save this — you have {platforms.length}.
+              {t("Pick {total} to save this — you have {n}.", { total: PLATFORMS_REQUIRED, n: platforms.length })}
             </FieldOk>
           </div>
         )}

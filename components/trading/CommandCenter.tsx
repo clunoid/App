@@ -26,6 +26,7 @@ import { fetchDerivPortfolioREST } from "@/lib/deriv/api";
 import { SupportChat } from "@/components/support/SupportChat";
 import { InstallApp } from "@/components/pwa/InstallApp";
 import { InstallCard } from "@/components/pwa/InstallCard";
+import { t, useLang } from "@/lib/i18n/t";
 /** Binance referral — open an account with us and claim the welcome gifts. */
 const BINANCE_REFERRAL_URL = "https://www.binance.com/referral/earn-together/refer2earn-usdc/claim?hl=en&ref=GRO_28502_IIEHW&utm_source=referral_entrance";
 
@@ -179,6 +180,7 @@ function AccountCard({ a }: { a: ConnectedAccount }) {
 }
 
 export function CommandCenter() {
+  useLang(); // renders again when the reader's language changes
   const [session, setSession] = useState<Session | null>(null);
   const [portfolio, setPortfolio] = useState<DerivPortfolio | null>(null);
   const [loading, setLoading] = useState(false);
@@ -373,7 +375,7 @@ export function CommandCenter() {
         </header>
 
         <div className="mt-2 max-w-2xl">
-          <h1 className="text-[26px] font-bold sm:text-[30px]">{portfolio?.name ? `Welcome, ${portfolio.name.split(" ")[0]}.` : "Your accounts, one place."}</h1>
+          <h1 className="text-[26px] font-bold sm:text-[30px]">{portfolio?.name ? t("Welcome, {name}.", { name: portfolio.name.split(" ")[0] }) : "Your accounts, one place."}</h1>
           <p className="mt-1.5 text-[13.5px] leading-relaxed" style={{ color: TC.muted }}>
             Connect a platform and manage every account — full portfolio, balances and status — from one place. No Clunoid account needed; you authorise your own broker.
           </p>
@@ -385,7 +387,7 @@ export function CommandCenter() {
           {/* ── your accounts ── */}
           <section className="lg:col-span-2">
             <h2 className="mb-3 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: TC.faint }}>
-              <Wallet size={13} style={{ color: TC.profit }} /> Your portfolio {accounts.length > 0 && `· ${accounts.length} accounts`}
+              <Wallet size={13} style={{ color: TC.profit }} /> Your portfolio {accounts.length > 0 && t("· {n} accounts", { n: accounts.length })}
             </h2>
 
             {loading && accounts.length === 0 ? (
@@ -462,7 +464,7 @@ export function CommandCenter() {
                 {/* Real accounts */}
                 {realAccounts.length > 0 && (
                   <>
-                    <h3 className="mb-2 text-[10.5px] font-semibold uppercase tracking-[0.16em]" style={{ color: TC.faint }}>Real accounts · {realAccounts.length}</h3>
+                    <h3 className="mb-2 text-[10.5px] font-semibold uppercase tracking-[0.16em]" style={{ color: TC.faint }}>{t("Real accounts · {n}", { n: realAccounts.length })}</h3>
                     <div className="grid gap-3 sm:grid-cols-2">
                       {realAccounts.map((a, i) => <AccountCard key={`r-${a.loginid}-${i}`} a={a} />)}
                     </div>
@@ -472,7 +474,7 @@ export function CommandCenter() {
                 {/* Demo accounts — clearly separated */}
                 {demoAccounts.length > 0 && (
                   <>
-                    <h3 className="mb-2 mt-5 text-[10.5px] font-semibold uppercase tracking-[0.16em]" style={{ color: TC.faint }}>Demo accounts · {demoAccounts.length}</h3>
+                    <h3 className="mb-2 mt-5 text-[10.5px] font-semibold uppercase tracking-[0.16em]" style={{ color: TC.faint }}>{t("Demo accounts · {n}", { n: demoAccounts.length })}</h3>
                     <div className="grid gap-3 opacity-90 sm:grid-cols-2">
                       {demoAccounts.map((a, i) => <AccountCard key={`d-${a.loginid}-${i}`} a={a} />)}
                     </div>

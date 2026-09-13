@@ -28,6 +28,7 @@ import { DerivBotSimRunner } from "@/components/deriv/bots/DerivBotSimRunner";
 import { setSimBalance, getSimBalance, markSimEditorApplied } from "@/lib/deriv/bots/simBalance";
 import { A, GOOD, VOICEOVER_STARTERS, KEYWORDS, IDEAS } from "./content";
 import { ScreenRecordPrompt, isRecordPromptSnoozed } from "./ScreenRecordPrompt";
+import { t, useLang } from "@/lib/i18n/t";
 
 /** The bot creators run — the flagship, so it matches what they film. */
 const BOT_ID = "smart-recovery-differ";
@@ -49,6 +50,7 @@ function randomBalance(): number {
 }
 
 export function CreatePost() {
+  useLang(); // renders again when the reader's language changes
   const [amount, setAmount] = useState(String(MIN_START_BALANCE));
   const [saved, setSaved] = useState<number | null>(null);
   const [started, setStarted] = useState(false);
@@ -184,7 +186,7 @@ export function CreatePost() {
                 <button type="button" onClick={() => open(saved!)}
                   className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[12px] font-semibold transition hover:opacity-85"
                   style={{ ...monoFont, borderColor: `${GOOD}66`, background: `${GOOD}14`, color: GOOD }}>
-                  <Check size={12} /> Carry on from ${money(saved!)}
+                  <Check size={12} /> {t("Carry on from ${amount}", { amount: money(saved!) })}
                 </button>
               )}
             </div>

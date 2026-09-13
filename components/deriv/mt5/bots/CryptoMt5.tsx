@@ -12,6 +12,7 @@ import { ArrowLeft, Bot, Shield, Zap, Gauge, Download, CheckCircle2, CircleDashe
 import { TC, DOT_GRID, monoFont } from "@/lib/trading/theme";
 import { Mt5Download } from "@/components/deriv/mt5/Mt5Download";
 import { CRYPTO_PROFILES, type CryptoProfile } from "@/lib/deriv/mt5/crypto";
+import { t, useLang } from "@/lib/i18n/t";
 
 const ACCENT = "#a78bfa";
 
@@ -20,6 +21,7 @@ const PROFILE_ICON: Record<CryptoProfile["key"], typeof Shield> = {
 };
 
 export function CryptoMt5() {
+  useLang(); // renders again when the reader's language changes
   const [profile, setProfile] = useState<CryptoProfile["key"]>("aggressive");
 
   return (
@@ -90,7 +92,7 @@ export function CryptoMt5() {
                   </div>
                   <p className="mt-1.5 text-[11.5px] leading-relaxed" style={{ color: TC.muted }}>{p.blurb}</p>
                   <div className="mt-2.5 text-[10.5px]" style={{ ...monoFont, color: TC.faint }}>
-                    Risk per trade {p.riskPerTradePct}%
+                    {t("Risk per trade {pct}%", { pct: p.riskPerTradePct })}
                   </div>
                 </button>
               );

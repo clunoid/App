@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Inter, Source_Serif_4 } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
+import Script from "next/script";
 import { SessionProvider } from "@/components/auth/SessionProvider";
 import { AuthPrompt } from "@/components/auth/AuthPrompt";
 import { BillingGate } from "@/components/billing/BillingGate";
@@ -158,6 +159,10 @@ export default function RootLayout({
         <BillingGate />
         <Analytics />
         <SpeedInsights />
+        {/* The language layer: reads the rendered English and shows the reader's
+            language (Spanish, French, Portuguese), with a flag switch in the
+            header. After hydration, so React and the layer never race. */}
+        <Script src="/i18n/i18n.js" strategy="afterInteractive" />
       </body>
     </html>
   );

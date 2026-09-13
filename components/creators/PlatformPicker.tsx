@@ -23,6 +23,7 @@ import { ChevronDown, Check, X, Plus } from "lucide-react";
 import { TC } from "@/lib/trading/theme";
 import { PLATFORM_CATALOGUE, PLATFORMS_REQUIRED, platformInfo } from "./content";
 import { FieldOk } from "./Feedback";
+import { t, useLang } from "@/lib/i18n/t";
 
 export function PlatformPicker({
   platforms,
@@ -46,6 +47,7 @@ export function PlatformPicker({
   /** Lay the rows out side by side where there is room, instead of stacked. */
   columns?: boolean;
 }) {
+  useLang(); // renders again when the reader's language changes
   const [open, setOpen] = useState(false);
   const boxRef = useRef<HTMLDivElement>(null);
 
@@ -143,7 +145,7 @@ export function PlatformPicker({
             <span className="min-w-0 flex-1">
               {full
                 ? "Change a platform"
-                : `Add a platform — ${PLATFORMS_REQUIRED - platforms.length} more to pick`}
+                : t("Add a platform — {n} more to pick", { n: PLATFORMS_REQUIRED - platforms.length })}
             </span>
             <ChevronDown size={15} className="shrink-0 transition" style={{ transform: open ? "rotate(180deg)" : undefined }} />
           </button>
