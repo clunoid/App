@@ -31,6 +31,37 @@ const EXAMPLE_CLIENT_ID = "019cafdd-b40f-7552-83a9-a0d5d69125d5";
 
 type Phase = "form" | "sent" | "done";
 
+/* ── how many more times they may send ──────────────────────────────────
+   A mistake in the ID is fixed by editing and sending again, so nothing is
+   locked after a send. A script hammering the form is another matter: three
+   sends, then a wait for our answer — and any reply from us in the support
+   thread, arriving after the last send, resets the count. The thread is what
+   the bubble keeps in this browser, so this needs no extra call. */
+const SENDS_KEY = "cln_ea_sends";
+const THREAD_KEY = "cln_support_thread";
+const MAX_SENDS = 3;
+type Sends = { n: number; at: string };
+function readSends(): Sends {
+  try { const v = JSON.parse(localStorage.getItem(SENDS_KEY) || "null") as Sends | null; if (v && typeof v.n === "number") return v; } catch { /* private mode */ }
+  return { n: 0, at: "" };
+}
+function repliedSince(iso: string): boolean {
+  if (!iso) return false;
+  try {
+    const thread = JSON.parse(localStorage.getItem(THREAD_KEY) || "[]") as { from?: string; system?: boolean; at?: string }[];
+    return thread.some((l) => l && l.from === "us" && !l.system && String(l.at || "") > iso);
+  } catch { return false; }
+}
+function sendsLeft(): number {
+  let v = readSends();
+  if (v.n > 0 && repliedSince(v.at)) { v = { n: 0, at: "" }; try { localStorage.setItem(SENDS_KEY, JSON.stringify(v)); } catch { /* private mode */ } }
+  return Math.max(0, MAX_SENDS - v.n);
+}
+function countSend() {
+  const v = readSends();
+  try { localStorage.setItem(SENDS_KEY, JSON.stringify({ n: v.n + 1, at: new Date().toISOString() })); } catch { /* private mode */ }
+}
+
 export function EaAccessModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [visitorId, setVisitorId] = useState("");
   const [clientId, setClientId] = useState("");
@@ -40,6 +71,17 @@ export function EaAccessModal({ open, onClose }: { open: boolean; onClose: () =>
   const [phase, setPhase] = useState<Phase>("form");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [left, setLeft] = useState(MAX_SENDS);
+
+  /* Re-read the allowance when the modal opens and whenever the bubble
+     receives a reply — that is the moment a locked form unlocks. */
+  useEffect(() => {
+    if (!open) return;
+    const sync = () => setLeft(sendsLeft());
+    sync();
+    window.addEventListener("clunoid:support-reply", sync);
+    return () => window.removeEventListener("clunoid:support-reply", sync);
+  }, [open]);
 
   /* The same browser id support uses, so the request joins that conversation
      rather than starting an anonymous second one. */
@@ -59,6 +101,7 @@ export function EaAccessModal({ open, onClose }: { open: boolean; onClose: () =>
   }, [open, onClose]);
 
   const send = useCallback(async () => {
+    if (sendsLeft() === 0) { setLeft(0); return; }
     setBusy(true); setErr(null);
     try {
       const res = await fetch("/api/trading/mt5/ea-request", {
@@ -73,6 +116,8 @@ export function EaAccessModal({ open, onClose }: { open: boolean; onClose: () =>
       if (!res.ok) throw new Error(j.error || "Could not send that. Try again in a moment.");
 
       saveIdentity({ name: name.trim(), email: email.trim() });
+      countSend();
+      setLeft(sendsLeft());
       setPhase("sent");
 
       /* Hand the bubble what was just sent, so it opens onto the conversation
@@ -187,7 +232,7 @@ export function EaAccessModal({ open, onClose }: { open: boolean; onClose: () =>
               <Step n={2} title="Client ID or MT5 ID" done={phase === "sent"}>
                 <input
                   value={clientId} onChange={(e) => setClientId(e.target.value)}
-                  placeholder={EXAMPLE_CLIENT_ID} disabled={phase === "sent"}
+                  placeholder={EXAMPLE_CLIENT_ID}
                   className="w-full rounded-xl border px-3 py-2.5 text-[13px] outline-none"
                   style={{ borderColor: TC.line, background: TC.bg, color: TC.text }}
                 />
@@ -205,11 +250,11 @@ export function EaAccessModal({ open, onClose }: { open: boolean; onClose: () =>
               <Step n={3} title="Name and email" done={phase === "sent"}>
                 <div className="grid gap-2 sm:grid-cols-2">
                   <input value={name} onChange={(e) => setName(e.target.value)}
-                    placeholder="Your name" disabled={phase === "sent"}
+                    placeholder="Your name"
                     className="w-full rounded-xl border px-3 py-2.5 text-[13px] outline-none"
                     style={{ borderColor: TC.line, background: TC.bg, color: TC.text }} />
                   <input value={email} onChange={(e) => setEmail(e.target.value)}
-                    type="email" placeholder="you@email.com" disabled={phase === "sent"}
+                    type="email" placeholder="you@email.com"
                     className="w-full rounded-xl border px-3 py-2.5 text-[13px] outline-none"
                     style={{ borderColor: TC.line, background: TC.bg, color: TC.text }} />
                 </div>
@@ -217,14 +262,18 @@ export function EaAccessModal({ open, onClose }: { open: boolean; onClose: () =>
                   So we can reach you about this account. Nothing else.
                 </p>
 
-                {phase === "form" && (
-                  <button type="button" onClick={send} disabled={!formOk || busy}
-                    className="mt-2.5 inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-[13px] font-semibold transition disabled:opacity-45"
-                    style={{ background: TC.profit, color: TC.ink }}>
-                    {busy ? <Loader2 size={15} className="animate-spin" /> : <ShieldCheck size={15} />}
-                    Send for checking
-                  </button>
+                {left === 0 && (
+                  <p className="mt-2.5 rounded-xl border p-2.5 text-[12px] leading-snug"
+                    style={{ borderColor: "rgba(245,165,36,0.5)", background: "rgba(245,165,36,0.08)", color: "#f5a524" }}>
+                    You have sent this three times. Wait for our reply in the support window — it unlocks sending again.
+                  </p>
                 )}
+                <button type="button" onClick={send} disabled={!formOk || busy || left === 0}
+                  className="mt-2.5 inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-[13px] font-semibold transition disabled:opacity-45"
+                  style={{ background: TC.profit, color: TC.ink }}>
+                  {busy ? <Loader2 size={15} className="animate-spin" /> : <ShieldCheck size={15} />}
+                  {phase === "sent" ? "Send again" : "Send for checking"}
+                </button>
               </Step>
 
               {phase === "sent" && (

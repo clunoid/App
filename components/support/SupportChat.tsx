@@ -224,6 +224,8 @@ export function SupportChat({ source, email: known, name: knownName, country }: 
       next.sort((a, b) => a.at.localeCompare(b.at));
       const trimmed = next.slice(-30);
       try { localStorage.setItem(THREAD_KEY, JSON.stringify(trimmed)); } catch { /* private mode */ }
+      // Anything else on the page that waits for our answer — the EA modal does.
+      try { window.dispatchEvent(new CustomEvent("clunoid:support-reply")); } catch { /* nothing to tell */ }
       return trimmed;
     });
   }, []);
