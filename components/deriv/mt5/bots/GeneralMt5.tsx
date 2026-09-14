@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { TC, DOT_GRID, monoFont } from "@/lib/trading/theme";
 import { EaAccessModal } from "@/components/deriv/mt5/EaAccessModal";
+import { CopyAddress, AlgoToggle } from "@/components/deriv/mt5/InstallBits";
 import { SupportChat } from "@/components/support/SupportChat";
 import { PROFILE_LIST } from "@/lib/deriv/mt5/profiles";
 import { LIVE_CATEGORIES } from "@/lib/deriv/mt5/markets";
@@ -126,9 +127,9 @@ export function GeneralMt5() {
             <ol className="mt-4 space-y-3">
               {[
                 <>Copy the file into MT5&rsquo;s <code style={cx}>MQL5/Experts</code> folder — find it via <code style={cx}>File → Open Data Folder</code>.</>,
-                <>In MT5 go to <code style={cx}>Tools → Options → Expert Advisors</code>, tick <b style={{ color: TC.text }}>Allow WebRequest</b> and add <code style={cx}>https://www.clunoid.com</code>.</>,
+                <>In MT5 go to <code style={cx}>Tools → Options → Expert Advisors</code>, tick <b style={{ color: TC.text }}>Allow WebRequest</b> and add <code style={cx}>https://www.clunoid.com</code>. <CopyAddress text="https://www.clunoid.com" muted={TC.muted} accent={ACCENT} line={TC.line} /></>,
                 <>Restart MT5, or press <b style={{ color: TC.text }}>Compile</b> in MetaEditor. The bot then appears under Expert Advisors.</>,
-                <>Drag it onto <b style={{ color: TC.text }}>any one chart</b>, set <code style={cx}>InpProfile</code> to your risk level, and enable <b style={{ color: TC.text }}>Algo Trading</b>.</>,
+                <>Drag it onto <b style={{ color: TC.text }}>any one chart</b>, set <code style={cx}>InpProfile</code> to your risk level, and enable <b style={{ color: TC.text }}>Algo Trading</b> — the toolbar button must be green: <AlgoToggle on text={TC.text} panel={TC.panelSolid} /> is <b style={{ color: TC.text }}>on</b>, <AlgoToggle on={false} text={TC.text} panel={TC.panelSolid} /> is <b style={{ color: TC.text }}>off</b>.</>,
                 <>(Recommended) Right-click the bot → <b style={{ color: TC.text }}>Register a Virtual Server</b> so it keeps trading with your computer off.</>,
               ].map((step, i) => (
                 <li key={i} className="flex gap-3">

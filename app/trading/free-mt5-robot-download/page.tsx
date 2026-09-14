@@ -4,6 +4,7 @@ import {
   C, Shell, TopBar, Hero, Section, Grid, Card, Steps, Table, Faq, Close, Disclaimer,
   DownloadCta, faqLd,
 } from "@/components/trading/seo/Kit";
+import { CopyAddress, AlgoToggle } from "@/components/deriv/mt5/InstallBits";
 
 /**
  * /trading/free-mt5-robot-download — the largest query cluster we have.
@@ -160,7 +161,7 @@ export default function FreeMt5RobotDownload() {
               },
               {
                 title: "Allow the WebRequest",
-                body: <>Go to <code style={cx}>Tools → Options → Expert Advisors</code>, tick <strong style={{ color: C.text }}>Allow WebRequest</strong> and add <code style={cx}>https://www.clunoid.com</code>.</>,
+                body: <>Go to <code style={cx}>Tools → Options → Expert Advisors</code>, tick <strong style={{ color: C.text }}>Allow WebRequest</strong> and add <code style={cx}>https://www.clunoid.com</code>. <CopyAddress text="https://www.clunoid.com" muted={C.muted} accent={C.profit} line={C.line} /></>,
               },
               {
                 title: "Restart or compile",
@@ -168,7 +169,7 @@ export default function FreeMt5RobotDownload() {
               },
               {
                 title: "Drop it on one chart",
-                body: <>Drag it onto <strong style={{ color: C.text }}>any single chart</strong>, set <code style={cx}>InpProfile</code> to your risk level, and switch on <strong style={{ color: C.text }}>Algo Trading</strong>.</>,
+                body: <>Drag it onto <strong style={{ color: C.text }}>any single chart</strong>, set <code style={cx}>InpProfile</code> to your risk level, and switch on <strong style={{ color: C.text }}>Algo Trading</strong> — the toolbar button must be green: <AlgoToggle on text={C.text} panel={C.panelHi} /> is <strong style={{ color: C.text }}>on</strong>, <AlgoToggle on={false} text={C.text} panel={C.panelHi} /> is <strong style={{ color: C.text }}>off</strong>.</>,
               },
               {
                 title: "Register a virtual server",
