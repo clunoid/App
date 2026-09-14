@@ -15,7 +15,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Wallet, Plug, RefreshCw, Loader2, LogOut, KeyRound, ShieldCheck, Building2, Bot, LineChart, UserPlus, Gift, ChevronRight, X, ArrowDownToLine, ArrowUpFromLine, Clapperboard } from "lucide-react";
+import { ArrowLeft, Wallet, Plug, RefreshCw, Loader2, LogOut, KeyRound, ShieldCheck, Building2, Bot, LineChart, UserPlus, ChevronRight, X, ArrowDownToLine, ArrowUpFromLine } from "lucide-react";
 import { TC, DOT_GRID, monoFont, fmtBalance } from "@/lib/trading/theme";
 import type { ConnectedAccount } from "@/lib/trading/accounts";
 import { hasDerivApp, DERIV_AFFILIATE_URL, DERIV_TRACKED_DEPOSIT_URL, DERIV_TRACKED_WITHDRAW_URL } from "@/lib/deriv/config";
@@ -27,8 +27,6 @@ import { SupportChat } from "@/components/support/SupportChat";
 import { InstallApp } from "@/components/pwa/InstallApp";
 import { InstallCard } from "@/components/pwa/InstallCard";
 import { t, useLang } from "@/lib/i18n/t";
-/** Binance referral — open an account with us and claim the welcome gifts. */
-const BINANCE_REFERRAL_URL = "https://www.binance.com/referral/earn-together/refer2earn-usdc/claim?hl=en&ref=GRO_28502_IIEHW&utm_source=referral_entrance";
 
 /** One active connection: OAuth (new-API access token) or a pasted a1- token. */
 type Session = { kind: "oauth"; accessToken: string } | { kind: "token"; tokens: DerivToken[] };
@@ -554,101 +552,6 @@ export function CommandCenter() {
                 </>
               )}
             </div>
-
-            {/* Creator Program — get paid monthly to make short videos about
-                Clunoid and post them on your own accounts. Not a broker, so it
-                opens with no connection required. */}
-            <Link href="/trading/creators" className="group mt-4 block rounded-2xl border p-4 transition hover:-translate-y-0.5" style={{ borderColor: "rgba(167,139,250,0.35)", background: "linear-gradient(180deg, rgba(167,139,250,0.08), rgba(255,255,255,0.015))" }}>
-              <div className="flex items-center gap-2.5">
-                <span className="grid shrink-0 place-items-center rounded-lg px-2.5 py-1.5" style={{ background: "rgba(0,0,0,0.5)", boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.1)" }}>
-                  <Clapperboard size={16} style={{ color: "#a78bfa" }} />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[13.5px] font-semibold">Creator Program</span>
-                    <span className="rounded px-1 py-0.5 text-[8.5px] font-bold uppercase tracking-wide" style={{ background: "rgba(167,139,250,0.16)", color: "#a78bfa" }}>Get paid</span>
-                  </div>
-                  <div className="text-[11.5px]" style={{ color: TC.faint }}>Clip &amp; post about Clunoid · earn monthly</div>
-                </div>
-                <span className="inline-flex items-center gap-1 text-[12px] font-semibold transition group-hover:opacity-90" style={{ color: "#a78bfa" }}>
-                  Open <ChevronRight size={14} className="transition group-hover:translate-x-0.5" />
-                </span>
-              </div>
-            </Link>
-
-            {/* Exness — affiliate onboarding + Telegram community */}
-            <Link href="/trading/exness" className="group mt-3 block rounded-2xl border p-4 transition hover:-translate-y-0.5" style={{ borderColor: TC.line, background: TC.panel }}>
-              <div className="flex items-center gap-2.5">
-                <span className="grid shrink-0 place-items-center rounded-lg px-2.5 py-1.5" style={{ background: "rgba(0,0,0,0.5)", boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.1)" }}>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src="/logos/exness.svg" alt="Exness" className="h-3.5 w-auto object-contain" style={{ maxWidth: 72 }} />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <div className="text-[13.5px] font-semibold">Exness</div>
-                  <div className="text-[11.5px]" style={{ color: TC.faint }}>Forex &amp; MT5 · signals &amp; free bots</div>
-                </div>
-                <span className="inline-flex items-center gap-1 text-[12px] font-semibold transition group-hover:opacity-90" style={{ color: TC.profit }}>
-                  Open <ChevronRight size={14} className="transition group-hover:translate-x-0.5" />
-                </span>
-              </div>
-            </Link>
-
-            {/* MetaTrader 5 — a platform in its own right. Open it with no
-                connection: it leads to broker-agnostic MT5 automations. */}
-            <Link href="/trading/mt5" className="group mt-3 flex items-center gap-3 rounded-2xl border p-4 transition hover:-translate-y-0.5" style={{ borderColor: "rgba(52,211,153,0.35)", background: "linear-gradient(180deg, rgba(52,211,153,0.08), rgba(255,255,255,0.015))" }}>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/logos/metatrader5.svg" alt="MetaTrader 5" className="h-4 w-auto shrink-0" style={{ maxWidth: 120 }} />
-              <span className="rounded px-1 py-0.5 text-[8.5px] font-bold uppercase tracking-wide" style={{ background: "rgba(56,189,248,0.16)", color: "#38bdf8" }}>AI bots</span>
-              <div className="ml-auto flex items-center gap-1.5 text-[12px] font-semibold" style={{ color: "#34d399" }}>
-                Open automations <ChevronRight size={14} className="transition group-hover:translate-x-0.5" />
-              </div>
-            </Link>
-
-            {/* TradingView — charting rather than execution. Opens with no
-                connection: it leads to charts, screener and Pine Script. */}
-            <Link href="/trading/tradingview" className="group mt-3 block rounded-2xl border p-4 transition hover:-translate-y-0.5" style={{ borderColor: TC.line, background: TC.panel }}>
-              <div className="flex items-center gap-2.5">
-                <span className="grid shrink-0 place-items-center rounded-lg px-2.5 py-1.5" style={{ background: "rgba(0,0,0,0.5)", boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.1)" }}>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src="/logos/tradingview.svg" alt="TradingView" className="h-3.5 w-auto object-contain" style={{ maxWidth: 92 }} />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[13.5px] font-semibold">TradingView</span>
-                    <span className="rounded px-1 py-0.5 text-[8.5px] font-bold uppercase tracking-wide" style={{ background: "rgba(56,189,248,0.16)", color: "#38bdf8" }}>AI bots</span>
-                  </div>
-                  <div className="text-[11.5px]" style={{ color: TC.faint }}>Charts &amp; analysis · screener, alerts</div>
-                </div>
-                <span className="inline-flex items-center gap-1 text-[12px] font-semibold transition group-hover:opacity-90" style={{ color: TC.profit }}>
-                  Open <ChevronRight size={14} className="transition group-hover:translate-x-0.5" />
-                </span>
-              </div>
-            </Link>
-
-            {/* coming soon — official logos */}
-            <div className="mt-3 space-y-2">
-              {[{ name: "Binance", logo: "/logos/binance.svg" }, { name: "cTrader", logo: "/logos/ctrader.svg" }, { name: "More brokers", logo: undefined as string | undefined }].map((p) => (
-                <div key={p.name} className="flex items-center gap-2.5 rounded-xl border p-3 opacity-75" style={{ borderColor: TC.line }}>
-                  <BrandLogo src={p.logo} alt={p.name} size={20} />
-                  <div className="min-w-0 flex-1"><div className="text-[12.5px] font-semibold">{p.name}</div></div>
-                  <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: TC.faint }}>Soon</span>
-                </div>
-              ))}
-            </div>
-
-            {/* Binance referral — open an account and claim the welcome gifts */}
-            <a href={BINANCE_REFERRAL_URL} target="_blank" rel="noopener noreferrer"
-              className="group mt-3 flex items-center gap-3 rounded-2xl border p-4 transition hover:-translate-y-0.5"
-              style={{ borderColor: "rgba(243,186,47,0.38)", background: "linear-gradient(180deg, rgba(243,186,47,0.12), rgba(255,255,255,0.015))" }}>
-              <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl" style={{ background: "rgba(243,186,47,0.16)", boxShadow: "inset 0 0 0 1px rgba(243,186,47,0.35)" }}>
-                <Gift size={22} style={{ color: "#f3ba2f" }} />
-              </span>
-              <div className="min-w-0 flex-1">
-                <div className="text-[13.5px] font-bold">Claim your Binance gifts</div>
-                <div className="mt-0.5 text-[11.5px] leading-snug" style={{ color: TC.muted }}>Create a Binance account and claim your welcome rewards.</div>
-              </div>
-              <ChevronRight size={16} className="shrink-0 transition group-hover:translate-x-0.5" style={{ color: "#f3ba2f" }} />
-            </a>
 
             <p className="mt-3 flex items-start gap-1.5 text-[11px] leading-relaxed" style={{ color: TC.faint }}>
               <ShieldCheck size={13} className="mt-0.5 shrink-0" style={{ color: TC.profit }} /> You authorise your own broker directly. Clunoid never sees your password, and your access stays in this browser.

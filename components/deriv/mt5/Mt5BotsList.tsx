@@ -17,6 +17,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Bot, Star, ChevronRight, LineChart, Lock, Send, X } from "lucide-react";
 import { TC, DOT_GRID, monoFont } from "@/lib/trading/theme";
+import { PlatformStrip } from "@/components/trading/PlatformStrip";
 import { MT5_BOTS, RATING_HOT, type Mt5BotMeta } from "@/lib/deriv/mt5/registry";
 import { SupportChat } from "@/components/support/SupportChat";
 import { EXNESS_TELEGRAM_URL } from "@/lib/exness/config";
@@ -36,6 +37,7 @@ export function Mt5BotsList() {
           <span className="h-4 w-px" style={{ background: TC.line }} />
           <span className="inline-flex items-center gap-1.5 text-[14px] font-bold tracking-[0.14em]"><Bot size={16} style={{ color: TC.profit }} /> MT5 AUTOMATIONS</span>
         </header>
+        <PlatformStrip />
 
         <div className="mt-2 max-w-2xl">
           <h1 className="text-[26px] font-bold sm:text-[30px]">Choose an MT5 bot</h1>

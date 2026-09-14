@@ -10,6 +10,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Bot, Loader2, Star, ChevronRight } from "lucide-react";
 import { TC, DOT_GRID, monoFont } from "@/lib/trading/theme";
+import { PlatformStrip } from "@/components/trading/PlatformStrip";
 import { loadDerivAccess } from "@/lib/deriv/oauth";
 import { BOTS, type BotBadge } from "@/lib/deriv/bots/registry";
 import { SupportChat } from "@/components/support/SupportChat";
@@ -114,6 +115,7 @@ export function DerivBotsList() {
           <span className="h-4 w-px" style={{ background: TC.line }} />
           <span className="inline-flex items-center gap-1.5 text-[14px] font-bold tracking-[0.14em]"><Bot size={16} style={{ color: TC.profit }} /> DERIV BOTS</span>
         </header>
+        <PlatformStrip />
 
         <div className="mt-2 max-w-2xl">
           <h1 className="text-[26px] font-bold sm:text-[30px]">

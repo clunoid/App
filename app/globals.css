@@ -53,3 +53,6 @@ main {
   background: theme("colors.border");
   border-radius: 9999px;
 }
+/* A row that scrolls sideways under a header, like a tab strip: no bar. */
+.strip-scroll { scrollbar-width: none; }
+.strip-scroll::-webkit-scrollbar { display: none; width: 0; height: 0; }
