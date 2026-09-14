@@ -12,6 +12,7 @@
  */
 import { useEffect, useState } from "react";
 import { startDerivLogin, loadDerivAccess, loadDerivTokens, connectChoiceAnswered } from "@/lib/deriv/oauth";
+import { ConnectPrompt } from "@/components/trading/ConnectPrompt";
 import { Activity, ArrowUpRight, BookOpen, BrainCircuit, Cpu, LineChart, Lock, ShieldCheck, Zap, ChevronRight, Loader2, Clapperboard } from "lucide-react";
 import { useClunoid } from "@/lib/store/useClunoid";
 import { TradingHub } from "@/components/trading/TradingHub";
@@ -80,6 +81,7 @@ const BRANDS: { name: string; src: string; cap: number }[] = [
  */
 function GetStarted() {
   const [busy, setBusy] = useState(false);
+  const [ask, setAsk] = useState(false);
 
   /**
    * Somebody who has already connected has nothing to do on this page — it is
@@ -108,12 +110,13 @@ function GetStarted() {
         window.location.href = "/trading/command";
         return;
       }
-      /* Never asked whether they have a Deriv account at all? Send them to the
-         command centre, which opens the connect-or-create prompt on ?connect=1
-         — rather than to Deriv's login, where somebody without an account has
-         nothing to do but leave. */
+      /* Never asked whether they have a Deriv account at all? Ask here, on
+         this page — connect the one they have, or open one through our
+         referral — rather than sending them to Deriv's login, where somebody
+         without an account has nothing to do but leave. */
       if (!connectChoiceAnswered()) {
-        window.location.href = "/trading/command?connect=1";
+        setBusy(false);
+        setAsk(true);
         return;
       }
       await startDerivLogin();
@@ -123,12 +126,22 @@ function GetStarted() {
     }
   }
 
+  /* The prompt's Connect button: the same authorisation call as above. The
+     prompt records the answer itself, so the next press skips the question. */
+  async function connectFromPrompt() {
+    try { await startDerivLogin(); }
+    catch { window.location.href = "/trading/command"; }
+  }
+
   return (
-    <button type="button" onClick={go} disabled={busy}
-      className="inline-flex items-center gap-2 rounded-xl px-5 py-3 text-[14px] font-semibold transition hover:opacity-90 disabled:opacity-70"
-      style={{ background: C.profit, color: "#04121f" }}>
-      {busy ? <><Loader2 size={16} className="animate-spin" /> Connecting…</> : <>Get started <ArrowUpRight size={16} /></>}
-    </button>
+    <>
+      <button type="button" onClick={go} disabled={busy}
+        className="inline-flex items-center gap-2 rounded-xl px-5 py-3 text-[14px] font-semibold transition hover:opacity-90 disabled:opacity-70"
+        style={{ background: C.profit, color: "#04121f" }}>
+        {busy ? <><Loader2 size={16} className="animate-spin" /> Connecting…</> : <>Get started <ArrowUpRight size={16} /></>}
+      </button>
+      {ask && <ConnectPrompt target="bots" onConnect={() => { void connectFromPrompt(); }} onClose={() => setAsk(false)} />}
+    </>
   );
 }
 
