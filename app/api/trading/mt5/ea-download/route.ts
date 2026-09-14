@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { checkCode, EA_FILE } from "@/lib/deriv/mt5/eaAccess";
+import { isBanned } from "@/lib/support/bans";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -28,6 +29,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Enter the code you were sent." }, { status: 400 });
   }
 
+  /* A ban ends the code with it. Same words as an unknown code, on purpose. */
+  if (await isBanned(visitorId, null)) {
+    return NextResponse.json({ error: "That code was not recognised. Check it and try again." }, { status: 403 });
+  }
+
   const check = await checkCode(code, visitorId);
   if (!check.ok) {
     if (check.why === "unavailable") {
@@ -36,6 +42,12 @@ export async function POST(req: NextRequest) {
     if (check.why === "not-yours") {
       return NextResponse.json(
         { error: "That code was issued to a different browser. Open the support window on the device you asked from, or ask us for a new one." },
+        { status: 403 },
+      );
+    }
+    if (check.why === "exhausted") {
+      return NextResponse.json(
+        { error: "That code has been used three times. Send the request again with the same email and ID and a new one is issued straight away." },
         { status: 403 },
       );
     }

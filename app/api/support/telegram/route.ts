@@ -4,7 +4,7 @@ import { isBanned, banPerson, unbanPerson, listBans, clearBans, findBan } from "
 import { saveTelegramFile, type Attachment } from "@/lib/support/files";
 import {
   requestForTelegramMessage, requestForVisitor, pendingRequests, approveRequest, declineRequest,
-  markAnswered, PARTNER_ID,
+  markAnswered, PARTNER_ID, codeMessage,
   DERIV_PROFILE, EXAMPLE_CLIENT_ID, DERIV_SIGNUP, declineCount,
   type EaRequest,
 } from "@/lib/deriv/mt5/eaAccess";
@@ -212,13 +212,7 @@ export async function POST(req: NextRequest) {
 
       const delivered = await recordReply(
         reqst.visitorId,
-        [
-          `Your ID ${reqst.mt5Login} is confirmed under our community — here is your download code:`,
-          "",
-          code,
-          "",
-          "Paste it into step 4 on the bot's page to unlock the download. It works only on this browser.",
-        ].join("\n"),
+        codeMessage(code, reqst.mt5Login, `Your ID ${reqst.mt5Login} is confirmed under our community — here is your download code:`),
       );
 
       await say(

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sendSupportMessage } from "@/lib/support/telegram";
 import { recordInbound, historyFor, recordReply } from "@/lib/support/threads";
-import { createRequest, attachTelegramMessage, recentRequestCount, approvedCodeFor, PARTNER_ID } from "@/lib/deriv/mt5/eaAccess";
+import { createRequest, attachTelegramMessage, recentRequestCount, approvedCodeFor, approvedMatch, approveRequest, codeMessage, PARTNER_ID } from "@/lib/deriv/mt5/eaAccess";
 import { isBanned } from "@/lib/support/bans";
 
 export const runtime = "nodejs";
@@ -78,26 +78,15 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  /* ALREADY APPROVED — send the code back, do not queue them again.
-   *
-   * The form has no memory of having been answered, so somebody who returns to
-   * the page fills it in a second time. That used to record a fresh pending row
-   * and put a person who was approved an hour ago back in the decision queue,
-   * where they showed up as a request waiting on a decision that had already
-   * been made. There is nothing to decide: they hold a code, and what they
-   * actually need is to be told it again. */
+  /* ALREADY APPROVED, WITH DOWNLOADS LEFT — send the code back, do not queue
+   * them again. The form has no memory of having been answered; a returning
+   * visitor fills it in a second time, and that used to put somebody approved
+   * an hour ago back in the decision queue. They hold a live code: they need
+   * to be told it again. A spent code falls through to the re-approval. */
   const already = await approvedCodeFor(visitorId);
-  if (already) {
-    await recordReply(
-      visitorId,
-      [
-        "You are already approved — here is your code again:",
-        "",
-        already,
-        "",
-        "Paste it into step 4 on the bot's page to unlock the download. It works only on this browser.",
-      ].join("\n"),
-    );
+  if (already && already.usesLeft > 0) {
+    await recordReply(visitorId, codeMessage(already.code, already.mt5Login,
+      `You are already approved — here is your code again. It has ${already.usesLeft} download${already.usesLeft === 1 ? "" : "s"} left:`));
     return NextResponse.json({ ok: true, already: true });
   }
 
@@ -108,6 +97,34 @@ export async function POST(req: NextRequest) {
       { error: "You have sent several requests already. Give us a little time to look at the first one." },
       { status: 429 },
     );
+  }
+
+  /* APPROVED BEFORE WITH THIS EXACT EMAIL AND ID — on any browser. A spent
+     code, or a new device: the same two facts that were checked the first
+     time are checked again, by machine, and a fresh code is issued to THIS
+     browser at once. The owner is told, with everything needed to /ban if it
+     looks wrong, but is not asked. */
+  const match = await approvedMatch(email, mt5Login);
+  if (match) {
+    const newId = await createRequest({ visitorId, mt5Login, name, email, page });
+    const code = newId ? await approveRequest(newId) : null;
+    if (code) {
+      const why = already ? "your previous code was used up" : "you are on a new browser";
+      await recordInbound({ visitorId, body: `Asked for the General MT5 EA again — ID ${mt5Login}`, tgMessageId: null, email, name, source: "MT5 EA access", page: page || null });
+      await recordReply(visitorId, codeMessage(code, mt5Login,
+        `Approved again automatically — same email and ID as before, and ${why}. Here is your new code:`));
+      await sendSupportMessage({
+        email, name, visitorId, page: page || null, source: "MT5 EA access — approved automatically", history: [],
+        message: [
+          `Client / MT5 ID: ${mt5Login}`,
+          "",
+          `Same email and ID as an earlier approval (${why}), so code ${code} was issued without asking.`,
+          "",
+          "If that is not right, swipe-reply /ban — the code stops working with it.",
+        ].join("\n"),
+      });
+      return NextResponse.json({ ok: true, already: true, auto: true });
+    }
   }
 
   const id = await createRequest({ visitorId, mt5Login, name, email, page });

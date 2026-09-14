@@ -687,6 +687,28 @@ function linkify(text: string): React.ReactNode {
   );
 }
 
+/**
+ * Two lines in a reply are drawn differently from the rest: a download code
+ * on a line of its own is green and large, so it is the one thing on the
+ * screen; a line beginning with ⚠ is red and bold, because it is the one
+ * thing they must not miss. Everything else is linkified text.
+ */
+const CODE_LINE = /^[A-Z]{3,4}-[A-Z0-9]{4}-[A-Z0-9]{4}$/;
+const WARN = "#f2607d";
+function decorate(text: string): React.ReactNode {
+  const lines = text.split("\n");
+  if (!lines.some((l) => CODE_LINE.test(l.trim()) || l.trim().startsWith("⚠"))) return linkify(text);
+  return lines.map((line, i) => {
+    const t = line.trim();
+    const node = CODE_LINE.test(t)
+      ? <b className="inline-block font-mono text-[17px] font-extrabold tracking-[0.08em]" style={{ color: GOOD }}>{t}</b>
+      : t.startsWith("⚠")
+        ? <b className="font-bold" style={{ color: WARN }}>{linkify(t)}</b>
+        : linkify(line);
+    return <span key={i}>{node}{i < lines.length - 1 ? "\n" : ""}</span>;
+  });
+}
+
 function Attachment({ file, bare }: { file: NonNullable<Attached>; bare?: boolean }) {
   /* An image is shown, because a screenshot you have to click is a screenshot
      you do not look at. Anything else is a link with its real name on it — the
@@ -717,7 +739,7 @@ function Bubble({ children, system, file, at, fresh }: { from: "us"; children: R
      with nothing in it. There is no text to lay out in that case, so there is
      no text element and no padding held open for one. */
   const hasText = typeof children === "string" ? children.trim().length > 0 : !!children;
-  const body = hasText && typeof children === "string" ? linkify(children) : hasText ? children : null;
+  const body = hasText && typeof children === "string" ? decorate(children) : hasText ? children : null;
   const pad = hasText ? "px-3.5 py-3" : "p-1.5";
 
   if (system) {

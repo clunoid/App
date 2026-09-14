@@ -42,6 +42,20 @@ export const EXAMPLE_CLIENT_ID = "019cafdd-b40f-7552-83a9-a0d5d69125d5";
 
 /** The file itself, which now lives outside public/ like every gated EA. */
 export const EA_FILE = "ClunoidMT5.mq5";
+/** A code is good for this many downloads, then it has to be issued again. */
+export const MAX_CODE_USES = 3;
+
+/** The words that go with a code, wherever it is issued. The bubble draws
+ *  the code line green and the ⚠ line red — those two conventions are what
+ *  make them stand out, so keep each on a line of its own. */
+export function codeMessage(code: string, mt5Login: string, lead: string): string {
+  return [
+    lead,
+    "", code, "",
+    `Paste it into step 4 on the bot's page to unlock the download. It works only on this browser, ${MAX_CODE_USES} times.`,
+    `⚠ Works only on Deriv, on the approved account ${mt5Login}. Any other broker or account receives wrong data.`,
+  ].join("\n");
+}
 
 export type EaRequest = {
   id: string;
@@ -188,8 +202,8 @@ export async function declineRequest(id: string): Promise<boolean> {
 }
 
 export type CodeCheck =
-  | { ok: true; name: string }
-  | { ok: false; why: "unknown" | "not-yours" | "unavailable" };
+  | { ok: true; name: string; usesLeft: number }
+  | { ok: false; why: "unknown" | "not-yours" | "unavailable" | "exhausted" };
 
 /**
  * Is this code good, and does it belong to the person holding it?
@@ -210,7 +224,7 @@ export async function checkCode(code: string, visitorId: string): Promise<CodeCh
 
   const { data, error } = await db
     .from(TABLE)
-    .select("id, visitor_id, name, status, code, code_used_at")
+    .select("id, visitor_id, name, status, code, code_used_at, code_uses")
     .eq("status", "approved")
     .not("code", "is", null)
     .limit(500);
@@ -224,17 +238,21 @@ export async function checkCode(code: string, visitorId: string): Promise<CodeCh
   if (!row) return { ok: false, why: "unknown" };
   if ((row.visitor_id as string) !== visitorId) return { ok: false, why: "not-yours" };
 
-  // First use is worth knowing; later ones are the same person fetching it
-  // again, which is not something to punish.
-  if (!row.code_used_at) {
-    const { error: markErr } = await db
-      .from(TABLE)
-      .update({ code_used_at: new Date().toISOString() })
-      .eq("id", row.id as string);
-    if (markErr) console.error("[ea] could not mark code used:", markErr.message);
-  }
+  /* Three downloads, counted on the row. The increment is conditional on the
+     count it read, so two downloads landing together cannot both pass as the
+     third: the second one finds the row already moved on and is refused. */
+  const used = (row.code_uses as number | null) ?? 0;
+  if (used >= MAX_CODE_USES) return { ok: false, why: "exhausted" };
+  const { data: marked, error: markErr } = await db
+    .from(TABLE)
+    .update({ code_uses: used + 1, code_used_at: (row.code_used_at as string | null) ?? new Date().toISOString() })
+    .eq("id", row.id as string)
+    .eq("code_uses", used)
+    .select("id");
+  if (markErr) { console.error("[ea] could not count the download:", markErr.message); return { ok: false, why: "unavailable" }; }
+  if (!marked?.length) return { ok: false, why: "exhausted" };
 
-  return { ok: true, name: (row.name as string) ?? "" };
+  return { ok: true, name: (row.name as string) ?? "", usesLeft: MAX_CODE_USES - used - 1 };
 }
 
 /**
@@ -390,12 +408,13 @@ export async function requestForVisitor(visitorId: string): Promise<EaRequest | 
  * not need a second decision, they need the code they were already given. It is
  * the same question the queue asks, from the other end.
  */
-export async function approvedCodeFor(visitorId: string): Promise<string | null> {
+export type ApprovedCode = { code: string; usesLeft: number; mt5Login: string; email: string };
+export async function approvedCodeFor(visitorId: string): Promise<ApprovedCode | null> {
   const db = getSupabaseAdmin();
   if (!db || !visitorId) return null;
   const { data, error } = await db
     .from(TABLE)
-    .select("code")
+    .select("code, code_uses, mt5_login, email")
     .eq("visitor_id", visitorId)
     .eq("status", "approved")
     .not("code", "is", null)
@@ -406,7 +425,38 @@ export async function approvedCodeFor(visitorId: string): Promise<string | null>
     console.error("[ea] approved lookup failed:", error.message);
     return null;
   }
-  return (data?.code as string) ?? null;
+  if (!data?.code) return null;
+  return {
+    code: data.code as string,
+    usesLeft: Math.max(0, MAX_CODE_USES - ((data.code_uses as number | null) ?? 0)),
+    mt5Login: (data.mt5_login as string) ?? "",
+    email: (data.email as string) ?? "",
+  };
+}
+
+/**
+ * Was this exact email and ID approved before, on any browser?
+ *
+ * The automatic re-approval: somebody whose code is spent, or who is on a new
+ * device, sends the form again with the same email and the same ID they were
+ * approved with, and gets a fresh code without waiting. The ID is compared
+ * exactly; the email without regard to case.
+ */
+export async function approvedMatch(email: string, mt5Login: string): Promise<{ id: string; visitorId: string } | null> {
+  const db = getSupabaseAdmin();
+  if (!db || !email || !mt5Login) return null;
+  const { data, error } = await db
+    .from(TABLE)
+    .select("id, visitor_id")
+    .eq("status", "approved")
+    .not("code", "is", null)
+    .ilike("email", email)
+    .eq("mt5_login", mt5Login)
+    .order("decided_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) { console.error("[ea] match lookup failed:", error.message); return null; }
+  return data ? { id: data.id as string, visitorId: data.visitor_id as string } : null;
 }
 
 /**
