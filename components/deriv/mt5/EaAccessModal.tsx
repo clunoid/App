@@ -23,6 +23,28 @@ import { X, Check, Loader2, Download, ExternalLink, ShieldCheck } from "lucide-r
 import { TC } from "@/lib/trading/theme";
 import { loadIdentity, saveIdentity } from "@/lib/support/identity";
 
+/** The community, for the minutes between sending and the reply. */
+const WHATSAPP_CHANNEL = "https://whatsapp.com/channel/0029Vb6sxFG9xVJWbyIwL110";
+const TELEGRAM_CHANNEL = "https://t.me/magicabofficialchannel";
+const chan = "inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 text-[12px] font-semibold transition hover:bg-white/5";
+
+function WhatsAppMark() {
+  return (
+    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+      <path fill="#25D366" d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5.1-1.3A10 10 0 1 0 12 2z" />
+      <path fill="#fff" d="M9.2 7.4c-.2-.5-.4-.5-.6-.5h-.5c-.2 0-.5.1-.7.3-.3.3-1 1-1 2.4s1 2.8 1.2 3c.1.2 2 3.2 5 4.4 2.5 1 3 .8 3.5.7.5-.1 1.7-.7 1.9-1.4.2-.7.2-1.2.2-1.4-.1-.1-.3-.2-.6-.3l-2-1c-.3-.1-.5-.1-.7.1-.2.3-.8 1-1 1.2-.2.2-.3.2-.6.1-.3-.2-1.2-.5-2.3-1.5-.9-.8-1.5-1.7-1.6-2-.2-.3 0-.5.1-.6l.4-.5.3-.5c.1-.2 0-.4 0-.5l-1-2.2z" />
+    </svg>
+  );
+}
+function TelegramMark() {
+  return (
+    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+      <circle cx="12" cy="12" r="10" fill="#2AABEE" />
+      <path fill="#fff" d="M6.1 11.7l9.3-3.6c.4-.2.8.1.7.7l-1.6 7.4c-.1.5-.4.6-.8.4l-2.3-1.7-1.1 1.1c-.1.1-.2.2-.5.2l.2-2.4 4.3-3.9c.2-.2 0-.3-.3-.1l-5.3 3.3-2.3-.7c-.5-.2-.5-.5.1-.7z" />
+    </svg>
+  );
+}
+
 const DERIV_SIGNUP = "https://t.deriv.link?t=8FJ7FBEALQBP";
 const PARTNER_ID = "019cafdd-b40f-7552-83a9-a0d5d69125d5";
 
@@ -279,9 +301,23 @@ export function EaAccessModal({ open, onClose }: { open: boolean; onClose: () =>
               {phase === "sent" && (
                 <div className="mb-3 rounded-xl border p-3 text-[12px] leading-snug"
                   style={{ borderColor: "rgba(34,197,94,0.35)", background: "rgba(34,197,94,0.08)", color: TC.text }}>
-                  <b>Sent.</b> We are checking your ID against our community list now.
-                  Your code arrives in the <b>support window</b> — it has opened at the corner of
-                  this page, and the reply lands there.
+                  <span>
+                    <b>Sent.</b> We are checking your ID against our community list now.
+                    Your code arrives in the <b>support window</b> — it has opened at the corner of
+                    this page, and the reply lands there.
+                  </span>
+                  {/* Where the wait is spent: the two channels, drawn with their own marks. */}
+                  <div className="mt-2.5 grid gap-2 border-t pt-2.5" style={{ borderColor: "rgba(34,197,94,0.25)" }}>
+                    <span className="font-semibold" style={{ color: TC.muted }}>While you wait, join the community:</span>
+                    <div className="flex flex-wrap gap-2">
+                      <a href={WHATSAPP_CHANNEL} target="_blank" rel="noopener noreferrer" className={chan} style={{ borderColor: TC.line, color: TC.text }}>
+                        <WhatsAppMark /><span>WhatsApp channel</span>
+                      </a>
+                      <a href={TELEGRAM_CHANNEL} target="_blank" rel="noopener noreferrer" className={chan} style={{ borderColor: TC.line, color: TC.text }}>
+                        <TelegramMark /><span>Telegram channel</span>
+                      </a>
+                    </div>
+                  </div>
                 </div>
               )}
 
