@@ -731,6 +731,7 @@
 "@channel or paste your link":"@canal ou cole seu link",
 "AI trading robots, answered":"Robôs de trading com IA, respondido",
 "Deriv MT5 — full automation":"Deriv MT5 — automação completa",
+"Headway MT5 — full automation":"Headway MT5 — automação completa",
 "Fast, relentless, always on":"Rápido, incansável, sempre ligado",
 "Free Deriv bots that run in":"Bots Deriv grátis que rodam no",
 "Gold & Silver AI Automation":"Automação de Ouro e Prata com IA",
@@ -2261,5 +2262,16 @@
 "Send again":"Enviar de novo",
 "While you wait, join the community:":"Enquanto espera, entre na comunidade:",
 "WhatsApp channel":"Canal do WhatsApp",
-"Telegram channel":"Canal do Telegram"
+"Telegram channel":"Canal do Telegram",
+"Open an MT5 account with Headway":"Abra uma conta MT5 na Headway",
+"Already have one under Clunoid? Skip to step 2. New to Headway? Open it through our link and":"Já tem uma sob a Clunoid? Pule para o passo 2. Novo na Headway? Abra pelo nosso link e",
+"claim $150 + a 50% deposit bonus":"ganhe $150 + um bônus de depósito de 50%",
+"Opening it through this link places the account under our partner group — that is what we check. Then come back here with your new MT5 ID.":"Abrir por este link coloca a conta no nosso grupo de parceiros — é isso que verificamos. Depois volte aqui com o seu novo ID MT5.",
+"or scan":"ou escaneie",
+"MT5 ID":"ID MT5",
+"The account number MetaTrader 5 shows at the top of the terminal, before the server name. It is also in your Headway personal area.":"O número da conta que o MetaTrader 5 mostra no topo do terminal, antes do nome do servidor. Também está na sua área pessoal da Headway.",
+"Name and email — as registered at Headway":"Nome e e-mail — como registrados na Headway",
+"Use the exact name and email on your Headway account — that is how we match you.":"Use exatamente o nome e o e-mail da sua conta Headway — é assim que identificamos você.",
+"The EA works only on the account we approve.":"O EA só funciona na conta que aprovamos.",
+"We check every MT5 ID against our Headway partner list. If yours is not under us, we will say so and tell you how to ask Headway to attach it to our Partner ID":"Verificamos cada ID MT5 na nossa lista de parceiros da Headway. Se o seu não estiver conosco, avisaremos e explicaremos como pedir à Headway para vinculá-lo ao nosso Partner ID"
 }

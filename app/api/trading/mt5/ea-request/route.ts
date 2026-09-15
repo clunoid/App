@@ -139,7 +139,7 @@ export async function POST(req: NextRequest) {
     `Name: ${name}`,
     `Email: ${email}`,
     "",
-    `Check this ID under partner ${PARTNER_ID}.`,
+    `Check this MT5 ID under Headway Partner ID ${PARTNER_ID}.`,
     "",
     id
       ? "Swipe-reply /approve to send them a code, or /decline <reason> to say no."

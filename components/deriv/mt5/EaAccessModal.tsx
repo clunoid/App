@@ -45,11 +45,20 @@ function TelegramMark() {
   );
 }
 
+/* The broker moved from Deriv to Headway. BROKER decides which step 1 is
+   drawn; the Deriv step and its values are kept so the switch back is one
+   word. */
+const BROKER: "headway" | "deriv" = "headway";
 const DERIV_SIGNUP = "https://t.deriv.link?t=8FJ7FBEALQBP";
-const PARTNER_ID = "019cafdd-b40f-7552-83a9-a0d5d69125d5";
-
+const DERIV_PARTNER_ID = "019cafdd-b40f-7552-83a9-a0d5d69125d5";
 const DERIV_PROFILE = "https://home.deriv.com/dashboard/profile";
-const EXAMPLE_CLIENT_ID = "019cafdd-b40f-7552-83a9-a0d5d69125d5";
+const DERIV_EXAMPLE_ID = "019cafdd-b40f-7552-83a9-a0d5d69125d5";
+
+/** Headway: the sign-up link carries its own token (hwp=8abf6d); the Partner
+    ID is what Headway support asks for. */
+const HEADWAY_SIGNUP = "https://headway.partners/user/signup?hwp=8abf6d";
+const PARTNER_ID = "6078336";
+const EXAMPLE_CLIENT_ID = "1234567";
 
 type Phase = "form" | "sent" | "done";
 
@@ -237,39 +246,79 @@ export function EaAccessModal({ open, onClose }: { open: boolean; onClose: () =>
             </div>
           ) : (
             <>
-              <Step n={1} title="Open an MT5 account with Deriv" done={phase === "sent"}>
-                <p className="text-[12px] leading-snug" style={{ color: TC.muted }}>
-                  Already have one under Clunoid? Skip to step 2.
-                </p>
-                <a href={DERIV_SIGNUP} target="_blank" rel="noopener noreferrer"
-                  className="mt-1.5 inline-flex items-center gap-2 rounded-xl border px-3.5 py-2.5 text-[12.5px] font-semibold transition hover:bg-white/5"
-                  style={{ borderColor: TC.line, color: TC.text }}>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src="/logos/metatrader5.svg" alt="MetaTrader 5" className="h-4 w-auto" style={{ maxWidth: 108 }} />
-                  <span>Create account</span>
-                  <ExternalLink size={13} style={{ color: TC.faint }} />
-                </a>
-              </Step>
+              {BROKER === "deriv" ? (
+                <Step n={1} title="Open an MT5 account with Deriv" done={phase === "sent"}>
+                  <p className="text-[12px] leading-snug" style={{ color: TC.muted }}>
+                    Already have one under Clunoid? Skip to step 2.
+                  </p>
+                  <a href={DERIV_SIGNUP} target="_blank" rel="noopener noreferrer"
+                    className="mt-1.5 inline-flex items-center gap-2 rounded-xl border px-3.5 py-2.5 text-[12.5px] font-semibold transition hover:bg-white/5"
+                    style={{ borderColor: TC.line, color: TC.text }}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src="/logos/metatrader5.svg" alt="MetaTrader 5" className="h-4 w-auto" style={{ maxWidth: 108 }} />
+                    <span>Create account</span>
+                    <ExternalLink size={13} style={{ color: TC.faint }} />
+                  </a>
+                </Step>
+              ) : (
+                <Step n={1} title="Open an MT5 account with Headway" done={phase === "sent"}>
+                  {/* The way in: Headway's name on the button, and the same link
+                      as a code to scan — a phone can open the account while the
+                      desk keeps the terminal. */}
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-stretch">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[12px] leading-snug" style={{ color: TC.muted }}>
+                        Already have one under Clunoid? Skip to step 2. New to Headway? Open it through our link and <b style={{ color: TC.text }}>claim $150 + a 50% deposit bonus</b>.
+                      </p>
+                      <a href={HEADWAY_SIGNUP} target="_blank" rel="noopener noreferrer sponsored"
+                        className="mt-1.5 inline-flex items-center gap-2 rounded-xl border px-3.5 py-2.5 text-[12.5px] font-semibold transition hover:bg-white/5"
+                        style={{ borderColor: TC.line, color: TC.text }}>
+                        <span className="text-[13.5px] font-extrabold tracking-tight" style={{ color: "#ff5468" }}>headway</span>
+                        <span>Create account</span>
+                        <ExternalLink size={13} style={{ color: TC.faint }} />
+                      </a>
+                      <p className="mt-1.5 text-[11.5px] leading-snug" style={{ color: TC.faint }}>
+                        Opening it through this link places the account under our partner group — that is what we check. Then come back here with your new MT5 ID.
+                      </p>
+                    </div>
+                    <a href={HEADWAY_SIGNUP} target="_blank" rel="noopener noreferrer sponsored" aria-label="Scan to open a Headway account"
+                      className="flex shrink-0 flex-row items-center justify-center gap-2.5 text-[10.5px] font-semibold no-underline sm:flex-col sm:gap-1"
+                      style={{ color: TC.faint }}>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src="/logos/headway-signup-qr.svg" alt="QR code — open a Headway MT5 account through the Clunoid link" width={84} height={84}
+                        className="block rounded-lg border bg-white p-1" style={{ borderColor: TC.line }} />
+                      <span>or scan</span>
+                    </a>
+                  </div>
+                </Step>
+              )}
 
-              <Step n={2} title="Client ID or MT5 ID" done={phase === "sent"}>
+              <Step n={2} title={BROKER === "deriv" ? "Client ID or MT5 ID" : "MT5 ID"} done={phase === "sent"}>
                 <input
                   value={clientId} onChange={(e) => setClientId(e.target.value)}
-                  placeholder={EXAMPLE_CLIENT_ID}
+                  placeholder={BROKER === "deriv" ? DERIV_EXAMPLE_ID : EXAMPLE_CLIENT_ID}
+                  inputMode={BROKER === "deriv" ? undefined : "numeric"}
                   className="w-full rounded-xl border px-3 py-2.5 text-[13px] outline-none"
                   style={{ borderColor: TC.line, background: TC.bg, color: TC.text }}
                 />
-                <p className="mt-1.5 text-[11.5px] leading-snug" style={{ color: TC.faint }}>
-                  Either works — a client ID looks like the example above, an MT5 ID is a short run
-                  of digits.{" "}
-                  <a href={DERIV_PROFILE} target="_blank" rel="noopener noreferrer"
-                    className="font-semibold underline underline-offset-2" style={{ color: TC.profit }}>
-                    Copy it from your Deriv profile
-                  </a>
-                  <ExternalLink size={10} className="ml-1 inline align-[-1px]" style={{ color: TC.profit }} />
-                </p>
+                {BROKER === "deriv" ? (
+                  <p className="mt-1.5 text-[11.5px] leading-snug" style={{ color: TC.faint }}>
+                    Either works — a client ID looks like the example above, an MT5 ID is a short run
+                    of digits.{" "}
+                    <a href={DERIV_PROFILE} target="_blank" rel="noopener noreferrer"
+                      className="font-semibold underline underline-offset-2" style={{ color: TC.profit }}>
+                      Copy it from your Deriv profile
+                    </a>
+                    <ExternalLink size={10} className="ml-1 inline align-[-1px]" style={{ color: TC.profit }} />
+                  </p>
+                ) : (
+                  <p className="mt-1.5 text-[11.5px] leading-snug" style={{ color: TC.faint }}>
+                    The account number MetaTrader 5 shows at the top of the terminal, before the server name. It is also in your Headway personal area.
+                  </p>
+                )}
               </Step>
 
-              <Step n={3} title="Name and email" done={phase === "sent"}>
+              <Step n={3} title={BROKER === "deriv" ? "Name and email" : "Name and email — as registered at Headway"} done={phase === "sent"}>
                 <div className="grid gap-2 sm:grid-cols-2">
                   <input value={name} onChange={(e) => setName(e.target.value)}
                     placeholder="Your name"
@@ -280,9 +329,15 @@ export function EaAccessModal({ open, onClose }: { open: boolean; onClose: () =>
                     className="w-full rounded-xl border px-3 py-2.5 text-[13px] outline-none"
                     style={{ borderColor: TC.line, background: TC.bg, color: TC.text }} />
                 </div>
-                <p className="mt-1.5 text-[11.5px]" style={{ color: TC.faint }}>
-                  So we can reach you about this account. Nothing else.
-                </p>
+                {BROKER === "deriv" ? (
+                  <p className="mt-1.5 text-[11.5px]" style={{ color: TC.faint }}>
+                    So we can reach you about this account. Nothing else.
+                  </p>
+                ) : (
+                  <p className="mt-1.5 text-[11.5px] leading-snug" style={{ color: TC.faint }}>
+                    Use the exact name and email on your Headway account — that is how we match you. <b style={{ color: TC.text }}>The EA works only on the account we approve.</b>
+                  </p>
+                )}
 
                 {left === 0 && (
                   <p className="mt-2.5 rounded-xl border p-2.5 text-[12px] leading-snug"
@@ -346,12 +401,21 @@ export function EaAccessModal({ open, onClose }: { open: boolean; onClose: () =>
                 </div>
               )}
 
-              <p className="mt-3 border-t pt-3 text-[11px] leading-snug" style={{ borderColor: TC.line, color: TC.faint }}>
-                We check every ID against our Deriv partner list. If yours is not under us,
-                we will say so and ask you to contact Deriv support to be added under{" "}
-                <code className="rounded px-1 py-0.5" style={{ background: TC.bg, color: TC.muted }}>{PARTNER_ID}</code>{" "}
-                — then reply in the support window and we will check again.
-              </p>
+              {BROKER === "deriv" ? (
+                <p className="mt-3 border-t pt-3 text-[11px] leading-snug" style={{ borderColor: TC.line, color: TC.faint }}>
+                  We check every ID against our Deriv partner list. If yours is not under us,
+                  we will say so and ask you to contact Deriv support to be added under{" "}
+                  <code className="rounded px-1 py-0.5" style={{ background: TC.bg, color: TC.muted }}>{DERIV_PARTNER_ID}</code>{" "}
+                  — then reply in the support window and we will check again.
+                </p>
+              ) : (
+                <p className="mt-3 border-t pt-3 text-[11px] leading-snug" style={{ borderColor: TC.line, color: TC.faint }}>
+                  We check every MT5 ID against our Headway partner list. If yours is not under us,
+                  we will say so and tell you how to ask Headway to attach it to our Partner ID{" "}
+                  <code className="rounded px-1 py-0.5" style={{ background: TC.bg, color: TC.muted }}>{PARTNER_ID}</code>{" "}
+                  — then reply in the support window and we will check again.
+                </p>
+              )}
             </>
           )}
         </div>

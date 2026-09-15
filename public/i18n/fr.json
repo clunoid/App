@@ -731,6 +731,7 @@
 "@channel or paste your link":"@chaîne ou collez votre lien",
 "AI trading robots, answered":"Robots de trading IA : la réponse",
 "Deriv MT5 — full automation":"Deriv MT5 — automatisation complète",
+"Headway MT5 — full automation":"Headway MT5 — automatisation complète",
 "Fast, relentless, always on":"Rapide, implacable, toujours actif",
 "Free Deriv bots that run in":"Des bots Deriv gratuits qui tournent dans",
 "Gold & Silver AI Automation":"Automatisation Or et Argent IA",
@@ -2261,5 +2262,16 @@
 "Send again":"Envoyer à nouveau",
 "While you wait, join the community:":"En attendant, rejoignez la communauté :",
 "WhatsApp channel":"Chaîne WhatsApp",
-"Telegram channel":"Chaîne Telegram"
+"Telegram channel":"Chaîne Telegram",
+"Open an MT5 account with Headway":"Ouvrez un compte MT5 chez Headway",
+"Already have one under Clunoid? Skip to step 2. New to Headway? Open it through our link and":"Vous en avez déjà un chez Clunoid ? Passez à l’étape 2. Nouveau chez Headway ? Ouvrez-le via notre lien et",
+"claim $150 + a 50% deposit bonus":"réclamez 150 $ + un bonus de dépôt de 50 %",
+"Opening it through this link places the account under our partner group — that is what we check. Then come back here with your new MT5 ID.":"L’ouvrir via ce lien place le compte dans notre groupe partenaire — c’est ce que nous vérifions. Revenez ensuite ici avec votre nouvel ID MT5.",
+"or scan":"ou scannez",
+"MT5 ID":"ID MT5",
+"The account number MetaTrader 5 shows at the top of the terminal, before the server name. It is also in your Headway personal area.":"Le numéro de compte affiché par MetaTrader 5 en haut du terminal, avant le nom du serveur. Il figure aussi dans votre espace personnel Headway.",
+"Name and email — as registered at Headway":"Nom et e-mail — tels qu’enregistrés chez Headway",
+"Use the exact name and email on your Headway account — that is how we match you.":"Utilisez exactement le nom et l’e-mail de votre compte Headway — c’est ainsi que nous vous identifions.",
+"The EA works only on the account we approve.":"L’EA ne fonctionne que sur le compte que nous approuvons.",
+"We check every MT5 ID against our Headway partner list. If yours is not under us, we will say so and tell you how to ask Headway to attach it to our Partner ID":"Nous vérifions chaque ID MT5 dans notre liste partenaire Headway. Si le vôtre n’est pas chez nous, nous vous le dirons et vous expliquerons comment demander à Headway de le rattacher à notre Partner ID"
 }

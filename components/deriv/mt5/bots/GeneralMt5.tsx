@@ -106,7 +106,7 @@ export function GeneralMt5() {
         </header>
 
         <div className="mt-2 max-w-2xl">
-          <h1 className="text-[26px] font-bold sm:text-[30px]">Deriv MT5 — full automation</h1>
+          <h1 className="text-[26px] font-bold sm:text-[30px]">Headway MT5 — full automation</h1>
           <p className="mt-1.5 text-[13.5px] leading-relaxed" style={{ color: TC.muted }}>
             One Expert Advisor that trades forex and Volatility Indices automatically on your own MetaTrader 5 terminal.
             Install it once on a single chart and it handles the rest.

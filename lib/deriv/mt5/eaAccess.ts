@@ -8,7 +8,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
  * The General EA is free but not public: it runs on signals from clunoid.com's
  * own engine, and that goes to the trading community rather than to anyone who
  * finds the page. So the download asks first, the owner checks the MT5 login
- * against the partner list on Deriv, and an approval mints a code.
+ * against the partner list on Headway, and an approval mints a code.
  *
  * A code is bound to the visitor it was issued to. That binding is the reason
  * it exists: an approved code that worked for anyone who was sent it would be a
@@ -22,23 +22,26 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 const TABLE = "trading_ea_requests";
 
-/** Deriv's partner id — the list an MT5 login has to appear under. */
-export const PARTNER_ID = "019cafdd-b40f-7552-83a9-a0d5d69125d5";
+/* The broker moved from Deriv to Headway. The Deriv values are kept here,
+   commented, so the switch back is a matter of swapping the constants:
+     PARTNER_ID        "019cafdd-b40f-7552-83a9-a0d5d69125d5"
+     DERIV_SIGNUP      "https://t.deriv.link?t=8FJ7FBEALQBP"
+     DERIV_PROFILE     "https://home.deriv.com/dashboard/profile"
+     EXAMPLE_CLIENT_ID "019cafdd-b40f-7552-83a9-a0d5d69125d5"
+   The names stayed so nothing that imports them had to change. */
+/** Our Headway Partner ID — the group an account has to sit under. The
+    sign-up link carries a different token (hwp=8abf6d); that one is the
+    link's, this one is what Headway support asks for. */
+export const PARTNER_ID = "6078336";
 
 /** Where somebody without an account is sent to open one under us. */
-export const DERIV_SIGNUP = "https://t.deriv.link?t=8FJ7FBEALQBP";
+export const DERIV_SIGNUP = "https://headway.partners/user/signup?hwp=8abf6d";
 
-/**
- * Where the client ID is copied from.
- *
- * Plain, with no token on it. This is a page somebody already signed in is
- * being sent to look something up on — attribution belongs on the step 1
- * signup link, which is the click that actually counts.
- */
-export const DERIV_PROFILE = "https://home.deriv.com/dashboard/profile";
+/** Where the MT5 ID is read from. Plain words: it is not a page. */
+export const DERIV_PROFILE = "the top of your MT5 terminal (the number before the server name), or your Headway personal area";
 
 /** What one looks like, so nobody has to guess which number we mean. */
-export const EXAMPLE_CLIENT_ID = "019cafdd-b40f-7552-83a9-a0d5d69125d5";
+export const EXAMPLE_CLIENT_ID = "1234567";
 
 /** The file itself, which now lives outside public/ like every gated EA. */
 export const EA_FILE = "ClunoidMT5.mq5";
@@ -53,7 +56,7 @@ export function codeMessage(code: string, mt5Login: string, lead: string): strin
     lead,
     "", code, "",
     `Paste it into step 4 on the bot's page to unlock the download. It works only on this browser, ${MAX_CODE_USES} times.`,
-    `⚠ Works only on Deriv, on the approved account ${mt5Login}. Any other broker or account receives wrong data.`,
+    `⚠ Works only on Headway, on the approved account ${mt5Login}. Any other broker or account receives wrong data.`,
   ].join("\n");
 }
 

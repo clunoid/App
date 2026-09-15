@@ -229,45 +229,39 @@ export async function POST(req: NextRequest) {
 
     /* A REPEAT decline is not the first one said again.
      *
-     * Somebody who checked their ID, wrote to Deriv and came back to the same
+     * Somebody who checked their ID, wrote to the broker and came back to the same
      * three paragraphs cannot tell whether anything happened at all — it reads
      * like an autoreply, and it is the point at which people give up. The count
      * includes the decision just made, so >1 means they have been here before.
      *
-     * The first-time version is two messages because it carries two different
-     * UUIDs — theirs to check, ours to quote — and in one bubble they read as
-     * the same kind of thing, which is how somebody ends up giving Deriv the
-     * wrong one. The repeat is a single short message: they already know to
-     * check, so it just restates what is still missing and what to send. */
+     * The first-time version is two messages — check the login, then how to
+     * be moved under us — and in one bubble they read as the same thing. The
+     * repeat is a single short message: they already know to check, so it
+     * just restates what is still missing and what to send. */
     const times = await declineCount(reqst.visitorId);
-
-    const ASK = "\"Deriv support requires a full referral URL (from domains like track.deriv.com or t.deriv.link) instead of just the partner ID to link my MT5 account. Please provide the correct partner referral link.\"";
 
     const first = times > 1
       ? await recordReply(
           reqst.visitorId,
           [
-            `We checked again and ${reqst.mt5Login} is still not showing under our team.`,
+            `We checked again and MT5 ID ${reqst.mt5Login} is still not showing under our Headway partner group.`,
             reason,
             "",
-            "Deriv has to add it — we cannot do it from our side. Send them both of these:",
+            "Headway has to attach it — we cannot do it from our side. Ask Headway support to move your account under our Partner ID, or open a new account through our link, which places it under us automatically:",
             "",
             `Partner ID: ${PARTNER_ID}`,
-            `Referral link: ${DERIV_SIGNUP}`,
+            `Sign-up link: ${DERIV_SIGNUP}`,
             "",
-            `They usually ask for the link rather than the ID, so it helps to say: ${ASK}`,
-            "",
-            "Reply here once they confirm and we will check again.",
+            "Reply here once it is done and we will check again.",
           ].filter((line, i) => i !== 1 || line !== "").join("\n"),
         )
       : await recordReply(
           reqst.visitorId,
           [
-            `We could not find ID ${reqst.mt5Login} under our community, so we cannot send a code for it yet.`,
+            `We could not find MT5 ID ${reqst.mt5Login} under our Headway partner group, so we cannot send a code for it yet.`,
             reason,
             "",
-            "First, check you sent the right one. Your own client ID is on your Deriv profile — open it, copy the ID shown there, and reply here with it:",
-            DERIV_PROFILE,
+            `First, check you sent the right number. Your MT5 ID is shown at ${DERIV_PROFILE} — reply here with it:`,
             "",
             `(It looks like ${EXAMPLE_CLIENT_ID})`,
           ]
@@ -283,18 +277,16 @@ export async function POST(req: NextRequest) {
       : await recordReply(
           reqst.visitorId,
           [
-            "If that ID was already the right one, then your account is not under us yet — and only Deriv can move it.",
+            "If that login was already the right one, then your account is not under us yet — and only Headway can move it.",
             "",
-            "Ask Deriv support to place your account under this partner ID:",
+            "Ask Headway support to attach your account to our Partner ID:",
             PARTNER_ID,
             "",
-            "That is OUR partner ID, not yours — give them that one.",
+            "That is OUR Partner ID, not yours — give them that one.",
             "",
-            `Deriv usually want the referral link rather than the ID, so send them this too: ${DERIV_SIGNUP}`,
+            `Or open a new Headway account through our link, which places it under us automatically: ${DERIV_SIGNUP}`,
             "",
-            `If they ask for it, say: ${ASK}`,
-            "",
-            "Reply here once they confirm and we will check again.",
+            "Reply here once it is done and we will check again.",
           ].join("\n"),
         );
 
@@ -302,7 +294,7 @@ export async function POST(req: NextRequest) {
     await say(
       chatId,
       delivered
-        ? `Declined. ${reqst.name} (${reqst.email}) has been told, with the partner ID and referral link.${alsoSettled > 1 ? ` Their ${alsoSettled - 1} other open request${alsoSettled === 2 ? "" : "s"} left the waiting list with it.` : ""}${times > 1 ? ` This is decline #${times} for them — they got the follow-up wording, not the first one again.` : ""}`
+        ? `Declined. ${reqst.name} (${reqst.email}) has been told, with the Partner ID and sign-up link.${alsoSettled > 1 ? ` Their ${alsoSettled - 1} other open request${alsoSettled === 2 ? "" : "s"} left the waiting list with it.` : ""}${times > 1 ? ` This is decline #${times} for them — they got the follow-up wording, not the first one again.` : ""}`
         : `Declined, but the message could not be delivered — tell ${reqst.email} yourself.`,
       msg?.message_id,
     );
