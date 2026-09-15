@@ -229,7 +229,7 @@ export function EaAccessModal({ open, onClose }: { open: boolean; onClose: () =>
             <a href={HEADWAY_SIGNUP} target="_blank" rel="noopener noreferrer sponsored" className={waitRow}
               style={{ borderColor: "rgba(56,189,248,0.55)", background: "rgba(56,189,248,0.10)", color: TC.profit }}>
               <Gift size={18} className="shrink-0" />
-              <span className="grid min-w-0 gap-px"><b className="text-[13px]">Claim $150 + a 50% deposit bonus</b><small className="text-[11.5px]" style={{ color: TC.muted }}>New to Headway? Open your account through our link</small></span>
+              <span className="grid min-w-0 gap-px"><b className="text-[13px]">Claim $150 + a 50% deposit bonus</b><small className="text-[11.5px]" style={{ color: TC.muted }}>While you wait for approval, make sure you have claimed it</small></span>
             </a>
             <a href={WHATSAPP_CHANNEL} target="_blank" rel="noopener noreferrer" className={waitRow} style={{ borderColor: TC.line, background: TC.panel, color: TC.text }}>
               <span className="shrink-0"><WhatsAppMark size={18} /></span>
