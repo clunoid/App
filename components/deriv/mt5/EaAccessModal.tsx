@@ -19,7 +19,7 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
-import { X, Check, Loader2, Download, ExternalLink, ShieldCheck } from "lucide-react";
+import { X, Check, Loader2, Download, ExternalLink, ShieldCheck, Gift } from "lucide-react";
 import { TC } from "@/lib/trading/theme";
 import { loadIdentity, saveIdentity } from "@/lib/support/identity";
 
@@ -268,8 +268,13 @@ export function EaAccessModal({ open, onClose }: { open: boolean; onClose: () =>
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-stretch">
                     <div className="min-w-0 flex-1">
                       <p className="text-[12px] leading-snug" style={{ color: TC.muted }}>
-                        Already have one under Clunoid? Skip to step 2. New to Headway? Open it through our link and <b style={{ color: TC.text }}>claim $150 + a 50% deposit bonus</b>.
+                        Already have one under Clunoid? Skip to step 2. New to Headway? Open it through our link.
                       </p>
+                      {/* The bonus, said once and loudly: amber on its own line. */}
+                      <span className="mt-2 inline-flex max-w-full items-center gap-1.5 rounded-full px-3 py-1.5 text-[12.5px] font-extrabold"
+                        style={{ background: "#ffb020", color: "#1a1200", boxShadow: "0 6px 18px rgba(255,176,32,0.28)" }}>
+                        <Gift size={14} />Claim $150 + a 50% deposit bonus
+                      </span>
                       <a href={HEADWAY_SIGNUP} target="_blank" rel="noopener noreferrer sponsored"
                         className="mt-1.5 inline-flex items-center gap-2 rounded-xl border px-3.5 py-2.5 text-[12.5px] font-semibold transition hover:bg-white/5"
                         style={{ borderColor: TC.line, color: TC.text }}>
