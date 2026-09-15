@@ -30,7 +30,7 @@ import { TC, monoFont } from "@/lib/trading/theme";
 import {
   loadIdentity, saveIdentity, isEmail, isJustAGreeting, type SupportSource,
 } from "@/lib/support/identity";
-import { t, useLang } from "@/lib/i18n/t";
+import { t, tm, useLang } from "@/lib/i18n/t";
 
 const A = "#a78bfa";
 const GOOD = "#34d399";
@@ -576,7 +576,7 @@ export function SupportChat({ source, email: known, name: knownName, country }: 
 
           {err && (
             <div className="flex items-start gap-1.5 px-4 pb-1 pt-1.5 text-[11.5px] font-medium" style={{ color: BAD }}>
-              <CircleAlert size={12} className="mt-0.5 shrink-0" /> {err}
+              <CircleAlert size={12} className="mt-0.5 shrink-0" /> {tm(err)}
             </div>
           )}
 
@@ -696,8 +696,9 @@ function linkify(text: string): React.ReactNode {
 const CODE_LINE = /^[A-Z]{3,4}-[A-Z0-9]{4}-[A-Z0-9]{4}$/;
 const WARN = "#f2607d";
 function decorate(text: string): React.ReactNode {
-  const lines = text.split("\n");
-  if (!lines.some((l) => CODE_LINE.test(l.trim()) || l.trim().startsWith("⚠"))) return linkify(text);
+  /* Each line the server wrote is read in the reader's language first. */
+  const lines = text.split("\n").map(tm);
+  if (!lines.some((l) => CODE_LINE.test(l.trim()) || l.trim().startsWith("⚠"))) return linkify(lines.join("\n"));
   return lines.map((line, i) => {
     const t = line.trim();
     const node = CODE_LINE.test(t)

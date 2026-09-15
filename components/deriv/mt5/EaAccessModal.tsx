@@ -22,6 +22,7 @@ import { useCallback, useEffect, useState } from "react";
 import { X, Check, Loader2, Download, ExternalLink, ShieldCheck, Gift } from "lucide-react";
 import { TC } from "@/lib/trading/theme";
 import { loadIdentity, saveIdentity } from "@/lib/support/identity";
+import { tm, useLang } from "@/lib/i18n/t";
 
 /** The community, for the minutes between sending and the reply. */
 const WHATSAPP_CHANNEL = "https://whatsapp.com/channel/0029Vb6sxFG9xVJWbyIwL110";
@@ -104,6 +105,7 @@ export function EaAccessModal({ open, onClose }: { open: boolean; onClose: () =>
   const [waitOpen, setWaitOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  useLang(); // a server error on screen changes language with the page
   const [left, setLeft] = useState(MAX_SENDS);
 
   /* Re-read the allowance when the modal opens and whenever the bubble
@@ -439,7 +441,7 @@ export function EaAccessModal({ open, onClose }: { open: boolean; onClose: () =>
               {err && (
                 <div className="mt-1 rounded-xl border p-3 text-[12.5px]"
                   style={{ borderColor: "rgba(242,96,125,0.4)", background: "rgba(242,96,125,0.08)", color: TC.loss }}>
-                  {err}
+                  {tm(err)}
                 </div>
               )}
 

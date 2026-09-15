@@ -23,7 +23,7 @@ import { useEffect, useState } from "react";
  * so hydration sees the same text on both sides.
  */
 type Vars = Record<string, string | number>;
-type WithT = Window & { t?: (s: string) => string; i18n?: { lang: string } };
+type WithT = Window & { t?: (s: string) => string; tm?: (s: string) => string; i18n?: { lang: string } };
 
 export function t(template: string, vars?: Vars): string {
   const w = typeof window !== "undefined" ? (window as WithT) : null;
@@ -43,4 +43,12 @@ export function useLang(): string {
     return () => window.removeEventListener("langchange", on);
   }, []);
   return lang;
+}
+
+/** A line the server wrote — an approval, a decline, an error — in the current
+ *  language when the dictionary knows its shape (placeholders such as {id}
+ *  survive), else as written. Identity on the server and before the layer loads. */
+export function tm(line: string): string {
+  const w = typeof window !== "undefined" ? (window as WithT) : null;
+  return w && typeof w.tm === "function" ? w.tm(line) : line;
 }
