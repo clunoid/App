@@ -131,6 +131,7 @@ export function GeneralMt5() {
                 <>Restart MT5, or press <b style={{ color: TC.text }}>Compile</b> in MetaEditor. The bot then appears under Expert Advisors.</>,
                 <>Drag it onto <b style={{ color: TC.text }}>any one chart</b>, set <code style={cx}>InpProfile</code> to your risk level, and enable <b style={{ color: TC.text }}>Algo Trading</b> — the toolbar button must be green: <AlgoToggle on text={TC.text} panel={TC.panelSolid} /> is <b style={{ color: TC.text }}>on</b>, <AlgoToggle on={false} text={TC.text} panel={TC.panelSolid} /> is <b style={{ color: TC.text }}>off</b>.</>,
                 <>(Recommended) Right-click the bot → <b style={{ color: TC.text }}>Register a Virtual Server</b> so it keeps trading with your computer off.</>,
+                <><b style={{ color: TC.text }}>Make sure you have followed every step above, in order.</b> A skipped step — the WebRequest address, Algo Trading, the risk profile — is the usual reason a bot sits idle.</>,
               ].map((step, i) => (
                 <li key={i} className="flex gap-3">
                   <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-[12px] font-bold" style={{ background: "rgba(56,189,248,0.16)", color: ACCENT }}>{i + 1}</span>

@@ -2282,5 +2282,7 @@
 "New to Headway? Open your account through our link":"Nouveau chez Headway ? Ouvrez votre compte via notre lien",
 "Join the community":"Rejoignez la communauté",
 "Back to the request":"Retour à la demande",
-"While you wait for approval, make sure you have claimed it":"En attendant l’approbation, assurez-vous de l’avoir réclamé"
+"While you wait for approval, make sure you have claimed it":"En attendant l’approbation, assurez-vous de l’avoir réclamé",
+"Make sure you have followed every step above, in order.":"Assurez-vous d’avoir suivi chaque étape ci-dessus, dans l’ordre.",
+"A skipped step — the WebRequest address, Algo Trading, the risk profile — is the usual reason a bot sits idle.":"Une étape sautée — l’adresse WebRequest, Algo Trading, le profil de risque — est la raison habituelle pour laquelle un bot reste inactif."
 }
