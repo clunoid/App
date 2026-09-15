@@ -56,7 +56,7 @@ export function codeMessage(code: string, mt5Login: string, lead: string): strin
     lead,
     "", code, "",
     `Paste it into step 4 on the bot's page to unlock the download. It works only on this browser, ${MAX_CODE_USES} times.`,
-    `⚠ Works only on Headway, on the approved account ${mt5Login}. Any other broker or account receives wrong data.`,
+    `⚠ Works only on Headway, on the approved account. Any other broker or account receives wrong data.`,
   ].join("\n");
 }
 
