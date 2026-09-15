@@ -26,19 +26,19 @@ import { loadIdentity, saveIdentity } from "@/lib/support/identity";
 /** The community, for the minutes between sending and the reply. */
 const WHATSAPP_CHANNEL = "https://whatsapp.com/channel/0029Vb6sxFG9xVJWbyIwL110";
 const TELEGRAM_CHANNEL = "https://t.me/magicabofficialchannel";
-const chan = "inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 text-[12px] font-semibold transition hover:bg-white/5";
+const waitRow = "flex items-center gap-3 rounded-xl border px-3 py-2.5 no-underline transition hover:bg-white/5";
 
-function WhatsAppMark() {
+function WhatsAppMark({ size = 16 }: { size?: number }) {
   return (
-    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+    <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden="true">
       <path fill="#25D366" d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5.1-1.3A10 10 0 1 0 12 2z" />
       <path fill="#fff" d="M9.2 7.4c-.2-.5-.4-.5-.6-.5h-.5c-.2 0-.5.1-.7.3-.3.3-1 1-1 2.4s1 2.8 1.2 3c.1.2 2 3.2 5 4.4 2.5 1 3 .8 3.5.7.5-.1 1.7-.7 1.9-1.4.2-.7.2-1.2.2-1.4-.1-.1-.3-.2-.6-.3l-2-1c-.3-.1-.5-.1-.7.1-.2.3-.8 1-1 1.2-.2.2-.3.2-.6.1-.3-.2-1.2-.5-2.3-1.5-.9-.8-1.5-1.7-1.6-2-.2-.3 0-.5.1-.6l.4-.5.3-.5c.1-.2 0-.4 0-.5l-1-2.2z" />
     </svg>
   );
 }
-function TelegramMark() {
+function TelegramMark({ size = 16 }: { size?: number }) {
   return (
-    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+    <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden="true">
       <circle cx="12" cy="12" r="10" fill="#2AABEE" />
       <path fill="#fff" d="M6.1 11.7l9.3-3.6c.4-.2.8.1.7.7l-1.6 7.4c-.1.5-.4.6-.8.4l-2.3-1.7-1.1 1.1c-.1.1-.2.2-.5.2l.2-2.4 4.3-3.9c.2-.2 0-.3-.3-.1l-5.3 3.3-2.3-.7c-.5-.2-.5-.5.1-.7z" />
     </svg>
@@ -100,6 +100,8 @@ export function EaAccessModal({ open, onClose }: { open: boolean; onClose: () =>
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
   const [phase, setPhase] = useState<Phase>("form");
+  /* The wait card: opened by a successful send, and again from the note. */
+  const [waitOpen, setWaitOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [left, setLeft] = useState(MAX_SENDS);
@@ -150,6 +152,7 @@ export function EaAccessModal({ open, onClose }: { open: boolean; onClose: () =>
       countSend();
       setLeft(sendsLeft());
       setPhase("sent");
+      setWaitOpen(true);
 
       /* Hand the bubble what was just sent, so it opens onto the conversation
          with the request already in it and the name and email filled in —
@@ -201,6 +204,48 @@ export function EaAccessModal({ open, onClose }: { open: boolean; onClose: () =>
     /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email.trim());
 
   return (
+    <>
+    {waitOpen && (
+      /* ── while you wait ─────────────────────────────────────────────────
+         Three doors: the Headway bonus to claim now, and the two channels
+         where the community lives. */
+      <div className="fixed inset-0 z-[130] flex items-center justify-center p-4"
+        style={{ background: "rgba(3,6,12,0.72)", backdropFilter: "blur(6px)" }}
+        onMouseDown={(e) => { if (e.target === e.currentTarget) setWaitOpen(false); }}
+        role="dialog" aria-modal="true" aria-label="While you wait">
+        <div className="relative w-full max-w-[400px] rounded-2xl border px-4 pb-4 pt-6 text-center"
+          style={{ borderColor: TC.line, background: TC.bg, boxShadow: "0 24px 60px rgba(0,0,0,0.5)" }}>
+          <button type="button" onClick={() => setWaitOpen(false)} aria-label="Close"
+            className="absolute right-2.5 top-2.5 grid h-8 w-8 place-items-center rounded-lg border"
+            style={{ borderColor: TC.line, color: TC.muted }}>
+            <X size={15} />
+          </button>
+          <div className="mx-auto grid h-11 w-11 place-items-center rounded-full" style={{ background: "rgba(34,197,94,0.15)" }}>
+            <Check size={22} style={{ color: "#22c55e" }} />
+          </div>
+          <h3 className="mt-2.5 text-[17px] font-bold" style={{ color: TC.text }}>Sent — we are checking now</h3>
+          <p className="mb-3.5 mt-1.5 text-[12.5px] leading-snug" style={{ color: TC.muted }}>Your code lands in the support window. While you wait:</p>
+          <div className="grid gap-2 text-left">
+            <a href={HEADWAY_SIGNUP} target="_blank" rel="noopener noreferrer sponsored" className={waitRow}
+              style={{ borderColor: "rgba(56,189,248,0.55)", background: "rgba(56,189,248,0.10)", color: TC.profit }}>
+              <Gift size={18} className="shrink-0" />
+              <span className="grid min-w-0 gap-px"><b className="text-[13px]">Claim $150 + a 50% deposit bonus</b><small className="text-[11.5px]" style={{ color: TC.muted }}>New to Headway? Open your account through our link</small></span>
+            </a>
+            <a href={WHATSAPP_CHANNEL} target="_blank" rel="noopener noreferrer" className={waitRow} style={{ borderColor: TC.line, background: TC.panel, color: TC.text }}>
+              <span className="shrink-0"><WhatsAppMark size={18} /></span>
+              <span className="grid min-w-0 gap-px"><b className="text-[13px]">WhatsApp channel</b><small className="text-[11.5px]" style={{ color: TC.muted }}>Join the community</small></span>
+            </a>
+            <a href={TELEGRAM_CHANNEL} target="_blank" rel="noopener noreferrer" className={waitRow} style={{ borderColor: TC.line, background: TC.panel, color: TC.text }}>
+              <span className="shrink-0"><TelegramMark size={18} /></span>
+              <span className="grid min-w-0 gap-px"><b className="text-[13px]">Telegram channel</b><small className="text-[11.5px]" style={{ color: TC.muted }}>Join the community</small></span>
+            </a>
+          </div>
+          <button type="button" onClick={() => setWaitOpen(false)}
+            className="mt-3 flex w-full items-center justify-center rounded-xl border px-3.5 py-2.5 text-[12.5px] font-semibold transition hover:bg-white/5"
+            style={{ borderColor: TC.line, color: TC.text }}>Back to the request</button>
+        </div>
+      </div>
+    )}
     <div
       className="fixed inset-0 z-[120] flex items-end justify-center overflow-y-auto p-0 sm:items-center sm:p-6"
       style={{ background: "rgba(3,6,12,0.72)", backdropFilter: "blur(6px)" }}
@@ -271,8 +316,8 @@ export function EaAccessModal({ open, onClose }: { open: boolean; onClose: () =>
                         Already have one under Clunoid? Skip to step 2. New to Headway? Open it through our link.
                       </p>
                       {/* The bonus, said once and loudly: amber on its own line. */}
-                      <span className="mt-2 inline-flex max-w-full items-center gap-1.5 rounded-full px-3 py-1.5 text-[12.5px] font-extrabold"
-                        style={{ background: "#ffb020", color: "#1a1200", boxShadow: "0 6px 18px rgba(255,176,32,0.28)" }}>
+                      <span className="mt-2 inline-flex max-w-full items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12.5px] font-extrabold"
+                        style={{ borderColor: "rgba(56,189,248,0.55)", background: "rgba(56,189,248,0.10)", color: TC.profit }}>
                         <Gift size={14} />Claim $150 + a 50% deposit bonus
                       </span>
                       <a href={HEADWAY_SIGNUP} target="_blank" rel="noopener noreferrer sponsored"
@@ -366,18 +411,10 @@ export function EaAccessModal({ open, onClose }: { open: boolean; onClose: () =>
                     Your code arrives in the <b>support window</b> — it has opened at the corner of
                     this page, and the reply lands there.
                   </span>
-                  {/* Where the wait is spent: the two channels, drawn with their own marks. */}
-                  <div className="mt-2.5 grid gap-2 border-t pt-2.5" style={{ borderColor: "rgba(34,197,94,0.25)" }}>
-                    <span className="font-semibold" style={{ color: TC.muted }}>While you wait, join the community:</span>
-                    <div className="flex flex-wrap gap-2">
-                      <a href={WHATSAPP_CHANNEL} target="_blank" rel="noopener noreferrer" className={chan} style={{ borderColor: TC.line, color: TC.text }}>
-                        <WhatsAppMark /><span>WhatsApp channel</span>
-                      </a>
-                      <a href={TELEGRAM_CHANNEL} target="_blank" rel="noopener noreferrer" className={chan} style={{ borderColor: TC.line, color: TC.text }}>
-                        <TelegramMark /><span>Telegram channel</span>
-                      </a>
-                    </div>
-                  </div>
+                  <button type="button" onClick={() => setWaitOpen(true)}
+                    className="mt-2 block text-[12px] font-bold hover:underline" style={{ color: TC.profit }}>
+                    While you wait: the bonus and the community →
+                  </button>
                 </div>
               )}
 
@@ -426,6 +463,7 @@ export function EaAccessModal({ open, onClose }: { open: boolean; onClose: () =>
         </div>
       </div>
     </div>
+    </>
   );
 }
 
