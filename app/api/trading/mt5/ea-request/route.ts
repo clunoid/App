@@ -10,8 +10,8 @@ export const dynamic = "force-dynamic";
 /**
  * SOMEBODY ASKING FOR THE GENERAL MT5 EA.
  *
- * The form on the bot's page collects a client or MT5 ID, a name and an email. This
- * records it, then posts it into Telegram THROUGH THE SUPPORT PIPE rather than
+ * The form on the bot's page collects the name and email as registered at
+ * Headway, a phone number and the channel to reach it on. This records it, then posts it into Telegram THROUGH THE SUPPORT PIPE rather than
  * as its own kind of notification — which means it arrives in the same chat as
  * everything else, carries the conversation this person has already had, and is
  * answered the same way: by swipe-replying to it.
@@ -40,6 +40,12 @@ const looksLikeEmail = (v: string) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v);
 
 const clean = (v: unknown, max: number): string =>
   typeof v === "string" ? v.trim().slice(0, max).replace(/\s+/g, " ") : "";
+const CHANNELS: Record<string, string> = { whatsapp: "WhatsApp", telegram: "Telegram" };
+/** +254 712 345 678 — readable on a phone screen. */
+const prettyPhone = (p: string) => p.replace(/^(\+\d{1,3})(\d{3})(\d{3})(\d+)$/, "$1 $2 $3 $4");
+/** A tap-to-chat link for the channel they chose. */
+const chatLink = (phone: string, contact: string) => contact === "telegram" ? `https://t.me/${phone}` : `https://wa.me/${phone.replace(/\D/g, "")}`;
+const countryName = (iso: string) => { try { return new Intl.DisplayNames(["en"], { type: "region" }).of(iso) || iso; } catch { return iso; } };
 
 export async function POST(req: NextRequest) {
   const raw = await req.text();
@@ -55,17 +61,22 @@ export async function POST(req: NextRequest) {
   const visitorId = clean(body.visitorId, 64);
   /* 64, not 32: a UUID client ID is 36 characters, so the old cap chopped the
      tail off one and sent a truncated ID for checking. */
-  const mt5Login = clean(body.mt5Login, 64).replace(/\s/g, "");
   const name = clean(body.name, 80);
   const email = clean(body.email, 160);
+  const phone = clean(body.phone, 20).replace(/[^\d+]/g, "");
+  const contact = clean(body.contact, 12).toLowerCase();
+  const country = clean(body.country, 2).toUpperCase();
+  const lang = clean(body.lang, 8).toLowerCase();
   const page = clean(body.page, 200);
+  // The ID column stays filled so older rows and newer ones read the same way.
+  const mt5Login = phone;
 
   if (!visitorId) return NextResponse.json({ error: "Reload the page and try again." }, { status: 400 });
-  if (!mt5Login) {
-    return NextResponse.json({ error: "Please paste your client ID or MT5 ID." }, { status: 422 });
-  }
-  if (name.length < 2) return NextResponse.json({ error: "Please give us a name to put to the account." }, { status: 422 });
+  if (name.length < 2) return NextResponse.json({ error: "Please give us your full name as registered at Headway." }, { status: 422 });
   if (!looksLikeEmail(email)) return NextResponse.json({ error: "That email does not look right." }, { status: 422 });
+  if (!/^\+[1-9]\d{6,14}$/.test(phone)) return NextResponse.json({ error: "That phone number does not look right — choose the country and type the number." }, { status: 422 });
+  if (!CHANNELS[contact]) return NextResponse.json({ error: "Choose WhatsApp or Telegram so we know where to reach you." }, { status: 422 });
+  const where = country ? `${countryName(country)} (${country})${lang ? ` · ${lang}` : ""}` : (lang || null);
 
   /* Barred people are turned away before anything is recorded or sent, so a
      ban is quiet: nothing reaches Telegram and no row accumulates. The wording
@@ -104,21 +115,21 @@ export async function POST(req: NextRequest) {
      time are checked again, by machine, and a fresh code is issued to THIS
      browser at once. The owner is told, with everything needed to /ban if it
      looks wrong, but is not asked. */
-  const match = await approvedMatch(email, mt5Login);
+  const match = await approvedMatch(email, phone);
   if (match) {
-    const newId = await createRequest({ visitorId, mt5Login, name, email, page });
+    const newId = await createRequest({ visitorId, mt5Login, name, email, page, phone, contact, country });
     const code = newId ? await approveRequest(newId) : null;
     if (code) {
       const why = already ? "your previous code was used up" : "you are on a new browser";
-      await recordInbound({ visitorId, body: `Asked for the General MT5 EA again — ID ${mt5Login}`, tgMessageId: null, email, name, source: "MT5 EA access", page: page || null });
+      await recordInbound({ visitorId, body: `Asked for the General MT5 EA again — ${email}, ${phone} on ${CHANNELS[contact]}`, tgMessageId: null, email, name, source: "MT5 EA access", page: page || null });
       await recordReply(visitorId, codeMessage(code, mt5Login,
-        `Approved again automatically — same email and ID as before, and ${why}. Here is your new code:`));
+        `Approved again automatically — same email and phone as before, and ${why}. Here is your new code:`));
       await sendSupportMessage({
-        email, name, visitorId, page: page || null, source: "MT5 EA access — approved automatically", history: [],
+        email, name, visitorId, page: page || null, source: "MT5 EA access — approved automatically", history: [], country: where,
         message: [
-          `Client / MT5 ID: ${mt5Login}`,
+          `📱 Phone: ${prettyPhone(phone)} · ${CHANNELS[contact]}: ${chatLink(phone, contact)}`,
           "",
-          `Same email and ID as an earlier approval (${why}), so code ${code} was issued without asking.`,
+          `Same email and phone as an earlier approval (${why}), so code ${code} was issued without asking.`,
           "",
           "If that is not right, swipe-reply /ban — the code stops working with it.",
         ].join("\n"),
@@ -127,19 +138,23 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const id = await createRequest({ visitorId, mt5Login, name, email, page });
+  const id = await createRequest({ visitorId, mt5Login, name, email, page, phone, contact, country });
 
-  /* Written the way it needs to be read on a phone: the ID first, because
-     checking it against the partner list is the only decision to make, and the
+  /* Written the way it needs to be read on a phone: the two facts to check
+     against the partner list first, then how to reach the person, then the
      two commands last, because that is the reply. */
+  const when = new Date().toISOString().replace("T", " ").slice(0, 16) + " UTC";
   const message = [
-    "MT5 EA access request",
+    "🤖 MT5 EA access request",
     "",
-    `Client / MT5 ID: ${mt5Login}`,
-    `Name: ${name}`,
-    `Email: ${email}`,
+    `👤 Name: ${name}`,
+    `✉️ Email: ${email}`,
+    `📱 Phone: ${prettyPhone(phone)}`,
+    `💬 Contact on: ${CHANNELS[contact]} — ${chatLink(phone, contact)}`,
+    ...(where ? [`🌍 Country: ${where}`] : []),
+    `🕒 Sent: ${when}`,
     "",
-    `Check this MT5 ID under Headway Partner ID ${PARTNER_ID}.`,
+    `✅ To check: the name and email above under Headway Partner ID ${PARTNER_ID}.`,
     "",
     id
       ? "Swipe-reply /approve to send them a code, or /decline <reason> to say no."
@@ -156,6 +171,7 @@ export async function POST(req: NextRequest) {
     source: "MT5 EA access",
     visitorId,
     history,
+    country: where,
   });
 
   /* Recorded as an inbound support message too, so it sits in this person's
@@ -163,7 +179,7 @@ export async function POST(req: NextRequest) {
      about anything the whole exchange is attached. */
   await recordInbound({
     visitorId,
-    body: `Asked for the General MT5 EA — ID ${mt5Login}`,
+    body: `Asked for the General MT5 EA — ${email}, ${phone} on ${CHANNELS[contact]}`,
     tgMessageId: tgId,
     email,
     name,

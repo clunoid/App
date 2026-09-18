@@ -8,9 +8,11 @@
  * on every bar, and that engine runs for the trading community rather than for
  * whoever finds the page.
  *
- * Four steps, and the order matters — an account first, because everything
- * after it is about that account; then the ID, so it can be checked; then a
- * name and an email, so there is a way to answer; then the code.
+ * Five steps, and the order matters — an account first, because everything
+ * after it is about that account; then the name and email registered there,
+ * so they can be checked against the partner list; then a phone number and
+ * the channel to reach it on, so the person can be guided after the download;
+ * then the code.
  *
  * Between step three and step four somebody has to look at a list on Deriv. So
  * the wait is real, and the design says so rather than spinning: the request
@@ -22,7 +24,9 @@ import { useCallback, useEffect, useState } from "react";
 import { X, Check, Loader2, Download, ExternalLink, ShieldCheck, Gift } from "lucide-react";
 import { TC } from "@/lib/trading/theme";
 import { loadIdentity, saveIdentity } from "@/lib/support/identity";
-import { tm, useLang } from "@/lib/i18n/t";
+import { t, tm, useLang } from "@/lib/i18n/t";
+import { PhoneField, toE164 } from "./PhoneField";
+import type { DialCountry } from "@/lib/countries-dial";
 
 /** The community, for the minutes between sending and the reply. */
 const WHATSAPP_CHANNEL = "https://whatsapp.com/channel/0029Vb6sxFG9xVJWbyIwL110";
@@ -70,6 +74,8 @@ type Phase = "form" | "sent" | "done";
    thread, arriving after the last send, resets the count. The thread is what
    the bubble keeps in this browser, so this needs no extra call. */
 const SENDS_KEY = "cln_ea_sends";
+const PHONE_KEY = "cln_phone";
+const CHAN_KEY = "cln_contact";
 const THREAD_KEY = "cln_support_thread";
 const MAX_SENDS = 3;
 type Sends = { n: number; at: string };
@@ -99,6 +105,9 @@ export function EaAccessModal({ open, onClose }: { open: boolean; onClose: () =>
   const [clientId, setClientId] = useState("");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [country, setCountry] = useState<DialCountry | null>(null);
+  const [chan, setChan] = useState<"whatsapp" | "telegram" | "">("");
   const [code, setCode] = useState("");
   const [phase, setPhase] = useState<Phase>("form");
   /* The wait card: opened by a successful send, and again from the note. */
@@ -126,6 +135,12 @@ export function EaAccessModal({ open, onClose }: { open: boolean; onClose: () =>
     setVisitorId(id.visitorId);
     if (id.name && !name) setName(id.name);
     if (id.email && !email) setEmail(id.email);
+    try {
+      if (!phone) setPhone(localStorage.getItem(PHONE_KEY) || "");
+      const c = localStorage.getItem(CHAN_KEY);
+      if (!chan && (c === "whatsapp" || c === "telegram")) setChan(c);
+    } catch { /* private mode */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, name, email]);
 
   useEffect(() => {
@@ -144,6 +159,8 @@ export function EaAccessModal({ open, onClose }: { open: boolean; onClose: () =>
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           visitorId, mt5Login: clientId.trim(), name: name.trim(), email: email.trim(),
+          phone: toE164(country, phone), country: country ? country[0] : "", contact: chan,
+          lang: typeof document !== "undefined" ? document.documentElement.lang || "" : "",
           page: typeof window !== "undefined" ? window.location.pathname : "",
         }),
       });
@@ -151,6 +168,7 @@ export function EaAccessModal({ open, onClose }: { open: boolean; onClose: () =>
       if (!res.ok) throw new Error(j.error || "Could not send that. Try again in a moment.");
 
       saveIdentity({ name: name.trim(), email: email.trim() });
+      try { localStorage.setItem(PHONE_KEY, phone.trim()); if (chan) localStorage.setItem(CHAN_KEY, chan); } catch { /* private mode */ }
       countSend();
       setLeft(sendsLeft());
       setPhase("sent");
@@ -164,13 +182,15 @@ export function EaAccessModal({ open, onClose }: { open: boolean; onClose: () =>
         detail: {
           name: name.trim(),
           email: email.trim(),
-          text: `Requested the General MT5 EA — client / MT5 ID ${clientId.trim()}.`,
+          text: BROKER === "deriv"
+            ? `Requested the General MT5 EA — client / MT5 ID ${clientId.trim()}.`
+            : t("Requested the General MT5 EA — {email}, {phone} on {channel}.", { email: email.trim(), phone: toE164(country, phone), channel: chan === "telegram" ? "Telegram" : "WhatsApp" }),
         },
       }));
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Could not send that.");
     } finally { setBusy(false); }
-  }, [visitorId, clientId, name, email]);
+  }, [visitorId, clientId, name, email, phone, country, chan]);
 
   const redeem = useCallback(async () => {
     setBusy(true); setErr(null);
@@ -201,7 +221,7 @@ export function EaAccessModal({ open, onClose }: { open: boolean; onClose: () =>
 
   /* Only that they typed something. Client IDs come in more than one shape, so
      any check tighter than this greys the button out on a real one. */
-  const idOk = clientId.trim().length > 0;
+  const idOk = BROKER === "deriv" ? clientId.trim().length > 0 : (toE164(country, phone) !== "" && chan !== "");
   const formOk = idOk && name.trim().length > 1 &&
     /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email.trim());
 
@@ -330,7 +350,7 @@ export function EaAccessModal({ open, onClose }: { open: boolean; onClose: () =>
                         <ExternalLink size={13} style={{ color: TC.faint }} />
                       </a>
                       <p className="mt-1.5 text-[11.5px] leading-snug" style={{ color: TC.faint }}>
-                        Opening it through this link places the account under our partner group — that is what we check. Then come back here with your new MT5 ID.
+                        Opening it through this link places the account under our partner group — that is what we check. Then come back here with the name and email you registered.
                       </p>
                     </div>
                     <a href={HEADWAY_SIGNUP} target="_blank" rel="noopener noreferrer sponsored" aria-label="Scan to open a Headway account"
@@ -345,6 +365,8 @@ export function EaAccessModal({ open, onClose }: { open: boolean; onClose: () =>
                 </Step>
               )}
 
+              {BROKER === "deriv" ? (
+                <>
               <Step n={2} title={BROKER === "deriv" ? "Client ID or MT5 ID" : "MT5 ID"} done={phase === "sent"}>
                 <input
                   value={clientId} onChange={(e) => setClientId(e.target.value)}
@@ -437,6 +459,97 @@ export function EaAccessModal({ open, onClose }: { open: boolean; onClose: () =>
                   Your code only works on this browser.
                 </p>
               </Step>
+                </>
+              ) : (
+                <>
+              <Step n={2} title="Name and email — as registered at Headway" done={phase === "sent"}>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <input value={name} onChange={(e) => setName(e.target.value)}
+                    placeholder="Full name" autoComplete="name"
+                    className="w-full rounded-xl border px-3 py-2.5 text-[13px] outline-none"
+                    style={{ borderColor: TC.line, background: TC.bg, color: TC.text }} />
+                  <input value={email} onChange={(e) => setEmail(e.target.value)}
+                    type="email" placeholder="you@email.com" autoComplete="email"
+                    className="w-full rounded-xl border px-3 py-2.5 text-[13px] outline-none"
+                    style={{ borderColor: TC.line, background: TC.bg, color: TC.text }} />
+                </div>
+                <p className="mt-1.5 text-[11.5px] leading-snug" style={{ color: TC.faint }}>
+                  Use the exact full name and email on your Headway account — that is how we find you on our partner list.
+                </p>
+              </Step>
+
+              <Step n={3} title="Phone number" done={phase === "sent"}>
+                <PhoneField country={country} onCountry={(c) => setCountry(c)} value={phone} onChange={setPhone} />
+                <p className="mt-1.5 text-[11.5px] leading-snug" style={{ color: TC.faint }}>
+                  The number we reach you on after the download, to guide you through setting the EA up and using it the right way.
+                </p>
+              </Step>
+
+              <Step n={4} title="Where should we contact you?" done={phase === "sent"}>
+                <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Contact channel">
+                  {([["whatsapp", "WhatsApp"], ["telegram", "Telegram"]] as const).map(([k, label]) => (
+                    <button key={k} type="button" role="radio" aria-checked={chan === k} onClick={() => setChan(k)}
+                      className="inline-flex items-center gap-2 rounded-full border px-3.5 py-2 text-[13px] font-semibold transition"
+                      style={chan === k
+                        ? { borderColor: TC.profit, background: "rgba(56,189,248,0.12)", color: TC.text, boxShadow: `0 0 0 1px ${TC.profit} inset` }
+                        : { borderColor: TC.line, background: TC.bg, color: TC.text }}>
+                      {k === "whatsapp" ? <WhatsAppMark size={18} /> : <TelegramMark size={18} />}
+                      <span>{label}</span>
+                    </button>
+                  ))}
+                </div>
+                <p className="mt-1.5 text-[11.5px] leading-snug" style={{ color: TC.faint }}>
+                  On that number. We show you exactly how to use the EA so you start the right way.
+                </p>
+
+                {left === 0 && (
+                  <p className="mt-2.5 rounded-xl border p-2.5 text-[12px] leading-snug"
+                    style={{ borderColor: "rgba(245,165,36,0.5)", background: "rgba(245,165,36,0.08)", color: "#f5a524" }}>
+                    You have sent this three times. Wait for our reply in the support window — it unlocks sending again.
+                  </p>
+                )}
+                <button type="button" onClick={send} disabled={!formOk || busy || left === 0}
+                  className="mt-2.5 inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-[13px] font-semibold transition disabled:opacity-45"
+                  style={{ background: TC.profit, color: TC.ink }}>
+                  {busy ? <Loader2 size={15} className="animate-spin" /> : <ShieldCheck size={15} />}
+                  {phase === "sent" ? "Send again" : "Send for checking"}
+                </button>
+              </Step>
+
+              {phase === "sent" && (
+                <div className="mb-3 rounded-xl border p-3 text-[12px] leading-snug"
+                  style={{ borderColor: "rgba(34,197,94,0.35)", background: "rgba(34,197,94,0.08)", color: TC.text }}>
+                  <span>
+                    <b>Sent.</b> We are checking your details against our Headway partner list now.
+                    Your code arrives in the <b>support window</b> — it has opened at the corner of
+                    this page, and the reply lands there.
+                  </span>
+                  <button type="button" onClick={() => setWaitOpen(true)}
+                    className="mt-2 block text-[12px] font-bold hover:underline" style={{ color: TC.profit }}>
+                    While you wait: the bonus and the community →
+                  </button>
+                </div>
+              )}
+
+              <Step n={5} title="Enter your download code" done={false}>
+                <div className="flex flex-wrap gap-2">
+                  <input value={code} onChange={(e) => setCode(e.target.value)}
+                    placeholder="CLU-XXXX-XXXX"
+                    className="min-w-0 flex-1 rounded-xl border px-3 py-2.5 text-[13px] uppercase outline-none"
+                    style={{ borderColor: TC.line, background: TC.bg, color: TC.text, letterSpacing: "0.06em" }} />
+                  <button type="button" onClick={redeem} disabled={!code.trim() || busy}
+                    className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-[13px] font-semibold transition disabled:opacity-45"
+                    style={{ background: TC.profit, color: TC.ink }}>
+                    {busy ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
+                    Download
+                  </button>
+                </div>
+                <p className="mt-1.5 text-[11.5px]" style={{ color: TC.faint }}>
+                  Your code only works on this browser.
+                </p>
+              </Step>
+                </>
+              )}
 
               {err && (
                 <div className="mt-1 rounded-xl border p-3 text-[12.5px]"
@@ -445,18 +558,11 @@ export function EaAccessModal({ open, onClose }: { open: boolean; onClose: () =>
                 </div>
               )}
 
-              {BROKER === "deriv" ? (
+              {BROKER === "deriv" && (
                 <p className="mt-3 border-t pt-3 text-[11px] leading-snug" style={{ borderColor: TC.line, color: TC.faint }}>
                   We check every ID against our Deriv partner list. If yours is not under us,
                   we will say so and ask you to contact Deriv support to be added under{" "}
                   <code className="rounded px-1 py-0.5" style={{ background: TC.bg, color: TC.muted }}>{DERIV_PARTNER_ID}</code>{" "}
-                  — then reply in the support window and we will check again.
-                </p>
-              ) : (
-                <p className="mt-3 border-t pt-3 text-[11px] leading-snug" style={{ borderColor: TC.line, color: TC.faint }}>
-                  We check every MT5 ID against our Headway partner list. If yours is not under us,
-                  we will say so and tell you how to ask Headway to attach it to our Partner ID{" "}
-                  <code className="rounded px-1 py-0.5" style={{ background: TC.bg, color: TC.muted }}>{PARTNER_ID}</code>{" "}
                   — then reply in the support window and we will check again.
                 </p>
               )}

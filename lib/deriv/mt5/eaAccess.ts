@@ -37,8 +37,8 @@ export const PARTNER_ID = "6078336";
 /** Where somebody without an account is sent to open one under us. */
 export const DERIV_SIGNUP = "https://headway.partners/user/signup?hwp=8abf6d";
 
-/** Where the MT5 ID is read from. Plain words: it is not a page. */
-export const DERIV_PROFILE = "the top of your MT5 terminal (the number before the server name), or your Headway personal area";
+/** Kept for the imports; the Headway flow matches by name and email, not by ID. */
+export const DERIV_PROFILE = "your Headway personal area";
 
 /** What one looks like, so nobody has to guess which number we mean. */
 export const EXAMPLE_CLIENT_ID = "1234567";
@@ -55,7 +55,7 @@ export function codeMessage(code: string, mt5Login: string, lead: string): strin
   return [
     lead,
     "", code, "",
-    `Paste it into step 4 on the bot's page to unlock the download. It works only on this browser, ${MAX_CODE_USES} times.`,
+    `Paste it into step 5 on the bot's page to unlock the download. It works only on this browser, ${MAX_CODE_USES} times.`,
     `⚠ Works only on Headway, on the approved account. Any other broker or account receives wrong data.`,
   ].join("\n");
 }
@@ -66,6 +66,9 @@ export type EaRequest = {
   mt5Login: string;
   name: string;
   email: string;
+  phone: string;
+  contact: string;
+  country: string;
   status: "pending" | "approved" | "declined";
   code: string | null;
 };
@@ -98,6 +101,9 @@ export async function createRequest(r: {
   name: string;
   email: string;
   page?: string | null;
+  phone?: string | null;
+  contact?: string | null;
+  country?: string | null;
 }): Promise<string | null> {
   const db = getSupabaseAdmin();
   if (!db) return null;
@@ -106,10 +112,13 @@ export async function createRequest(r: {
     .from(TABLE)
     .insert({
       visitor_id: r.visitorId,
-      mt5_login: r.mt5Login,
+      mt5_login: r.mt5Login || r.phone || "",
       name: r.name,
       email: r.email,
       page: r.page ?? null,
+      phone: r.phone || null,
+      contact: r.contact || null,
+      country: r.country || null,
     })
     .select("id")
     .single();
@@ -136,7 +145,7 @@ export async function requestForTelegramMessage(tgMessageId: number): Promise<Ea
 
   const { data, error } = await db
     .from(TABLE)
-    .select("id, visitor_id, mt5_login, name, email, status, code")
+    .select("id, visitor_id, mt5_login, name, email, phone, contact, country, status, code")
     .eq("tg_message_id", tgMessageId)
     .limit(1)
     .maybeSingle();
@@ -153,6 +162,9 @@ export async function requestForTelegramMessage(tgMessageId: number): Promise<Ea
     mt5Login: data.mt5_login as string,
     name: data.name as string,
     email: data.email as string,
+    phone: (data.phone as string | null) ?? "",
+    contact: (data.contact as string | null) ?? "",
+    country: (data.country as string | null) ?? "",
     status: data.status as EaRequest["status"],
     code: (data.code as string) ?? null,
   };
@@ -273,7 +285,7 @@ export async function pendingRequests(limit = 20): Promise<EaRequest[]> {
 
   const { data, error } = await db
     .from(TABLE)
-    .select("id, visitor_id, mt5_login, name, email, status, code")
+    .select("id, visitor_id, mt5_login, name, email, phone, contact, country, status, code")
     .eq("status", "pending")
     /* Answered by hand is not waiting. Replying to somebody puts their request
        in your hands without deciding it, and the queue has to agree or it keeps
@@ -320,6 +332,9 @@ export async function pendingRequests(limit = 20): Promise<EaRequest[]> {
       mt5Login: d.mt5_login as string,
       name: d.name as string,
       email: d.email as string,
+      phone: (d.phone as string | null) ?? "",
+      contact: (d.contact as string | null) ?? "",
+      country: (d.country as string | null) ?? "",
       status: d.status as EaRequest["status"],
       code: (d.code as string) ?? null,
     }));
@@ -376,7 +391,7 @@ export async function requestForVisitor(visitorId: string): Promise<EaRequest | 
   const pick = async (pendingOnly: boolean) => {
     let q = db
       .from(TABLE)
-      .select("id, visitor_id, mt5_login, name, email, status, code")
+      .select("id, visitor_id, mt5_login, name, email, phone, contact, country, status, code")
       .eq("visitor_id", visitorId);
     if (pendingOnly) q = q.eq("status", "pending");
     const { data, error } = await q
@@ -399,6 +414,9 @@ export async function requestForVisitor(visitorId: string): Promise<EaRequest | 
     mt5Login: d.mt5_login as string,
     name: d.name as string,
     email: d.email as string,
+    phone: (d.phone as string | null) ?? "",
+    contact: (d.contact as string | null) ?? "",
+    country: (d.country as string | null) ?? "",
     status: d.status as EaRequest["status"],
     code: (d.code as string) ?? null,
   };
@@ -411,13 +429,13 @@ export async function requestForVisitor(visitorId: string): Promise<EaRequest | 
  * not need a second decision, they need the code they were already given. It is
  * the same question the queue asks, from the other end.
  */
-export type ApprovedCode = { code: string; usesLeft: number; mt5Login: string; email: string };
+export type ApprovedCode = { code: string; usesLeft: number; mt5Login: string; email: string; phone: string };
 export async function approvedCodeFor(visitorId: string): Promise<ApprovedCode | null> {
   const db = getSupabaseAdmin();
   if (!db || !visitorId) return null;
   const { data, error } = await db
     .from(TABLE)
-    .select("code, code_uses, mt5_login, email")
+    .select("code, code_uses, mt5_login, email, phone")
     .eq("visitor_id", visitorId)
     .eq("status", "approved")
     .not("code", "is", null)
@@ -434,27 +452,28 @@ export async function approvedCodeFor(visitorId: string): Promise<ApprovedCode |
     usesLeft: Math.max(0, MAX_CODE_USES - ((data.code_uses as number | null) ?? 0)),
     mt5Login: (data.mt5_login as string) ?? "",
     email: (data.email as string) ?? "",
+    phone: (data.phone as string | null) ?? "",
   };
 }
 
 /**
- * Was this exact email and ID approved before, on any browser?
+ * Was this exact email and phone approved before, on any browser?
  *
  * The automatic re-approval: somebody whose code is spent, or who is on a new
- * device, sends the form again with the same email and the same ID they were
- * approved with, and gets a fresh code without waiting. The ID is compared
- * exactly; the email without regard to case.
+ * device, sends the form again with the same email and the same phone they
+ * were approved with, and gets a fresh code without waiting. The phone is
+ * compared exactly (E.164); the email without regard to case.
  */
-export async function approvedMatch(email: string, mt5Login: string): Promise<{ id: string; visitorId: string } | null> {
+export async function approvedMatch(email: string, phone: string): Promise<{ id: string; visitorId: string } | null> {
   const db = getSupabaseAdmin();
-  if (!db || !email || !mt5Login) return null;
+  if (!db || !email || !phone) return null;
   const { data, error } = await db
     .from(TABLE)
     .select("id, visitor_id")
     .eq("status", "approved")
     .not("code", "is", null)
     .ilike("email", email)
-    .eq("mt5_login", mt5Login)
+    .eq("phone", phone)
     .order("decided_at", { ascending: false })
     .limit(1)
     .maybeSingle();
