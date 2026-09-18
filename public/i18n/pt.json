@@ -2362,5 +2362,15 @@
 "That phone number does not look right — choose the country and type the number.":"Esse número de telefone não parece certo — escolha o país e digite o número.",
 "Choose WhatsApp or Telegram so we know where to reach you.":"Escolha WhatsApp ou Telegram para sabermos onde falar com você.",
 "Paste it into step 5 on the bot's page to unlock the download. It works only on this browser, {n} times.":"Cole no passo 5 da página do bot para liberar o download. Funciona só neste navegador, {n} vezes.",
-"We are checking your details against our Headway partner list now. Your code arrives in the":"Estamos verificando os seus dados na nossa lista de parceiros Headway. Seu código chega na"
+"We are checking your details against our Headway partner list now. Your code arrives in the":"Estamos verificando os seus dados na nossa lista de parceiros Headway. Seu código chega na",
+"We checked again and your Headway account — {name} ({email}) — is still not showing under our partner group.":"Verificamos de novo e a sua conta Headway — {name} ({email}) — ainda não aparece no nosso grupo de parceiros.",
+"Requested the General MT5 EA — {email}.":"Solicitado o EA General MT5 — {email}.",
+"Asked for the General MT5 EA again — {email}.":"Solicitado de novo o EA General MT5 — {email}.",
+"Requested the Shalobot EA — {email}.":"Solicitado o EA da Shalobot — {email}.",
+"Asked for the Shalobot EA again — {email}.":"Solicitado de novo o EA da Shalobot — {email}.",
+"<b>Downloaded the EA?</b> Tell support and we guide you through setting it up and using it the right way.":"<b>Baixou o EA?</b> Avise o suporte e nós orientamos você a configurá-lo e usá-lo do jeito certo.",
+"Downloaded the EA?":"Baixou o EA?",
+"Tell support and we guide you through setting it up and using it the right way.":"Avise o suporte e nós orientamos você a configurá-lo e usá-lo do jeito certo.",
+"I have downloaded the EA":"Já baixei o EA",
+"I have downloaded the EA — please guide me on how to set it up and use it the right way.":"Já baixei o EA — por favor me orientem a configurá-lo e usá-lo do jeito certo."
 }

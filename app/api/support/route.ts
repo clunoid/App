@@ -3,6 +3,7 @@ import { requireUser } from "@/lib/auth/requireUser";
 import { sendSupportMessage, MAX_UPLOAD_BYTES, ALLOWED_TYPES } from "@/lib/support/telegram";
 import { recordInbound, historyFor } from "@/lib/support/threads";
 import { isBanned } from "@/lib/support/bans";
+import { accessStatusFor, accessStatusLine } from "@/lib/deriv/mt5/eaAccess";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -54,13 +55,13 @@ export async function GET() {
 
 type Parsed = {
   email: string; message: string; name: string; country: string;
-  page: string; source: string; visitorId: string;
+  page: string; source: string; visitorId: string; kind: string;
   photo: { data: ArrayBuffer; filename: string; type: string } | null;
   error?: string;
 };
 
 async function parse(req: NextRequest): Promise<Parsed> {
-  const empty: Parsed = { email: "", message: "", name: "", country: "", page: "", source: "", visitorId: "", photo: null };
+  const empty: Parsed = { email: "", message: "", name: "", country: "", page: "", source: "", visitorId: "", kind: "", photo: null };
 
   if ((req.headers.get("content-type") || "").includes("multipart/form-data")) {
     const form = await req.formData().catch(() => null);
@@ -75,6 +76,7 @@ async function parse(req: NextRequest): Promise<Parsed> {
       page: str(form.get("page"), 200),
       source: str(form.get("source"), 60),
       visitorId: str(form.get("visitorId"), 16),
+      kind: str(form.get("kind"), 24),
     };
 
     const file = form.get("file");
@@ -104,6 +106,7 @@ async function parse(req: NextRequest): Promise<Parsed> {
     page: str(body.page, 200),
     source: str(body.source, 60),
     visitorId: str(body.visitorId, 16),
+    kind: str(body.kind, 24),
   };
 }
 
@@ -142,8 +145,10 @@ export async function POST(req: NextRequest) {
   // recorded, so it is the conversation up to now and never includes itself.
   // A failure here costs context, not delivery — the message still goes.
   const history = await historyFor(p.visitorId);
+  const extra = p.kind === "ea-downloaded" ? accessStatusLine(await accessStatusFor(p.visitorId)) : "";
 
   const sent = await sendSupportMessage({
+    extra,
     email,
     message: p.message || "(screenshot only)",
     name: p.name || null,

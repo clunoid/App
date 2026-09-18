@@ -48,6 +48,8 @@ export type SupportMessage = {
   visitorId?: string | null;
   /** A screenshot, when they attached one. */
   photo?: { data: ArrayBuffer; filename: string; type: string } | null;
+  /** One more header line, already HTML — e.g. the EA access status. */
+  extra?: string | null;
   /** Everything already said to this person, oldest first. Empty on a first
    *  message, which is why the history block simply does not appear then. */
   history?: { from: "them" | "us"; body: string; at: string }[];
@@ -150,6 +152,7 @@ export async function sendSupportMessage(m: SupportMessage): Promise<number | nu
     m.country ? `<b>Country:</b> ${esc(m.country)}` : "",
     m.page ? `<b>Page:</b> ${esc(m.page)}` : "",
     m.visitorId ? `<b>Person:</b> <code>${esc(m.visitorId)}</code>` : "",
+    m.extra || "",
   ].filter(Boolean).join("\n");
 
   const lines = [header, renderHistory(m.history ?? []), esc(m.message)].filter(Boolean);

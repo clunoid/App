@@ -2362,5 +2362,15 @@
 "That phone number does not look right — choose the country and type the number.":"Ce numéro de téléphone ne semble pas correct — choisissez le pays et saisissez le numéro.",
 "Choose WhatsApp or Telegram so we know where to reach you.":"Choisissez WhatsApp ou Telegram pour que nous sachions où vous joindre.",
 "Paste it into step 5 on the bot's page to unlock the download. It works only on this browser, {n} times.":"Collez-le à l’étape 5 de la page du bot pour débloquer le téléchargement. Il ne fonctionne que sur ce navigateur, {n} fois.",
-"We are checking your details against our Headway partner list now. Your code arrives in the":"Nous vérifions vos informations dans notre liste partenaire Headway. Votre code arrive dans la"
+"We are checking your details against our Headway partner list now. Your code arrives in the":"Nous vérifions vos informations dans notre liste partenaire Headway. Votre code arrive dans la",
+"We checked again and your Headway account — {name} ({email}) — is still not showing under our partner group.":"Nous avons vérifié à nouveau et votre compte Headway — {name} ({email}) — n’apparaît toujours pas dans notre groupe partenaire.",
+"Requested the General MT5 EA — {email}.":"Demande de l’EA General MT5 — {email}.",
+"Asked for the General MT5 EA again — {email}.":"Nouvelle demande de l’EA General MT5 — {email}.",
+"Requested the Shalobot EA — {email}.":"Demande de l’EA Shalobot — {email}.",
+"Asked for the Shalobot EA again — {email}.":"Nouvelle demande de l’EA Shalobot — {email}.",
+"<b>Downloaded the EA?</b> Tell support and we guide you through setting it up and using it the right way.":"<b>EA téléchargé ?</b> Prévenez le support et nous vous guidons pour l’installer et l’utiliser correctement.",
+"Downloaded the EA?":"EA téléchargé ?",
+"Tell support and we guide you through setting it up and using it the right way.":"Prévenez le support et nous vous guidons pour l’installer et l’utiliser correctement.",
+"I have downloaded the EA":"J’ai téléchargé l’EA",
+"I have downloaded the EA — please guide me on how to set it up and use it the right way.":"J’ai téléchargé l’EA — merci de me guider pour l’installer et l’utiliser correctement."
 }

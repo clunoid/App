@@ -464,21 +464,62 @@ export async function approvedCodeFor(visitorId: string): Promise<ApprovedCode |
  * were approved with, and gets a fresh code without waiting. The phone is
  * compared exactly (E.164); the email without regard to case.
  */
-export async function approvedMatch(email: string, phone: string): Promise<{ id: string; visitorId: string } | null> {
+export async function approvedMatch(email: string, phone: string, name = ""): Promise<{ id: string; visitorId: string } | null> {
   const db = getSupabaseAdmin();
-  if (!db || !email || !phone) return null;
-  const { data, error } = await db
+  if (!db || !email || (!phone && !name)) return null;
+  // With a phone, email + phone must both match; without one, email + the exact name.
+  let q = db
     .from(TABLE)
     .select("id, visitor_id")
     .eq("status", "approved")
     .not("code", "is", null)
-    .ilike("email", email)
-    .eq("phone", phone)
+    .ilike("email", email);
+  q = phone ? q.eq("phone", phone) : q.ilike("name", name);
+  const { data, error } = await q
     .order("decided_at", { ascending: false })
     .limit(1)
     .maybeSingle();
   if (error) { console.error("[ea] match lookup failed:", error.message); return null; }
   return data ? { id: data.id as string, visitorId: data.visitor_id as string } : null;
+}
+
+/**
+ * Where this browser stands with the EA — for the moment somebody says "I have
+ * downloaded it": approved (and when, and whether the code was actually used),
+ * still waiting, declined, or never asked. Read from the rows, not from what
+ * the person claims, because the button is easy to press by mistake.
+ */
+export type AccessStatus =
+  | { state: "unknown" | "none" }
+  | { state: "approved"; code: string; uses: number; usedAt: string | null; at: string | null }
+  | { state: "pending" | "declined"; at: string | null };
+export async function accessStatusFor(visitorId: string): Promise<AccessStatus> {
+  const db = getSupabaseAdmin();
+  if (!db || !visitorId) return { state: "unknown" };
+  const ok = await db.from(TABLE).select("code, code_uses, code_used_at, decided_at")
+    .eq("visitor_id", visitorId).eq("status", "approved").not("code", "is", null)
+    .order("decided_at", { ascending: false }).limit(1).maybeSingle();
+  const a = ok.data;
+  if (a?.code) return { state: "approved", code: a.code as string, uses: (a.code_uses as number | null) ?? 0, usedAt: (a.code_used_at as string | null) ?? null, at: (a.decided_at as string | null) ?? null };
+  const last = await db.from(TABLE).select("status, created_at, decided_at")
+    .eq("visitor_id", visitorId).order("created_at", { ascending: false }).limit(1).maybeSingle();
+  const d = last.data;
+  if (!d) return { state: "none" };
+  return { state: d.status === "declined" ? "declined" : "pending", at: ((d.decided_at || d.created_at) as string | null) ?? null };
+}
+
+/** One line the owner can act on: was this browser approved, and did it download? */
+export function accessStatusLine(s: AccessStatus): string {
+  const when = (iso: string | null) => (iso ? String(iso).replace("T", " ").slice(0, 16) + " UTC" : "?");
+  if (s.state === "unknown") return "";
+  if (s.state === "approved") {
+    return s.uses > 0
+      ? `<b>🤖 EA access:</b> ✅ approved ${when(s.at)} · code <code>${s.code}</code> used ${s.uses}/${MAX_CODE_USES} (downloaded ${when(s.usedAt)})`
+      : `<b>🤖 EA access:</b> 🟡 approved ${when(s.at)} · code <code>${s.code}</code> NOT used yet — nothing downloaded on this browser`;
+  }
+  if (s.state === "pending") return `<b>🤖 EA access:</b> ⚠️ NOT approved — request still waiting since ${when(s.at)}. Pressed too early?`;
+  if (s.state === "declined") return `<b>🤖 EA access:</b> ⛔ declined ${when(s.at)} — no code was issued`;
+  return "<b>🤖 EA access:</b> ⚠️ no request from this browser — not approved";
 }
 
 /**

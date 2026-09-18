@@ -74,8 +74,12 @@ export async function POST(req: NextRequest) {
   if (!visitorId) return NextResponse.json({ error: "Reload the page and try again." }, { status: 400 });
   if (name.length < 2) return NextResponse.json({ error: "Please give us your full name as registered at Headway." }, { status: 422 });
   if (!looksLikeEmail(email)) return NextResponse.json({ error: "That email does not look right." }, { status: 422 });
-  if (!/^\+[1-9]\d{6,14}$/.test(phone)) return NextResponse.json({ error: "That phone number does not look right — choose the country and type the number." }, { status: 422 });
-  if (!CHANNELS[contact]) return NextResponse.json({ error: "Choose WhatsApp or Telegram so we know where to reach you." }, { status: 422 });
+  // The name and email are what gets checked; the phone and the channel are how
+  // we guide them afterwards, welcome but not required.
+  if (phone && !/^\+[1-9]\d{6,14}$/.test(phone)) return NextResponse.json({ error: "That phone number does not look right — choose the country and type the number." }, { status: 422 });
+  if (contact && !CHANNELS[contact]) return NextResponse.json({ error: "Choose WhatsApp or Telegram so we know where to reach you." }, { status: 422 });
+  const via = CHANNELS[contact] || "";
+  const reach = phone ? `${phone}${via ? ` on ${via}` : ""}` : "no phone given";
   const where = country ? `${countryName(country)} (${country})${lang ? ` · ${lang}` : ""}` : (lang || null);
 
   /* Barred people are turned away before anything is recorded or sent, so a
@@ -115,19 +119,19 @@ export async function POST(req: NextRequest) {
      time are checked again, by machine, and a fresh code is issued to THIS
      browser at once. The owner is told, with everything needed to /ban if it
      looks wrong, but is not asked. */
-  const match = await approvedMatch(email, phone);
+  const match = await approvedMatch(email, phone, name);
   if (match) {
     const newId = await createRequest({ visitorId, mt5Login, name, email, page, phone, contact, country });
     const code = newId ? await approveRequest(newId) : null;
     if (code) {
       const why = already ? "your previous code was used up" : "you are on a new browser";
-      await recordInbound({ visitorId, body: `Asked for the General MT5 EA again — ${email}, ${phone} on ${CHANNELS[contact]}`, tgMessageId: null, email, name, source: "MT5 EA access", page: page || null });
+      await recordInbound({ visitorId, body: `Asked for the General MT5 EA again — ${email}, ${reach}`, tgMessageId: null, email, name, source: "MT5 EA access", page: page || null });
       await recordReply(visitorId, codeMessage(code, mt5Login,
         `Approved again automatically — same email and phone as before, and ${why}. Here is your new code:`));
       await sendSupportMessage({
         email, name, visitorId, page: page || null, source: "MT5 EA access — approved automatically", history: [], country: where,
         message: [
-          `📱 Phone: ${prettyPhone(phone)} · ${CHANNELS[contact]}: ${chatLink(phone, contact)}`,
+          phone ? `📱 Phone: ${prettyPhone(phone)}${via ? ` · ${via}: ${chatLink(phone, contact)}` : ""}` : "📱 Phone: not given",
           "",
           `Same email and phone as an earlier approval (${why}), so code ${code} was issued without asking.`,
           "",
@@ -149,8 +153,8 @@ export async function POST(req: NextRequest) {
     "",
     `👤 Name: ${name}`,
     `✉️ Email: ${email}`,
-    `📱 Phone: ${prettyPhone(phone)}`,
-    `💬 Contact on: ${CHANNELS[contact]} — ${chatLink(phone, contact)}`,
+    phone ? `📱 Phone: ${prettyPhone(phone)}` : "📱 Phone: not given",
+    ...(phone ? [via ? `💬 Contact on: ${via} — ${chatLink(phone, contact)}` : "💬 Contact on: not chosen"] : []),
     ...(where ? [`🌍 Country: ${where}`] : []),
     `🕒 Sent: ${when}`,
     "",
@@ -179,7 +183,7 @@ export async function POST(req: NextRequest) {
      about anything the whole exchange is attached. */
   await recordInbound({
     visitorId,
-    body: `Asked for the General MT5 EA — ${email}, ${phone} on ${CHANNELS[contact]}`,
+    body: `Asked for the General MT5 EA — ${email}, ${reach}`,
     tgMessageId: tgId,
     email,
     name,

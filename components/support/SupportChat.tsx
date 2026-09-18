@@ -145,6 +145,7 @@ export function SupportChat({ source, email: known, name: knownName, country }: 
   const [name, setName] = useState("");
   const [visitorId, setVisitorId] = useState("");
   const [text, setText] = useState("");
+  const [kind, setKind] = useState<string | null>(null);
   const [file, setFile] = useState<File | null>(null);
   const [thread, setThread] = useState<Line[]>([]);
   const [busy, setBusy] = useState(false);
@@ -284,6 +285,25 @@ export function SupportChat({ source, email: known, name: knownName, country }: 
     return () => window.removeEventListener("clunoid:support-open", onAsk);
   }, [remember]);
 
+  /* Send a line on the page's behalf, as if typed: the bubble opens, the words
+     go out with the thread attached, and `kind` tells our side what this is
+     (the EA "I have downloaded" button uses it, so the reply can say whether
+     this browser was ever approved). Missing name or email: the bubble opens
+     with the words waiting, and asks for them. */
+  const autoSend = useRef<string | null>(null);
+  useEffect(() => {
+    const onSend = (e: Event) => {
+      const d = (e as CustomEvent).detail as { text?: string; kind?: string } | undefined;
+      if (!d?.text) return;
+      setKind(d.kind || null);
+      setText(d.text);
+      autoSend.current = d.text;
+      setOpen(true);
+    };
+    window.addEventListener("clunoid:support-send", onSend);
+    return () => window.removeEventListener("clunoid:support-send", onSend);
+  }, []);
+
   /**
    * Collect anything the owner has replied.
    *
@@ -366,10 +386,11 @@ export function SupportChat({ source, email: known, name: knownName, country }: 
   const send = useCallback(async () => {
     if (busy) return;
     const message = text.trim();
+    const isAuto = kind !== null;
     if (message.length < 2 && !file) { setErr("Write your message first."); return; }
 
     // "hi" is not a question yet. Ask once, then take them at their word.
-    if (!file && !nudged && isJustAGreeting(message)) {
+    if (!file && !nudged && !isAuto && isJustAGreeting(message)) {
       setNudged(true);
       try { localStorage.setItem(NUDGED_KEY, "1"); } catch { /* private mode */ }
       remember({ id: crypto.randomUUID?.() ?? String(Math.random()), text: message, at: new Date().toISOString(), from: "them", sent: false });
@@ -393,7 +414,8 @@ export function SupportChat({ source, email: known, name: knownName, country }: 
       form.append("email", email);
       form.append("name", name.trim());
       form.append("message", message);
-      form.append("source", source);
+      form.append("source", kind === "ea-downloaded" ? "MT5 EA — downloaded, wants setup guidance" : source);
+      if (kind) form.append("kind", kind);
       form.append("visitorId", visitorId);
       if (country) form.append("country", country);
       if (typeof window !== "undefined") form.append("page", window.location.pathname);
@@ -414,12 +436,19 @@ export function SupportChat({ source, email: known, name: knownName, country }: 
       });
       setText("");
       setFile(null);
+      setKind(null);
       setEditWho(false);
       if (fileRef.current) fileRef.current.value = "";
     } catch {
       setErr("We could not reach you just now. Try again in a minute.");
     } finally { setBusy(false); }
-  }, [busy, text, file, email, name, source, visitorId, country, nudged, remember]);
+  }, [busy, text, file, email, name, source, visitorId, country, nudged, remember, kind]);
+
+  /* The page-sent line goes out the moment it is in the box and the bubble is
+     open — once; if a name or email is missing, send() asks and the words wait. */
+  useEffect(() => {
+    if (open && autoSend.current && text === autoSend.current) { autoSend.current = null; void send(); }
+  }, [open, text, send]);
 
   const needsWho = editWho || !isEmail(email) || !name.trim();
 

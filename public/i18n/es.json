@@ -2362,5 +2362,15 @@
 "That phone number does not look right — choose the country and type the number.":"Ese número de teléfono no parece correcto — elige el país y escribe el número.",
 "Choose WhatsApp or Telegram so we know where to reach you.":"Elige WhatsApp o Telegram para saber dónde contactarte.",
 "Paste it into step 5 on the bot's page to unlock the download. It works only on this browser, {n} times.":"Pégalo en el paso 5 de la página del bot para desbloquear la descarga. Solo funciona en este navegador, {n} veces.",
-"We are checking your details against our Headway partner list now. Your code arrives in the":"Estamos comprobando tus datos con nuestra lista de socios de Headway. Tu código llega a la"
+"We are checking your details against our Headway partner list now. Your code arrives in the":"Estamos comprobando tus datos con nuestra lista de socios de Headway. Tu código llega a la",
+"We checked again and your Headway account — {name} ({email}) — is still not showing under our partner group.":"Volvimos a comprobar y tu cuenta de Headway — {name} ({email}) — sigue sin aparecer en nuestro grupo de socios.",
+"Requested the General MT5 EA — {email}.":"Solicitado el EA General MT5 — {email}.",
+"Asked for the General MT5 EA again — {email}.":"Solicitado de nuevo el EA General MT5 — {email}.",
+"Requested the Shalobot EA — {email}.":"Solicitado el EA de Shalobot — {email}.",
+"Asked for the Shalobot EA again — {email}.":"Solicitado de nuevo el EA de Shalobot — {email}.",
+"<b>Downloaded the EA?</b> Tell support and we guide you through setting it up and using it the right way.":"<b>¿Ya descargaste el EA?</b> Avisa a soporte y te guiamos para configurarlo y usarlo de la forma correcta.",
+"Downloaded the EA?":"¿Ya descargaste el EA?",
+"Tell support and we guide you through setting it up and using it the right way.":"Avisa a soporte y te guiamos para configurarlo y usarlo de la forma correcta.",
+"I have downloaded the EA":"Ya descargué el EA",
+"I have downloaded the EA — please guide me on how to set it up and use it the right way.":"Ya descargué el EA — por favor guíenme para configurarlo y usarlo de la forma correcta."
 }

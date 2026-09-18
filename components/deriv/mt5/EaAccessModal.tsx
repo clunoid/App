@@ -184,7 +184,9 @@ export function EaAccessModal({ open, onClose }: { open: boolean; onClose: () =>
           email: email.trim(),
           text: BROKER === "deriv"
             ? `Requested the General MT5 EA — client / MT5 ID ${clientId.trim()}.`
-            : t("Requested the General MT5 EA — {email}, {phone} on {channel}.", { email: email.trim(), phone: toE164(country, phone), channel: chan === "telegram" ? "Telegram" : "WhatsApp" }),
+            : (toE164(country, phone)
+                ? t("Requested the General MT5 EA — {email}, {phone} on {channel}.", { email: email.trim(), phone: toE164(country, phone), channel: chan === "telegram" ? "Telegram" : (chan === "whatsapp" ? "WhatsApp" : "—") })
+                : t("Requested the General MT5 EA — {email}.", { email: email.trim() })),
         },
       }));
     } catch (e) {
@@ -221,7 +223,9 @@ export function EaAccessModal({ open, onClose }: { open: boolean; onClose: () =>
 
   /* Only that they typed something. Client IDs come in more than one shape, so
      any check tighter than this greys the button out on a real one. */
-  const idOk = BROKER === "deriv" ? clientId.trim().length > 0 : (toE164(country, phone) !== "" && chan !== "");
+  // The name and email are what gets checked, so they are what unlocks the
+  // button. A phone, if typed, has to be a phone; the channel is optional.
+  const idOk = BROKER === "deriv" ? clientId.trim().length > 0 : (phone.replace(/\D/g, "") === "" || toE164(country, phone) !== "");
   const formOk = idOk && name.trim().length > 1 &&
     /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email.trim());
 

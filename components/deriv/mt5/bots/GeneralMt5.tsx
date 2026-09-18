@@ -11,7 +11,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
   ArrowLeft, Loader2, RefreshCw, Bot, Shield, Zap, Gauge, TrendingUp, TrendingDown,
-  Layers, Download, CheckCircle2, CircleDashed,
+  Layers, Download, CheckCircle2, CircleDashed, Check,
 } from "lucide-react";
 import { TC, DOT_GRID, monoFont } from "@/lib/trading/theme";
 import { EaAccessModal } from "@/components/deriv/mt5/EaAccessModal";
@@ -21,6 +21,14 @@ import { PROFILE_LIST } from "@/lib/deriv/mt5/profiles";
 import { LIVE_CATEGORIES } from "@/lib/deriv/mt5/markets";
 import type { RiskProfile, Side } from "@/lib/deriv/mt5/types";
 import { t, useLang } from "@/lib/i18n/t";
+
+/** "I have downloaded the EA": one tap sends the words to support, with the
+ *  whole thread and our record of whether this browser was ever approved. */
+function tellDownloaded() {
+  window.dispatchEvent(new CustomEvent("clunoid:support-send", {
+    detail: { text: t("I have downloaded the EA — please guide me on how to set it up and use it the right way."), kind: "ea-downloaded" },
+  }));
+}
 
 type ApiSignal = {
   symbol: string; name: string; side: Side; regime: string; confidence: number;
@@ -132,6 +140,12 @@ export function GeneralMt5() {
                 <>Drag it onto <b style={{ color: TC.text }}>any one chart</b>, set <code style={cx}>InpProfile</code> to your risk level, and enable <b style={{ color: TC.text }}>Algo Trading</b> — the toolbar button must be green: <AlgoToggle on text={TC.text} panel={TC.panelSolid} /> is <b style={{ color: TC.text }}>on</b>, <AlgoToggle on={false} text={TC.text} panel={TC.panelSolid} /> is <b style={{ color: TC.text }}>off</b>.</>,
                 <>(Recommended) Right-click the bot → <b style={{ color: TC.text }}>Register a Virtual Server</b> so it keeps trading with your computer off.</>,
                 <><b style={{ color: TC.text }}>Make sure you have followed every step above, in order.</b> A skipped step — the WebRequest address, Algo Trading, the risk profile — is the usual reason a bot sits idle.</>,
+                <><b style={{ color: TC.text }}>Downloaded the EA?</b> Tell support and we guide you through setting it up and using it the right way.{" "}
+                  <button type="button" onClick={tellDownloaded}
+                    className="ml-1 inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 align-middle text-[11.5px] font-semibold transition hover:bg-white/5"
+                    style={{ borderColor: "rgba(56,189,248,0.55)", background: "rgba(56,189,248,0.08)", color: ACCENT }}>
+                    <Check size={12} />I have downloaded the EA
+                  </button></>,
               ].map((step, i) => (
                 <li key={i} className="flex gap-3">
                   <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-[12px] font-bold" style={{ background: "rgba(56,189,248,0.16)", color: ACCENT }}>{i + 1}</span>
