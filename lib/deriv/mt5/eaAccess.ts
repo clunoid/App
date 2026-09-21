@@ -87,7 +87,12 @@ export type EaRequest = {
   country: string;
   status: "pending" | "approved" | "declined";
   code: string | null;
+  /** When it was sent — what the waiting list orders by and shows. */
+  createdAt?: string | null;
 };
+
+/** One entry of the waiting list: a person, with everything open of theirs folded in. */
+export type WaitingPerson = EaRequest & { requests: number; otherEmails: string[]; firstAt: string | null };
 
 /**
  * A code that is easy to read off a phone and type into a box.
@@ -161,7 +166,7 @@ export async function requestForTelegramMessage(tgMessageId: number): Promise<Ea
 
   const { data, error } = await db
     .from(TABLE)
-    .select("id, visitor_id, mt5_login, name, email, phone, contact, country, status, code")
+    .select("id, visitor_id, mt5_login, name, email, phone, contact, country, status, code, created_at")
     .eq("tg_message_id", tgMessageId)
     .limit(1)
     .maybeSingle();
@@ -183,6 +188,7 @@ export async function requestForTelegramMessage(tgMessageId: number): Promise<Ea
     country: (data.country as string | null) ?? "",
     status: data.status as EaRequest["status"],
     code: (data.code as string) ?? null,
+    createdAt: (data.created_at as string | null) ?? null,
   };
 }
 
@@ -301,7 +307,7 @@ export async function pendingRequests(limit = 20): Promise<EaRequest[]> {
 
   const { data, error } = await db
     .from(TABLE)
-    .select("id, visitor_id, mt5_login, name, email, phone, contact, country, status, code")
+    .select("id, visitor_id, mt5_login, name, email, phone, contact, country, status, code, created_at")
     .eq("status", "pending")
     /* Answered by hand is not waiting. Replying to somebody puts their request
        in your hands without deciding it, and the queue has to agree or it keeps
@@ -353,7 +359,62 @@ export async function pendingRequests(limit = 20): Promise<EaRequest[]> {
       country: (d.country as string | null) ?? "",
       status: d.status as EaRequest["status"],
       code: (d.code as string) ?? null,
+      createdAt: (d.created_at as string | null) ?? null,
     }));
+}
+
+/**
+ * The waiting list, one entry per PERSON.
+ *
+ * A decision settles every open row of a person, so listing their rows one by
+ * one would show the same decision several times. Each entry is their newest
+ * request, with how many are open and any other email they sent under —
+ * a typo they corrected is still the same person. Longest waiting first,
+ * so the person at the back of the queue is the one at the top.
+ */
+export async function waitingPeople(): Promise<WaitingPerson[]> {
+  const rows = await pendingRequests(200);
+  const people: WaitingPerson[] = [];
+  const byVisitor = new Map<string, WaitingPerson>();
+  for (const r of rows) {
+    const key = r.visitorId || r.id;
+    let p = byVisitor.get(key);
+    if (!p) {
+      p = { ...r, requests: 1, otherEmails: [], firstAt: r.createdAt ?? null };
+      byVisitor.set(key, p); people.push(p);
+      continue;
+    }
+    p.requests += 1;
+    p.firstAt = r.createdAt ?? p.firstAt;
+    const e = (r.email || "").toLowerCase();
+    if (e && e !== (p.email || "").toLowerCase() && !p.otherEmails.includes(r.email)) p.otherEmails.push(r.email);
+    if (!p.phone && r.phone) { p.phone = r.phone; p.contact = r.contact; }
+  }
+  return people.sort((a, b) => (a.firstAt || "").localeCompare(b.firstAt || ""));
+}
+
+/**
+ * The request a typed ID points at: a visitor ID first — the one shown in
+ * the request and in the waiting list — then an email, a phone or a login,
+ * matched against what is waiting. A visitor ID that is not on the waiting
+ * list still finds that person's request (asked to deposit, say), because
+ * /approve on it is exactly how they get their code when they come back.
+ */
+export async function requestForKey(key: string, waiting?: WaitingPerson[]): Promise<EaRequest | null> {
+  const k = (key || "").trim();
+  if (!k) return null;
+  const low = k.toLowerCase();
+  const list = waiting ?? (await waitingPeople());
+  const hit = list.find((w) => (w.visitorId || "").toLowerCase() === low)
+    ?? list.find((w) => (w.email && w.email.toLowerCase() === low) || (w.phone && w.phone === k) || w.mt5Login === k);
+  if (hit) return hit;
+  if (!k.includes("@") && /^[A-Za-z0-9-]{6,64}$/.test(k)) {
+    // Case is whatever they typed; the stored id is what the site made.
+    const exact = await requestForVisitor(k);
+    if (exact) return exact;
+    if (k !== k.toUpperCase()) return requestForVisitor(k.toUpperCase());
+  }
+  return null;
 }
 
 /**
@@ -407,7 +468,7 @@ export async function requestForVisitor(visitorId: string): Promise<EaRequest | 
   const pick = async (pendingOnly: boolean) => {
     let q = db
       .from(TABLE)
-      .select("id, visitor_id, mt5_login, name, email, phone, contact, country, status, code")
+      .select("id, visitor_id, mt5_login, name, email, phone, contact, country, status, code, created_at")
       .eq("visitor_id", visitorId);
     if (pendingOnly) q = q.eq("status", "pending");
     const { data, error } = await q
@@ -435,6 +496,7 @@ export async function requestForVisitor(visitorId: string): Promise<EaRequest | 
     country: (d.country as string | null) ?? "",
     status: d.status as EaRequest["status"],
     code: (d.code as string) ?? null,
+    createdAt: (d.created_at as string | null) ?? null,
   };
 }
 

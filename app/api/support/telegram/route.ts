@@ -3,7 +3,7 @@ import { visitorForTelegramMessage, recordReply, listPeople } from "@/lib/suppor
 import { isBanned, banPerson, unbanPerson, listBans, clearBans, findBan } from "@/lib/support/bans";
 import { saveTelegramFile, type Attachment } from "@/lib/support/files";
 import {
-  requestForTelegramMessage, requestForVisitor, pendingRequests, approveRequest, declineRequest,
+  requestForTelegramMessage, requestForVisitor, waitingPeople, requestForKey, approveRequest, declineRequest,
   markAnswered, PARTNER_ID, codeMessage, depositMessage, MISTAKE_LINE,
   DERIV_PROFILE, EXAMPLE_CLIENT_ID, DERIV_SIGNUP, declineCount,
   type EaRequest,
@@ -50,6 +50,67 @@ async function say(chatId: number, text: string, replyTo?: number) {
     }),
     cache: "no-store",
   }).catch(() => { /* nothing useful to do about it here */ });
+}
+
+const esc = (s: unknown) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+const countryName = (iso: string) => { try { return new Intl.DisplayNames(["en"], { type: "region" }).of(iso) || iso; } catch { return iso; } };
+const prettyPhone = (p: string) => (p || "").replace(/^(\+\d{1,3})(\d{3})(\d{3})(\d+)$/, "$1 $2 $3 $4");
+const CHANNEL: Record<string, string> = { whatsapp: "WhatsApp", telegram: "Telegram" };
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** "18 Sep 14:41 UTC · 3 days ago" — when it was sent, and how long it has waited. */
+function when(iso: string | null | undefined): string {
+  const d = iso ? new Date(iso) : null;
+  if (!d || isNaN(d.getTime())) return "";
+  const stamp = `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]} ${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")} UTC`;
+  const mins = Math.max(0, Math.round((Date.now() - d.getTime()) / 60000));
+  const ago = mins < 2 ? "just now" : mins < 60 ? `${mins} min ago` : mins < 2880 ? `${Math.round(mins / 60)} h ago` : `${Math.round(mins / 1440)} days ago`;
+  return `${stamp} · ${ago}`;
+}
+
+/**
+ * THE WAITING LIST — everyone still owed a decision, one entry per person,
+ * each with the ID that addresses them. Tap the ID in Telegram and it is
+ * copied; the command with that ID after it reaches exactly that person, in
+ * the support window of the browser they asked from. Long lists go out in
+ * several messages, because Telegram stops at 4096 characters.
+ */
+async function sayWaiting(chatId: number, replyTo?: number, lead?: string) {
+  const people = await waitingPeople();
+  if (!people.length) {
+    await say(chatId, `${lead ? lead + "\n\n" : ""}Nothing is waiting for a decision right now. Everyone who asked has been answered.`, replyTo);
+    return;
+  }
+  const entries = people.map((p, i) => [
+    `${i + 1}. <b>${esc(p.name || "(no name)")}</b>`,
+    `   ✉️ ${esc(p.email || "(no email)")}${p.otherEmails.length ? ` (also sent as ${p.otherEmails.map(esc).join(", ")})` : ""}`,
+    `   📱 ${p.phone ? `${esc(prettyPhone(p.phone))}${CHANNEL[p.contact] ? ` · ${CHANNEL[p.contact]}` : ""}` : "no phone given"}`,
+    p.country ? `   🌍 ${esc(countryName(p.country))} (${esc(p.country)})` : "",
+    `   🕒 ${when(p.firstAt || p.createdAt)}${p.requests > 1 ? ` · asked ${p.requests} times, last ${when(p.createdAt).split(" · ")[1] || ""} — one decision settles all` : ""}`,
+    `   🆔 <code>${esc(p.visitorId)}</code>`,
+  ].filter(Boolean).join("\n"));
+
+  const head = `${lead ? lead + "\n\n" : ""}📋 <b>Waiting for a decision — ${people.length} ${people.length === 1 ? "person" : "people"}</b> — longest waiting first`;
+  const foot = [
+    "Tap an ID to copy it, then send the command with it:",
+    `<code>/approve ${esc(people[0].visitorId)}</code> — send the code`,
+    `<code>/decline ${esc(people[0].visitorId)} your reason</code> — turn it down`,
+    `<code>/deposit ${esc(people[0].visitorId)}</code> — under us, but not funded yet`,
+    "",
+    "Swipe-replying to any message from that person still works too.",
+  ].join("\n");
+
+  const LIMIT = 3800;
+  const chunks: string[] = [];
+  let cur = head;
+  for (const e of entries) {
+    if ((cur + "\n\n" + e).length > LIMIT) { chunks.push(cur); cur = e; }
+    else cur += "\n\n" + e;
+  }
+  if ((cur + "\n\n" + foot).length > LIMIT) { chunks.push(cur); cur = foot; }
+  else cur += "\n\n" + foot;
+  chunks.push(cur);
+  for (let i = 0; i < chunks.length; i++) await say(chatId, chunks[i], i === 0 ? replyTo : undefined);
 }
 
 export async function POST(req: NextRequest) {
@@ -101,13 +162,21 @@ export async function POST(req: NextRequest) {
   //                              reasonable way of answering.
   //   . /approve 12345678      - names the ID, for when several are waiting
   //
-  // Without a reply the outstanding requests are looked up. One waiting needs
-  // no disambiguation and is the ordinary case; with several it asks rather
-  // than guessing, because approving the wrong person cannot be taken back.
+  // Without a reply the command needs the person's ID after it — the one
+  // shown in the request and in the waiting list. The bare command, with
+  // nothing to point at anyone, shows the waiting list instead of guessing:
+  // everyone still owed a decision, each with an ID to copy, because
+  // approving the wrong person cannot be taken back.
+  if (/^\/(waiting|pending|list)(?:@[A-Za-z0-9_]+)?\b/i.test(text)) {
+    await sayWaiting(chatId, msg?.message_id);
+    return NextResponse.json({ ok: true });
+  }
+
   const cmd = /^\/(approve|decline|deposit)(?:@[A-Za-z0-9_]+)?\b/i.exec(text);
   if (cmd) {
     const isApprove = /^approve$/i.test(cmd[1]);
     const isDeposit = /^deposit$/i.test(cmd[1]);
+    const verb = cmd[1].toLowerCase();
     let reason = text.slice(cmd[0].length).trim();
     let reqst: EaRequest | null = null;
 
@@ -135,35 +204,18 @@ export async function POST(req: NextRequest) {
          prompt above it offers whatever the person typed — a UUID, or the
          placeholder text — so the command it told you to send bounced. */
       const named = reason.match(/^(\S{4,64})\b/);
-      const waiting = await pendingRequests(20);
-
-      if (named) {
-        const key = named[1].toLowerCase();
-        reqst = waiting.find((w) => (w.phone && w.phone === named[1]) || w.mt5Login === named[1] || w.email.toLowerCase() === key) ?? null;
-        if (!reqst) {
-          await say(chatId, `Nothing is waiting for a decision with ID <code>${named[1]}</code>.`, msg?.message_id);
-          return NextResponse.json({ ok: true });
-        }
-        reason = reason.slice(named[0].length).trim();
-      } else if (waiting.length === 1) {
-        reqst = waiting[0];
-      } else if (waiting.length > 1) {
-        await say(
-          chatId,
-          [
-            `${waiting.length} requests are waiting. Say which one:`,
-            "",
-            ...waiting.slice(0, 8).map((w) => `- ${w.name} \u2014 <code>${w.email}</code>${w.phone ? ` · ${w.phone}` : ""}`),
-            "",
-            `Send <code>/${isApprove ? "approve" : "decline"} ${waiting[0].email}</code>, or swipe-reply to the one you mean.`,
-          ].join("\n"),
-          msg?.message_id,
-        );
-        return NextResponse.json({ ok: true });
-      } else {
-        await say(chatId, "Nothing is waiting for a decision right now.", msg?.message_id);
+      if (!named) {
+        await sayWaiting(chatId, msg?.message_id);
         return NextResponse.json({ ok: true });
       }
+      reqst = await requestForKey(named[1]);
+      if (!reqst) {
+        // A word that is nobody — a reason typed without an ID, or a typo in
+        // one. The list is the answer either way: pick the ID from it.
+        await sayWaiting(chatId, msg?.message_id, `<code>${esc(named[1])}</code> matches nobody, so nothing was ${verb === "approve" ? "approved" : verb === "decline" ? "declined" : "sent"}. Put the person's ID right after <code>/${verb}</code>:`);
+        return NextResponse.json({ ok: true });
+      }
+      reason = reason.slice(named[0].length).trim();
     }
 
     if (!reqst) {
@@ -537,7 +589,9 @@ export async function POST(req: NextRequest) {
         "",
         "Typing here without replying to a message sends it nowhere — there is no way to tell who it was meant for.",
         "",
-        "<b>MT5 EA requests:</b> send <code>/approve</code> to issue a download code, or <code>/decline your reason</code> to turn it down. Tapping the command in the request works, and so does typing it — no reply needed while only one request is waiting. With several waiting, add the ID: <code>/approve 12345678</code>. Anybody already approved is not listed — they hold a code, so there is nothing left to decide.",
+        "<b>MT5 EA requests:</b> swipe-reply to the request with <code>/approve</code> to issue a download code, <code>/decline your reason</code> to turn it down, or <code>/deposit</code> when the account is under us but not funded yet. Without a reply, the same commands need the person's ID — the one shown in the request: <code>/approve CDED1137</code>.",
+        "",
+        "<b>The waiting list:</b> send <code>/approve</code>, <code>/decline</code>, <code>/deposit</code> or <code>/waiting</code> on its own and everyone still owed a decision is listed — name, email, phone, when they asked — each with an ID you tap to copy. Anybody already approved or already answered is not listed.",
         "",
         "<b>Keeping people out:</b> swipe-reply and send <code>/ban</code> (add a reason if you want one recorded), or <code>/ban their@email</code>. Their messages and requests stop reaching you and they are told nothing. <code>/unban</code> lifts it. <code>/bans</code> is the list, <code>/bans clear</code> tidies the lifted ones and <code>/bans clear all</code> empties it.",
         "",
@@ -545,7 +599,7 @@ export async function POST(req: NextRequest) {
       ].join("\n"),
     );
   } else if (/^\/(help|status)\b/.test(text)) {
-    await say(chatId, "Swipe-reply to a support message to answer it. For an MT5 EA request send /approve or /decline — you only need to name an ID when several are waiting, and people already approved are never listed. /ban and /unban control who gets through, /bans is that list, /users is everyone who has written in. An ordinary message with no reply attached has no recipient.");
+    await say(chatId, "Swipe-reply to a support message to answer it. For an MT5 EA request swipe-reply with /approve, /decline reason or /deposit — or send the command on its own to see everyone waiting, each with an ID to copy, then /approve ID. /ban and /unban control who gets through, /bans is that list, /users is everyone who has written in. An ordinary message with no reply attached has no recipient.");
   } else if (hasFile) {
     await say(chatId, "That file went nowhere — I could not tell who it was for. <b>Swipe-reply</b> with it to the message from the person you are answering, and it will appear in their support window.");
   } else {
