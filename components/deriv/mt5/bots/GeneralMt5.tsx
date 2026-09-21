@@ -64,9 +64,16 @@ function DownloadedButton() {
       window.setTimeout(() => setJust(false), 900);
     };
     const onReply = () => setSent(stillWaiting());
+    // The same thread in another tab of this browser may be the one that receives our answer.
+    const onStorage = (e: StorageEvent) => { if (e.key === SUPPORT_THREAD_KEY || e.key === DL_LOCK) onReply(); };
     window.addEventListener("clunoid:support-sent", onSent);
     window.addEventListener("clunoid:support-reply", onReply);
-    return () => { window.removeEventListener("clunoid:support-sent", onSent); window.removeEventListener("clunoid:support-reply", onReply); };
+    window.addEventListener("storage", onStorage);
+    return () => {
+      window.removeEventListener("clunoid:support-sent", onSent);
+      window.removeEventListener("clunoid:support-reply", onReply);
+      window.removeEventListener("storage", onStorage);
+    };
   }, []);
   const tell = () => {
     if (sent) return;
