@@ -288,9 +288,7 @@ export function EaAccessModal({ open, onClose }: { open: boolean; onClose: () =>
           <div className="min-w-0 flex-1">
             <h2 className="text-[16px] font-bold" style={{ color: TC.text }}>Get the Clunoid EA</h2>
             <p className="mt-1 text-[12px] leading-snug" style={{ color: TC.muted }}>
-              The EA runs on <b style={{ color: TC.text }}>clunoid.com technology</b> — it asks our trading engine
-              for its signals as it trades. We share it with our own community only, so there are
-              a few steps first.
+              Built on <b style={{ color: TC.text }}>clunoid.com technology</b>. A few quick steps:
             </p>
           </div>
           <button type="button" onClick={onClose} aria-label="Close"
@@ -332,14 +330,14 @@ export function EaAccessModal({ open, onClose }: { open: boolean; onClose: () =>
                   </a>
                 </Step>
               ) : (
-                <Step n={1} title="Open an MT5 account with Headway" done={phase === "sent"}>
+                <Step n={1} title="Open a Headway account" done={phase === "sent"}>
                   {/* The way in: Headway's name on the button, and the same link
                       as a code to scan — a phone can open the account while the
                       desk keeps the terminal. */}
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-stretch">
                     <div className="min-w-0 flex-1">
                       <p className="text-[12px] leading-snug" style={{ color: TC.muted }}>
-                        Already have one under Clunoid? Skip to step 2. New to Headway? Open it through our link.
+                        Already under us? Skip ahead.
                       </p>
                       {/* The bonus, said once and loudly: amber on its own line. */}
                       <span className="mt-2 inline-flex max-w-full items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12.5px] font-extrabold"
@@ -354,7 +352,7 @@ export function EaAccessModal({ open, onClose }: { open: boolean; onClose: () =>
                         <ExternalLink size={13} style={{ color: TC.faint }} />
                       </a>
                       <p className="mt-1.5 text-[11.5px] leading-snug" style={{ color: TC.faint }}>
-                        Opening it through this link places the account under our partner group — that is what we check. Then come back here with the name and email you registered.
+                        Our link puts your account under our partner group.
                       </p>
                     </div>
                     <a href={HEADWAY_SIGNUP} target="_blank" rel="noopener noreferrer sponsored" aria-label="Scan to open a Headway account"
@@ -466,7 +464,13 @@ export function EaAccessModal({ open, onClose }: { open: boolean; onClose: () =>
                 </>
               ) : (
                 <>
-              <Step n={2} title="Name and email — as registered at Headway" done={phase === "sent"}>
+              <Step n={2} title="Make a deposit" done={phase === "sent"}>
+                <p className="text-[12px] leading-snug" style={{ color: TC.muted }}>
+                  Any amount you want to start with — Headway adds a <b style={{ color: TC.text }}>50% bonus</b>. Request the EA when you are ready to start trading.
+                </p>
+              </Step>
+
+              <Step n={3} title="Full name and email — as registered at Headway" done={phase === "sent"}>
                 <div className="grid gap-2 sm:grid-cols-2">
                   <input value={name} onChange={(e) => setName(e.target.value)}
                     placeholder="Full name" autoComplete="name"
@@ -478,18 +482,18 @@ export function EaAccessModal({ open, onClose }: { open: boolean; onClose: () =>
                     style={{ borderColor: TC.line, background: TC.bg, color: TC.text }} />
                 </div>
                 <p className="mt-1.5 text-[11.5px] leading-snug" style={{ color: TC.faint }}>
-                  Use the exact full name and email on your Headway account — that is how we find you on our partner list.
+                  Exactly as on your Headway account.
                 </p>
               </Step>
 
-              <Step n={3} title="Phone number" done={phase === "sent"}>
+              <Step n={4} title="Phone number" done={phase === "sent"}>
                 <PhoneField country={country} onCountry={(c) => setCountry(c)} value={phone} onChange={setPhone} />
                 <p className="mt-1.5 text-[11.5px] leading-snug" style={{ color: TC.faint }}>
-                  The number we reach you on after the download, to guide you through setting the EA up and using it the right way.
+                  We guide you on it after the download.
                 </p>
               </Step>
 
-              <Step n={4} title="Where should we contact you?" done={phase === "sent"}>
+              <Step n={5} title="Contact on" done={phase === "sent"}>
                 <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Contact channel">
                   {([["whatsapp", "WhatsApp"], ["telegram", "Telegram"]] as const).map(([k, label]) => (
                     <button key={k} type="button" role="radio" aria-checked={chan === k} onClick={() => setChan(k)}
@@ -502,9 +506,6 @@ export function EaAccessModal({ open, onClose }: { open: boolean; onClose: () =>
                     </button>
                   ))}
                 </div>
-                <p className="mt-1.5 text-[11.5px] leading-snug" style={{ color: TC.faint }}>
-                  On that number. We show you exactly how to use the EA so you start the right way.
-                </p>
 
                 {left === 0 && (
                   <p className="mt-2.5 rounded-xl border p-2.5 text-[12px] leading-snug"
@@ -524,9 +525,7 @@ export function EaAccessModal({ open, onClose }: { open: boolean; onClose: () =>
                 <div className="mb-3 rounded-xl border p-3 text-[12px] leading-snug"
                   style={{ borderColor: "rgba(34,197,94,0.35)", background: "rgba(34,197,94,0.08)", color: TC.text }}>
                   <span>
-                    <b>Sent.</b> We are checking your details against our Headway partner list now.
-                    Your code arrives in the <b>support window</b> — it has opened at the corner of
-                    this page, and the reply lands there.
+                    <b>Sent.</b> We check your Headway account and deposit now. Your code arrives in the <b>support window</b> at the corner of this page.
                   </span>
                   <button type="button" onClick={() => setWaitOpen(true)}
                     className="mt-2 block text-[12px] font-bold hover:underline" style={{ color: TC.profit }}>
@@ -535,7 +534,7 @@ export function EaAccessModal({ open, onClose }: { open: boolean; onClose: () =>
                 </div>
               )}
 
-              <Step n={5} title="Enter your download code" done={false}>
+              <Step n={6} title="Enter your download code" done={false}>
                 <div className="flex flex-wrap gap-2">
                   <input value={code} onChange={(e) => setCode(e.target.value)}
                     placeholder="CLU-XXXX-XXXX"
@@ -549,7 +548,7 @@ export function EaAccessModal({ open, onClose }: { open: boolean; onClose: () =>
                   </button>
                 </div>
                 <p className="mt-1.5 text-[11.5px]" style={{ color: TC.faint }}>
-                  Your code only works on this browser.
+                  Works on this browser only.
                 </p>
               </Step>
                 </>

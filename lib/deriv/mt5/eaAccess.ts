@@ -48,6 +48,22 @@ export const EA_FILE = "ClunoidMT5.mq5";
 /** A code is good for this many downloads, then it has to be issued again. */
 export const MAX_CODE_USES = 3;
 
+/** Every UNSUCCESSFUL answer — a decline, a deposit asked for — ends with this:
+ *  a wrong decision is a screenshot away from being fixed. A code is not an
+ *  answer that can be wrong, so it never carries it. */
+export const MISTAKE_LINE = "If we made a mistake, reply here with a screenshot of your Headway account and we will fix it right away.";
+
+/** What somebody is told when their account is under us but not funded yet. */
+export function depositMessage(email: string): string {
+  return [
+    `Your Headway account (${email}) is under our community — but it has no deposit yet, and the EA is for accounts ready to trade.`,
+    "",
+    "Deposit any amount you want to start with in your Headway personal area — Headway adds a 50% bonus — then reply here and we send your code right away.",
+    "",
+    MISTAKE_LINE,
+  ].join("\n");
+}
+
 /** The words that go with a code, wherever it is issued. The bubble draws
  *  the code line green and the ⚠ line red — those two conventions are what
  *  make them stand out, so keep each on a line of its own. */
@@ -55,7 +71,7 @@ export function codeMessage(code: string, mt5Login: string, lead: string): strin
   return [
     lead,
     "", code, "",
-    `Paste it into step 5 on the bot's page to unlock the download. It works only on this browser, ${MAX_CODE_USES} times.`,
+    `Paste it into step 6 on the bot's page to unlock the download. It works only on this browser, ${MAX_CODE_USES} times.`,
     `⚠ Works only on Headway, on the approved account. Any other broker or account receives wrong data.`,
   ].join("\n");
 }

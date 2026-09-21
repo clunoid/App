@@ -158,10 +158,10 @@ export async function POST(req: NextRequest) {
     ...(where ? [`🌍 Country: ${where}`] : []),
     `🕒 Sent: ${when}`,
     "",
-    `✅ To check: the name and email above under Headway Partner ID ${PARTNER_ID}.`,
+    `✅ To check: the name and email above under Headway Partner ID ${PARTNER_ID}, and that the account has a deposit.`,
     "",
     id
-      ? "Swipe-reply /approve to send them a code, or /decline <reason> to say no."
+      ? "Swipe-reply /approve to send the code · /decline <reason> to say no · /deposit if the account is under us but not funded yet."
       : "⚠️ This one could NOT be recorded, so /approve has nothing to issue a code against — the trading_ea_requests table is missing. Apply the migration, then ask them to send the form again. You can still reply to them normally.",
   ].join("\n");
 

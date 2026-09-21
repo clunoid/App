@@ -4,7 +4,7 @@ import { isBanned, banPerson, unbanPerson, listBans, clearBans, findBan } from "
 import { saveTelegramFile, type Attachment } from "@/lib/support/files";
 import {
   requestForTelegramMessage, requestForVisitor, pendingRequests, approveRequest, declineRequest,
-  markAnswered, PARTNER_ID, codeMessage,
+  markAnswered, PARTNER_ID, codeMessage, depositMessage, MISTAKE_LINE,
   DERIV_PROFILE, EXAMPLE_CLIENT_ID, DERIV_SIGNUP, declineCount,
   type EaRequest,
 } from "@/lib/deriv/mt5/eaAccess";
@@ -104,9 +104,10 @@ export async function POST(req: NextRequest) {
   // Without a reply the outstanding requests are looked up. One waiting needs
   // no disambiguation and is the ordinary case; with several it asks rather
   // than guessing, because approving the wrong person cannot be taken back.
-  const cmd = /^\/(approve|decline)(?:@[A-Za-z0-9_]+)?\b/i.exec(text);
+  const cmd = /^\/(approve|decline|deposit)(?:@[A-Za-z0-9_]+)?\b/i.exec(text);
   if (cmd) {
     const isApprove = /^approve$/i.test(cmd[1]);
+    const isDeposit = /^deposit$/i.test(cmd[1]);
     let reason = text.slice(cmd[0].length).trim();
     let reqst: EaRequest | null = null;
 
@@ -204,6 +205,19 @@ export async function POST(req: NextRequest) {
      * real outcome, and the others were never separately judged. */
     const alsoSettled = await markAnswered(reqst.visitorId);
 
+    /* Under us, but not funded: neither approved nor declined. They are told
+       to deposit — any amount, with the bonus — and the request leaves the
+       waiting list until they reply; a swipe-reply /approve on that reply
+       still finds it, because its status is untouched. */
+    if (isDeposit) {
+      const told = await recordReply(reqst.visitorId, depositMessage(reqst.email));
+      await say(chatId, told
+        ? `💳 ${reqst.name} (${reqst.email}) has been asked to deposit first. Their request waits — swipe-reply /approve when they come back funded.`
+        : `⚠️ Could not deliver the deposit message — tell ${reqst.email} yourself.`,
+        msg?.message_id);
+      return NextResponse.json({ ok: true });
+    }
+
     if (isApprove) {
       const code = await approveRequest(reqst.id);
       if (!code) {
@@ -254,6 +268,8 @@ export async function POST(req: NextRequest) {
             `Sign-up link: ${DERIV_SIGNUP}`,
             "",
             "Reply here once it is done and we will check again.",
+            "",
+            MISTAKE_LINE,
           ].filter((line, i) => i !== 1 || line !== "").join("\n"),
         )
       : await recordReply(
@@ -286,6 +302,8 @@ export async function POST(req: NextRequest) {
             `Or open a new Headway account through our link, which places it under us automatically: ${DERIV_SIGNUP}`,
             "",
             "Reply here once it is done and we will check again.",
+            "",
+            MISTAKE_LINE,
           ].join("\n"),
         );
 
