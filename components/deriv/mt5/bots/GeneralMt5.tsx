@@ -16,18 +16,82 @@ import {
 import { TC, DOT_GRID, monoFont } from "@/lib/trading/theme";
 import { EaAccessModal } from "@/components/deriv/mt5/EaAccessModal";
 import { CopyAddress, AlgoToggle } from "@/components/deriv/mt5/InstallBits";
-import { SupportChat } from "@/components/support/SupportChat";
+import { SupportChat, THREAD_KEY as SUPPORT_THREAD_KEY } from "@/components/support/SupportChat";
 import { PROFILE_LIST } from "@/lib/deriv/mt5/profiles";
 import { LIVE_CATEGORIES } from "@/lib/deriv/mt5/markets";
 import type { RiskProfile, Side } from "@/lib/deriv/mt5/types";
 import { t, useLang } from "@/lib/i18n/t";
 
-/** "I have downloaded the EA": one tap sends the words to support, with the
- *  whole thread and our record of whether this browser was ever approved. */
-function tellDownloaded() {
-  window.dispatchEvent(new CustomEvent("clunoid:support-send", {
-    detail: { text: t("I have downloaded the EA — please guide me on how to set it up and use it the right way."), kind: "ea-downloaded" },
-  }));
+/* "I have downloaded the EA": one tap sends the words to support, with the
+   whole thread and our record of whether this browser was ever approved.
+   Then the button says Sent, in green, and stays that way until we answer:
+   one tap is one message, and ten taps are not ten. The lock survives a
+   reload — it keeps the ids of the replies it had already seen, and a reply
+   it has not seen is what opens the button again. */
+const DL_LOCK = "cln_ea_downloaded_lock";
+const SENT_GREEN = "#34d399";
+
+/** The ids of every answer of ours in the stored thread. */
+function replyIds(): string[] {
+  try {
+    const lines = JSON.parse(localStorage.getItem(SUPPORT_THREAD_KEY) || "[]") as { id?: string; from?: string; system?: boolean }[];
+    return lines.filter((l) => l.from === "us" && !l.system && l.id).map((l) => l.id as string);
+  } catch { return []; }
+}
+
+/** True while the last tap is still unanswered; a reply we had not seen clears the lock. */
+function stillWaiting(): boolean {
+  try {
+    const lock = JSON.parse(localStorage.getItem(DL_LOCK) || "null") as { seen?: string[] } | null;
+    if (!lock) return false;
+    const seen = lock.seen || [];
+    const answered = replyIds().some((id) => !seen.includes(id));
+    if (answered) localStorage.removeItem(DL_LOCK);
+    return !answered;
+  } catch { return false; }
+}
+
+function DownloadedButton() {
+  const [sent, setSent] = useState(false);
+  const [just, setJust] = useState(false);
+  useEffect(() => {
+    setSent(stillWaiting());
+    const onSent = (e: Event) => {
+      const d = (e as CustomEvent).detail as { kind?: string } | undefined;
+      if (d?.kind !== "ea-downloaded") return;
+      try { localStorage.setItem(DL_LOCK, JSON.stringify({ at: new Date().toISOString(), seen: replyIds() })); } catch { /* private mode */ }
+      setSent(true); setJust(true);
+      window.setTimeout(() => setJust(false), 900);
+    };
+    const onReply = () => setSent(stillWaiting());
+    window.addEventListener("clunoid:support-sent", onSent);
+    window.addEventListener("clunoid:support-reply", onReply);
+    return () => { window.removeEventListener("clunoid:support-sent", onSent); window.removeEventListener("clunoid:support-reply", onReply); };
+  }, []);
+  const tell = () => {
+    if (sent) return;
+    window.dispatchEvent(new CustomEvent("clunoid:support-send", {
+      detail: { text: t("I have downloaded the EA — please guide me on how to set it up and use it the right way."), kind: "ea-downloaded" },
+    }));
+  };
+  return (
+    <>
+      <style>{`
+        @keyframes clnSentPop { 0% { transform: scale(.94); } 55% { transform: scale(1.07); } 100% { transform: scale(1); } }
+        @keyframes clnSentDraw { to { stroke-dashoffset: 0; } }
+        .cln-just-sent { animation: clnSentPop .5s cubic-bezier(.2,.9,.3,1.3); }
+        .cln-just-sent svg path { stroke-dasharray: 24; stroke-dashoffset: 24; animation: clnSentDraw .4s .12s ease forwards; }
+        @media (prefers-reduced-motion: reduce) { .cln-just-sent, .cln-just-sent svg path { animation: none; stroke-dashoffset: 0; } }
+      `}</style>
+      <button type="button" onClick={tell} disabled={sent}
+        className={`ml-1 inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 align-middle text-[11.5px] font-semibold transition${sent ? "" : " hover:bg-white/5"}${just ? " cln-just-sent" : ""}`}
+        style={sent
+          ? { borderColor: SENT_GREEN, background: SENT_GREEN, color: "#04202e", cursor: "default" }
+          : { borderColor: "rgba(56,189,248,0.55)", background: "rgba(56,189,248,0.08)", color: ACCENT }}>
+        <Check size={12} />{sent ? "Sent" : "I have downloaded the EA"}
+      </button>
+    </>
+  );
 }
 
 type ApiSignal = {
@@ -136,17 +200,13 @@ export function GeneralMt5() {
               {[
                 <><b style={{ color: TC.text }}>Downloaded the EA?</b> Tell support and we guide you through setting it up and using it the right way.{" "}
                   <b style={{ color: ACCENT, whiteSpace: "nowrap" }}>Click here →</b>{" "}
-                  <button type="button" onClick={tellDownloaded}
-                    className="ml-1 inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 align-middle text-[11.5px] font-semibold transition hover:bg-white/5"
-                    style={{ borderColor: "rgba(56,189,248,0.55)", background: "rgba(56,189,248,0.08)", color: ACCENT }}>
-                    <Check size={12} />I have downloaded the EA
-                  </button></>,
+                  <DownloadedButton /></>,
                 <>Copy the file into MT5&rsquo;s <code style={cx}>MQL5/Experts</code> folder — find it via <code style={cx}>File → Open Data Folder</code>.</>,
                 <>In MT5 go to <code style={cx}>Tools → Options → Expert Advisors</code>, tick <b style={{ color: TC.text }}>Allow WebRequest</b> and add <code style={cx}>https://www.clunoid.com</code>. <CopyAddress text="https://www.clunoid.com" muted={TC.muted} accent={ACCENT} line={TC.line} /></>,
                 <>Restart MT5, or press <b style={{ color: TC.text }}>Compile</b> in MetaEditor. The bot then appears under Expert Advisors.</>,
                 <>Drag it onto <b style={{ color: TC.text }}>any one chart</b>, set <code style={cx}>InpProfile</code> to your risk level, and enable <b style={{ color: TC.text }}>Algo Trading</b> — the toolbar button must be green: <AlgoToggle on text={TC.text} panel={TC.panelSolid} /> is <b style={{ color: TC.text }}>on</b>, <AlgoToggle on={false} text={TC.text} panel={TC.panelSolid} /> is <b style={{ color: TC.text }}>off</b>.</>,
-                <>(Recommended) Right-click the bot → <b style={{ color: TC.text }}>Register a Virtual Server</b> so it keeps trading with your computer off.</>,
                 <><b style={{ color: TC.text }}>Make sure you have followed every step above, in order.</b> A skipped step — the WebRequest address, Algo Trading, the risk profile — is the usual reason a bot sits idle.</>,
+                <>(Recommended) Right-click the bot → <b style={{ color: TC.text }}>Register a Virtual Server</b> so it keeps trading with your computer off.</>,
               ].map((step, i) => (
                 <li key={i} className="flex gap-3">
                   <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-[12px] font-bold" style={{ background: "rgba(56,189,248,0.16)", color: ACCENT }}>{i + 1}</span>

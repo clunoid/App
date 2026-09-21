@@ -38,7 +38,8 @@ const BAD = "#f2607d";
 
 /** Kept so the thread survives a reload — this device, this browser. */
 const NUDGED_KEY = "cln_support_nudged";
-const THREAD_KEY = "cln_support_thread";
+/** Exported: the page reads the stored thread to know whether we have answered. */
+export const THREAD_KEY = "cln_support_thread";
 
 /* Which replies this person has actually READ.
  *
@@ -439,6 +440,8 @@ export function SupportChat({ source, email: known, name: knownName, country }: 
       setKind(null);
       setEditWho(false);
       if (fileRef.current) fileRef.current.value = "";
+      // The page may be waiting to hear that its words actually went out.
+      try { window.dispatchEvent(new CustomEvent("clunoid:support-sent", { detail: { kind } })); } catch { /* nothing to tell */ }
     } catch {
       setErr("We could not reach you just now. Try again in a minute.");
     } finally { setBusy(false); }
