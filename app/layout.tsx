@@ -51,13 +51,17 @@ const JSON_LD = {
       "@type": "Organization",
       "@id": "https://www.clunoid.com/#organization",
       name: "Clunoid Trading",
-      url: "https://www.clunoid.com/trading",
-      logo: "https://www.clunoid.com/icon.svg",
+      /* The root, not /trading: /trading answers 308 to the root now, and an
+         organisation's address has to be the page the name resolves to. It is
+         the same entity the front page describes, with the same logo, so the
+         two read as one Clunoid rather than two with different homes. */
+      url: "https://www.clunoid.com/",
+      logo: "https://www.clunoid.com/icons/icon-512.png",
     },
     {
       "@type": "WebSite",
       "@id": "https://www.clunoid.com/#website",
-      url: "https://www.clunoid.com",
+      url: "https://www.clunoid.com/",
       name: "Clunoid Trading",
       description: SEO_DESCRIPTION,
       inLanguage: "en",
@@ -67,7 +71,7 @@ const JSON_LD = {
       "@type": "SoftwareApplication",
       "@id": "https://www.clunoid.com/#app",
       name: "Clunoid Trading",
-      url: "https://www.clunoid.com/trading",
+      url: "https://www.clunoid.com/",
       applicationCategory: "FinanceApplication",
       operatingSystem: "Web, Windows, MetaTrader 5",
       description: SEO_DESCRIPTION,

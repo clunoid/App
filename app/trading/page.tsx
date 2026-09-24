@@ -42,6 +42,14 @@ export const metadata: Metadata = {
     title: "Clunoid Trading — free automated trading bots for MT5 and Deriv",
     description:
       "AI trading bots that analyse the market, size every position to your balance and place the trades on your own broker account.",
+    /* The front door had no card at all: this openGraph replaces the layout's,
+       and neither named an image, so a shared clunoid.com link showed no
+       picture. The same /og generator the other pages use, with this title. */
+    images: [{
+      url: "/og?t=Clunoid%20Trading%20%E2%80%94%20free%20automated%20trading%20bots%20for%20MT5%20and%20Deriv",
+      width: 1200, height: 630,
+      alt: "Clunoid Trading — free automated trading bots for MT5 and Deriv",
+    }],
   },
 };
 
@@ -76,6 +84,8 @@ const FAQ_LD = {
 const SITE_LD = {
   "@context": "https://schema.org",
   "@type": "WebSite",
+  // The same @id as the layout's WebSite, so the two are read as one site.
+  "@id": "https://www.clunoid.com/#website",
   name: "Clunoid Trading",
   alternateName: ["Clunoid", "Clunoid.com", "Clunoid Bots", "Clunoid Trading Bots"],
   url: "https://www.clunoid.com/",
@@ -83,6 +93,7 @@ const SITE_LD = {
     "Free, fully automated trading bots for MetaTrader 5 and Deriv — forex, gold, crypto, stock indices and synthetic indices, running on your own account.",
   publisher: {
     "@type": "Organization",
+    "@id": "https://www.clunoid.com/#organization",
     name: "Clunoid Trading",
     url: "https://www.clunoid.com/",
     logo: { "@type": "ImageObject", url: "https://www.clunoid.com/icons/icon-512.png" },
@@ -92,6 +103,8 @@ const SITE_LD = {
 const ORG_LD = {
   "@context": "https://schema.org",
   "@type": "Organization",
+  // The same @id as the layout's Organization: one Clunoid, not two.
+  "@id": "https://www.clunoid.com/#organization",
   name: "Clunoid Trading",
   alternateName: ["Clunoid", "Clunoid.com", "Clunoid Bots"],
   url: "https://www.clunoid.com/",
