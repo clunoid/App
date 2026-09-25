@@ -100,7 +100,17 @@ function countSend() {
   try { localStorage.setItem(SENDS_KEY, JSON.stringify({ n: v.n + 1, at: new Date().toISOString() })); } catch { /* private mode */ }
 }
 
-export function EaAccessModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+/** Why the popup opened when "I have downloaded the EA" was pressed by
+ *  somebody who is not approved yet. */
+export type EaNotice = "none" | "pending" | "declined" | "unknown";
+const NOTICE: Record<EaNotice, [string, string]> = {
+  none: ["Not approved yet.", "Request your download code below. Once we approve you, it arrives in the support window."],
+  pending: ["Not approved yet.", "Your request is still being checked. Your code arrives in the support window as soon as you are approved — then enter it in step 6."],
+  declined: ["Your request was not approved.", "Check that your full name and email match your Headway account exactly, then send again."],
+  unknown: ["We could not check your approval.", "Try again in a moment. If you already have a code, enter it in step 6."],
+};
+
+export function EaAccessModal({ open, onClose, notice = null }: { open: boolean; onClose: () => void; notice?: EaNotice | null }) {
   const [visitorId, setVisitorId] = useState("");
   const [clientId, setClientId] = useState("");
   const [name, setName] = useState("");
@@ -116,6 +126,10 @@ export function EaAccessModal({ open, onClose }: { open: boolean; onClose: () =>
   const [err, setErr] = useState<string | null>(null);
   useLang(); // a server error on screen changes language with the page
   const [left, setLeft] = useState(MAX_SENDS);
+  /* The note answers the moment it was opened for; once they send, it has. */
+  const [noticeGone, setNoticeGone] = useState(false);
+  useEffect(() => { if (open) setNoticeGone(false); }, [open, notice]);
+  const shownNotice = notice && !noticeGone ? NOTICE[notice] : null;
 
   /* Re-read the allowance when the modal opens and whenever the bubble
      receives a reply — that is the moment a locked form unlocks. */
@@ -172,6 +186,7 @@ export function EaAccessModal({ open, onClose }: { open: boolean; onClose: () =>
       countSend();
       setLeft(sendsLeft());
       setPhase("sent");
+      setNoticeGone(true);
       setWaitOpen(true);
 
       /* Hand the bubble what was just sent, so it opens onto the conversation
@@ -315,6 +330,13 @@ export function EaAccessModal({ open, onClose }: { open: boolean; onClose: () =>
             </div>
           ) : (
             <>
+              {shownNotice && (
+                <div role="alert" className="mb-3.5 rounded-xl border px-3.5 py-3 text-[12.5px] leading-snug"
+                  style={{ borderColor: "rgba(245,176,65,0.45)", background: "rgba(245,176,65,0.08)", color: TC.text }}>
+                  <b className="mb-0.5 block text-[13px]" style={{ color: "#f5b041" }}>{shownNotice[0]}</b>
+                  <span>{shownNotice[1]}</span>
+                </div>
+              )}
               {BROKER === "deriv" ? (
                 <Step n={1} title="Open an MT5 account with Deriv" done={phase === "sent"}>
                   <p className="text-[12px] leading-snug" style={{ color: TC.muted }}>

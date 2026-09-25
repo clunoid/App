@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sendSupportMessage } from "@/lib/support/telegram";
 import { recordInbound, historyFor, recordReply } from "@/lib/support/threads";
-import { createRequest, attachTelegramMessage, recentRequestCount, approvedCodeFor, approvedMatch, approveRequest, codeMessage, PARTNER_ID } from "@/lib/deriv/mt5/eaAccess";
+import { createRequest, attachTelegramMessage, recentRequestCount, approvedCodeFor, approvedMatch, approveRequest, codeMessage, PARTNER_ID, accessState } from "@/lib/deriv/mt5/eaAccess";
 import { isBanned } from "@/lib/support/bans";
 
 export const runtime = "nodejs";
@@ -46,6 +46,20 @@ const prettyPhone = (p: string) => p.replace(/^(\+\d{1,3})(\d{3})(\d{3})(\d+)$/,
 /** A tap-to-chat link for the channel they chose. */
 const chatLink = (phone: string, contact: string) => contact === "telegram" ? `https://t.me/${phone}` : `https://wa.me/${phone.replace(/\D/g, "")}`;
 const countryName = (iso: string) => { try { return new Intl.DisplayNames(["en"], { type: "region" }).of(iso) || iso; } catch { return iso; } };
+
+/**
+ * GET ?visitorId= — is this browser approved? Asked by the "I have downloaded
+ * the EA" button before it writes to support: somebody who was never approved
+ * is sent to the request instead. Only the state goes back — no name, email or
+ * code — and a lookup that failed is a 503, never a wrong answer.
+ */
+export async function GET(req: NextRequest) {
+  const v = (req.nextUrl.searchParams.get("visitorId") || "").trim();
+  if (!/^[A-Za-z0-9-]{4,64}$/.test(v)) return NextResponse.json({ error: "Reload the page and try again." }, { status: 400 });
+  const state = await accessState(v);
+  if (state === "unknown") return NextResponse.json({ error: "Could not check just now." }, { status: 503, headers: { "Cache-Control": "no-store" } });
+  return NextResponse.json({ state }, { headers: { "Cache-Control": "no-store" } });
+}
 
 export async function POST(req: NextRequest) {
   const raw = await req.text();

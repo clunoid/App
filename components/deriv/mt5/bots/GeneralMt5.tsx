@@ -14,7 +14,8 @@ import {
   Layers, Download, CheckCircle2, CircleDashed, Check,
 } from "lucide-react";
 import { TC, DOT_GRID, monoFont } from "@/lib/trading/theme";
-import { EaAccessModal } from "@/components/deriv/mt5/EaAccessModal";
+import { EaAccessModal, type EaNotice } from "@/components/deriv/mt5/EaAccessModal";
+import { loadIdentity } from "@/lib/support/identity";
 import { CopyAddress, AlgoToggle } from "@/components/deriv/mt5/InstallBits";
 import { SupportChat, THREAD_KEY as SUPPORT_THREAD_KEY } from "@/components/support/SupportChat";
 import { PROFILE_LIST } from "@/lib/deriv/mt5/profiles";
@@ -51,8 +52,16 @@ function stillWaiting(): boolean {
   } catch { return false; }
 }
 
-function DownloadedButton() {
+/* Only somebody approved has an EA to set up. Everyone else — never asked,
+   still waiting, or declined — is shown the request instead, with a note
+   saying why, and nothing is sent to support. The server answers from our own
+   record of this browser; if it cannot be asked in time, the request opens
+   too, because it is also where a code already received is entered. */
+const CHECK_TIMEOUT_MS = 15000;
+
+function DownloadedButton({ onNotApproved }: { onNotApproved: (why: EaNotice) => void }) {
   const [sent, setSent] = useState(false);
+  const [checking, setChecking] = useState(false);
   const [just, setJust] = useState(false);
   useEffect(() => {
     setSent(stillWaiting());
@@ -75,11 +84,25 @@ function DownloadedButton() {
       window.removeEventListener("storage", onStorage);
     };
   }, []);
-  const tell = () => {
-    if (sent) return;
-    window.dispatchEvent(new CustomEvent("clunoid:support-send", {
-      detail: { text: t("I have downloaded the EA — please guide me on how to set it up and use it the right way."), kind: "ea-downloaded" },
-    }));
+  const tell = async () => {
+    if (sent || checking) return;
+    setChecking(true);
+    let state: string | null = null;
+    const ctl = typeof AbortController !== "undefined" ? new AbortController() : null;
+    const timer = window.setTimeout(() => ctl?.abort(), CHECK_TIMEOUT_MS);
+    try {
+      const r = await fetch(`/api/trading/mt5/ea-request?visitorId=${encodeURIComponent(loadIdentity().visitorId)}`, { cache: "no-store", signal: ctl?.signal });
+      if (r.ok) state = ((await r.json()) as { state?: string }).state ?? null;
+    } catch { /* offline, or too slow — treated as "could not check" */ }
+    window.clearTimeout(timer);
+    setChecking(false);
+    if (state === "approved") {
+      window.dispatchEvent(new CustomEvent("clunoid:support-send", {
+        detail: { text: t("I have downloaded the EA — please guide me on how to set it up and use it the right way."), kind: "ea-downloaded" },
+      }));
+      return;
+    }
+    onNotApproved(state === "none" || state === "pending" || state === "declined" ? state : "unknown");
   };
   return (
     <>
@@ -90,12 +113,12 @@ function DownloadedButton() {
         .cln-just-sent svg path { stroke-dasharray: 24; stroke-dashoffset: 24; animation: clnSentDraw .4s .12s ease forwards; }
         @media (prefers-reduced-motion: reduce) { .cln-just-sent, .cln-just-sent svg path { animation: none; stroke-dashoffset: 0; } }
       `}</style>
-      <button type="button" onClick={tell} disabled={sent}
+      <button type="button" onClick={tell} disabled={sent || checking}
         className={`ml-1 inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 align-middle text-[11.5px] font-semibold transition${sent ? "" : " hover:bg-white/5"}${just ? " cln-just-sent" : ""}`}
         style={sent
           ? { borderColor: SENT_GREEN, background: SENT_GREEN, color: "#04202e", cursor: "default" }
           : { borderColor: "rgba(56,189,248,0.55)", background: "rgba(56,189,248,0.08)", color: ACCENT }}>
-        <Check size={12} />{sent ? "Sent" : "I have downloaded the EA"}
+        <Check size={12} />{sent ? "Sent" : checking ? "Checking…" : "I have downloaded the EA"}
       </button>
     </>
   );
@@ -129,6 +152,7 @@ export function GeneralMt5() {
   const [err, setErr] = useState<string | null>(null);
   const [updatedAt, setUpdatedAt] = useState<number>(0);
   const [eaOpen, setEaOpen] = useState(false);
+  const [eaNotice, setEaNotice] = useState<EaNotice | null>(null);
   const started = useRef(false);
 
   const load = useCallback(async (p: RiskProfile) => {
@@ -197,7 +221,7 @@ export function GeneralMt5() {
         <Section n={1} title="Get it running">
           <div className="rounded-2xl border p-5" style={{ borderColor: TC.line, background: TC.panel }}>
             <div className="flex flex-wrap items-center gap-3">
-              <button type="button" onClick={() => setEaOpen(true)} className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-[13px] font-semibold transition hover:opacity-90" style={{ background: ACCENT, color: TC.ink }}>
+              <button type="button" onClick={() => { setEaNotice(null); setEaOpen(true); }} className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-[13px] font-semibold transition hover:opacity-90" style={{ background: ACCENT, color: TC.ink }}>
                 <Download size={15} /> Download Clunoid EA
               </button>
               <span className="text-[11.5px]" style={{ color: TC.faint }}>One EA, one chart — no per-market setup.</span>
@@ -207,7 +231,7 @@ export function GeneralMt5() {
               {[
                 <><b style={{ color: TC.text }}>Downloaded the EA?</b> Tell support and we guide you through setting it up and using it the right way.{" "}
                   <b style={{ color: ACCENT, whiteSpace: "nowrap" }}>Click here →</b>{" "}
-                  <DownloadedButton /></>,
+                  <DownloadedButton onNotApproved={(why) => { setEaNotice(why); setEaOpen(true); }} /></>,
                 <>Copy the file into MT5&rsquo;s <code style={cx}>MQL5/Experts</code> folder — find it via <code style={cx}>File → Open Data Folder</code>.</>,
                 <>In MT5 go to <code style={cx}>Tools → Options → Expert Advisors</code>, tick <b style={{ color: TC.text }}>Allow WebRequest</b> and add <code style={cx}>https://www.clunoid.com</code>. <CopyAddress text="https://www.clunoid.com" muted={TC.muted} accent={ACCENT} line={TC.line} /></>,
                 <>Restart MT5, or press <b style={{ color: TC.text }}>Compile</b> in MetaEditor. The bot then appears under Expert Advisors.</>,
@@ -287,7 +311,7 @@ export function GeneralMt5() {
         </p>
       </div>
 
-      <EaAccessModal open={eaOpen} onClose={() => setEaOpen(false)} />
+      <EaAccessModal open={eaOpen} onClose={() => setEaOpen(false)} notice={eaNotice} />
 
       {/* The access code arrives as a support reply, so the bubble has to exist
           on this page for there to be somewhere for it to land. */}

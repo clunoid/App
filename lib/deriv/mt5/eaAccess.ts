@@ -623,6 +623,26 @@ export async function declineCount(visitorId: string): Promise<number> {
   return count ?? 0;
 }
 
+/**
+ * Just the state, in ONE query — what the "I have downloaded" button asks
+ * before it writes to support, so it has to answer quickly. Same rule as
+ * accessStatusFor: any approved row with a code is approved; otherwise the
+ * newest row says declined or waiting; no rows is never asked. A failed
+ * lookup is "unknown", never a guess.
+ */
+export type AccessState = "approved" | "pending" | "declined" | "none" | "unknown";
+export async function accessState(visitorId: string): Promise<AccessState> {
+  const db = getSupabaseAdmin();
+  if (!db || !visitorId) return "unknown";
+  const { data, error } = await db.from(TABLE).select("status, code")
+    .eq("visitor_id", visitorId).order("created_at", { ascending: false }).limit(100);
+  if (error) { console.error("[ea] access state lookup failed:", error.message); return "unknown"; }
+  const rows = (data ?? []) as { status: string; code: string | null }[];
+  if (!rows.length) return "none";
+  if (rows.some((r) => r.status === "approved" && r.code)) return "approved";
+  return rows[0].status === "declined" ? "declined" : "pending";
+}
+
 /** How many times this browser has asked recently — a spam brake, not a rule. */
 export async function recentRequestCount(visitorId: string, withinMinutes = 60): Promise<number> {
   const db = getSupabaseAdmin();
