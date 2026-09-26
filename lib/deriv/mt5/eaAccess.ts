@@ -240,7 +240,7 @@ export async function declineRequest(id: string): Promise<boolean> {
 
 export type CodeCheck =
   | { ok: true; name: string; usesLeft: number }
-  | { ok: false; why: "unknown" | "not-yours" | "unavailable" | "exhausted" };
+  | { ok: false; why: "unknown" | "not-yours" | "unavailable" | "exhausted" | "deposit" };
 
 /**
  * Is this code good, and does it belong to the person holding it?
@@ -272,7 +272,15 @@ export async function checkCode(code: string, visitorId: string): Promise<CodeCh
   }
 
   const row = (data ?? []).find((r) => normaliseCode((r.code as string) ?? "") === wanted);
-  if (!row) return { ok: false, why: "unknown" };
+  if (!row) {
+    /* A code that was approved once and then withdrawn — the row is declined
+       but still carries its code. Its owner is told what brings a new one, a
+       deposit and a fresh request, rather than "not recognised". */
+    const { data: gone, error: goneErr } = await db
+      .from(TABLE).select("code").eq("status", "declined").not("code", "is", null).limit(500);
+    if (!goneErr && (gone ?? []).some((r) => normaliseCode((r.code as string) ?? "") === wanted)) return { ok: false, why: "deposit" };
+    return { ok: false, why: "unknown" };
+  }
   if ((row.visitor_id as string) !== visitorId) return { ok: false, why: "not-yours" };
 
   /* Three downloads, counted on the row. The increment is conditional on the
@@ -630,7 +638,7 @@ export async function declineCount(visitorId: string): Promise<number> {
  * newest row says declined or waiting; no rows is never asked. A failed
  * lookup is "unknown", never a guess.
  */
-export type AccessState = "approved" | "pending" | "declined" | "none" | "unknown";
+export type AccessState = "approved" | "pending" | "declined" | "deposit" | "none" | "unknown";
 export async function accessState(visitorId: string): Promise<AccessState> {
   const db = getSupabaseAdmin();
   if (!db || !visitorId) return "unknown";
@@ -640,7 +648,10 @@ export async function accessState(visitorId: string): Promise<AccessState> {
   const rows = (data ?? []) as { status: string; code: string | null }[];
   if (!rows.length) return "none";
   if (rows.some((r) => r.status === "approved" && r.code)) return "approved";
-  return rows[0].status === "declined" ? "declined" : "pending";
+  if (rows[0].status !== "declined") return "pending";
+  // A code that was withdrawn: the way back is a deposit and a fresh request.
+  if (rows.some((r) => r.status === "declined" && r.code)) return "deposit";
+  return "declined";
 }
 
 /** How many times this browser has asked recently — a spam brake, not a rule. */

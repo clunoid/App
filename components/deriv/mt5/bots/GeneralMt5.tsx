@@ -102,7 +102,7 @@ function DownloadedButton({ onNotApproved }: { onNotApproved: (why: EaNotice) =>
       }));
       return;
     }
-    onNotApproved(state === "none" || state === "pending" || state === "declined" ? state : "unknown");
+    onNotApproved(state === "none" || state === "pending" || state === "declined" || state === "deposit" ? state : "unknown");
   };
   return (
     <>

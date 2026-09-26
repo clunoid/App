@@ -102,11 +102,12 @@ function countSend() {
 
 /** Why the popup opened when "I have downloaded the EA" was pressed by
  *  somebody who is not approved yet. */
-export type EaNotice = "none" | "pending" | "declined" | "unknown";
+export type EaNotice = "none" | "pending" | "declined" | "deposit" | "unknown";
 const NOTICE: Record<EaNotice, [string, string]> = {
   none: ["Not approved yet.", "Request your download code below. Once we approve you, it arrives in the support window."],
   pending: ["Not approved yet.", "Your request is still being checked. Your code arrives in the support window as soon as you are approved — then enter it in step 6."],
   declined: ["Your request was not approved.", "Check that your full name and email match your Headway account exactly, then send again."],
+  deposit: ["Your old code no longer works.", "Make a deposit on your Headway account, then send the request below. Your new code arrives in the support window."],
   unknown: ["We could not check your approval.", "Try again in a moment. If you already have a code, enter it in step 6."],
 };
 

@@ -51,6 +51,12 @@ export async function POST(req: NextRequest) {
         { status: 403 },
       );
     }
+    if (check.why === "deposit") {
+      return NextResponse.json(
+        { error: "That code no longer works. Make a deposit on your Headway account, then send the request again — your new code arrives in the support window." },
+        { status: 403 },
+      );
+    }
     return NextResponse.json({ error: "That code was not recognised. Check it and try again." }, { status: 403 });
   }
 
