@@ -12,10 +12,10 @@ import { useRouter } from "next/navigation";
 import { ArrowLeft, Play, Square, Loader2, TrendingUp, TrendingDown, Wallet, Star, Trophy, ShieldAlert, X, PiggyBank, Lightbulb, Check, ArrowDownToLine, Bot } from "lucide-react";
 import { TC, DOT_GRID, monoFont, fmtBalance } from "@/lib/trading/theme";
 import type { ConnectedAccount } from "@/lib/trading/accounts";
-import { loadDerivAccess } from "@/lib/deriv/oauth";
+import { loadDerivAccess, reconnectAfterExpiry } from "@/lib/deriv/oauth";
 import { DERIV_TRACKED_DEPOSIT_URL } from "@/lib/deriv/config";
 import { BalanceVisibilityNote } from "@/components/deriv/BalanceVisibilityNote";
-import { fetchDerivPortfolioREST } from "@/lib/deriv/api";
+import { fetchDerivPortfolioREST, isDerivAuthError } from "@/lib/deriv/api";
 import { BOT_DEFAULTS } from "@/lib/deriv/bots/config";
 import { DerivBot } from "@/lib/deriv/bots/engine";
 import { getBot } from "@/lib/deriv/bots/registry";
@@ -65,7 +65,12 @@ export function DerivBotRunner({ botId }: { botId: string }) {
       if (opts.length) { setAccounts(opts); setMode((m) => (opts.some((a) => a.isVirtual) ? m : "real")); }
       try { localStorage.setItem(SNAP_KEY, JSON.stringify(p)); } catch { /* ignore */ }
       return opts;
-    } catch { return []; }
+    } catch (e) {
+      // An expired token: one silent reconnect per browser session (the guard
+      // in reconnectAfterExpiry); the command centre takes it from there.
+      if (isDerivAuthError(e)) reconnectAfterExpiry();
+      return [];
+    }
   }, []);
 
   useEffect(() => {

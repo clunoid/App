@@ -18,11 +18,20 @@
  * (deriv-com/deriv-api-schemas, rest-api-openapi.json).
  */
 import { DERIV_CLIENT_ID } from "./config";
-import { reconnectAfterExpiry } from "./oauth";
 import type { ConnectedAccount } from "@/lib/trading/accounts";
 import type { DerivPortfolio } from "./client";
 
 const REST_BASE = "https://api.derivws.com";
+
+/**
+ * Deriv refused the access token (HTTP 401). Thrown, never acted on here: only
+ * the caller knows whether the token is old enough to have expired — worth one
+ * silent reconnect — or was issued a moment ago, when reconnecting would just
+ * bring the same refusal back and bounce the page between Deriv and Clunoid
+ * for ever.
+ */
+export class DerivAuthError extends Error {}
+export const isDerivAuthError = (e: unknown): e is DerivAuthError => e instanceof DerivAuthError;
 
 async function get(path: string, accessToken: string): Promise<unknown> {
   const res = await fetch(`${REST_BASE}${path}`, {
@@ -31,12 +40,7 @@ async function get(path: string, accessToken: string): Promise<unknown> {
       "Deriv-App-ID": DERIV_CLIENT_ID,
     },
   });
-  if (res.status === 401) {
-    // Do not tell them the session expired — just put it right. This navigates
-    // away, so the throw below is only reached if the redirect could not start.
-    if (reconnectAfterExpiry()) throw new Error("Reconnecting to Deriv…");
-    throw new Error("Could not reach your Deriv account. Please connect again.");
-  }
+  if (res.status === 401) throw new DerivAuthError("Could not reach your Deriv account. Please connect again.");
   const json = (await res.json().catch(() => null)) as
     | { data?: unknown; errors?: Array<{ message?: string; code?: string }>; message?: string; error?: string }
     | null;
@@ -74,6 +78,8 @@ export async function fetchDerivPortfolioREST(accessToken: string): Promise<Deri
   ]);
 
   // Options accounts are the backbone — if that call failed hard, surface it.
+  // The nickname is decoration: whatever it fails with, a 401 included, the
+  // accounts still load and the name falls back to the first account id.
   if (optsR.status === "rejected") throw optsR.reason;
 
   const accounts: ConnectedAccount[] = [];

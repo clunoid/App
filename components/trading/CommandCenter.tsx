@@ -20,9 +20,9 @@ import { TC, DOT_GRID, monoFont, fmtBalance } from "@/lib/trading/theme";
 import type { ConnectedAccount } from "@/lib/trading/accounts";
 import { hasDerivApp, DERIV_AFFILIATE_URL, DERIV_TRACKED_DEPOSIT_URL, DERIV_TRACKED_WITHDRAW_URL } from "@/lib/deriv/config";
 import { BalanceVisibilityNote } from "@/components/deriv/BalanceVisibilityNote";
-import { parseDerivRedirect, isDerivRedirect, isDerivCodeReturn, startDerivLogin, completeDerivLogin, saveDerivTokens, loadDerivTokens, clearDerivTokens, saveDerivAccess, loadDerivAccess, clearDerivAccess, clearReconnectGuard, connectChoiceAnswered, markConnectChoice, type DerivToken } from "@/lib/deriv/oauth";
+import { parseDerivRedirect, isDerivRedirect, isDerivCodeReturn, startDerivLogin, completeDerivLogin, saveDerivTokens, loadDerivTokens, clearDerivTokens, saveDerivAccess, loadDerivAccess, clearDerivAccess, clearReconnectGuard, reconnectAfterExpiry, connectChoiceAnswered, markConnectChoice, type DerivToken } from "@/lib/deriv/oauth";
 import { fetchDerivPortfolio, type DerivPortfolio } from "@/lib/deriv/client";
-import { fetchDerivPortfolioREST } from "@/lib/deriv/api";
+import { fetchDerivPortfolioREST, isDerivAuthError } from "@/lib/deriv/api";
 import { SupportChat } from "@/components/support/SupportChat";
 import { InstallApp } from "@/components/pwa/InstallApp";
 import { InstallCard } from "@/components/pwa/InstallCard";
@@ -95,7 +95,8 @@ export function CommandCenter() {
   /** Which automation was reached for before connecting. null = prompt closed. */
   const started = useRef(false);
 
-  const refresh = useCallback(async (s: Session | null) => {
+  /** `fresh`: the token was issued by Deriv a moment ago, on this very load. */
+  const refresh = useCallback(async (s: Session | null, fresh = false) => {
     if (!s) { setPortfolio(null); return; }
     setLoading(true);
     setError(null);
@@ -105,7 +106,21 @@ export function CommandCenter() {
         : await fetchDerivPortfolio(s.tokens[0].token); // classic WS (pasted a1- token)
       setPortfolio(p);
       try { localStorage.setItem(SNAP_KEY, JSON.stringify(p)); } catch { /* ignore */ }
+      // The token works, so a later expiry may reconnect silently again.
+      clearReconnectGuard();
     } catch (e) {
+      /* Deriv refused the token. An old one has most likely expired: reconnect
+         once, silently. A fresh one refused is not an expiry — reconnecting
+         would fetch the same refusal and bounce between Deriv and here for
+         ever, the page flashing on every pass — so stop and say so instead. */
+      if (isDerivAuthError(e)) {
+        if (!fresh && reconnectAfterExpiry()) return; // navigating to Deriv
+        clearDerivAccess();
+        clearDerivTokens();
+        try { localStorage.removeItem(SNAP_KEY); } catch { /* ignore */ }
+        setSession(null);
+        setPortfolio(null);
+      }
       setError(e instanceof Error ? e.message : "Couldn't load your accounts.");
     } finally {
       setLoading(false);
@@ -146,12 +161,12 @@ export function CommandCenter() {
         try {
           const accessToken = await completeDerivLogin(search);
           saveDerivAccess(accessToken);
-          // A fresh token means a future expiry is allowed to auto-retry again.
-          clearReconnectGuard();
           clearDerivTokens(); // OAuth supersedes any pasted token
           const s: Session = { kind: "oauth", accessToken };
           setSession(s);
-          await refresh(s);
+          // Fresh: if Deriv refuses this one, say so rather than reconnect. The
+          // reconnect guard is cleared only once the token has actually worked.
+          await refresh(s, true);
         } catch (e) {
           setError(e instanceof Error ? e.message : "Deriv connection failed.");
           setLoading(false);
