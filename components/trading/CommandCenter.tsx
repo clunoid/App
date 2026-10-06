@@ -15,7 +15,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Wallet, Plug, RefreshCw, Loader2, LogOut, ShieldCheck, Building2, Bot, LineChart, UserPlus, ChevronRight, X, ArrowDownToLine, ArrowUpFromLine } from "lucide-react";
+import { ArrowLeft, Wallet, Plug, RefreshCw, Loader2, LogOut, ShieldCheck, Building2, Bot, UserPlus, ChevronRight, X, ArrowDownToLine, ArrowUpFromLine } from "lucide-react";
 import { TC, DOT_GRID, monoFont, fmtBalance } from "@/lib/trading/theme";
 import type { ConnectedAccount } from "@/lib/trading/accounts";
 import { hasDerivApp, DERIV_AFFILIATE_URL, DERIV_TRACKED_DEPOSIT_URL, DERIV_TRACKED_WITHDRAW_URL } from "@/lib/deriv/config";
@@ -329,25 +329,28 @@ export function CommandCenter() {
               </div>
             ) : (
               <>
-                {/* Total balance — REAL only (demo excluded), demo shown separately */}
-                <div className="mb-3 flex flex-wrap items-end justify-between gap-3 rounded-2xl border p-4 sm:p-5" style={{ borderColor: TC.line, background: "linear-gradient(180deg, rgba(56,189,248,0.08), rgba(255,255,255,0.015))" }}>
-                  <div>
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: TC.faint }}>Total balance <span className="normal-case tracking-normal opacity-70">· real, excludes demo</span></div>
-                    <div className="mt-1 text-[30px] font-bold leading-none sm:text-[34px]" style={{ ...monoFont, color: TC.profit }}>{fmtBalance(portfolio?.totalReal ?? null, portfolio?.totalCurrency || "")}</div>
-                  </div>
-                  {demoTotal.amount != null && demoTotal.amount > 0 && (
-                    <div className="text-right">
-                      <div className="text-[10.5px] font-semibold uppercase tracking-[0.14em]" style={{ color: TC.faint }}>Demo (not counted)</div>
-                      <div className="mt-0.5 text-[15px] font-semibold" style={{ ...monoFont, color: TC.muted }}>{fmtBalance(demoTotal.amount, demoTotal.currency)}</div>
+                {/* Total balance — REAL only (demo excluded), demo beside it. The note on
+                    what the total can see sits in the same card: it is about this figure. */}
+                <div className="rounded-2xl border p-4 sm:p-5" style={{ borderColor: TC.line, background: "linear-gradient(180deg, rgba(56,189,248,0.08), rgba(255,255,255,0.015))" }}>
+                  <div className="flex flex-wrap items-end justify-between gap-3">
+                    <div>
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: TC.faint }}>Total balance <span className="normal-case tracking-normal opacity-70">· real, excludes demo</span></div>
+                      <div className="mt-1 text-[30px] font-bold leading-none sm:text-[34px]" style={{ ...monoFont, color: TC.profit }}>{fmtBalance(portfolio?.totalReal ?? null, portfolio?.totalCurrency || "")}</div>
                     </div>
-                  )}
+                    {demoTotal.amount != null && demoTotal.amount > 0 && (
+                      <div className="text-right">
+                        <div className="text-[10.5px] font-semibold uppercase tracking-[0.14em]" style={{ color: TC.faint }}>Demo (not counted)</div>
+                        <div className="mt-0.5 text-[15px] font-semibold" style={{ ...monoFont, color: TC.muted }}>{fmtBalance(demoTotal.amount, demoTotal.currency)}</div>
+                      </div>
+                    )}
+                  </div>
+                  <BalanceVisibilityNote className="mt-3 border-t pt-3 text-[11.5px] leading-relaxed" style={{ color: TC.faint, borderColor: TC.line }} />
                 </div>
 
-                <BalanceVisibilityNote className="mb-4 text-[11.5px] leading-relaxed" style={{ color: TC.faint }} />
-
-                {/* Balance by Deriv section (real) */}
-                {sections.length > 0 && (
-                  <div className="mb-4 grid gap-2.5 sm:grid-cols-2">
+                {/* Balance by Deriv section (real) — only when there is more than one: a
+                    single section is the total above, said twice. */}
+                {sections.length > 1 && (
+                  <div className="mt-3 grid gap-2.5 sm:grid-cols-2">
                     {sections.map((s) => (
                       <div key={s.name} className="flex items-center justify-between rounded-xl border px-3.5 py-3" style={{ borderColor: TC.line, background: TC.panel }}>
                         <span className="text-[12px] font-semibold" style={{ color: TC.muted }}>{s.name}</span>
@@ -357,41 +360,37 @@ export function CommandCenter() {
                   </div>
                 )}
 
-                {/* Real accounts */}
-                {realAccounts.length > 0 && (
-                  <>
-                    <h3 className="mb-2 text-[10.5px] font-semibold uppercase tracking-[0.16em]" style={{ color: TC.faint }}>{t("Real accounts · {n}", { n: realAccounts.length })}</h3>
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      {realAccounts.map((a, i) => <AccountCard key={`r-${a.loginid}-${i}`} a={a} />)}
+                {/* Real and demo side by side, each under its own heading (one kind alone
+                    lays its accounts out two to a row instead). */}
+                <div className={`mt-4 grid gap-x-3 gap-y-4 ${realAccounts.length > 0 && demoAccounts.length > 0 ? "sm:grid-cols-2" : ""}`}>
+                  {realAccounts.length > 0 && (
+                    <div className="min-w-0">
+                      <h3 className="mb-2 text-[10.5px] font-semibold uppercase tracking-[0.16em]" style={{ color: TC.faint }}>{t("Real accounts · {n}", { n: realAccounts.length })}</h3>
+                      <div className={`grid gap-3 ${demoAccounts.length > 0 ? "" : "sm:grid-cols-2"}`}>
+                        {realAccounts.map((a, i) => <AccountCard key={`r-${a.loginid}-${i}`} a={a} />)}
+                      </div>
                     </div>
-                  </>
-                )}
-
-                {/* Demo accounts — clearly separated */}
-                {demoAccounts.length > 0 && (
-                  <>
-                    <h3 className="mb-2 mt-5 text-[10.5px] font-semibold uppercase tracking-[0.16em]" style={{ color: TC.faint }}>{t("Demo accounts · {n}", { n: demoAccounts.length })}</h3>
-                    <div className="grid gap-3 opacity-90 sm:grid-cols-2">
-                      {demoAccounts.map((a, i) => <AccountCard key={`d-${a.loginid}-${i}`} a={a} />)}
+                  )}
+                  {demoAccounts.length > 0 && (
+                    <div className="min-w-0">
+                      <h3 className="mb-2 text-[10.5px] font-semibold uppercase tracking-[0.16em]" style={{ color: TC.faint }}>{t("Demo accounts · {n}", { n: demoAccounts.length })}</h3>
+                      <div className={`grid gap-3 opacity-90 ${realAccounts.length > 0 ? "" : "sm:grid-cols-2"}`}>
+                        {demoAccounts.map((a, i) => <AccountCard key={`d-${a.loginid}-${i}`} a={a} />)}
+                      </div>
                     </div>
-                  </>
-                )}
+                  )}
+                </div>
               </>
-            )}
-
-            {connected && (
-              <div className="mt-4">
-                <button onClick={disconnect} className="inline-flex items-center gap-1.5 text-[12px] transition hover:opacity-80" style={{ color: TC.faint }}><LogOut size={12} /> Disconnect Deriv</button>
-              </div>
             )}
           </section>
 
-          {/* ── connect a platform ── */}
-          <aside>
+          {/* ── connect a platform ── the card runs the full height of the portfolio
+              beside it, so the two columns end together. */}
+          <aside className="flex flex-col">
             <h2 className="mb-3 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: TC.faint }}>
               <Plug size={13} style={{ color: TC.profit }} /> Connect a platform
             </h2>
-            <div className="rounded-2xl border p-4" style={{ borderColor: connected ? "rgba(52,211,153,0.35)" : TC.line, background: TC.panel }}>
+            <div className="flex flex-1 flex-col rounded-2xl border p-4" style={{ borderColor: connected ? "rgba(52,211,153,0.35)" : TC.line, background: TC.panel }}>
               <div className="flex items-center gap-2.5">
                 <BrandLogo src="/logos/deriv.png" alt="Deriv" size={26} />
                 <div className="min-w-0 flex-1">
@@ -408,19 +407,22 @@ export function CommandCenter() {
                 /* Once linked: open the automations, or move money. Deposit and
                    withdraw are affiliate-tracked so Deriv credits us. Four compact
                    buttons in a 2×2 grid so they fit cleanly on any screen. */
-                <div className="mt-3 grid grid-cols-2 gap-2">
-                  <Link href="/trading/deriv/bots" className="flex items-center gap-1.5 rounded-xl px-2.5 py-2 text-[12px] font-bold transition hover:opacity-90" style={{ background: TC.profit, color: TC.ink }}>
-                    <Bot size={14} /> Deriv Bots
+                <div className="mt-4 grid grid-cols-2 gap-2">
+                  <Link href="/trading/deriv/bots" className="flex min-h-[46px] items-center justify-center gap-1.5 rounded-xl px-2.5 py-2 text-[12.5px] font-bold transition hover:opacity-90" style={{ background: TC.profit, color: TC.ink }}>
+                    <Bot size={15} /> Deriv Bots
                   </Link>
-                  <Link href="/trading/deriv/mt5" className="flex items-center gap-1.5 rounded-xl border px-2.5 py-2 text-[12px] font-bold transition hover:bg-white/5" style={{ borderColor: TC.line, color: TC.text }}>
-                    <LineChart size={14} style={{ color: TC.profit }} /> MT5
+                  {/* MetaTrader's own logo (mark and wordmark), not a stand-in icon. Where
+                      the button is narrow the badge drops under it instead of squeezing it. */}
+                  <Link href="/trading/deriv/mt5" aria-label="MetaTrader 5 AI bots" className="flex min-h-[46px] flex-wrap items-center justify-center gap-x-1.5 gap-y-1 rounded-xl border px-2.5 py-2 transition hover:bg-white/5" style={{ borderColor: TC.line, color: TC.text }}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src="/logos/metatrader5.svg" alt="MetaTrader 5" width={186} height={32} className="h-[15px] w-auto" />
                     <span className="rounded px-1 py-0.5 text-[8.5px] font-bold uppercase tracking-wide" style={{ background: "rgba(56,189,248,0.16)", color: "#38bdf8" }}>AI bots</span>
                   </Link>
-                  <a href={DERIV_TRACKED_DEPOSIT_URL} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 rounded-xl border px-2.5 py-2 text-[12px] font-bold transition hover:bg-white/5" style={{ borderColor: "rgba(52,211,153,0.45)", color: "#34d399" }}>
-                    <ArrowDownToLine size={14} /> Deposit
+                  <a href={DERIV_TRACKED_DEPOSIT_URL} target="_blank" rel="noopener noreferrer" className="flex min-h-[46px] items-center justify-center gap-1.5 rounded-xl border px-2.5 py-2 text-[12.5px] font-bold transition hover:bg-white/5" style={{ borderColor: "rgba(52,211,153,0.45)", color: "#34d399" }}>
+                    <ArrowDownToLine size={15} /> Deposit
                   </a>
-                  <a href={DERIV_TRACKED_WITHDRAW_URL} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 rounded-xl border px-2.5 py-2 text-[12px] font-bold transition hover:bg-white/5" style={{ borderColor: TC.line, color: TC.text }}>
-                    <ArrowUpFromLine size={14} /> Withdraw
+                  <a href={DERIV_TRACKED_WITHDRAW_URL} target="_blank" rel="noopener noreferrer" className="flex min-h-[46px] items-center justify-center gap-1.5 rounded-xl border px-2.5 py-2 text-[12.5px] font-bold transition hover:bg-white/5" style={{ borderColor: TC.line, color: TC.text }}>
+                    <ArrowUpFromLine size={15} /> Withdraw
                   </a>
                 </div>
               ) : (
@@ -433,11 +435,20 @@ export function CommandCenter() {
                   </a>
                 </>
               )}
-            </div>
 
-            <p className="mt-3 flex items-start gap-1.5 text-[11px] leading-relaxed" style={{ color: TC.faint }}>
-              <ShieldCheck size={13} className="mt-0.5 shrink-0" style={{ color: TC.profit }} /> You authorise your own broker directly. Clunoid never sees your password, and your access stays in this browser.
-            </p>
+              {/* The connection's own footing, at the foot of the card: how access works,
+                  and the way to end it. */}
+              <div className="mt-auto pt-4">
+                <div className="border-t pt-3" style={{ borderColor: TC.line }}>
+                  <p className="flex items-start gap-1.5 text-[11px] leading-relaxed" style={{ color: TC.faint }}>
+                    <ShieldCheck size={13} className="mt-0.5 shrink-0" style={{ color: TC.profit }} /> You authorise your own broker directly. Clunoid never sees your password, and your access stays in this browser.
+                  </p>
+                  {connected && (
+                    <button onClick={disconnect} className="mt-2.5 inline-flex items-center gap-1.5 text-[12px] transition hover:opacity-80" style={{ color: TC.faint }}><LogOut size={12} /> Disconnect Deriv</button>
+                  )}
+                </div>
+              </div>
+            </div>
           </aside>
         </div>
       </div>
