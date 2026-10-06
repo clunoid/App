@@ -73,7 +73,7 @@ function BrandLogo({ src, alt, size = 26 }: { src?: string; alt: string; size?: 
 /** One account tile: broker · product, id, real/demo badge, and balance. */
 function AccountCard({ a }: { a: ConnectedAccount }) {
   return (
-    <div className="rounded-2xl border p-4" style={{ borderColor: TC.line, background: TC.panel }}>
+    <div className="flex flex-col rounded-2xl border p-4" style={{ borderColor: TC.line, background: TC.panel }}>
       <div className="flex items-center gap-2.5">
         <BrandLogo src="/logos/deriv.png" alt="Deriv" size={22} />
         <div className="min-w-0 flex-1">
@@ -82,7 +82,7 @@ function AccountCard({ a }: { a: ConnectedAccount }) {
         </div>
         <span className="rounded-full px-2 py-0.5 text-[9.5px] font-semibold uppercase tracking-wider" style={{ background: a.isVirtual ? "rgba(148,168,189,0.14)" : "rgba(56,189,248,0.16)", color: a.isVirtual ? TC.faint : TC.profit }}>{a.isVirtual ? "Demo" : "Real"}</span>
       </div>
-      <div className="mt-3 text-[22px] font-bold leading-none" style={{ ...monoFont, color: a.kind === "wallet" ? TC.text : TC.profit }}>{fmtBalance(a.balance, a.currency)}</div>
+      <div className="mt-auto pt-3 text-[22px] font-bold leading-none" style={{ ...monoFont, color: a.kind === "wallet" ? TC.text : TC.profit }}>{fmtBalance(a.balance, a.currency)}</div>
     </div>
   );
 }
@@ -281,7 +281,7 @@ export function CommandCenter() {
 
         <div className="mt-6 grid gap-4 lg:grid-cols-3">
           {/* ── your accounts ── */}
-          <section className="lg:col-span-2">
+          <section className="lg:col-span-2 lg:flex lg:flex-col">
             <h2 className="mb-3 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: TC.faint }}>
               <Wallet size={13} style={{ color: TC.profit }} /> Your portfolio {accounts.length > 0 && t("· {n} accounts", { n: accounts.length })}
             </h2>
@@ -362,19 +362,19 @@ export function CommandCenter() {
 
                 {/* Real and demo side by side, each under its own heading (one kind alone
                     lays its accounts out two to a row instead). */}
-                <div className={`mt-4 grid gap-x-3 gap-y-4 ${realAccounts.length > 0 && demoAccounts.length > 0 ? "sm:grid-cols-2" : ""}`}>
+                <div className={`mt-4 grid gap-x-3 gap-y-4 lg:flex-1 ${realAccounts.length > 0 && demoAccounts.length > 0 ? "sm:grid-cols-2" : ""}`}>
                   {realAccounts.length > 0 && (
-                    <div className="min-w-0">
+                    <div className="flex min-w-0 flex-col">
                       <h3 className="mb-2 text-[10.5px] font-semibold uppercase tracking-[0.16em]" style={{ color: TC.faint }}>{t("Real accounts · {n}", { n: realAccounts.length })}</h3>
-                      <div className={`grid gap-3 ${demoAccounts.length > 0 ? "" : "sm:grid-cols-2"}`}>
+                      <div className={`grid gap-3 lg:flex-1 lg:auto-rows-fr ${demoAccounts.length > 0 ? "" : "sm:grid-cols-2"}`}>
                         {realAccounts.map((a, i) => <AccountCard key={`r-${a.loginid}-${i}`} a={a} />)}
                       </div>
                     </div>
                   )}
                   {demoAccounts.length > 0 && (
-                    <div className="min-w-0">
+                    <div className="flex min-w-0 flex-col">
                       <h3 className="mb-2 text-[10.5px] font-semibold uppercase tracking-[0.16em]" style={{ color: TC.faint }}>{t("Demo accounts · {n}", { n: demoAccounts.length })}</h3>
-                      <div className={`grid gap-3 opacity-90 ${realAccounts.length > 0 ? "" : "sm:grid-cols-2"}`}>
+                      <div className={`grid gap-3 lg:flex-1 lg:auto-rows-fr opacity-90 ${realAccounts.length > 0 ? "" : "sm:grid-cols-2"}`}>
                         {demoAccounts.map((a, i) => <AccountCard key={`d-${a.loginid}-${i}`} a={a} />)}
                       </div>
                     </div>
