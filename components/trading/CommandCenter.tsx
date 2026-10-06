@@ -87,8 +87,8 @@ function AccountCard({ a }: { a: ConnectedAccount }) {
   );
 }
 
-/** `smartBot`: the Smart Scan bot at the top of the page, for a connected visitor. */
-export function CommandCenter({ smartBot = false }: { smartBot?: boolean } = {}) {
+/** The account hub, with the Smart Scan bot at the top of the page for a connected visitor. */
+export function CommandCenter() {
   useLang(); // renders again when the reader's language changes
   const [session, setSession] = useState<Session | null>(null);
   const [portfolio, setPortfolio] = useState<DerivPortfolio | null>(null);
@@ -276,7 +276,7 @@ export function CommandCenter({ smartBot = false }: { smartBot?: boolean } = {})
 
         {error && <div className="mt-4 rounded-xl border p-3 text-[12.5px]" style={{ borderColor: "rgba(242,96,125,0.4)", background: "rgba(242,96,125,0.08)", color: TC.loss }}>{error}</div>}
 
-        {smartBot && connected && (
+        {connected && (
           <section className="mt-5" aria-label="Smart Scan bot">
             <SmartScan />
           </section>
