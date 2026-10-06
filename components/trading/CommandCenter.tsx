@@ -269,9 +269,6 @@ export function CommandCenter() {
 
         <div className="mt-2 max-w-2xl">
           <h1 className="text-[26px] font-bold sm:text-[30px]">{portfolio?.name ? t("Welcome, {name}.", { name: portfolio.name.split(" ")[0] }) : "Your accounts, one place."}</h1>
-          <p className="mt-1.5 text-[13.5px] leading-relaxed" style={{ color: TC.muted }}>
-            Connect a platform and manage every account — full portfolio, balances and status — from one place. No Clunoid account needed; you authorise your own broker.
-          </p>
         </div>
 
         {error && <div className="mt-4 rounded-xl border p-3 text-[12.5px]" style={{ borderColor: "rgba(242,96,125,0.4)", background: "rgba(242,96,125,0.08)", color: TC.loss }}>{error}</div>}
