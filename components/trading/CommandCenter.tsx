@@ -15,22 +15,25 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Wallet, Plug, RefreshCw, Loader2, LogOut, KeyRound, ShieldCheck, Building2, Bot, LineChart, UserPlus, ChevronRight, X, ArrowDownToLine, ArrowUpFromLine } from "lucide-react";
+import { ArrowLeft, Wallet, Plug, RefreshCw, Loader2, LogOut, ShieldCheck, Building2, Bot, LineChart, UserPlus, ChevronRight, X, ArrowDownToLine, ArrowUpFromLine } from "lucide-react";
 import { TC, DOT_GRID, monoFont, fmtBalance } from "@/lib/trading/theme";
 import type { ConnectedAccount } from "@/lib/trading/accounts";
 import { hasDerivApp, DERIV_AFFILIATE_URL, DERIV_TRACKED_DEPOSIT_URL, DERIV_TRACKED_WITHDRAW_URL } from "@/lib/deriv/config";
 import { BalanceVisibilityNote } from "@/components/deriv/BalanceVisibilityNote";
-import { parseDerivRedirect, isDerivRedirect, isDerivCodeReturn, startDerivLogin, completeDerivLogin, saveDerivTokens, loadDerivTokens, clearDerivTokens, saveDerivAccess, loadDerivAccess, clearDerivAccess, clearReconnectGuard, reconnectAfterExpiry, connectChoiceAnswered, markConnectChoice, type DerivToken } from "@/lib/deriv/oauth";
-import { fetchDerivPortfolio, type DerivPortfolio } from "@/lib/deriv/client";
+import { isDerivRedirect, isDerivCodeReturn, startDerivLogin, completeDerivLogin, loadDerivTokens, clearDerivTokens, saveDerivAccess, loadDerivAccess, clearDerivAccess, clearReconnectGuard, reconnectAfterExpiry, connectChoiceAnswered, markConnectChoice } from "@/lib/deriv/oauth";
+import type { DerivPortfolio } from "@/lib/deriv/client";
 import { fetchDerivPortfolioREST, isDerivAuthError } from "@/lib/deriv/api";
 import { SupportChat } from "@/components/support/SupportChat";
 import { InstallApp } from "@/components/pwa/InstallApp";
 import { InstallCard } from "@/components/pwa/InstallCard";
 import { GATES, GATE_ORDER } from "@/components/trading/ConnectPrompt";
 import { t, useLang } from "@/lib/i18n/t";
+import { SmartScan } from "@/components/trading/SmartScan";
 
-/** One active connection: OAuth (new-API access token) or a pasted a1- token. */
-type Session = { kind: "oauth"; accessToken: string } | { kind: "token"; tokens: DerivToken[] };
+/** The one kind of connection: Deriv's own sign-in, with an access token issued
+ *  to Clunoid's app (33P…). Legacy a1- tokens (pasted, or Deriv's classic flat
+ *  redirect) read accounts on another app id, so they are no longer accepted. */
+type Session = { kind: "oauth"; accessToken: string };
 
 /**
  * The two automations this hub opens into. While nothing is connected these
@@ -84,14 +87,13 @@ function AccountCard({ a }: { a: ConnectedAccount }) {
   );
 }
 
-export function CommandCenter() {
+/** `smartBot`: the Smart Scan bot at the top of the page, for a connected visitor. */
+export function CommandCenter({ smartBot = false }: { smartBot?: boolean } = {}) {
   useLang(); // renders again when the reader's language changes
   const [session, setSession] = useState<Session | null>(null);
   const [portfolio, setPortfolio] = useState<DerivPortfolio | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [pasteOpen, setPasteOpen] = useState(false);
-  const [pasteVal, setPasteVal] = useState("");
   /** Which automation was reached for before connecting. null = prompt closed. */
   const started = useRef(false);
 
@@ -101,9 +103,7 @@ export function CommandCenter() {
     setLoading(true);
     setError(null);
     try {
-      const p = s.kind === "oauth"
-        ? await fetchDerivPortfolioREST(s.accessToken) // new REST API (api.derivws.com)
-        : await fetchDerivPortfolio(s.tokens[0].token); // classic WS (pasted a1- token)
+      const p = await fetchDerivPortfolioREST(s.accessToken); // new REST API (api.derivws.com), app 33P…
       setPortfolio(p);
       try { localStorage.setItem(SNAP_KEY, JSON.stringify(p)); } catch { /* ignore */ }
       // The token works, so a later expiry may reconnect silently again.
@@ -134,12 +134,13 @@ export function CommandCenter() {
     const showSnapshot = (s: Session | null) => {
       if (s) { try { const c = localStorage.getItem(SNAP_KEY); if (c) setPortfolio(JSON.parse(c) as DerivPortfolio); } catch { /* ignore */ } }
     };
-    // Restore whichever connection is stored (OAuth access token wins over a paste).
+    // Restore the stored connection: Deriv's sign-in only. Tokens a browser kept
+    // from the old paste / classic flow are thrown away — they would read the
+    // accounts on another app id — and that visitor simply connects again.
     const restore = (): Session | null => {
       const acc = loadDerivAccess();
-      if (acc) return { kind: "oauth", accessToken: acc };
-      const tks = loadDerivTokens();
-      return tks.length ? { kind: "token", tokens: tks } : null;
+      if (loadDerivTokens().length) clearDerivTokens();
+      return acc ? { kind: "oauth", accessToken: acc } : null;
     };
 
     // Surface a Deriv OAuth error instead of failing silently.
@@ -175,18 +176,10 @@ export function CommandCenter() {
       return;
     }
 
-    // Classic flat return (?acct1&token1&cur1) — numeric-app_id flow / paste apps.
+    // Deriv's classic flat return (?acct1&token1&cur1) carries legacy a1- tokens
+    // of a numeric app — never Clunoid's. They are not stored; the address is cleaned.
     if (isDerivRedirect(search)) {
-      const fresh = parseDerivRedirect(search);
       window.history.replaceState({}, "", "/trading/command");
-      if (fresh.length) {
-        saveDerivTokens(fresh);
-        clearDerivAccess();
-        const s: Session = { kind: "token", tokens: fresh };
-        setSession(s);
-        void refresh(s);
-        return;
-      }
     }
 
     /* Nobody who has not connected belongs here.
@@ -220,7 +213,7 @@ export function CommandCenter() {
   }, [refresh]);
 
   const connectDeriv = () => {
-    if (!hasDerivApp()) { setError("Deriv OAuth isn't configured yet — paste a Deriv API token below to connect in the meantime."); setPasteOpen(true); return; }
+    if (!hasDerivApp()) { setError("Deriv sign-in isn't configured yet."); return; }
     setError(null);
     void startDerivLogin();
   };
@@ -230,20 +223,10 @@ export function CommandCenter() {
      Create link sits directly beneath it for the other answer. */
   const askThenConnect = () => { connectDeriv(); };
 
-  const connectWithToken = async () => {
-    const t = pasteVal.trim();
-    if (t.length < 8) { setError("That doesn't look like a Deriv API token."); return; }
-    const tks: DerivToken[] = [{ loginid: "manual", token: t, currency: "" }];
-    saveDerivTokens(tks);
-    clearDerivAccess();
-    const s: Session = { kind: "token", tokens: tks };
-    setSession(s);
-    setPasteOpen(false);
-    setPasteVal("");
-    await refresh(s);
-  };
-
   const disconnect = () => {
+    // A bot trading on this connection finishes or is stopped first.
+    const bot = (window as Window & { ClnBot?: { run?: () => { active?: boolean } | null } }).ClnBot;
+    if (bot?.run?.()?.active) { setError("Stop the bot before you disconnect."); return; }
     clearDerivTokens();
     clearDerivAccess();
     try { localStorage.removeItem(SNAP_KEY); } catch { /* ignore */ }
@@ -292,6 +275,12 @@ export function CommandCenter() {
         </div>
 
         {error && <div className="mt-4 rounded-xl border p-3 text-[12.5px]" style={{ borderColor: "rgba(242,96,125,0.4)", background: "rgba(242,96,125,0.08)", color: TC.loss }}>{error}</div>}
+
+        {smartBot && connected && (
+          <section className="mt-5" aria-label="Smart Scan bot">
+            <SmartScan />
+          </section>
+        )}
 
         <div className="mt-6 grid gap-4 lg:grid-cols-3">
           {/* ── your accounts ── */}
@@ -445,22 +434,6 @@ export function CommandCenter() {
                   <a href={DERIV_AFFILIATE_URL} target="_blank" rel="noopener noreferrer" className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-[13.5px] font-semibold transition hover:bg-white/5" style={{ borderColor: TC.line, color: TC.text }}>
                     <UserPlus size={15} style={{ color: TC.profit }} /> Create a Deriv account
                   </a>
-                  {/* API-token connect — hidden (OAuth is the path now, and it's
-                      not needed); kept in code as a fallback, not removed. */}
-                  {false && (
-                    <>
-                      <button onClick={() => setPasteOpen((v) => !v)} className="mt-2 flex w-full items-center justify-center gap-1.5 text-[12px] transition hover:opacity-80" style={{ color: TC.muted }}>
-                        <KeyRound size={12} /> or paste a Deriv API token
-                      </button>
-                      {pasteOpen && (
-                        <div className="mt-2 space-y-2">
-                          <input value={pasteVal} onChange={(e) => setPasteVal(e.target.value)} placeholder="Deriv API token" className="w-full rounded-lg border bg-transparent px-3 py-2 text-[13px] outline-none focus:border-white/25" style={{ borderColor: TC.line, color: TC.text }} />
-                          <button onClick={() => void connectWithToken()} className="w-full rounded-lg border px-3 py-2 text-[12.5px] font-medium transition hover:bg-white/5" style={{ borderColor: TC.line, color: TC.text }}>Connect with token</button>
-                          <p className="text-[11px] leading-relaxed" style={{ color: TC.faint }}>Create a token in your Deriv account (Settings → API token) with the <b>Read</b> scope.</p>
-                        </div>
-                      )}
-                    </>
-                  )}
                 </>
               )}
             </div>

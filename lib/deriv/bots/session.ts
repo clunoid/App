@@ -10,6 +10,7 @@
  */
 import { DERIV_API_BASE, DERIV_BOT_APP_ID } from "./config";
 import { reconnectAfterExpiry } from "../oauth";
+import { DerivAuthError } from "../api";
 
 /** POST /trading/v1/options/accounts/{accountId}/otp → the ready-to-connect WS URL. */
 export async function fetchTradeSocketUrl(accessToken: string, accountId: string): Promise<string> {
@@ -28,8 +29,8 @@ export async function fetchTradeSocketUrl(accessToken: string, accountId: string
     | null;
   if (res.status === 401) {
     // Same as the REST client: reconnect rather than report.
-    if (reconnectAfterExpiry()) throw new Error("Reconnecting to Deriv…");
-    throw new Error("Could not reach your Deriv account. Please connect again.");
+    if (reconnectAfterExpiry()) throw new DerivAuthError("Reconnecting to Deriv…");
+    throw new DerivAuthError("Could not reach your Deriv account. Please connect again.");
   }
   const url = json?.data?.url;
   if (!res.ok || !url) {

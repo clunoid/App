@@ -12,11 +12,13 @@
  */
 import { DERIV_VOLATILITY_MARKETS, DERIV_PIP_DECIMALS, BOT_DEFAULTS } from "./config";
 import { fetchTradeSocketUrl } from "./session";
+import { isDerivAuthError } from "../api";
 import type { Strategy, StrategyCtx, TradeSpec, BotUI, BotStats, BotAccount, BotConfig } from "./types";
 
 const round2 = (v: number) => Math.round(v * 100) / 100;
 const POLL_MS = 500;         // re-check for a signal when the strategy is waiting
 const POST_TRADE_MS = 900;   // pace between settled trades
+const STALE_MS = 50000;      // a line that has said nothing for this long is dead, whatever it claims
 
 /** Only ONE bot may run at a time across the whole app. Starting a bot stops any other. */
 let ACTIVE_BOT: { stop: (msg?: string, kind?: "info" | "success" | "warning" | "error") => void } | null = null;
@@ -65,6 +67,10 @@ export class DerivBot {
   private watchdogTimer: ReturnType<typeof setTimeout> | null = null;
   private attemptTimer: ReturnType<typeof setTimeout> | null = null;
   private tradeStartedAt = 0;
+  private lastMsgAt = 0;           // the last message of any kind on the current line
+  private connecting = false;      // a one-time URL is being fetched / a socket is being made
+  private settledIds = new Set<number>(); // contracts already booked: never twice
+  private readonly onRevive = () => this.revive();
   private stopMessage: { msg: string; kind: "info" | "success" | "warning" | "error" } | null = null;
 
   constructor(ui: BotUI, account: BotAccount, strategy: Strategy) {
@@ -87,7 +93,12 @@ export class DerivBot {
     this.activeContractId = null; this.tradeInProgress = false; this.awaitingProposal = false; this.buyInFlight = false;
     this.currentMarket = ""; this.currentTarget = "";
     this.reconnectAttempts = 0;
+    this.settledIds.clear();
     this.strategy.reset();
+    if (typeof window !== "undefined") {
+      window.addEventListener("online", this.onRevive);
+      document.addEventListener("visibilitychange", this.onRevive);
+    }
 
     // One bot at a time — stop any other running bot before we take over.
     if (ACTIVE_BOT && ACTIVE_BOT !== this) { try { ACTIVE_BOT.stop("Stopped — another bot was started.", "info"); } catch { /* ignore */ } }
@@ -114,22 +125,28 @@ export class DerivBot {
 
   private async connect(): Promise<void> {
     if (this.stopRequested) return;
+    this.connecting = true;
     let url: string;
     try {
       url = await fetchTradeSocketUrl(this.accessToken, this.accountId);
     } catch (e) {
-      this.attemptReconnect(e instanceof Error ? e.message : "Couldn't open the trading session.");
+      this.connecting = false;
+      // Deriv refused the session itself: retrying cannot help, and a run must not trade blind.
+      if (isDerivAuthError(e)) { this.stop(e.message || "Your Deriv session ended — connect again, then restart the bot.", "error"); return; }
+      this.retryConnect(e instanceof Error ? e.message : "Couldn't open the trading session.");
       return;
     }
-    if (this.stopRequested) return;
+    if (this.stopRequested) { this.connecting = false; return; }
 
     let ws: WebSocket;
     try { ws = new WebSocket(url); }
-    catch { this.attemptReconnect("Couldn't open the trading connection."); return; }
+    catch { this.connecting = false; this.retryConnect("Couldn't open the trading connection."); return; }
     this.ws = ws;
+    this.connecting = false;
 
     ws.onopen = () => {
       const resuming = this.isReconnecting;
+      this.lastMsgAt = Date.now();
       this.reconnectAttempts = 0; this.isReconnecting = false;
       if (this.reconnectTimer) { clearTimeout(this.reconnectTimer); this.reconnectTimer = null; }
       this.ui.onStatus(resuming ? "Reconnected. Resuming…" : "Connected. Running…", "success");
@@ -139,7 +156,11 @@ export class DerivBot {
       if (this.activeContractId) {
         this.send({ proposal_open_contract: 1, contract_id: this.activeContractId, subscribe: 1 });
       } else if (this.buyInFlight) {
+        // The buy's answer was lost with the line: still open → the open-contract
+        // stream adopts it; already settled (a 1-tick contract lives ~2 s) → the
+        // profit table has it.
         this.send({ proposal_open_contract: 1, subscribe: 1 });
+        this.askProfitTable();
         this.armWatchdog();
       } else {
         this.tradeInProgress = false; this.awaitingProposal = false;
@@ -147,13 +168,41 @@ export class DerivBot {
       this.startPing();
       if (!this.tradeInProgress) this.scheduleAttempt(0);
     };
-    ws.onmessage = (ev) => this.handleMessage(ev.data as string);
-    ws.onerror = () => { if (!this.stopRequested && !this.isReconnecting) this.attemptReconnect("Connection error. Reconnecting…"); };
+    ws.onmessage = (ev) => { this.lastMsgAt = Date.now(); this.handleMessage(ev.data as string); };
+    // A socket that fails — before it opened too — schedules the next attempt: no
+    // failure may leave the bot waiting on a reconnect that will never come.
+    ws.onerror = () => { if (!this.stopRequested && this.ws === ws) this.retryConnect("Connection error. Reconnecting…"); };
     ws.onclose = () => {
+      if (this.ws !== ws) return;
       this.stopPing();
       if (this.stopRequested) this.finishStop();
-      else if (!this.isReconnecting) this.attemptReconnect("Connection lost. Reconnecting…");
+      else this.retryConnect("Connection lost. Reconnecting…");
     };
+  }
+
+  /** Schedule the next attempt from a failure — whatever was in flight has failed. */
+  private retryConnect(message: string): void {
+    if (this.stopRequested) return;
+    this.isReconnecting = false;
+    this.attemptReconnect(message);
+  }
+
+  /** The network or the tab is back: a line that is not live reconnects now, not after its backoff. */
+  private revive(): void {
+    if (!this.isRunning || this.stopRequested || this.connecting) return;
+    if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+    const ws = this.ws;
+    if (ws && ws.readyState === WebSocket.CONNECTING) return;
+    if (ws && ws.readyState === WebSocket.OPEN && Date.now() - this.lastMsgAt < STALE_MS) return;
+    if (this.reconnectTimer) { clearTimeout(this.reconnectTimer); this.reconnectTimer = null; }
+    this.reconnectAttempts = 0;
+    this.retryConnect("Reconnecting…");
+  }
+
+  /** A buy whose answer never came: ask Deriv what this account bought since. */
+  private askProfitTable(): void {
+    if (!this.tradeStartedAt) return;
+    this.send({ profit_table: 1, description: 1, limit: 10, sort: "DESC", date_from: String(Math.floor(this.tradeStartedAt / 1000) - 3) });
   }
 
   private send(obj: Record<string, unknown>): void {
@@ -174,6 +223,7 @@ export class DerivBot {
     let d: Record<string, unknown>;
     try { d = JSON.parse(raw); } catch { return; }
 
+    if (d.error && d.msg_type === "profit_table") return; // the reconciliation only; the stream and the watchdog still cover the trade
     if (d.error) {
       const err = d.error as { code?: string; message?: string };
       const inTradeMsg = d.msg_type === "proposal" || d.msg_type === "buy";
@@ -221,6 +271,18 @@ export class DerivBot {
       case "proposal_open_contract":
         this.handleContract(d.proposal_open_contract as Record<string, unknown>);
         break;
+      case "profit_table": {
+        // The buy in flight, settled while the line was down: the same contract, market and stake.
+        if (!this.buyInFlight || this.activeContractId !== null) break;
+        const txs = ((d.profit_table as { transactions?: Array<Record<string, unknown>> } | undefined)?.transactions) || [];
+        const hit = txs.find((x) =>
+          String(x.underlying_symbol || "") === this.currentMarket &&
+          Math.abs(Number(x.buy_price) - this.tradeStake) < 0.01 &&
+          Number(x.purchase_time) * 1000 >= this.tradeStartedAt - 3000 &&
+          !this.settledIds.has(Number(x.contract_id)));
+        if (hit) this.settle(Number(hit.contract_id), round2(Number(hit.sell_price) - Number(hit.buy_price)), Number(hit.buy_price));
+        break;
+      }
       case "tick":
         this.recordTick(d.tick as { symbol?: string; quote?: number; pip_size?: number } | undefined);
         break;
@@ -286,9 +348,13 @@ export class DerivBot {
     }
     if (this.activeContractId === null || cid !== this.activeContractId) return;
     if (!c.is_sold) return;
+    this.settle(cid, Number(c.profit) || 0, Number(c.buy_price) || this.tradeStake);
+  }
 
-    const profit = Number(c.profit) || 0;
-    const stake = Number(c.buy_price) || this.tradeStake;
+  /** Book one settled contract — once, whichever way its result arrived. */
+  private settle(cid: number, profit: number, stake: number): void {
+    if (this.settledIds.has(cid)) return;
+    this.settledIds.add(cid);
     const isWin = profit > 0;
 
     this.totalProfit = round2(this.totalProfit + profit);
@@ -347,7 +413,7 @@ export class DerivBot {
       if (!(this.isRunning && this.tradeInProgress && Date.now() - this.tradeStartedAt > 25000)) return;
       this.ui.onStatus("Trade update stalled — re-syncing…", "warning");
       if (this.activeContractId) this.send({ proposal_open_contract: 1, contract_id: this.activeContractId, subscribe: 1 });
-      else this.send({ proposal_open_contract: 1, subscribe: 1 });
+      else { this.send({ proposal_open_contract: 1, subscribe: 1 }); this.askProfitTable(); }
       this.watchdogTimer = setTimeout(() => {
         if (this.isRunning && this.tradeInProgress) { this.freeTrade(); this.scheduleAttempt(1500); }
       }, 4000);
@@ -359,14 +425,21 @@ export class DerivBot {
     this.isReconnecting = true;
     this.reconnectAttempts += 1;
     this.stopPing();
-    if (this.reconnectAttempts > 10) { this.ui.onStatus("Couldn't reconnect. Please restart the bot.", "error"); this.stop("Connection failed.", "error"); return; }
-    const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts - 1), 30000);
-    this.ui.onStatus(`${message} (attempt ${this.reconnectAttempts}/10)`, "warning");
+    // Never given up while the bot runs: the backoff tops out at 30 s and the network
+    // or the tab coming back (revive) tries at once.
+    const delay = Math.min(1000 * Math.pow(2, Math.min(this.reconnectAttempts, 6) - 1), 30000);
+    this.ui.onStatus(`${message} (attempt ${this.reconnectAttempts})`, "warning");
     if (this.ws) { try { this.ws.onopen = this.ws.onmessage = this.ws.onerror = this.ws.onclose = null; this.ws.close(); } catch { /* ignore */ } }
     this.reconnectTimer = setTimeout(() => { if (!this.stopRequested) void this.connect(); }, delay);
   }
 
-  private startPing(): void { this.stopPing(); this.pingTimer = setInterval(() => this.send({ ping: 1 }), 20000); }
+  private startPing(): void {
+    this.stopPing();
+    this.pingTimer = setInterval(() => {
+      if (Date.now() - this.lastMsgAt > STALE_MS) { this.retryConnect("Connection went quiet. Reconnecting…"); return; }
+      this.send({ ping: 1 });
+    }, 20000);
+  }
   private stopPing(): void { if (this.pingTimer) { clearInterval(this.pingTimer); this.pingTimer = null; } }
 
   private startStatsTimer(): void {
@@ -395,6 +468,11 @@ export class DerivBot {
     if (this.attemptTimer) { clearTimeout(this.attemptTimer); this.attemptTimer = null; }
     if (this.ws) { try { this.ws.onopen = this.ws.onmessage = this.ws.onerror = this.ws.onclose = null; this.ws.close(); } catch { /* ignore */ } this.ws = null; }
     if (ACTIVE_BOT === this) ACTIVE_BOT = null;
+    if (typeof window !== "undefined") {
+      window.removeEventListener("online", this.onRevive);
+      document.removeEventListener("visibilitychange", this.onRevive);
+    }
+    this.connecting = false;
     this.ui.onRunning(false);
     if (this.stopMessage) this.ui.onStatus(this.stopMessage.msg, this.stopMessage.kind);
   }

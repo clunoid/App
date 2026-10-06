@@ -10,7 +10,11 @@
 import WebSocket from "ws";
 import type { Candle } from "./types";
 
-const WS_URL = "wss://ws.derivws.com/websockets/v3?app_id=1089";
+/* Deriv's public market-data WebSocket: no account, no OTP and no app id at all
+   (developers.deriv.com/llms/authentication.md). The classic ws.derivws.com
+   endpoint on the shared app 1089 now refuses connections (HTTP 520), and
+   Clunoid uses no app id but its own. */
+const WS_URL = "wss://api.derivws.com/trading/v1/options/ws/public";
 
 type Raw = { epoch: number; open: string | number; high: string | number; low: string | number; close: string | number };
 const toCandle = (c: Raw): Candle => ({ t: c.epoch, o: +c.open, h: +c.high, l: +c.low, c: +c.close });
