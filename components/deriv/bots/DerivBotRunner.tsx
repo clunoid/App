@@ -39,9 +39,10 @@ export function DerivBotRunner({ botId }: { botId: string }) {
   const [access, setAccess] = useState("");
   const [accounts, setAccounts] = useState<ConnectedAccount[]>([]);
   // Default everyone to their REAL account (that's where the markup is). Demo is
-  // hidden until the secret is entered — a triple-click on the Real toggle.
+  // hidden until the secret is entered — three taps on the Real toggle.
   const [mode, setMode] = useState<Mode>("real");
   const [showDemo, setShowDemo] = useState(false);
+  const realTaps = useRef({ n: 0, at: 0 });
 
   const [stake, setStake] = useState(String(BOT_DEFAULTS.initialStake));
   const [takeProfit, setTakeProfit] = useState(String(BOT_DEFAULTS.takeProfit));
@@ -213,10 +214,17 @@ export function DerivBotRunner({ botId }: { botId: string }) {
                 const active = mode === m;
                 return (
                   <button key={m}
-                    onClick={(e) => {
-                      // Secret: a triple-click on Real reveals the hidden Demo toggle.
+                    onClick={() => {
+                      // Secret: three taps on Real within 600 ms of each other reveal the hidden
+                      // Demo toggle. Counted here, not read from the click's detail: an iPhone
+                      // reports every tap as a first click, so a detail of 3 never comes.
                       // Everyone stays on their real account otherwise — that's the point.
-                      if (m === "real" && e.detail === 3) { setShowDemo(true); return; }
+                      if (m === "real") {
+                        const tap = realTaps.current, now = Date.now();
+                        tap.n = now - tap.at <= 600 ? tap.n + 1 : 1;
+                        tap.at = now;
+                        if (tap.n >= 3) { tap.n = 0; setShowDemo(true); return; }
+                      }
                       switchMode(m);
                     }}
                     disabled={runningState || !avail}
