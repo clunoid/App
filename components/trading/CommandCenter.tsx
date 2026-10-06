@@ -390,7 +390,7 @@ export function CommandCenter() {
             <h2 className="mb-3 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: TC.faint }}>
               <Plug size={13} style={{ color: TC.profit }} /> Connect a platform
             </h2>
-            <div className="flex flex-1 flex-col rounded-2xl border p-4" style={{ borderColor: connected ? "rgba(52,211,153,0.35)" : TC.line, background: TC.panel }}>
+            <div className="flex flex-1 flex-col rounded-2xl border p-3 min-[360px]:p-4" style={{ borderColor: connected ? "rgba(52,211,153,0.35)" : TC.line, background: TC.panel }}>
               <div className="flex items-center gap-2.5">
                 <BrandLogo src="/logos/deriv.png" alt="Deriv" size={26} />
                 <div className="min-w-0 flex-1">
@@ -408,20 +408,20 @@ export function CommandCenter() {
                    withdraw are affiliate-tracked so Deriv credits us. Four compact
                    buttons in a 2×2 grid so they fit cleanly on any screen. */
                 <div className="mt-4 grid grid-cols-2 gap-2">
-                  <Link href="/trading/deriv/bots" className="flex min-h-[46px] items-center justify-center gap-1.5 rounded-xl px-2.5 py-2 text-[12.5px] font-bold transition hover:opacity-90" style={{ background: TC.profit, color: TC.ink }}>
+                  <Link href="/trading/deriv/bots" className="flex min-h-[46px] items-center justify-center gap-1 rounded-xl px-1.5 py-2 min-[360px]:gap-1.5 min-[360px]:px-2.5 text-[12.5px] font-bold transition hover:opacity-90" style={{ background: TC.profit, color: TC.ink }}>
                     <Bot size={15} /> Deriv Bots
                   </Link>
                   {/* MetaTrader's own logo (mark and wordmark), not a stand-in icon. Where
                       the button is narrow the badge drops under it instead of squeezing it. */}
-                  <Link href="/trading/deriv/mt5" aria-label="MetaTrader 5 AI bots" className="flex min-h-[46px] flex-wrap items-center justify-center gap-x-1.5 gap-y-1 rounded-xl border px-2.5 py-2 transition hover:bg-white/5" style={{ borderColor: TC.line, color: TC.text }}>
+                  <Link href="/trading/deriv/mt5" aria-label="MetaTrader 5 AI bots" className="flex min-h-[46px] flex-wrap items-center justify-center gap-x-1.5 gap-y-1 rounded-xl border px-1.5 py-2 min-[360px]:px-2.5 transition hover:bg-white/5" style={{ borderColor: TC.line, color: TC.text }}>
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src="/logos/metatrader5.svg" alt="MetaTrader 5" width={186} height={32} className="h-[15px] w-auto" />
                     <span className="rounded px-1 py-0.5 text-[8.5px] font-bold uppercase tracking-wide" style={{ background: "rgba(56,189,248,0.16)", color: "#38bdf8" }}>AI bots</span>
                   </Link>
-                  <a href={DERIV_TRACKED_DEPOSIT_URL} target="_blank" rel="noopener noreferrer" className="flex min-h-[46px] items-center justify-center gap-1.5 rounded-xl border px-2.5 py-2 text-[12.5px] font-bold transition hover:bg-white/5" style={{ borderColor: "rgba(52,211,153,0.45)", color: "#34d399" }}>
+                  <a href={DERIV_TRACKED_DEPOSIT_URL} target="_blank" rel="noopener noreferrer" className="flex min-h-[46px] items-center justify-center gap-1 rounded-xl border px-1.5 py-2 min-[360px]:gap-1.5 min-[360px]:px-2.5 text-[12.5px] font-bold transition hover:bg-white/5" style={{ borderColor: "rgba(52,211,153,0.45)", color: "#34d399" }}>
                     <ArrowDownToLine size={15} /> Deposit
                   </a>
-                  <a href={DERIV_TRACKED_WITHDRAW_URL} target="_blank" rel="noopener noreferrer" className="flex min-h-[46px] items-center justify-center gap-1.5 rounded-xl border px-2.5 py-2 text-[12.5px] font-bold transition hover:bg-white/5" style={{ borderColor: TC.line, color: TC.text }}>
+                  <a href={DERIV_TRACKED_WITHDRAW_URL} target="_blank" rel="noopener noreferrer" className="flex min-h-[46px] items-center justify-center gap-1 rounded-xl border px-1.5 py-2 min-[360px]:gap-1.5 min-[360px]:px-2.5 text-[12.5px] font-bold transition hover:bg-white/5" style={{ borderColor: TC.line, color: TC.text }}>
                     <ArrowUpFromLine size={15} /> Withdraw
                   </a>
                 </div>
