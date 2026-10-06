@@ -105,6 +105,8 @@ export const config = {
        the site could never be submitted for indexing.
 
      Neither a .js nor a static .html URL is ever a page here — the app's own
-     routes have no extension — so nothing above wants to see one. */
-  matcher: ["/((?!api|auth|r/|_next/static|_next/image|favicon.ico|icon.svg|robots.txt|sitemap.xml|opengraph-image|og|.*\\.(?:png|jpg|jpeg|gif|svg|webp|ico|txt|xml|json|webmanifest|js|html|mq5|ex5|mp3)).*)"],
+     routes have no extension — so nothing above wants to see one. The same for
+     .css: a stylesheet under /public (the Smart Scan bot's, /smart/cln-smart.css)
+     was answered with the landing page instead of itself. */
+  matcher: ["/((?!api|auth|r/|_next/static|_next/image|favicon.ico|icon.svg|robots.txt|sitemap.xml|opengraph-image|og|.*\\.(?:png|jpg|jpeg|gif|svg|webp|ico|txt|xml|json|webmanifest|js|css|html|mq5|ex5|mp3)).*)"],
 };
