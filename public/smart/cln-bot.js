@@ -931,7 +931,9 @@
         ? T("The bot paused after a winning trade, with your profit kept. It resumes by itself as soon as conditions are stable again, and carries on to your take profit.")
         : T("The bot is waiting to place its first trade. It starts by itself as soon as conditions are stable again, and trades on to your take profit.");
       $("bmHoldPl").textContent = signed(r.pl, r.currency);
-      $("bmHoldPl").className = "cs-mono" + (r.pl > 0 ? " is-up" : r.pl < 0 ? " is-down" : "");
+      // Up or down in the page's own colours (each page keeps its own classes on the figure).
+      $("bmHoldPl").classList.toggle("is-up", r.pl > 0);
+      $("bmHoldPl").classList.toggle("is-down", r.pl < 0);
       $("bmHoldN").textContent = String(r.n);
       $("bmHoldRate").textContent = r.n ? Math.round(100 * r.won / r.n) + "%" : "—";
       $("bmHoldTime").textContent = [Math.floor(secs / 3600), Math.floor(secs / 60) % 60, secs % 60].map(function (v) { return (v < 10 ? "0" : "") + v; }).join(":");
