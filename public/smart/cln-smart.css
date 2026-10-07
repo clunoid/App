@@ -254,6 +254,11 @@
 .cs-list::-webkit-scrollbar-thumb { background: rgba(56, 189, 248, 0.28); border-radius: 3px; }
 .cs-list::-webkit-scrollbar-track { background: transparent; }
 @supports not selector(::-webkit-scrollbar) { .cs-list { scrollbar-width: thin; scrollbar-color: rgba(56, 189, 248, 0.28) transparent; } }
+/* A finger on Recent Trades must still move the page: `contain` kept every swipe that began on
+   the list inside it, so at the list's end nothing moved and the page could only be scrolled
+   from above or below the card. On phones, tablets and any touch screen the list hands the
+   swipe to the page at its ends; with a mouse on a wide screen it keeps it. */
+@media (max-width: 1023px), (pointer: coarse) { .cs-list { overscroll-behavior: auto; } }
 .cs-trade {
   display: flex; align-items: center; justify-content: space-between; gap: 8px; flex: none; padding: 8px 12px;
   border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 12px; background: rgba(255, 255, 255, 0.02);
