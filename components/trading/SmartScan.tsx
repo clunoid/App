@@ -24,7 +24,7 @@ import { DERIV_CLIENT_ID, DERIV_TRACKED_DEPOSIT_URL, DERIV_TRACKED_PORTFOLIO_URL
 import { reconnectAfterExpiry } from "@/lib/deriv/oauth";
 
 /** Bump with any change under public/smart, so a returning browser takes the new files. */
-const V = "20261007e";
+const V = "20261007f";
 const SCRIPTS = ["/smart/cln-deriv.js", "/smart/cln-watch.js", "/smart/cln-bot.js", "/smart/cln-panel.js"];
 
 const ic = (path: string, size = 16, extra = "") =>
@@ -43,6 +43,7 @@ const I = {
   check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
   depositArrow: '<path d="M12 17V3"/><path d="m6 11 6 6 6-6"/><path d="M19 21H5"/>',
   withdrawArrow: '<path d="m18 9-6-6-6 6"/><path d="M12 3v14"/><path d="M5 21h14"/>',
+  logout: '<path d="m16 17 5-5-5-5"/><path d="M21 12H9"/><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>',
   pause: '<rect x="6.5" y="5" width="3.5" height="14" rx="1.2"/><rect x="14" y="5" width="3.5" height="14" rx="1.2"/>',
 };
 
@@ -77,7 +78,6 @@ const MARKUP = `
     </div>
     <p class="cs-acct-note">${OPTIONS_ONLY}</p>
   </div>
-  <div class="cs-links-wrap cs-links-wrap--top"><nav class="cs-links" aria-label="Deriv">${LINKS}</nav></div>
 </div>
 
 <section class="cs-state" id="tState" aria-live="polite" hidden>
@@ -146,7 +146,11 @@ const MARKUP = `
       <div class="cs-empty" id="botEmpty"><span>No trades yet — start the bot.</span></div>
       <div class="cs-list" id="historyItems" translate="no"></div>
     </div>
-    <div class="cs-links-wrap cs-links-wrap--foot"><nav class="cs-links" aria-label="Deriv">${LINKS}</nav></div>
+    <!-- The links at the foot of Recent Trades at every width — on a phone or tablet the foot
+         of the page, which leaves the top to the balance and the bot. There, Disconnect joins
+         them (out of the header): CommandCenter.tsx runs it for [data-cln-out]. -->
+    <div class="cs-links-wrap cs-links-wrap--foot"><nav class="cs-links" aria-label="Deriv">${LINKS}
+        <button class="cs-link cs-link--out" type="button" data-cln-out>${ic(I.logout, 12)}<span>Disconnect</span></button></nav></div>
   </section>
 </div>
 

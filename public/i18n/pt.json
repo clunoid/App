@@ -2557,5 +2557,6 @@
 "Stop trading":"Parar de operar",
 "The bot is waiting to place its first trade. It starts by itself as soon as conditions are stable again, and trades on to your take profit.":"O bot está aguardando para fazer a primeira operação. Ele começa sozinho assim que as condições voltam a ficar estáveis e opera até o seu take profit.",
 "The bot paused after a winning trade, with your profit kept. It resumes by itself as soon as conditions are stable again, and carries on to your take profit.":"O bot pausou após uma operação vencedora, com o seu lucro mantido. Ele retoma sozinho assim que as condições voltam a ficar estáveis e segue até o seu take profit.",
-"Unstable conditions detected":"Condições instáveis detectadas"
+"Unstable conditions detected":"Condições instáveis detectadas",
+"Disconnect":"Desconectar"
 }

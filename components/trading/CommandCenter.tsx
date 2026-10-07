@@ -197,6 +197,24 @@ export function CommandCenter() {
     setError(null);
   };
 
+  /* The bot's foot (phones and tablets) has its own Disconnect, in the bot's markup
+     ([data-cln-out], SmartScan.tsx): it is this one. If a run is going, the reason it
+     refuses shows at the top, so the page goes there. */
+  const disconnectRef = useRef(disconnect);
+  disconnectRef.current = disconnect;
+  useEffect(() => {
+    const onClick = (e: MouseEvent) => {
+      const el = e.target as Element | null;
+      if (!el || !el.closest || !el.closest("[data-cln-out]")) return;
+      const bot = (window as Window & { ClnBot?: { run?: () => { active?: boolean } | null } }).ClnBot;
+      const busy = !!bot?.run?.()?.active;
+      disconnectRef.current();
+      if (busy) window.scrollTo({ top: 0, behavior: "smooth" });
+    };
+    document.addEventListener("click", onClick);
+    return () => document.removeEventListener("click", onClick);
+  }, []);
+
   const connected = session != null;
 
   return (
@@ -220,9 +238,9 @@ export function CommandCenter() {
               </button>
             )}
             {/* Ending the connection: the one way to sign in with another Deriv
-                account. Just the icon on a phone, where the header is narrow. */}
+                account. Below 1024 px it is at the foot of the bot instead (SmartScan.tsx). */}
             {connected && (
-              <button onClick={disconnect} title="Disconnect Deriv" aria-label="Disconnect Deriv" className="inline-flex h-[30px] w-[30px] items-center justify-center gap-1.5 rounded-full border text-[12.5px] font-medium transition hover:bg-white/5 sm:h-auto sm:w-auto sm:px-3 sm:py-1.5" style={{ borderColor: TC.line, color: TC.muted }}>
+              <button onClick={disconnect} title="Disconnect Deriv" aria-label="Disconnect Deriv" className="inline-flex max-lg:hidden h-[30px] w-[30px] items-center justify-center gap-1.5 rounded-full border text-[12.5px] font-medium transition hover:bg-white/5 sm:h-auto sm:w-auto sm:px-3 sm:py-1.5" style={{ borderColor: TC.line, color: TC.muted }}>
                 <LogOut size={13} /> <span className="hidden sm:inline">Disconnect</span>
               </button>
             )}
