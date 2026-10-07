@@ -387,8 +387,8 @@ export function Disclaimer() {
     <footer className="border-t py-8" style={{ borderColor: C.line }}>
       <Wrap>
         <p className="max-w-4xl text-[12.5px] leading-relaxed" style={{ color: C.faint }}>
-          Trading carries risk. Clunoid Trading provides automated tools, not financial advice and not a
-          profit guarantee. Past performance does not predict future results. Never trade money you
+          Trading carries risk. Clunoid Trading provides automated tools, not financial advice. Past
+          performance does not predict future results. Never trade money you
           cannot afford to lose.
         </p>
         <p className="mt-2 text-[12.5px]" style={{ color: C.faint }}>

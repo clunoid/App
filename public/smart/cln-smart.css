@@ -45,8 +45,14 @@
 .cs-id-t { min-width: 0; }
 .cs-name { font-size: 15px; font-weight: 700; line-height: 1.25; }
 .cs-lede { margin-top: 1px; font-size: 12px; line-height: 1.45; color: var(--c-muted); }
+.cs-lede[hidden] { display: none; }
 
-.cs-acct { display: flex; align-items: center; gap: 8px; flex: none; margin-left: auto; }
+/* The balance, Real / Demo beside it, and under them what the balance can see. */
+.cs-acct { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; flex: none; max-width: 100%; margin-left: auto; }
+.cs-acct-row { display: flex; align-items: center; gap: 8px; }
+.cs-acct-note { max-width: 330px; margin: 0; font-size: 11.5px; font-weight: 600; line-height: 1.5; text-align: right; color: #34d399; }
+.cs-acct-note a, .bm-fund-vis a { font-weight: 700; color: #38bdf8; text-decoration: underline; text-underline-offset: 2px; }
+.cs-acct.is-demo .cs-acct-note { display: none; }   /* a demo has no other funds to move */
 .cs-bal {
   display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border: 1px solid var(--c-line); border-radius: 999px;
   font-size: 12.5px; white-space: nowrap; color: var(--c-text);
@@ -182,6 +188,25 @@
 .cs-stat > span { flex: none; font-size: 11px; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--c-muted); }
 .cs-stat > b { min-width: 0; font-size: 15px; font-weight: 700; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--c-text); }
 .cs-stat small { font-size: 10px; font-weight: 500; color: var(--c-faint); }
+
+/* Deriv's bots, MetaTrader 5, deposit and withdraw: small, at the foot of Recent
+   Trades, whose list gives up the room on a large screen, so no card grows for
+   them, running or not. Two to a row where the card is narrow, four where wide. */
+.cs-links-wrap { container-type: inline-size; margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(255, 255, 255, 0.06); }
+.cs-links { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+@container (min-width: 500px) { .cs-links { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.cs-link {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 2px 4px; min-height: 30px; padding: 4px 5px;
+  border: 1px solid var(--c-line); border-radius: 9px; font-size: 11px; font-weight: 700; line-height: 1.15; white-space: nowrap;
+  color: var(--c-text); text-decoration: none; transition: background-color .15s, opacity .15s;
+}
+.cs-link:hover { background: rgba(255, 255, 255, 0.05); }
+.cs-link svg { flex: none; }
+.cs-link--bots { border-color: transparent; background: var(--c-sky); color: var(--c-ink); }
+.cs-link--bots:hover { background: var(--c-sky); opacity: .9; }
+.cs-link--dep { border-color: rgba(52, 211, 153, 0.45); color: #34d399; }
+.cs-link--mt5 img { display: block; width: auto; height: 11px; }
+.cs-link-tag { padding: 1px 3px; border-radius: 3px; background: rgba(56, 189, 248, 0.16); color: #38bdf8; font-size: 7.5px; letter-spacing: 0.02em; text-transform: uppercase; }
 .cs-purple { color: var(--c-purple) !important; }
 .cs-orange { color: var(--c-orange) !important; }
 .cs-cyan { color: var(--c-cyan) !important; }
@@ -229,7 +254,9 @@
   .cs-trades-in .cs-empty { flex: 1; }
 }
 @media (max-width: 640px) {
-  .cs-acct { margin-left: 0; width: 100%; justify-content: space-between; }
+  .cs-acct { align-items: stretch; width: 100%; margin-left: 0; }
+  .cs-acct-row { justify-content: space-between; }
+  .cs-acct-note { max-width: none; text-align: left; }
   .cs-col { padding: 14px; }
   .cs-types { grid-auto-columns: auto; }
   .bot-type { padding: 5px 3px; }
@@ -356,8 +383,8 @@
 .bm-fund h3 { margin: 12px 0 0; font-family: var(--font-serif, Georgia, serif); font-size: 21px; font-weight: 600; letter-spacing: -0.01em; color: var(--c-text); }
 .bm-fund-p { margin: 6px 0 0; font-size: 12.5px; line-height: 1.6; color: var(--c-muted); }
 .bm-fund-note { margin: 8px 0 0; font-size: 12px; line-height: 1.5; font-weight: 600; color: var(--c-warn); }
-.bm-fund-vis { margin: 8px 0 0; font-size: 11.5px; line-height: 1.6; color: var(--c-faint); }
-.bm-fund-vis a { font-weight: 600; color: #38bdf8; text-decoration: underline; text-underline-offset: 2px; }
+.bm-fund-vis { margin: 10px 0 0; font-size: 12.5px; font-weight: 600; line-height: 1.55; color: #34d399; }
+.bm-fund-note[hidden], .bm-fund-vis[hidden] { display: none; }
 .bm-fund-go { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; margin-top: 16px; padding: 10px 16px; border-radius: 12px; background: var(--c-sky); color: var(--c-ink) !important; font-size: 13.5px; font-weight: 600; text-decoration: none; }
 .bm-fund-go:hover { opacity: .9; }
 .bm-fund-later { width: 100%; margin-top: 8px; padding: 10px 16px; border: 1px solid var(--c-line); border-radius: 12px; background: transparent; color: var(--c-text) !important; font-size: 13px !important; font-weight: 600; cursor: pointer; }

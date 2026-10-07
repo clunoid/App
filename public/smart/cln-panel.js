@@ -168,6 +168,12 @@
     var r = B(), midRun = !!(r && r.ended && r.ended.reason === "balance" && Date.now() / 1000 - r.ended.at < 30);
     setText("bmFundTitle", midRun ? T("Add funds to keep trading") : T("Add funds to start"));
     var c = D && D.current(), real = !(c && c.type === "demo"), link = $("bmFundGo");
+    // One line on what the balance can see, not two: on a real account the options-only
+    // sentence says it, so cln-bot.js's own "already deposited?" note would repeat it;
+    // a demo has no other funds to move, so there its own top-up note stays instead.
+    var note = $("bmFundNote"), vis = document.querySelector("#bmFund .bm-fund-vis");
+    if (note && note.hidden !== real) note.hidden = real;
+    if (vis && vis.hidden !== !real) vis.hidden = !real;
     var label = real ? T("Deposit funds") : T("Go to Deriv");
     // cln-bot.js writes its own words into the link each time it opens; these replace them.
     if (link.textContent.trim() !== label || !link.querySelector("svg")) {

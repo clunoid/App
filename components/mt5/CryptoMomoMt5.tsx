@@ -27,7 +27,7 @@ const BENEFITS = [
   { t: "Protected from the start", d: "Every position is sized to your balance and carries a hard stop the moment it opens." },
   { t: "Diversified across coins", d: "Risk is diversified across BTC, ETH, SOL, XRP and more, never riding on one coin." },
 ];
-const DISCLAIMER = "Trading carries risk. This is an automated tool, not financial advice or a profit guarantee. Never risk more than you can afford to lose.";
+const DISCLAIMER = "Trading carries risk. This is an automated tool, not financial advice. Never risk more than you can afford to lose.";
 
 export function CryptoMomoMt5() {
   useLang(); // renders again when the reader's language changes

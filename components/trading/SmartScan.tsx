@@ -3,8 +3,9 @@
 /**
  * SMART SCAN — the Smart Scan bot on /trading/command, in Clunoid's own
  * bot-runner design: Configuration, Live Performance and Recent Trades side by
- * side, the balance pill with its Real / Demo toggle, Clunoid's take-profit,
- * stop-loss and deposit popups. Adds what the Smart Scan system brings: the four
+ * side, the balance pill with its Real / Demo toggle and the line on what it can
+ * see, small links to Deriv's bots, MT5, deposit and withdraw at the foot of
+ * Recent Trades, Clunoid's take-profit, stop-loss and deposit popups. Adds what the Smart Scan system brings: the four
  * trade types, the prediction, a live scan of every market before each trade,
  * Martingale and Dynamic Martingale with recovery, a run that survives a reload,
  * and a connection that keeps itself up.
@@ -19,11 +20,11 @@
  * trade is the app's.
  */
 import { memo, useEffect, useRef } from "react";
-import { DERIV_CLIENT_ID, DERIV_TRACKED_DEPOSIT_URL, DERIV_TRACKED_PORTFOLIO_URL } from "@/lib/deriv/config";
+import { DERIV_CLIENT_ID, DERIV_TRACKED_DEPOSIT_URL, DERIV_TRACKED_PORTFOLIO_URL, DERIV_TRACKED_WITHDRAW_URL } from "@/lib/deriv/config";
 import { reconnectAfterExpiry } from "@/lib/deriv/oauth";
 
 /** Bump with any change under public/smart, so a returning browser takes the new files. */
-const V = "20261007b";
+const V = "20261007c";
 const SCRIPTS = ["/smart/cln-deriv.js", "/smart/cln-bot.js", "/smart/cln-panel.js"];
 
 const ic = (path: string, size = 16, extra = "") =>
@@ -40,7 +41,13 @@ const I = {
   search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
   down: '<path d="m6 9 6 6 6-6"/>',
   check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+  depositArrow: '<path d="M12 17V3"/><path d="m6 11 6 6 6-6"/><path d="M19 21H5"/>',
+  withdrawArrow: '<path d="m18 9-6-6-6 6"/><path d="M12 3v14"/><path d="M5 21h14"/>',
 };
+
+/* What the balance can and cannot see — beside the balance, and again in the
+   add-funds popup. One sentence, the portfolio link in the links' blue. */
+const OPTIONS_ONLY = `Only your options trading account shows here — move your other funds into it from your <a href="${DERIV_TRACKED_PORTFOLIO_URL}" target="_blank" rel="noopener noreferrer">Deriv portfolio</a>.`;
 const CONFETTI = "<i></i>".repeat(18);
 
 const MARKUP = `
@@ -49,12 +56,15 @@ const MARKUP = `
     <span class="cs-ico">${ic(I.bot, 18)}</span>
     <div class="cs-id-t">
       <div class="cs-name" id="botTitle">Smart Scan bot</div>
-      <div class="cs-lede" id="botLede">Finds the best market and digit for your contract, Differs or Matches, then trades it one 1-tick contract at a time until your take profit or stop loss.</div>
+      <div class="cs-lede" id="botLede" hidden></div>
     </div>
   </div>
   <div class="cs-acct" id="acct" hidden>
-    <span class="cs-bal">${ic(I.wallet, 13)}<span class="cs-live" aria-hidden="true"></span><span class="cs-mono" id="acctAmt" data-i18n-skip>—</span></span>
-    <div class="cs-modes" id="acctModes" role="group" aria-label="Account"></div>
+    <div class="cs-acct-row">
+      <span class="cs-bal">${ic(I.wallet, 13)}<span class="cs-live" aria-hidden="true"></span><span class="cs-mono" id="acctAmt" data-i18n-skip>—</span></span>
+      <div class="cs-modes" id="acctModes" role="group" aria-label="Account"></div>
+    </div>
+    <p class="cs-acct-note">${OPTIONS_ONLY}</p>
   </div>
 </div>
 
@@ -121,10 +131,18 @@ const MARKUP = `
       <div class="cs-empty" id="botEmpty"><span>No trades yet — start the bot.</span></div>
       <div class="cs-list" id="historyItems" translate="no"></div>
     </div>
+    <div class="cs-links-wrap">
+      <nav class="cs-links" aria-label="Deriv">
+        <a class="cs-link cs-link--bots" href="/trading/deriv/bots">${ic(I.bot, 12)}<span>Deriv Bots</span></a>
+        <a class="cs-link cs-link--mt5" href="/trading/deriv/mt5"><img src="/logos/metatrader5.svg" alt="MetaTrader 5" width="186" height="32" /><span class="cs-link-tag">AI bots</span></a>
+        <a class="cs-link cs-link--dep" href="${DERIV_TRACKED_DEPOSIT_URL}" target="_blank" rel="noopener noreferrer">${ic(I.depositArrow, 12)}<span>Deposit</span></a>
+        <a class="cs-link" href="${DERIV_TRACKED_WITHDRAW_URL}" target="_blank" rel="noopener noreferrer">${ic(I.withdrawArrow, 12)}<span>Withdraw</span></a>
+      </nav>
+    </div>
   </section>
 </div>
 
-<p class="cs-risk">Trading carries risk. This is an automated tool, not financial advice or a profit guarantee. Never risk more than you can afford to lose.</p>
+<p class="cs-risk">Trading carries risk. This is an automated tool, not financial advice. Never risk more than you can afford to lose.</p>
 
 <div class="cs-engine" hidden aria-hidden="true">
   <button id="botGo" type="button" tabindex="-1"><span id="botGoText">Scan &amp; start</span></button>
@@ -210,7 +228,7 @@ const MARKUP = `
       <p class="bm-fund-p" id="bmFundText" data-i18n-skip></p>
       <p class="bm-fund-p">You can deposit any amount, and we recommend 1,000 USD or more for the best results.</p>
       <p class="bm-fund-note" id="bmFundNote" data-i18n-skip></p>
-      <p class="bm-fund-vis">Not seeing your full balance? Only your options trading account shows here — move your other funds into it from your <a href="${DERIV_TRACKED_PORTFOLIO_URL}" target="_blank" rel="noopener noreferrer">Deriv portfolio</a>.</p>
+      <p class="bm-fund-vis">${OPTIONS_ONLY}</p>
       <a class="bm-fund-go btn-blue" id="bmFundGo" href="${DERIV_TRACKED_DEPOSIT_URL}" target="_blank" rel="noopener noreferrer" data-bm-close>Deposit funds</a>
       <button class="bm-fund-later" type="button" data-bm-close>Later</button>
     </div>

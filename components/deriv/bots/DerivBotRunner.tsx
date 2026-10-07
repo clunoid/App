@@ -315,7 +315,7 @@ export function DerivBotRunner({ botId }: { botId: string }) {
         </div>
 
         <p className="mt-5 text-[10.5px] leading-relaxed" style={{ color: TC.faint }}>
-          Trading carries risk. This is an automated tool, not financial advice or a profit guarantee. Never risk more than you can afford to lose.
+          Trading carries risk. This is an automated tool, not financial advice. Never risk more than you can afford to lose.
         </p>
       </div>
 
@@ -384,7 +384,7 @@ function RecommendBalanceModal({ balance, currency, onClose }: { balance: number
           without long waits for a target to hit.
         </p>
 
-        <BalanceVisibilityNote className="mt-2 text-[11.5px] leading-relaxed" style={{ color: TC.faint }} />
+        <BalanceVisibilityNote className="mt-2.5 text-[12.5px] leading-relaxed" />
 
         <div className="mt-3 rounded-xl border p-3" style={{ borderColor: TC.line, background: "rgba(56,189,248,0.06)" }}>
           <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider" style={{ color: TC.profit }}>
@@ -449,7 +449,7 @@ function NeedDepositModal({ balance, currency, onClose }: { balance: number | nu
           <b style={{ color: TC.text }}>1,000 USD or more</b> for the best results.
         </p>
 
-        <BalanceVisibilityNote className="mt-2 text-[11.5px] leading-relaxed" style={{ color: TC.faint }} />
+        <BalanceVisibilityNote className="mt-2.5 text-[12.5px] leading-relaxed" />
 
         <a href={DERIV_TRACKED_DEPOSIT_URL} target="_blank" rel="noopener noreferrer" onClick={onClose}
           className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-[13.5px] font-semibold transition hover:opacity-90" style={{ background: TC.profit, color: TC.ink }}>

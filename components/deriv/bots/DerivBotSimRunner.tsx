@@ -436,7 +436,7 @@ export function DerivBotSimRunner({
         </div>
 
         <p className="mt-5 text-[10.5px] leading-relaxed" style={{ color: TC.faint }}>
-          Trading carries risk. This is an automated tool, not financial advice or a profit guarantee. Never risk more than you can afford to lose.
+          Trading carries risk. This is an automated tool, not financial advice. Never risk more than you can afford to lose.
         </p>
       </div>
 
