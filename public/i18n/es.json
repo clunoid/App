@@ -2548,5 +2548,14 @@
 "Your take-profit target was reached and the bot stopped — profit locked in.":"Se alcanzó tu objetivo de take profit y el bot se detuvo: beneficio asegurado.",
 "of the last 10 ticks":"de los últimos 10 ticks",
 "{n} this run":"{n} en esta sesión",
-"{p}% of the last {n} ticks":"{p}% de los últimos {n} ticks"
+"{p}% of the last {n} ticks":"{p}% de los últimos {n} ticks",
+"Deriv":"Deriv",
+"Keep waiting":"Seguir esperando",
+"Paused — waiting for stable conditions…":"En pausa — esperando condiciones estables…",
+"Safe":"Seguro",
+"Stable again — trading resumed.":"Estable de nuevo — operaciones reanudadas.",
+"Stop trading":"Dejar de operar",
+"The bot is waiting to place its first trade. It starts by itself as soon as conditions are stable again, and trades on to your take profit.":"El bot está esperando para hacer su primera operación. Empieza solo en cuanto las condiciones vuelven a ser estables y opera hasta tu take profit.",
+"The bot paused after a winning trade, with your profit kept. It resumes by itself as soon as conditions are stable again, and carries on to your take profit.":"El bot se pausó tras una operación ganadora, con tu beneficio a salvo. Se reanuda solo en cuanto las condiciones vuelven a ser estables y sigue hasta tu take profit.",
+"Unstable conditions detected":"Condiciones inestables detectadas"
 }

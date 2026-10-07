@@ -24,8 +24,8 @@ import { DERIV_CLIENT_ID, DERIV_TRACKED_DEPOSIT_URL, DERIV_TRACKED_PORTFOLIO_URL
 import { reconnectAfterExpiry } from "@/lib/deriv/oauth";
 
 /** Bump with any change under public/smart, so a returning browser takes the new files. */
-const V = "20261007c";
-const SCRIPTS = ["/smart/cln-deriv.js", "/smart/cln-bot.js", "/smart/cln-panel.js"];
+const V = "20261007d";
+const SCRIPTS = ["/smart/cln-deriv.js", "/smart/cln-watch.js", "/smart/cln-bot.js", "/smart/cln-panel.js"];
 
 const ic = (path: string, size = 16, extra = "") =>
   `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ${extra}>${path}</svg>`;
@@ -43,7 +43,18 @@ const I = {
   check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
   depositArrow: '<path d="M12 17V3"/><path d="m6 11 6 6 6-6"/><path d="M19 21H5"/>',
   withdrawArrow: '<path d="m18 9-6-6-6 6"/><path d="M12 3v14"/><path d="M5 21h14"/>',
+  pause: '<rect x="6.5" y="5" width="3.5" height="14" rx="1.2"/><rect x="14" y="5" width="3.5" height="14" rx="1.2"/>',
 };
+
+/* The watch's reading: a bar on a red / yellow / green scale, and the figure. No words. */
+const METER = (id: string) => `<div class="bm-watch" id="${id}" data-watch="off"><div class="bm-watch-bar"><i></i></div><b class="bm-watch-pct cs-mono" data-i18n-skip>…</b></div>`;
+
+/* Deriv's bots, MetaTrader 5, deposit and withdraw: small links, shown at the top of the
+   bot below desktop width and at the foot of Recent Trades on a desktop. */
+const LINKS = `<a class="cs-link cs-link--bots" href="/trading/deriv/bots">${ic(I.bot, 12)}<span>Deriv Bots</span></a>
+        <a class="cs-link cs-link--mt5" href="/trading/deriv/mt5"><img src="/logos/metatrader5.svg" alt="MetaTrader 5" width="186" height="32" /><span class="cs-link-tag">AI bots</span></a>
+        <a class="cs-link cs-link--dep" href="${DERIV_TRACKED_DEPOSIT_URL}" target="_blank" rel="noopener noreferrer">${ic(I.depositArrow, 12)}<span>Deposit</span></a>
+        <a class="cs-link" href="${DERIV_TRACKED_WITHDRAW_URL}" target="_blank" rel="noopener noreferrer">${ic(I.withdrawArrow, 12)}<span>Withdraw</span></a>`;
 
 /* What the balance can and cannot see — beside the balance, and again in the
    add-funds popup. One sentence, the portfolio link in the links' blue. */
@@ -66,6 +77,7 @@ const MARKUP = `
     </div>
     <p class="cs-acct-note">${OPTIONS_ONLY}</p>
   </div>
+  <div class="cs-links-wrap cs-links-wrap--top"><nav class="cs-links" aria-label="Deriv">${LINKS}</nav></div>
 </div>
 
 <section class="cs-state" id="tState" aria-live="polite" hidden>
@@ -77,10 +89,10 @@ const MARKUP = `
   <section class="cs-col">
     <div class="cs-col-h"><h2>Configuration</h2></div>
     <div class="cs-types" id="botTypes" role="tablist" aria-label="Trade type">
-      <button class="bot-type" type="button" role="tab" data-type="evenodd">Even / Odd</button>
-      <button class="bot-type" type="button" role="tab" data-type="risefall">Rise / Fall</button>
-      <button class="bot-type" type="button" role="tab" data-type="overunder">Over / Under</button>
-      <button class="bot-type" type="button" role="tab" data-type="matchdiff">Matches / Differs</button>
+      <button class="bot-type" type="button" role="tab" data-type="evenodd">Even / Odd<i class="bot-watch" aria-hidden="true"></i></button>
+      <button class="bot-type" type="button" role="tab" data-type="risefall">Rise / Fall<i class="bot-watch" aria-hidden="true"></i></button>
+      <button class="bot-type" type="button" role="tab" data-type="overunder">Over / Under<i class="bot-watch" aria-hidden="true"></i></button>
+      <button class="bot-type" type="button" role="tab" data-type="matchdiff">Matches / Differs<i class="bot-watch" aria-hidden="true"></i></button>
     </div>
     <div class="cs-fields">
       <label class="cs-field cs-field--wide" id="botVarWrap" hidden><span id="botVarLabel">Prediction</span>
@@ -92,7 +104,10 @@ const MARKUP = `
     </div>
     <div class="cs-note">
       <span class="cs-min" id="botMin" data-i18n-skip>Smallest stake: $0.35</span>
-      <label class="cs-keep"><input type="checkbox" id="botKeep" role="switch" /><i aria-hidden="true"></i><span>Save settings</span></label>
+      <span class="cs-toggles">
+        <label class="cs-keep cs-safe"><input type="checkbox" id="botSafe" role="switch" checked /><i aria-hidden="true"></i><span>Safe</span></label>
+        <label class="cs-keep"><input type="checkbox" id="botKeep" role="switch" /><i aria-hidden="true"></i><span>Save settings</span></label>
+      </span>
     </div>
     <div class="cs-actions">
       <button class="cs-go" id="clnGo" type="button"><span class="cs-go-play">${ic(I.play, 14)}</span><span class="cs-go-stop">${ic(I.square, 13)}</span><span id="clnGoText">Start on Real</span></button>
@@ -131,14 +146,7 @@ const MARKUP = `
       <div class="cs-empty" id="botEmpty"><span>No trades yet — start the bot.</span></div>
       <div class="cs-list" id="historyItems" translate="no"></div>
     </div>
-    <div class="cs-links-wrap">
-      <nav class="cs-links" aria-label="Deriv">
-        <a class="cs-link cs-link--bots" href="/trading/deriv/bots">${ic(I.bot, 12)}<span>Deriv Bots</span></a>
-        <a class="cs-link cs-link--mt5" href="/trading/deriv/mt5"><img src="/logos/metatrader5.svg" alt="MetaTrader 5" width="186" height="32" /><span class="cs-link-tag">AI bots</span></a>
-        <a class="cs-link cs-link--dep" href="${DERIV_TRACKED_DEPOSIT_URL}" target="_blank" rel="noopener noreferrer">${ic(I.depositArrow, 12)}<span>Deposit</span></a>
-        <a class="cs-link" href="${DERIV_TRACKED_WITHDRAW_URL}" target="_blank" rel="noopener noreferrer">${ic(I.withdrawArrow, 12)}<span>Withdraw</span></a>
-      </nav>
-    </div>
+    <div class="cs-links-wrap cs-links-wrap--foot"><nav class="cs-links" aria-label="Deriv">${LINKS}</nav></div>
   </section>
 </div>
 
@@ -178,6 +186,7 @@ const MARKUP = `
         <div><span>Take profit</span><b class="cs-mono" id="bmTp" data-i18n-skip></b></div>
         <div><span>Stop loss</span><b class="cs-mono" id="bmSl" data-i18n-skip></b></div>
       </div>
+      ${METER("bmWatch")}
       <p class="bm-live"><i aria-hidden="true"></i><span>Trading started</span></p>
     </div>
 
@@ -231,6 +240,24 @@ const MARKUP = `
       <p class="bm-fund-vis">${OPTIONS_ONLY}</p>
       <a class="bm-fund-go btn-blue" id="bmFundGo" href="${DERIV_TRACKED_DEPOSIT_URL}" target="_blank" rel="noopener noreferrer" data-bm-close>Deposit funds</a>
       <button class="bm-fund-later" type="button" data-bm-close>Later</button>
+    </div>
+
+    <div class="bm-view bm-fin bm-fin--hold" id="bmHold" hidden>
+      <span class="bm-fin-ico">${ic(I.pause, 28)}</span>
+      <div class="bm-fin-k">Safe</div>
+      <h2 id="bmHoldTitle">Unstable conditions detected</h2>
+      <p class="bm-fin-p" id="bmHoldText" data-i18n-skip></p>
+      <div class="bm-fin-pl"><div>Session P/L</div><b class="cs-mono" id="bmHoldPl" data-i18n-skip></b></div>
+      <div class="bm-fin-mini">
+        <div><span>Trades</span><b class="cs-mono" id="bmHoldN" data-i18n-skip></b></div>
+        <div><span>Win rate</span><b class="cs-mono" id="bmHoldRate" data-i18n-skip></b></div>
+        <div><span>Time</span><b class="cs-mono" id="bmHoldTime" data-i18n-skip></b></div>
+      </div>
+      ${METER("bmHoldWatch")}
+      <div class="bm-actions">
+        <button class="bm-btn bm-btn--line" type="button" id="bmHoldStop">Stop trading</button>
+        <button class="bm-btn bm-btn--go btn-blue" type="button" data-bm-close>Keep waiting</button>
+      </div>
     </div>
   </div>
 </div>

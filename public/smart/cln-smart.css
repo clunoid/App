@@ -103,6 +103,27 @@
 .cs-types.is-locked .bot-type.is-on { opacity: 1; cursor: default; }
 .bot-type:focus-visible { outline: 2px solid var(--c-sky); outline-offset: 1px; }
 
+/* The watch, on each type's tab: a hairline bar along the foot, as long as the reading and in
+   its colour — green, amber, red — shimmering while it is still reading, gone with no markets.
+   cln-bot.js sets data-watch and --watch (0–1); the percentage is the bar's title. */
+.bot-type { position: relative; overflow: hidden; }
+.bot-watch { position: absolute; left: 7px; right: 7px; bottom: 3px; height: 2px; border-radius: 2px; background: rgba(255, 255, 255, 0.08); pointer-events: none; opacity: 0; transition: opacity .3s ease; }
+.bot-watch::after { content: ""; position: absolute; inset: 0 auto 0 0; width: calc(var(--watch, 0) * 100%); border-radius: inherit; background: var(--wc, transparent); box-shadow: 0 0 6px var(--wc, transparent); transition: width .8s cubic-bezier(.2, .8, .2, 1), background-color .4s ease; }
+.bot-type[data-watch="green"] { --wc: #34d399; }
+.bot-type[data-watch="yellow"] { --wc: #fbbf24; }
+.bot-type[data-watch="red"] { --wc: #f2607d; }
+.bot-type[data-watch="green"] .bot-watch, .bot-type[data-watch="yellow"] .bot-watch, .bot-type[data-watch="red"] .bot-watch, .bot-type[data-watch="warm"] .bot-watch { opacity: 1; }
+.bot-type[data-watch="red"] .bot-watch::after { animation: cs-watch-pulse 1.4s ease-in-out infinite; }
+.bot-type[data-watch="warm"] .bot-watch::after { width: 34%; background: rgba(147, 167, 189, 0.55); box-shadow: none; animation: cs-watch-scan 1.3s ease-in-out infinite alternate; }
+/* On the chosen (sky) tab the same colours, deep enough to read on it. */
+.bot-type.is-on .bot-watch { background: rgba(4, 18, 31, 0.18); }
+.bot-type.is-on[data-watch="green"] { --wc: #047857; }
+.bot-type.is-on[data-watch="yellow"] { --wc: #92400e; }
+.bot-type.is-on[data-watch="red"] { --wc: #9f1239; }
+.bot-type.is-on[data-watch="warm"] .bot-watch::after { background: rgba(4, 18, 31, 0.35); }
+@keyframes cs-watch-scan { from { transform: translateX(-30%); } to { transform: translateX(230%); } }
+@keyframes cs-watch-pulse { 50% { opacity: .45; } }
+
 .cs-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 14px; }
 .cs-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .cs-field--wide { grid-column: 1 / -1; }
@@ -131,6 +152,8 @@
 .cs-keep input:checked + i::after { transform: translateX(12px); }
 .cs-keep input:checked ~ span, .cs-keep:hover span { color: var(--c-text); }
 .cs-keep input:focus-visible + i { outline: 2px solid var(--c-sky); outline-offset: 2px; }
+.cs-toggles { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; margin-left: auto; }
+.cs-safe input:checked + i { background: #34d399; }
 
 .cs-actions { margin-top: 4px; }
 .cs-go {
@@ -206,6 +229,21 @@
 .cs-link--bots:hover { background: var(--c-sky); opacity: .9; }
 .cs-link--dep { border-color: rgba(52, 211, 153, 0.45); color: #34d399; }
 .cs-link--mt5 img { display: block; width: auto; height: 11px; }
+/* Below desktop width the cards stack and the foot of Recent Trades is far down the page:
+   the links sit at the top instead, tiny — one row of four, or two by two where even that
+   row would not fit (the narrowest phones, the longer languages). Right-aligned under the
+   balance on a tablet, the full width on a phone. */
+.cs-links-wrap--top { display: none; }
+@media (max-width: 1023px) {
+  .cs-links-wrap--foot { display: none; }
+  .cs-links-wrap--top { display: block; flex: 0 0 100%; margin: 0; padding: 0; border: 0; }
+  .cs-links-wrap--top .cs-links { grid-template-columns: repeat(4, auto); justify-content: end; gap: 3px; }
+  .cs-links-wrap--top .cs-link { min-height: 24px; padding: 2px 5px; gap: 2px 3px; border-radius: 7px; font-size: 9.5px; }
+  .cs-links-wrap--top .cs-link svg { width: 9px; height: 9px; }
+  .cs-links-wrap--top .cs-link--mt5 img { height: 8.5px; }
+  .cs-links-wrap--top .cs-link-tag { padding: 1px 2px; font-size: 6.5px; }
+}
+@container (max-width: 319px) { .cs-links-wrap--top .cs-links { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .cs-link-tag { padding: 1px 3px; border-radius: 3px; background: rgba(56, 189, 248, 0.16); color: #38bdf8; font-size: 7.5px; letter-spacing: 0.02em; text-transform: uppercase; }
 .cs-purple { color: var(--c-purple) !important; }
 .cs-orange { color: var(--c-orange) !important; }
@@ -254,9 +292,18 @@
   .cs-trades-in .cs-empty { flex: 1; }
 }
 @media (max-width: 640px) {
-  .cs-acct { align-items: stretch; width: 100%; margin-left: 0; }
-  .cs-acct-row { justify-content: space-between; }
-  .cs-acct-note { max-width: none; text-align: left; }
+  .cs-head { gap: 7px 8px; }
+  .cs-id { flex: 1 1 auto; gap: 7px; }
+  .cs-ico { width: 26px; height: 26px; border-radius: 8px; }
+  .cs-ico svg { width: 14px; height: 14px; }
+  .cs-name { font-size: 13px; }
+  .cs-acct { display: contents; }
+  .cs-acct-row { flex: none; gap: 5px; margin-left: auto; }
+  .cs-bal { gap: 5px; padding: 4px 8px; font-size: 11.5px; }
+  .cln-mode-btn { padding: 3px 8px; font-size: 10.5px !important; }
+  .cs-acct-note { flex: 0 0 100%; max-width: none; font-size: 11px; line-height: 1.4; text-align: left; }
+  .cs-links-wrap--top .cs-links { justify-content: stretch; }
+  .cs-grid { margin-top: 10px; }
   .cs-col { padding: 14px; }
   .cs-types { grid-auto-columns: auto; }
   .bot-type { padding: 5px 3px; }
@@ -327,6 +374,46 @@
 .bm-btn--line { border: 1px solid var(--c-line); background: transparent; color: var(--c-text) !important; }
 .bm-btn--line:hover { background: rgba(255, 255, 255, 0.05); }
 .bm-btn--go { border: 0; background: var(--c-sky); color: var(--c-ink) !important; }
+
+/* The watch's reading in a popup: a bar on a faint red / amber / green scale (the scale's
+   breaks are the reading's own levels, 36 and 62), grown from nothing as the popup opens,
+   with the figure beside it — in the reading's colour, pulsing while red. */
+.bm-watch { --wc: 147, 167, 189; display: flex; align-items: center; gap: 10px; margin-top: 12px; padding: 10px 12px; border: 1px solid rgba(var(--wc), 0.28); border-radius: 12px; background: rgba(var(--wc), 0.06); transition: border-color .4s ease, background-color .4s ease; }
+.bm-watch[data-watch="green"] { --wc: 52, 211, 153; }
+.bm-watch[data-watch="yellow"] { --wc: 251, 191, 36; }
+.bm-watch[data-watch="red"] { --wc: 242, 96, 125; }
+.bm-watch[data-watch="off"] { display: none; }
+.bm-watch-bar { position: relative; flex: 1; height: 8px; overflow: hidden; border-radius: 999px; background: linear-gradient(90deg, rgba(242, 96, 125, 0.16) 0 36%, rgba(251, 191, 36, 0.14) 36% 62%, rgba(52, 211, 153, 0.14) 62% 100%); }
+.bm-watch-bar i { position: absolute; inset: 0 auto 0 0; width: calc(var(--watch, 0) * 100%); border-radius: inherit; background: linear-gradient(90deg, rgba(var(--wc), 0.5), rgb(var(--wc))); box-shadow: 0 0 10px rgba(var(--wc), 0.5); transition: width .9s cubic-bezier(.2, .8, .2, 1); animation: bm-watch-grow 1s cubic-bezier(.2, .8, .2, 1) both; }
+.bm-watch[data-watch="red"] .bm-watch-bar i { animation: bm-watch-grow 1s cubic-bezier(.2, .8, .2, 1) both, cs-watch-pulse 1.4s 1s ease-in-out infinite; }
+.bm-watch[data-watch="warm"] .bm-watch-bar i { width: 30%; background: rgba(147, 167, 189, 0.55); box-shadow: none; animation: cs-watch-scan 1.3s ease-in-out infinite alternate; }
+.bm-watch-pct { min-width: 40px; font-size: 15px; font-weight: 700; text-align: right; color: rgb(var(--wc)); transition: color .4s ease; }
+@keyframes bm-watch-grow { from { width: 0; } }
+
+/* The pause (Safe): the finish popup's card in amber, the session as it stands, the reading
+   live, and two ways on — stop now, or keep waiting for it to carry on by itself. */
+.bm:has(> .bm-fin--hold:not([hidden])) { --fin: 251, 191, 36; --fin-c: #fbbf24; }
+.bm-fin--hold .bm-fin-ico svg { animation: cs-watch-pulse 1.6s .6s ease-in-out infinite; }
+.bm-fin--hold .bm-fin-p { max-width: 19rem; }
+.bm-fin--hold .bm-fin-pl b.is-up { color: #34d399; }
+.bm-fin--hold .bm-fin-pl b.is-down { color: #f2607d; }
+.bm-fin--hold .bm-actions { margin-top: 16px; }
+@media (max-width: 380px) { .bm-fin--hold .bm-actions { flex-direction: column-reverse; } }   /* full-width buttons: no label wraps on a narrow phone */
+/* A short screen: the pause popup scrolls inside rather than losing its buttons (it has no
+   confetti to keep in), and draws a little tighter so it rarely needs to. */
+.bm-root .bm:has(> .bm-fin--hold:not([hidden])) { overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; }
+@media (max-height: 700px) {
+  .bm-root .bm:has(> .bm-fin--hold:not([hidden])) { padding: 20px; }
+  .bm-fin--hold .bm-fin-ico { width: 46px; height: 46px; border-radius: 13px; }
+  .bm-fin--hold .bm-fin-ico svg { width: 22px; height: 22px; }
+  .bm-fin--hold .bm-fin-k { margin-top: 10px; }
+  .bm-fin--hold h2 { font-size: 18px; }
+  .bm-fin--hold .bm-fin-pl { margin-top: 12px; padding: 11px 14px; }
+  .bm-fin--hold .bm-fin-pl b { font-size: 25px; }
+  .bm-fin--hold .bm-fin-mini { margin-top: 8px; }
+  .bm-fin--hold .bm-watch { margin-top: 10px; padding: 8px 11px; }
+  .bm-fin--hold .bm-actions { margin-top: 12px; }
+}
 
 /* Take profit and stop loss: Clunoid's finish popup — the card lit in the
    result's colour, the icon tile, the session P/L, three small figures, Done —
@@ -400,7 +487,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .cs-spin svg, .cs-now, .cs-now-k i, .cs-trade.is-new, .bm, .bm-back, .bm-radar i, .bm-radar svg, .bm-bar i::after, .bm-erricon,
-  .bm-tick, .bm-live i, .bm-fin-ico, .bm-fin-ico svg, .bm-fin-pl b, .bm-fund-ico { animation: none; }
+  .bm-tick, .bm-live i, .bm-fin-ico, .bm-fin-ico svg, .bm-fin-pl b, .bm-fund-ico, .bm-watch-bar i, .bot-watch::after { animation: none; }
   .bm-tick circle, .bm-tick path { animation: none; stroke-dashoffset: 0; }
   .bm-confetti { display: none; }
 }

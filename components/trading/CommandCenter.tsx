@@ -203,41 +203,43 @@ export function CommandCenter() {
     <main className="relative min-h-[100dvh] w-full overflow-x-hidden" style={{ background: TC.bg, color: TC.text }}>
       <div aria-hidden className="pointer-events-none absolute inset-0" style={DOT_GRID} />
 
-      <div className="relative z-10 w-full px-6 py-5 sm:px-10 lg:px-16">
-        {/* header */}
-        <header className="flex flex-wrap items-center gap-3">
-          <Link href="/" className="flex items-center gap-1.5 text-[13px] font-medium transition hover:opacity-80" style={{ color: TC.muted }}>
-            <ArrowLeft size={15} /> Clunoid Trading
+      <div className="relative z-10 w-full px-4 py-3 sm:px-10 sm:py-5 lg:px-16">
+        {/* header — one row on a phone: the way back, the page, and its actions as icons,
+            the language switch beside them (it mounts into [data-lang-switch]). */}
+        <header className="flex flex-wrap items-center gap-1.5 sm:gap-3">
+          <Link href="/" className="flex items-center gap-1 text-[12.5px] font-medium transition hover:opacity-80 sm:gap-1.5 sm:text-[13px]" style={{ color: TC.muted }}>
+            <ArrowLeft size={14} /> Clunoid Trading
           </Link>
-          <span className="h-4 w-px" style={{ background: TC.line }} />
-          <span className="text-[14px] font-bold tracking-[0.16em]">HOME</span>
-          <div className="ml-auto flex items-center gap-2">
+          <span className="hidden h-3.5 w-px min-[380px]:block sm:h-4" style={{ background: TC.line }} />
+          <span className="hidden text-[12px] font-bold tracking-[0.14em] min-[380px]:inline sm:text-[14px] sm:tracking-[0.16em]">HOME</span>
+          <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
             <InstallApp className="rounded-full px-3 py-1.5 text-[12.5px]" />
             {connected && (
-              <button onClick={() => void refresh(session)} disabled={loading} className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12.5px] font-medium transition hover:bg-white/5 disabled:opacity-50" style={{ borderColor: TC.line, color: TC.muted }}>
-                {loading ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />} Refresh
+              <button onClick={() => void refresh(session)} disabled={loading} title="Refresh" aria-label="Refresh" className="inline-flex h-[30px] w-[30px] items-center justify-center gap-1.5 rounded-full border text-[12.5px] font-medium transition hover:bg-white/5 disabled:opacity-50 sm:h-auto sm:w-auto sm:px-3 sm:py-1.5" style={{ borderColor: TC.line, color: TC.muted }}>
+                {loading ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />} <span className="hidden sm:inline">Refresh</span>
               </button>
             )}
             {/* Ending the connection: the one way to sign in with another Deriv
                 account. Just the icon on a phone, where the header is narrow. */}
             {connected && (
-              <button onClick={disconnect} title="Disconnect Deriv" aria-label="Disconnect Deriv" className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-[12.5px] font-medium transition hover:bg-white/5 sm:px-3" style={{ borderColor: TC.line, color: TC.muted }}>
+              <button onClick={disconnect} title="Disconnect Deriv" aria-label="Disconnect Deriv" className="inline-flex h-[30px] w-[30px] items-center justify-center gap-1.5 rounded-full border text-[12.5px] font-medium transition hover:bg-white/5 sm:h-auto sm:w-auto sm:px-3 sm:py-1.5" style={{ borderColor: TC.line, color: TC.muted }}>
                 <LogOut size={13} /> <span className="hidden sm:inline">Disconnect</span>
               </button>
             )}
+            <div data-lang-switch className="flex items-center" />
           </div>
         </header>
 
-        <div className="mt-2 max-w-2xl">
-          <h1 className="text-[26px] font-bold sm:text-[30px]">{portfolio?.name ? t("Welcome, {name}.", { name: portfolio.name.split(" ")[0] }) : "Your accounts, one place."}</h1>
+        <div className="mt-1.5 max-w-2xl sm:mt-2">
+          <h1 className="text-[19px] font-bold leading-tight sm:text-[30px]">{portfolio?.name ? t("Welcome, {name}.", { name: portfolio.name.split(" ")[0] }) : "Your accounts, one place."}</h1>
         </div>
 
-        {error && <div className="mt-4 rounded-xl border p-3 text-[12.5px]" style={{ borderColor: "rgba(242,96,125,0.4)", background: "rgba(242,96,125,0.08)", color: TC.loss }}>{error}</div>}
+        {error && <div className="mt-3 rounded-xl border p-3 text-[12.5px] sm:mt-4" style={{ borderColor: "rgba(242,96,125,0.4)", background: "rgba(242,96,125,0.08)", color: TC.loss }}>{error}</div>}
 
         {/* Connected: the bot is the page. Its balance, its links to the bots, MT5,
             deposit and withdraw, and its risk line are the last thing here. */}
         {connected && (
-          <section className="mt-5" aria-label="Smart Scan bot">
+          <section className="mt-3 sm:mt-5" aria-label="Smart Scan bot">
             <SmartScan />
           </section>
         )}
@@ -245,7 +247,7 @@ export function CommandCenter() {
         {/* Not connected (sent here to connect, a refused sign-in, or just
             disconnected): the automations, and the way in. */}
         {!connected && (
-          <div className="mt-6 grid gap-4 lg:grid-cols-3">
+          <div className="mt-4 grid gap-4 sm:mt-6 lg:grid-cols-3">
             <section className="lg:col-span-2 lg:flex lg:flex-col">
               <h2 className="mb-3 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: TC.faint }}>
                 <Wallet size={13} style={{ color: TC.profit }} /> Your portfolio
