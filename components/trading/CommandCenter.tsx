@@ -226,7 +226,7 @@ export function CommandCenter() {
             the language switch beside them (it mounts into [data-lang-switch]). */}
         <header className="flex flex-wrap items-center gap-1.5 sm:gap-3">
           <Link href="/" className="flex items-center gap-1 text-[12.5px] font-medium transition hover:opacity-80 sm:gap-1.5 sm:text-[13px]" style={{ color: TC.muted }}>
-            <ArrowLeft size={14} /> Clunoid Trading
+            <ArrowLeft size={14} /> <span data-cln-door="" translate="no" data-i18n-skip="">Clun<span className="door">o</span>id Trading</span>
           </Link>
           <span className="hidden h-3.5 w-px min-[380px]:block sm:h-4" style={{ background: TC.line }} />
           <span className="hidden text-[12px] font-bold tracking-[0.14em] min-[380px]:inline sm:text-[14px] sm:tracking-[0.16em]">HOME</span>

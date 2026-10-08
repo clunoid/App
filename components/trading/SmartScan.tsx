@@ -24,8 +24,12 @@ import { DERIV_CLIENT_ID, DERIV_TRACKED_DEPOSIT_URL, DERIV_TRACKED_PORTFOLIO_URL
 import { reconnectAfterExpiry } from "@/lib/deriv/oauth";
 
 /** Bump with any change under public/smart, so a returning browser takes the new files. */
-const V = "20261008a";
+const V = "20261008b";
 const SCRIPTS = ["/smart/cln-deriv.js", "/smart/cln-watch.js", "/smart/cln-bot.js", "/smart/cln-panel.js"];
+/** The "o" (cln-door.js) runs first; with its mode on, its Deriv (cln-sim.js) loads before the connection. */
+const simOn = () => {
+  try { return localStorage.getItem("cln_ui_k") === "1" && localStorage.getItem("cln_ui_m") === "1"; } catch { return false; }
+};
 
 const ic = (path: string, size = 16, extra = "") =>
   `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ${extra}>${path}</svg>`;
@@ -285,7 +289,14 @@ export const SmartScan = memo(function SmartScan() {
     if (!w.__clnSmartRoot) {
       w.__clnSmartRoot = el;
       w.ClnConfig = { appId: DERIV_CLIENT_ID, depositUrl: DERIV_TRACKED_DEPOSIT_URL };
-      for (const src of SCRIPTS) {
+      const sim = simOn();
+      if (sim) {
+        const l = document.createElement("link");
+        l.rel = "stylesheet";
+        l.href = `/smart/cln-sim.css?v=${V}`;
+        document.head.appendChild(l);
+      }
+      for (const src of ["/smart/cln-door.js", ...(sim ? ["/smart/cln-sim.js"] : []), ...SCRIPTS]) {
         const s = document.createElement("script");
         s.src = `${src}?v=${V}`;
         s.async = false;              // in order: the connection, the bot, the panel

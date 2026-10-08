@@ -37,6 +37,28 @@
 .cln-smart button, .cln-smart input, .cln-smart select { font: inherit; color: inherit; }
 .cln-smart .cs-mono { font-family: var(--mono); }
 
+/* The "o" of Clunoid in the header (cln-door.js). It looks like every other letter
+   on purpose; its target is a little wider than the letter so three taps land on a
+   phone. The field the first visit asks for opens under the word in the page's own
+   input colours, so nothing in the header moves; the only announcement is a second
+   of colour on the word. */
+[data-cln-door] { touch-action: manipulation; }
+[data-cln-door] .door { position: relative; }
+[data-cln-door] .door::before { content: ""; position: absolute; inset: -8px -4px; }
+.door-box { position: absolute; z-index: 500; margin: 0; }
+.door-box[hidden] { display: none; }
+/* 16px: anything smaller and an iPhone zooms the page in when the field opens. */
+.door-key {
+  display: block; width: 7.5em;
+  padding: 5px 9px; border: 1px solid rgba(125, 211, 252, 0.22); border-radius: 9px;
+  background: #0e1520; color: #eaf2fb; font: inherit; font-size: 16px;
+  -webkit-text-security: disc;
+}
+.door-key:focus { outline: none; }
+@keyframes cln-door-lit { 0% { color: #93a7bd; } 22%, 70% { color: #38bdf8; } 100% { color: #93a7bd; } }
+[data-cln-door].lit { animation: cln-door-lit 1s ease-in-out; }
+@media (prefers-reduced-motion: reduce) { [data-cln-door].lit { animation-duration: 1ms; color: #38bdf8; } }
+
 /* ── the head: the bot, the balance, Real / Demo ───────────────────── */
 
 .cs-head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
