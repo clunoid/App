@@ -1,5 +1,5 @@
 /* CLUNOID — the simulation's own few styles: the setup card, the green dot
-   that opens it.
+   that opens it, and the badge that says what the page is.
    Everything on the page behind it is the page's own styles, unchanged — the
    point is that it looks and behaves like the real page. */
 
@@ -85,6 +85,28 @@
    wider so three taps land on a phone. */
 #acct .cs-live { position: relative; touch-action: manipulation; }
 #acct .cs-live::before { content: ""; position: absolute; inset: -9px; }
+
+/* What this page is, as on Shalobot: pinned at the foot of the screen, centred
+   (clear of the head and of the chat button), above every popup, card and
+   backdrop the page has, so it is in sight whatever is open and however far the
+   page has scrolled. It takes no taps: whatever is under it still works. It sits
+   outside the bot's block, so its colours are written out, not the block's. */
+.sim-badge {
+  position: fixed; bottom: calc(14px + env(safe-area-inset-bottom, 0px)); left: 50%; transform: translateX(-50%);
+  z-index: 2147483000; pointer-events: none;
+  display: inline-flex; align-items: center; gap: 7px; width: max-content; height: 30px; padding: 0 12px 0 10px;
+  border: 1px solid color-mix(in srgb, #ffb020 55%, transparent); border-radius: 999px;
+  background: #3a3220; background: color-mix(in srgb, #ffb020 14%, #26241f); color: #eaf2fb;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+  font-family: Inter, "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif;
+  font-size: 12px; line-height: 1; white-space: nowrap; user-select: none; -webkit-user-select: none;
+}
+.sim-badge i { width: 8px; height: 8px; border-radius: 50%; background: #ffb020; flex: none; }
+.sim-badge b { font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: #ffb020; }
+.sim-badge span { color: #93a7bd; font-weight: 600; }
+@media (max-width: 640px) { .sim-badge { height: 26px; font-size: 11px; } }
+/* Too narrow for the words beside the chat button: the badge says SIMULATION. */
+@media (max-width: 359px) { .sim-badge span { display: none; } }
 
 @media (max-width: 420px) {
   .sim-card { padding: 18px 16px; border-radius: 18px; }

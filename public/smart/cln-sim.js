@@ -29,10 +29,11 @@
  *
  * ── It says what it is ──────────────────────────────────────────────────────
  *
- * The setup card is on screen whenever the simulation is: it opens with the
- * page and has no Close — Start reloads into it again. Practice and testing
- * need the real page's behaviour, not a page that passes for real money: the
- * card is what keeps it from that.
+ * A badge reading "Simulation · not real money" is pinned on screen, above
+ * every popup and card, whenever the simulation is. The setup card opens with the page
+ * until Start is pressed in that tab, and again on three clicks on the green
+ * dot. Practice and testing need the real page's behaviour, not a page that
+ * passes for real money: the badge is what keeps it from that.
  *
  * ── How an outcome is arranged ──────────────────────────────────────────────
  *
@@ -830,9 +831,27 @@
   if (RealSocket) SimWebSocket.prototype = RealSocket.prototype;
   global.WebSocket = SimWebSocket;
 
+  /* ── it says what it is ────────────────────────────────────────────── */
+
+  /** The badge, for as long as the mode is on: pinned to the screen above
+   *  everything (cln-sim.css), so no scroll, popup or card ever takes it out of sight. */
+  function badge() {
+    var b = document.createElement("span");
+    b.className = "sim-badge";
+    b.setAttribute("data-i18n-skip", "");
+    b.setAttribute("role", "status");
+    b.innerHTML = '<i aria-hidden="true"></i><b>Simulation</b><span>not real money</span>';
+    document.body.appendChild(b);
+  }
+
   /* ── the card: three clicks on the green dot by the balance ────────── */
 
+  // Start pressed in this tab: the reload it makes lands on the page, not the card again.
+  var STARTED = "cln_ui_s";
+  function started() { try { return sessionStorage.getItem(STARTED) === "1"; } catch (e) { return false; } }
+
   function card() {
+    badge();
     var c = setup();
     /* Two whole numbers, from and to: each streak, gap or ten draws its own from between them. */
     function pair(id, lo, hi) {
@@ -928,7 +947,7 @@
       c2.firstLoss = on("simFirst");
       delete c2.count;
       save(c2);
-      try { sessionStorage.removeItem(LEDGER); sessionStorage.removeItem(PLAN); } catch (e) {}
+      try { sessionStorage.removeItem(LEDGER); sessionStorage.removeItem(PLAN); sessionStorage.setItem(STARTED, "1"); } catch (e) {}
       global.location.reload();
     });
 
@@ -946,9 +965,11 @@
       if (global.ClnTaps) global.ClnTaps(dot, 3, openCard);   // counted in cln-door.js, iPhones included
     }
 
-    // Open with the page, every time, run or no run.
-    fillIn();
-    wrap.hidden = false;
+    // Open with the page until Start has been pressed in this tab.
+    if (!started()) {
+      fillIn();
+      wrap.hidden = false;
+    }
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", card);
   else card();
