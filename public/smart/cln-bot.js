@@ -1814,6 +1814,7 @@
     if (noReal) {
       // The figures from no balance (a balance left from another login would set them otherwise).
       if (!(run && run.active)) paintFigures();
+      if (modal.view === "bmReal") realWords();   // the login's kind changed with the popup up
       if (on && !realOffered) { realOffered = true; offerReal(); }
       return;
     }

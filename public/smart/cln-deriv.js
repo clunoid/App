@@ -183,7 +183,8 @@
   }
   var lookedAt = 0;
   function lookAgain() {
-    if (!needReal || document.visibilityState === "hidden" || Date.now() - lookedAt < 4000) return;
+    // Offline, nothing can be read: the "online" that follows looks at once.
+    if (!needReal || document.visibilityState === "hidden" || navigator.onLine === false || Date.now() - lookedAt < 4000) return;
     lookedAt = Date.now();
     rest("GET", ACCOUNTS_URL).then(function (r) {
       if (!needReal) return;
@@ -194,7 +195,7 @@
       if (list.some(function (a) { return a.type === "real"; })) return start(list);
       var kind = list.length ? "real" : "none";
       if (kind !== needReal) noReal(kind);
-    }).catch(function () {});
+    }).catch(function () { lookedAt = 0; });   // nothing came back: the next chance looks again
   }
   document.addEventListener("visibilitychange", lookAgain);
   global.addEventListener("focus", lookAgain);
