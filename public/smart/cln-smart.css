@@ -85,6 +85,19 @@
 .cs-acct.is-live .cs-live { background: #34d399; box-shadow: 0 0 6px #34d399; }
 .cs-acct.is-wait .cs-live { background: var(--c-warn); }
 .cs-modes { display: inline-flex; padding: 2px; border: 1px solid var(--c-line); border-radius: 999px; background: rgba(0, 0, 0, 0.2); }
+/* No real account yet (cln-deriv.js): the balance and the Real / Demo toggle give way to a
+   red way to open one, in a deep Deriv red that keeps its white words readable (4.8:1); the
+   popup says why (cln-bot.js). */
+.cs-open-real {
+  display: none; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 999px;
+  background: #d92b36; color: #fff; font-size: 12.5px; font-weight: 700; line-height: 1.2; white-space: nowrap; text-decoration: none;
+  box-shadow: 0 6px 18px rgba(217, 43, 54, 0.3); touch-action: manipulation; transition: filter .15s;
+}
+.cs-open-real:hover { filter: brightness(1.07); }
+.cs-open-real:active { transform: scale(0.97); }
+.cs-open-real svg { flex: none; }
+#acct.is-noreal .cs-bal, #acct.is-noreal .cs-modes, #acct.is-noreal .cs-acct-note { display: none; }
+#acct.is-noreal .cs-open-real { display: inline-flex; }
 .cln-mode-btn {
   padding: 4px 10px; border: 0; border-radius: 999px; background: transparent; color: var(--c-muted);
   font-size: 11px !important; font-weight: 600; text-transform: capitalize; cursor: pointer; touch-action: manipulation;
@@ -518,6 +531,16 @@
 .bm-fund-later { width: 100%; margin-top: 8px; padding: 10px 16px; border: 1px solid var(--c-line); border-radius: 12px; background: transparent; color: var(--c-text) !important; font-size: 13px !important; font-weight: 600; cursor: pointer; }
 .bm-fund-later:hover { background: rgba(255, 255, 255, 0.05); }
 .bm:has(> .bm-fund:not([hidden])) > .bm-x { top: 14px; right: 14px; color: var(--c-faint); }
+/* Opening a real account: the deposit popup's shape, in Deriv's red, with the three steps. */
+.bm-real .bm-fund-ico { background: rgba(255, 68, 79, 0.14); color: #ff6b74; }
+.bm-real-why { color: var(--c-text); font-weight: 600; }
+.bm-real-steps { display: grid; gap: 7px; margin: 12px 0 0; padding: 0; list-style: none; counter-reset: step; }
+.bm-real-steps li { display: flex; align-items: center; gap: 9px; counter-increment: step; font-size: 12.5px; font-weight: 600; line-height: 1.4; color: var(--c-text); }
+.bm-real-steps li::before {
+  content: counter(step); display: grid; place-items: center; flex: none; width: 20px; height: 20px; border-radius: 50%;
+  background: rgba(255, 68, 79, 0.16); color: #ff6b74; font-size: 11px; font-weight: 800;
+}
+.bm-fund-go.bm-real-go { background: #d92b36; color: #fff !important; }
 
 @media (max-width: 420px) {
   .bm { padding: 24px 16px 18px; }

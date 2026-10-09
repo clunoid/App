@@ -2558,5 +2558,14 @@
 "The bot is waiting to place its first trade. It starts by itself as soon as conditions are stable again, and trades on to your take profit.":"El bot está esperando para hacer su primera operación. Empieza solo en cuanto las condiciones vuelven a ser estables y opera hasta tu take profit.",
 "The bot paused after a winning trade, with your profit kept. It resumes by itself as soon as conditions are stable again, and carries on to your take profit.":"El bot se pausó tras una operación ganadora, con tu beneficio a salvo. Se reanuda solo en cuanto las condiciones vuelven a ser estables y sigue hasta tu take profit.",
 "Unstable conditions detected":"Condiciones inestables detectadas",
-"Disconnect":"Desconectar"
+"Disconnect":"Desconectar",
+"Create real account":"Crear cuenta real",
+"Open your real account to start trading":"Abre tu cuenta real para empezar a operar",
+"This Deriv login has no trading account yet.":"Este acceso a Deriv aún no tiene ninguna cuenta de trading.",
+"This Deriv login has only a demo account so far.":"Este acceso a Deriv solo tiene una cuenta demo por ahora.",
+"The Smart Scan bot trades on a real Deriv account. Setting one up on Deriv takes a few minutes, and the bot is ready the moment it appears here.":"El bot Smart Scan opera en una cuenta real de Deriv. Crearla en Deriv lleva unos minutos, y el bot estará listo en cuanto aparezca aquí.",
+"Open your real account on Deriv":"Abre tu cuenta real en Deriv",
+"Add funds to it":"Añade fondos a la cuenta",
+"Come back here and start the bot":"Vuelve aquí e inicia el bot",
+"Set up my real account":"Configurar mi cuenta real"
 }

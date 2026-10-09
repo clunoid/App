@@ -82,6 +82,8 @@
   }
   function showNote(text) {
     painted = false;
+    needReal = null;
+    $("acct").classList.remove("is-noreal");
     $("acct").hidden = true;
     if ($("scan")) $("scan").hidden = true;
     $("tState").hidden = false;
@@ -142,12 +144,14 @@
 
   function start(list) {
     accounts = list;
-    if (!accounts.length) return showNote("This Deriv login has no trading accounts yet. Open one on Deriv, then come back here.");
+    if (!accounts.length) return noReal("none");
     // A run on the demo that a reload interrupted resumes there: the toggle shows the demo with it.
     var sv = savedRun(), on = sv && account(sv.account);
     if (on && on.type === "demo") { showDemo = true; store.set(PICK, on.id); }
     picked = pickShown();
-    if (!picked) return showNote("This Deriv login has no real account yet. Open one on Deriv, then come back here.");
+    if (!picked) return noReal("real");
+    needReal = null;
+    $("acct").classList.remove("is-noreal");
     clearState();
     $("acct").hidden = false;
     painted = true;
@@ -159,6 +163,42 @@
     });
     startPolling();
   }
+
+  /* ── no real account yet ───────────────────────────────────────────── */
+
+  /* A login with no real account (only a demo, or no account at all) sees the page as it
+     is: the bot at rest, a red way to open one where the balance would be, and the popup
+     saying why it is needed (cln-bot.js). Coming back to the page reads the accounts
+     again, so a real account opened on Deriv meanwhile takes over without a reload. */
+  var needReal = null;           // null, or "real" (only a demo) / "none" (no account at all)
+  function noReal(kind) {
+    needReal = kind;
+    painted = false;
+    clearState();
+    var box = $("acct");
+    box.classList.remove("is-real", "is-demo", "is-live", "is-wait");
+    box.classList.add("is-noreal");
+    box.hidden = false;
+    try { global.dispatchEvent(new CustomEvent("cln:account")); } catch (e) {}
+  }
+  var lookedAt = 0;
+  function lookAgain() {
+    if (!needReal || document.visibilityState === "hidden" || Date.now() - lookedAt < 4000) return;
+    lookedAt = Date.now();
+    rest("GET", ACCOUNTS_URL).then(function (r) {
+      if (!needReal) return;
+      if (stale(r)) { lookedAt = 0; return lookAgain(); }   // a fresh sign-in landed meanwhile: read with it
+      if (r.status === 401) return expired();                // refused, as everywhere else: the page's re-sign-in
+      if (r.status !== 200) return;
+      var list = normal(listOf(r.body));
+      if (list.some(function (a) { return a.type === "real"; })) return start(list);
+      var kind = list.length ? "real" : "none";
+      if (kind !== needReal) noReal(kind);
+    }).catch(function () {});
+  }
+  document.addEventListener("visibilitychange", lookAgain);
+  global.addEventListener("focus", lookAgain);
+  global.addEventListener("online", lookAgain);
 
   function account(id) { return accounts.filter(function (a) { return a.id === id; })[0] || null; }
   function first(type) {
@@ -511,6 +551,8 @@
     revive: revive,
     repaint: function () { if (painted) paint(); },
     current: current,
+    /** No real account yet: "real" (only a demo) or "none" (no account at all); else null. */
+    needsReal: function () { return needReal; },
     /* Pinned to one account — what a running bot uses, so switching mid-run never
        moves its trades to the other account. */
     accountOf: function (id) {

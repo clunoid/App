@@ -967,13 +967,14 @@
 
   var modal = { view: null, onClose: null, lastFocus: null, glide: false };
   function openModal(view) {
-    ["bmScan", "bmDone", "bmErr", "bmWin", "bmLoss", "bmFund", "bmHold"].forEach(function (id) { if ($(id)) $(id).hidden = id !== view; });
+    ["bmScan", "bmDone", "bmErr", "bmWin", "bmLoss", "bmFund", "bmHold", "bmReal"].forEach(function (id) { if ($(id)) $(id).hidden = id !== view; });
     if ($("bmRoot").hidden) {
       modal.lastFocus = document.activeElement;
       $("bmRoot").hidden = false;
       document.documentElement.style.overflow = "hidden";
     }
     $("bmRoot").setAttribute("data-view", view);
+    $("bmRoot").setAttribute("aria-labelledby", view === "bmReal" ? "bmRealTitle" : "bmTitle");
     modal.view = view;
     var focus = $("bmRoot").querySelector("#" + view + " .btn-blue") || $("bmRoot").querySelector(".bm-x");
     if (focus) setTimeout(function () { try { focus.focus(); } catch (e) {} }, 30);
@@ -1730,6 +1731,20 @@
     result("bmFund");
   }
 
+  /* ── no real account yet: what it takes to start ──────────────────── */
+
+  /** The login has no real account (cln-deriv.js): the popup on opening one, in the words
+   *  for a demo-only login or for one with no account at all. */
+  function needsReal() { return !D.current() && !!(D.needsReal && D.needsReal()); }
+  var realOffered = false;
+  function realWords() {
+    $("bmRealText").textContent = T(D.needsReal() === "none" ? "This Deriv login has no trading account yet." : "This Deriv login has only a demo account so far.");
+  }
+  function offerReal() {
+    realWords();
+    openModal("bmReal");
+  }
+
   /* ── painting the run ──────────────────────────────────────────────── */
 
   var REASONS = {
@@ -1772,7 +1787,7 @@
     var b = $("botGo"), c = D.current();
     var running = !!(run && run.active);
     b.classList.toggle("is-stop", running);
-    b.disabled = !!(running && run.stopping) || !c;
+    b.disabled = !!(running && run.stopping) || (!c && !needsReal());
     $("botGoText").textContent = running ? (run.stopping ? T("Stopping…") : T("Stop")) : T("Scan & start");
     b.classList.toggle("is-real", !running && !!(c && c.type === "real"));
     ["botStake", "botTp", "botSl", "botMult", "botVar"].forEach(function (id) { $(id).disabled = running; });
@@ -1790,10 +1805,19 @@
   /* ── wiring ────────────────────────────────────────────────────────── */
 
   function onAccount() {
-    var c = D.current();
-    var on = !!c && !$("acct").hidden;
+    var c = D.current(), noReal = needsReal();
+    var on = (!!c || noReal) && !$("acct").hidden;
     $("scan").hidden = !on;
     paintButton();
+    // No real account yet: the page as it is with the bot at rest, and once a visit by
+    // itself (again on Start) the popup on opening one. Nothing here reads or trades.
+    if (noReal) {
+      // The figures from no balance (a balance left from another login would set them otherwise).
+      if (!(run && run.active)) paintFigures();
+      if (on && !realOffered) { realOffered = true; offerReal(); }
+      return;
+    }
+    if (modal.view === "bmReal") closeModal();   // a real account came in meanwhile
     // A different chip while idle: the next scan starts on that account.
     if (on && !(run && run.active) && hub.account && hub.account !== c.id) hubStop();
     if (on) idleHub();
@@ -1839,6 +1863,7 @@
   if ($("bmHoldStop")) $("bmHoldStop").addEventListener("click", function () { stop(); closeModal(); });
   $("botGo").addEventListener("click", function () {
     if (run && run.active) return stop();
+    if (needsReal()) return offerReal();          // nothing to trade on until a real account is open
     if (lockHolder()) return say(T("The bot is already running in another tab or window. Stop it there first."), "bad");
     var s = readSettings();
     var err = validate(s);
@@ -1851,7 +1876,9 @@
   $("bmRoot").addEventListener("click", function (e) { if (e.target.closest("[data-bm-close]")) closeModal(); });
   document.addEventListener("keydown", function (e) { if (e.key === "Escape" && !$("bmRoot").hidden) closeModal(); });
   global.addEventListener("cln:account", onAccount);
-  global.addEventListener("langchange", function () { paintRun(); paintButton(); paintMin(); paintNow(); paintType(); paintVariants(); if (dynamicMult(state.type, formVariant)) paintMult(state.type, formVariant); });   // the word, in the new language; a typed figure stays
+  global.addEventListener("langchange", function () { paintRun(); paintButton(); paintMin(); paintNow(); paintType(); paintVariants(); if (dynamicMult(state.type, formVariant)) paintMult(state.type, formVariant); if (modal.view === "bmReal") realWords(); });   // the word, in the new language; a typed figure stays
+  // The sign-in ended while the popup on opening a real account was up: the note says so, not the popup.
+  global.addEventListener("cln:expired", function () { if (modal.view === "bmReal") closeModal(); });
   // Leaving mid-run asks first — except for Deriv's re-sign-in (cln-deriv.js), after which the run resumes.
   global.addEventListener("beforeunload", function (e) { if (run && run.active && !global.__clnLeaving) { e.preventDefault(); e.returnValue = ""; } });
 

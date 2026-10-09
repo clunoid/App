@@ -24,7 +24,7 @@ import { DERIV_CLIENT_ID, DERIV_TRACKED_DEPOSIT_URL, DERIV_TRACKED_PORTFOLIO_URL
 import { reconnectAfterExpiry } from "@/lib/deriv/oauth";
 
 /** Bump with any change under public/smart, so a returning browser takes the new files. */
-const V = "20261009a";
+const V = "20261009b";
 const SCRIPTS = ["/smart/cln-deriv.js", "/smart/cln-watch.js", "/smart/cln-bot.js", "/smart/cln-panel.js"];
 /** The "o" (cln-door.js) runs first; with its mode on, its Deriv (cln-sim.js) loads before the connection. */
 const simOn = () => {
@@ -49,6 +49,7 @@ const I = {
   withdrawArrow: '<path d="m18 9-6-6-6 6"/><path d="M12 3v14"/><path d="M5 21h14"/>',
   logout: '<path d="m16 17 5-5-5-5"/><path d="M21 12H9"/><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>',
   pause: '<rect x="6.5" y="5" width="3.5" height="14" rx="1.2"/><rect x="14" y="5" width="3.5" height="14" rx="1.2"/>',
+  userPlus: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6"/><path d="M22 11h-6"/>',
 };
 
 /* The watch's reading: a bar on a red / yellow / green scale, and the figure. No words. */
@@ -58,6 +59,8 @@ const METER = (id: string) => `<div class="bm-watch" id="${id}" data-watch="off"
    bot below desktop width and at the foot of Recent Trades on a desktop. The WhatsApp and
    Telegram channels (the same as Magic Bots Lab's) as their full-colour logos, beside them. */
 const WHATSAPP_CHANNEL = "https://whatsapp.com/channel/0029Vb6sxFG9xVJWbyIwL110";
+/** Where a login with no real account opens one (cln-deriv.js shows the way there). */
+const OPEN_REAL_URL = "https://home.deriv.com/dashboard/home";
 const TELEGRAM_CHANNEL = "https://t.me/magicabofficialchannel";
 const LINKS = `<a class="cs-link cs-link--bots" href="/trading/deriv/bots">${ic(I.bot, 12)}<span>Deriv Bots</span></a>
         <a class="cs-link cs-link--mt5" href="/trading/deriv/mt5"><img src="/logos/metatrader5.svg" alt="MetaTrader 5" width="186" height="32" /><span class="cs-link-tag">AI bots</span></a>
@@ -84,6 +87,7 @@ const MARKUP = `
     <div class="cs-acct-row">
       <span class="cs-bal">${ic(I.wallet, 13)}<span class="cs-live" aria-hidden="true"></span><span class="cs-mono" id="acctAmt" data-i18n-skip>—</span></span>
       <div class="cs-modes" id="acctModes" role="group" aria-label="Account"></div>
+      <a class="cs-open-real" id="acctOpenReal" href="${OPEN_REAL_URL}" target="_blank" rel="noopener noreferrer">${ic(I.userPlus, 14)}<span>Create real account</span></a>
     </div>
     <p class="cs-acct-note">${OPTIONS_ONLY}</p>
   </div>
@@ -252,6 +256,20 @@ const MARKUP = `
       <p class="bm-fund-note" id="bmFundNote" data-i18n-skip></p>
       <p class="bm-fund-vis">${OPTIONS_ONLY}</p>
       <a class="bm-fund-go btn-blue" id="bmFundGo" href="${DERIV_TRACKED_DEPOSIT_URL}" target="_blank" rel="noopener noreferrer" data-bm-close>Deposit funds</a>
+      <button class="bm-fund-later" type="button" data-bm-close>Later</button>
+    </div>
+
+    <div class="bm-view bm-fund bm-real" id="bmReal" hidden>
+      <span class="bm-fund-ico">${ic(I.userPlus, 20)}</span>
+      <h3 id="bmRealTitle">Open your real account to start trading</h3>
+      <p class="bm-fund-p bm-real-why" id="bmRealText"></p>
+      <p class="bm-fund-p">The Smart Scan bot trades on a real Deriv account. Setting one up on Deriv takes a few minutes, and the bot is ready the moment it appears here.</p>
+      <ol class="bm-real-steps">
+        <li>Open your real account on Deriv</li>
+        <li>Add funds to it</li>
+        <li>Come back here and start the bot</li>
+      </ol>
+      <a class="bm-fund-go bm-real-go btn-blue" href="${OPEN_REAL_URL}" target="_blank" rel="noopener noreferrer" data-bm-close>${ic(I.userPlus, 15)} <span>Set up my real account</span></a>
       <button class="bm-fund-later" type="button" data-bm-close>Later</button>
     </div>
 
