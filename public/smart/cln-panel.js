@@ -210,6 +210,8 @@
   global.addEventListener("langchange", function () { drawnFor = null; paint(); });
   // The running time ticks.
   setInterval(function () { var r = B(); if (r && r.active) paint(); }, 1000);
+  // iPhones show a link's pressed state (cln-smart.css .cs-link:active) only on a page that listens to touches.
+  document.addEventListener("touchstart", function () {}, { passive: true });
 
   paint();
 })(window);

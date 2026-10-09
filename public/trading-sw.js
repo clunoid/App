@@ -83,7 +83,9 @@ self.addEventListener("fetch", (e) => {
     if (fresh) return fresh;
     const cached = await cache.match(req, { ignoreSearch: true });
     if (cached) return cached;
-    return fetch(req);
+    // Nothing cached: keep waiting on the request already in flight rather than starting it
+    // again from nothing (a slow page used to take its time twice); offline, it fails as before.
+    return net;
   })());
 });
 

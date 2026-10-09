@@ -24,7 +24,7 @@ import { DERIV_CLIENT_ID, DERIV_TRACKED_DEPOSIT_URL, DERIV_TRACKED_PORTFOLIO_URL
 import { reconnectAfterExpiry } from "@/lib/deriv/oauth";
 
 /** Bump with any change under public/smart, so a returning browser takes the new files. */
-const V = "20261008c";
+const V = "20261009a";
 const SCRIPTS = ["/smart/cln-deriv.js", "/smart/cln-watch.js", "/smart/cln-bot.js", "/smart/cln-panel.js"];
 /** The "o" (cln-door.js) runs first; with its mode on, its Deriv (cln-sim.js) loads before the connection. */
 const simOn = () => {
@@ -55,11 +55,16 @@ const I = {
 const METER = (id: string) => `<div class="bm-watch" id="${id}" data-watch="off"><div class="bm-watch-bar"><i></i></div><b class="bm-watch-pct cs-mono" data-i18n-skip>…</b></div>`;
 
 /* Deriv's bots, MetaTrader 5, deposit and withdraw: small links, shown at the top of the
-   bot below desktop width and at the foot of Recent Trades on a desktop. */
+   bot below desktop width and at the foot of Recent Trades on a desktop. The WhatsApp and
+   Telegram channels (the same as Magic Bots Lab's) as their full-colour logos, beside them. */
+const WHATSAPP_CHANNEL = "https://whatsapp.com/channel/0029Vb6sxFG9xVJWbyIwL110";
+const TELEGRAM_CHANNEL = "https://t.me/magicabofficialchannel";
 const LINKS = `<a class="cs-link cs-link--bots" href="/trading/deriv/bots">${ic(I.bot, 12)}<span>Deriv Bots</span></a>
         <a class="cs-link cs-link--mt5" href="/trading/deriv/mt5"><img src="/logos/metatrader5.svg" alt="MetaTrader 5" width="186" height="32" /><span class="cs-link-tag">AI bots</span></a>
         <a class="cs-link cs-link--dep" href="${DERIV_TRACKED_DEPOSIT_URL}" target="_blank" rel="noopener noreferrer">${ic(I.depositArrow, 12)}<span>Deposit</span></a>
-        <a class="cs-link" href="${DERIV_TRACKED_WITHDRAW_URL}" target="_blank" rel="noopener noreferrer">${ic(I.withdrawArrow, 12)}<span>Withdraw</span></a>`;
+        <a class="cs-link" href="${DERIV_TRACKED_WITHDRAW_URL}" target="_blank" rel="noopener noreferrer">${ic(I.withdrawArrow, 12)}<span>Withdraw</span></a>
+        <a class="cs-link cs-link--app cs-link--wa" href="${WHATSAPP_CHANNEL}" target="_blank" rel="noopener noreferrer" title="Join WhatsApp" aria-label="Join WhatsApp"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="#25D366" d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5.1-1.3A10 10 0 1 0 12 2z"/><path fill="#fff" d="M9.2 7.4c-.2-.5-.4-.5-.6-.5h-.5c-.2 0-.5.1-.7.3-.3.3-1 1-1 2.4s1 2.8 1.2 3c.1.2 2 3.2 5 4.4 2.5 1 3 .8 3.5.7.5-.1 1.7-.7 1.9-1.4.2-.7.2-1.2.2-1.4-.1-.1-.3-.2-.6-.3l-2-1c-.3-.1-.5-.1-.7.1-.2.3-.8 1-1 1.2-.2.2-.3.2-.6.1-.3-.2-1.2-.5-2.3-1.5-.9-.8-1.5-1.7-1.6-2-.2-.3 0-.5.1-.6l.4-.5.3-.5c.1-.2 0-.4 0-.5l-1-2.2z"/></svg></a>
+        <a class="cs-link cs-link--app cs-link--tg" href="${TELEGRAM_CHANNEL}" target="_blank" rel="noopener noreferrer" title="Join Telegram" aria-label="Join Telegram"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="#2AABEE"/><path fill="#fff" d="M6.1 11.7l9.3-3.6c.4-.2.8.1.7.7l-1.6 7.4c-.1.5-.4.6-.8.4l-2.3-1.7-1.1 1.1c-.1.1-.2.2-.5.2l.2-2.4 4.3-3.9c.2-.2 0-.3-.3-.1l-5.3 3.3-2.3-.7c-.5-.2-.5-.5.1-.7z"/></svg></a>`;
 
 /* What the balance can and cannot see — beside the balance, and again in the
    add-funds popup. One sentence, the portfolio link in the links' blue. */

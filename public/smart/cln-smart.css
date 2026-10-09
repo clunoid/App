@@ -238,14 +238,27 @@
    Trades, whose list gives up the room on a large screen, so no card grows for
    them, running or not. Two to a row where the card is narrow, four where wide. */
 .cs-links-wrap { container-type: inline-size; margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(255, 255, 255, 0.06); }
-.cs-links { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
-@container (min-width: 500px) { .cs-links { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+/* MT5's logo and tag keep their one line: its column (the second) never goes under their
+   width; where there is room, which is nearly everywhere, the columns share it equally. */
+.cs-links { display: grid; grid-template-columns: minmax(0, 1fr) minmax(max-content, 1fr) 30px; gap: 6px; }
+@container (min-width: 500px) { .cs-links { grid-template-columns: minmax(0, 1fr) minmax(max-content, 1fr) repeat(2, minmax(0, 1fr)) 30px 30px; } }
+/* The WhatsApp and Telegram channels: their full-colour logos, square, in a narrow column of
+   their own beside the others (one under the other, or side by side where four fit a row),
+   so the links keep the rows they had. */
+.cs-link--wa { grid-column: 3; grid-row: 1; }
+.cs-link--tg { grid-column: 3; grid-row: 2; }
+@container (min-width: 500px) { .cs-link--wa { grid-column: 5; } .cs-link--tg { grid-column: 6; grid-row: 1; } }
+.cs-link.cs-link--app { padding: 0; }
+.cs-link--app svg { width: 18px; height: 18px; }
 .cs-link {
   display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 2px 4px; min-height: 30px; padding: 4px 5px;
   border: 1px solid var(--c-line); border-radius: 9px; font-size: 11px; font-weight: 700; line-height: 1.15; white-space: nowrap;
   color: var(--c-text); text-decoration: none; transition: background-color .15s, opacity .15s;
 }
 .cs-link:hover { background: rgba(255, 255, 255, 0.05); }
+/* A tap shows the moment the finger lands, whatever the page is busy with: pressed in. */
+.cs-link { touch-action: manipulation; }
+.cs-link:active { transform: scale(0.97); transition-duration: 0s; }
 .cs-link svg { flex: none; }
 .cs-link--bots { border-color: transparent; background: var(--c-sky); color: var(--c-ink); }
 .cs-link--bots:hover { background: var(--c-sky); opacity: .9; }
