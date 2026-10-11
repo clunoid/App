@@ -198,6 +198,16 @@
   background: linear-gradient(90deg, rgba(var(--rc), 0.1), rgba(var(--rc), 0.02)); font-size: 11.5px; line-height: 1.45; color: var(--c-muted);
 }
 .bot-risk-line b { color: rgb(var(--rc)); font-weight: 700; }
+/* The safe figure, a button: one click puts it in its field. Green — the safe choice. */
+.bot-risk-use {
+  display: inline-flex; align-items: center; gap: 4px; margin: 0 1px; padding: 1px 8px 1px 6px; vertical-align: 1px;
+  border: 1px solid rgba(52, 211, 153, 0.45); border-radius: 999px; background: rgba(52, 211, 153, 0.12); color: #34d399;
+  font-family: var(--mono); font-size: 11px; font-weight: 700; line-height: 1.5; cursor: pointer;
+  transition: background .15s ease, border-color .15s ease, box-shadow .15s ease, transform .1s ease;
+}
+.bot-risk-use:hover { background: rgba(52, 211, 153, 0.2); border-color: #34d399; box-shadow: 0 0 8px rgba(52, 211, 153, 0.3); }
+.bot-risk-use:active { transform: translateY(1px); }
+.bot-risk-use:focus-visible { outline: 2px solid var(--c-sky); outline-offset: 2px; }
 .cs-note { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; margin-top: 10px; }
 .cs-min { font-size: 11px; color: var(--c-faint); }
 .cs-keep { position: relative; display: inline-flex; align-items: center; gap: 7px; font-size: 11.5px; color: var(--c-muted); cursor: pointer; user-select: none; -webkit-user-select: none; }
