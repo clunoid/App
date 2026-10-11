@@ -71,6 +71,33 @@ export async function visitorForTelegramMessage(tgMessageId: number): Promise<{ 
   return data ? { visitorId: data.visitor_id as string, email: (data.email as string) ?? null } : null;
 }
 
+/**
+ * The person behind a visitor id, if anyone has ever written in under it.
+ *
+ * Used when the owner swipes on one of the BOT's own messages — a delivery
+ * receipt or a waiting-list entry names the id, and that is enough to keep the
+ * conversation going.
+ */
+export async function visitorById(visitorId: string): Promise<{ visitorId: string; email: string | null } | null> {
+  const db = getSupabaseAdmin();
+  if (!db || !/^[0-9A-F]{8}$/.test(visitorId || "")) return null;
+
+  const { data, error } = await db
+    .from(TABLE)
+    .select("visitor_id, email")
+    .eq("visitor_id", visitorId)
+    .eq("direction", "in")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    console.error("[support] visitor lookup failed:", error.message);
+    return null;
+  }
+  return data ? { visitorId: data.visitor_id as string, email: (data.email as string) ?? null } : null;
+}
+
 /** Park the owner's reply for the visitor to collect. */
 export async function recordReply(
   visitorId: string,
@@ -227,6 +254,88 @@ export async function historyFor(visitorId: string, limit = 10): Promise<{ from:
       body: r.body as string,
       at: r.created_at as string,
     }));
+}
+
+export type OpenChat = {
+  visitorId: string;
+  name: string | null;
+  email: string | null;
+  /** Everything they sent since our last reply, oldest first. */
+  messages: { body: string; at: string }[];
+  firstAt: string;
+  lastAt: string;
+  /** Their newest message that reached Telegram: where /waiting jumps to. */
+  tgMessageId: number | null;
+};
+
+/**
+ * Everyone whose last word is still theirs — a question, a screenshot, an
+ * "I have downloaded it" — with nothing from us after it.
+ *
+ * Read from the rows: each person's messages newest first, and everything they
+ * sent since our last reply is open. An inbound row with seen_at set was closed
+ * by the owner without a reply (✔️ Done in /waiting); only replies use the
+ * column otherwise. Paged to the end of the table, because not missing anybody
+ * includes the oldest.
+ */
+export async function unansweredChats(): Promise<OpenChat[]> {
+  const db = getSupabaseAdmin();
+  if (!db) return [];
+
+  const rows: Record<string, unknown>[] = [];
+  for (let page = 0; page < 30; page++) {
+    const { data, error } = await db
+      .from(TABLE)
+      .select("visitor_id, direction, body, email, name, tg_message_id, seen_at, created_at")
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
+      .range(page * 1000, page * 1000 + 999);
+    if (error) {
+      console.error("[support] unanswered lookup failed:", error.message);
+      break;
+    }
+    rows.push(...(data ?? []));
+    if ((data ?? []).length < 1000) break;
+  }
+
+  const open = new Map<string, OpenChat>();
+  const settled = new Set<string>();
+  for (const r of rows) {
+    const v = r.visitor_id as string;
+    if (!v || settled.has(v)) continue;
+    if (r.direction !== "in" || r.seen_at) { settled.add(v); continue; }
+    const at = r.created_at as string;
+    let p = open.get(v);
+    if (!p) {
+      p = { visitorId: v, name: null, email: null, messages: [], firstAt: at, lastAt: at, tgMessageId: null };
+      open.set(v, p);
+    }
+    p.messages.unshift({ body: (r.body as string) || "", at });   // rows arrive newest first
+    p.firstAt = at;
+    p.name = p.name ?? ((r.name as string) || null);
+    p.email = p.email ?? ((r.email as string) || null);
+    if (!p.tgMessageId && r.tg_message_id) p.tgMessageId = r.tg_message_id as number;
+  }
+  return [...open.values()];
+}
+
+/** ✔️ Done in /waiting: their open messages are closed without a reply.
+ *  Nothing reaches them; their next message opens it again. */
+export async function closeChat(visitorId: string): Promise<number> {
+  const db = getSupabaseAdmin();
+  if (!db || !visitorId) return 0;
+  const { data, error } = await db
+    .from(TABLE)
+    .update({ seen_at: new Date().toISOString() })
+    .eq("visitor_id", visitorId)
+    .eq("direction", "in")
+    .is("seen_at", null)
+    .select("id");
+  if (error) {
+    console.error("[support] could not close the chat:", error.message);
+    return 0;
+  }
+  return (data ?? []).length;
 }
 
 export type Person = {

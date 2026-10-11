@@ -89,6 +89,8 @@ export type EaRequest = {
   code: string | null;
   /** When it was sent — what the waiting list orders by and shows. */
   createdAt?: string | null;
+  /** The Telegram message it became — where /waiting jumps to for somebody who only asked. */
+  tgMessageId?: number | null;
 };
 
 /** One entry of the waiting list: a person, with everything open of theirs folded in. */
@@ -315,7 +317,7 @@ export async function pendingRequests(limit = 20): Promise<EaRequest[]> {
 
   const { data, error } = await db
     .from(TABLE)
-    .select("id, visitor_id, mt5_login, name, email, phone, contact, country, status, code, created_at")
+    .select("id, visitor_id, mt5_login, name, email, phone, contact, country, status, code, created_at, tg_message_id")
     .eq("status", "pending")
     /* Answered by hand is not waiting. Replying to somebody puts their request
        in your hands without deciding it, and the queue has to agree or it keeps
@@ -368,6 +370,7 @@ export async function pendingRequests(limit = 20): Promise<EaRequest[]> {
       status: d.status as EaRequest["status"],
       code: (d.code as string) ?? null,
       createdAt: (d.created_at as string | null) ?? null,
+      tgMessageId: (d.tg_message_id as number | null) ?? null,
     }));
 }
 
@@ -423,6 +426,63 @@ export async function requestForKey(key: string, waiting?: WaitingPerson[]): Pro
     if (k !== k.toUpperCase()) return requestForVisitor(k.toUpperCase());
   }
   return null;
+}
+
+/** Where somebody stands with the EA, beside their messages on the waiting list. */
+export type EaStanding = {
+  /** Their oldest still-pending request — what a decision acts on (as requestForVisitor picks it). */
+  pending: (EaRequest & { answeredAt: string | null }) | null;
+  /** A request approved with a code: nothing left to decide. */
+  approved: (EaRequest & { decidedAt: string | null }) | null;
+  latest: (EaRequest & { decidedAt: string | null }) | null;
+};
+
+/**
+ * Where each of these people stands with the EA, in one query — for the
+ * waiting list, which shows somebody who only wrote in next to the request a
+ * decision would act on: still open (asked to deposit, say, or answered by
+ * hand), declined, or already approved with a code.
+ */
+export async function eaStandingFor(visitorIds: string[]): Promise<Map<string, EaStanding>> {
+  const out = new Map<string, EaStanding>();
+  const db = getSupabaseAdmin();
+  const ids = [...new Set(visitorIds.filter((v) => /^[A-Za-z0-9_-]{1,64}$/.test(v || "")))];
+  if (!db || !ids.length) return out;
+
+  const { data, error } = await db
+    .from(TABLE)
+    .select("id, visitor_id, mt5_login, name, email, phone, contact, country, status, code, created_at, tg_message_id, answered_at, decided_at")
+    .in("visitor_id", ids)
+    .order("created_at", { ascending: true })
+    .limit(1000);
+  if (error) {
+    console.error("[ea] standing lookup failed:", error.message);
+    return out;
+  }
+  for (const d of (data ?? []) as Record<string, unknown>[]) {
+    const r = {
+      id: d.id as string,
+      visitorId: d.visitor_id as string,
+      mt5Login: d.mt5_login as string,
+      name: d.name as string,
+      email: d.email as string,
+      phone: (d.phone as string | null) ?? "",
+      contact: (d.contact as string | null) ?? "",
+      country: (d.country as string | null) ?? "",
+      status: d.status as EaRequest["status"],
+      code: (d.code as string) ?? null,
+      createdAt: (d.created_at as string | null) ?? null,
+      tgMessageId: (d.tg_message_id as number | null) ?? null,
+      answeredAt: (d.answered_at as string | null) ?? null,
+      decidedAt: (d.decided_at as string | null) ?? null,
+    };
+    const s = out.get(r.visitorId) ?? { pending: null, approved: null, latest: null };
+    if (r.status === "pending" && !s.pending) s.pending = r;
+    if (r.status === "approved" && r.code) s.approved = r;
+    s.latest = r;
+    out.set(r.visitorId, s);
+  }
+  return out;
 }
 
 /**
