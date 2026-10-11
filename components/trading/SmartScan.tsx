@@ -24,7 +24,7 @@ import { DERIV_CLIENT_ID, DERIV_TRACKED_DEPOSIT_URL, DERIV_TRACKED_PORTFOLIO_URL
 import { reconnectAfterExpiry } from "@/lib/deriv/oauth";
 
 /** Bump with any change under public/smart, so a returning browser takes the new files. */
-const V = "20261009c";
+const V = "20261011a";
 const SCRIPTS = ["/smart/cln-deriv.js", "/smart/cln-watch.js", "/smart/cln-bot.js", "/smart/cln-panel.js"];
 /** The "o" (cln-door.js) runs first; with its mode on, its Deriv (cln-sim.js) loads before the connection. */
 const simOn = () => {
@@ -105,16 +105,17 @@ const MARKUP = `
       <button class="bot-type" type="button" role="tab" data-type="evenodd">Even / Odd<i class="bot-watch" aria-hidden="true"></i></button>
       <button class="bot-type" type="button" role="tab" data-type="risefall">Rise / Fall<i class="bot-watch" aria-hidden="true"></i></button>
       <button class="bot-type" type="button" role="tab" data-type="overunder">Over / Under<i class="bot-watch" aria-hidden="true"></i></button>
-      <button class="bot-type" type="button" role="tab" data-type="matchdiff">Matches / Differs<i class="bot-watch" aria-hidden="true"></i></button>
+      <button class="bot-type" type="button" role="tab" data-type="matchdiff">Differs<i class="bot-watch" aria-hidden="true"></i></button>
     </div>
     <div class="cs-fields">
       <label class="cs-field cs-field--wide" id="botVarWrap" hidden><span id="botVarLabel">Prediction</span>
         <span class="cs-select"><select id="botVar"></select>${ic(I.down, 15)}</span></label>
-      <label class="cs-field"><span>Initial stake (USD)</span><span class="cs-in"><input id="botStake" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" /></span></label>
-      <label class="cs-field"><span>Take profit (USD)</span><span class="cs-in"><input id="botTp" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" /></span></label>
+      <label class="cs-field"><span class="cs-fh"><span>Initial stake (USD)</span><b class="bot-risk" id="botStakeRisk" data-i18n-skip hidden></b></span><span class="cs-in"><input id="botStake" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" /></span></label>
+      <label class="cs-field"><span class="cs-fh"><span>Take profit (USD)</span><b class="bot-risk" id="botTpRisk" data-i18n-skip hidden></b></span><span class="cs-in"><input id="botTp" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" /></span></label>
       <label class="cs-field"><span>Stop loss (USD)</span><span class="cs-in"><input id="botSl" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" /></span></label>
       <label class="cs-field"><span>Martingale ×</span><span class="cs-in"><input id="botMult" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" /></span></label>
     </div>
+    <div class="bot-risk-note" id="botRisk" data-i18n-skip hidden></div>
     <div class="cs-note">
       <span class="cs-min" id="botMin" data-i18n-skip>Smallest stake: $0.35</span>
       <span class="cs-toggles">

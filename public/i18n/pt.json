@@ -2567,5 +2567,19 @@
 "Open your real account on Deriv":"Abra sua conta real na Deriv",
 "Add funds to it":"Adicione fundos a ela",
 "Come back here and start the bot":"Volte aqui e inicie o bot",
-"Set up my real account":"Configurar minha conta real"
+"Set up my real account":"Configurar minha conta real",
+"Differs":"Diferente",
+"Scanning Differs markets":"Escaneando mercados Diferente",
+"Finds the best market and digit for Differs, then trades it one 1-tick contract at a time until your take profit or stop loss.":"Encontra o melhor mercado e dígito para Diferente e o negocia um contrato de 1 tick por vez até o seu take profit ou stop loss.",
+"risk: Safe":"Seguro",
+"risk: High":"Alto",
+"risk: Too high":"Alto demais",
+"survives {n} losses in a row.":"aguenta {n} perdas seguidas.",
+"Safe stake: {v}.":"Aposta segura: {v}.",
+"The balance is small for this type.":"O saldo é pequeno para este tipo.",
+"most runs end in a big loss.":"a maioria das sessões termina com uma grande perda.",
+"about 1 in {x} runs ends in a big loss.":"cerca de 1 em cada {x} sessões termina com uma grande perda.",
+"Safe target: {v}.":"Meta segura: {v}.",
+"survives 1 loss in a row.":"aguenta 1 perda seguida.",
+"is more than the balance.":"é maior que o saldo."
 }
