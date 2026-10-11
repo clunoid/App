@@ -24,7 +24,7 @@ import { DERIV_CLIENT_ID, DERIV_TRACKED_DEPOSIT_URL, DERIV_TRACKED_PORTFOLIO_URL
 import { reconnectAfterExpiry } from "@/lib/deriv/oauth";
 
 /** Bump with any change under public/smart, so a returning browser takes the new files. */
-const V = "20261011c";
+const V = "20261011d";
 const SCRIPTS = ["/smart/cln-deriv.js", "/smart/cln-watch.js", "/smart/cln-bot.js", "/smart/cln-panel.js"];
 /** The "o" (cln-door.js) runs first; with its mode on, its Deriv (cln-sim.js) loads before the connection. */
 const simOn = () => {
@@ -120,7 +120,9 @@ const MARKUP = `
       <span class="cs-min" id="botMin" data-i18n-skip>Smallest stake: $0.35</span>
       <span class="cs-toggles">
         <label class="cs-keep cs-safe"><input type="checkbox" id="botSafe" role="switch" checked /><i aria-hidden="true"></i><span>Safe</span></label>
-        <label class="cs-keep"><input type="checkbox" id="botKeep" role="switch" /><i aria-hidden="true"></i><span>Save settings</span></label>
+        <!-- The risk guide (off unless turned on): each type starts from its own stake and take profit
+             for the balance, and both carry Safe / High / Too high. Off: the figures as they always were. -->
+        <label class="cs-keep"><input type="checkbox" id="botGuide" role="switch" /><i aria-hidden="true"></i><span>Risk guide</span></label>
       </span>
     </div>
     <div class="cs-actions">
