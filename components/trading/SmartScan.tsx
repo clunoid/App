@@ -180,7 +180,7 @@ const MARKUP = `
   </section>
 </div>
 
-<p class="cs-risk">Trading carries risk. This is an automated tool, not financial advice. Never risk more than you can afford to lose.</p>
+<p class="cs-risk">Trading carries risk. Never risk more than you can afford to lose.</p>
 
 <div class="cs-engine" hidden aria-hidden="true">
   <button id="botGo" type="button" tabindex="-1"><span id="botGoText">Scan &amp; start</span></button>
