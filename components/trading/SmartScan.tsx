@@ -24,7 +24,7 @@ import { DERIV_CLIENT_ID, DERIV_TRACKED_DEPOSIT_URL, DERIV_TRACKED_PORTFOLIO_URL
 import { reconnectAfterExpiry } from "@/lib/deriv/oauth";
 
 /** Bump with any change under public/smart, so a returning browser takes the new files. */
-const V = "20261012a";
+const V = "20261012b";
 const SCRIPTS = ["/smart/cln-deriv.js", "/smart/cln-watch.js", "/smart/cln-bot.js", "/smart/cln-panel.js"];
 /** The "o" (cln-door.js) runs first; with its mode on, its Deriv (cln-sim.js) loads before the connection. */
 const simOn = () => {
@@ -112,7 +112,7 @@ const MARKUP = `
         <span class="cs-select"><select id="botVar"></select>${ic(I.down, 15)}</span></label>
       <label class="cs-field"><span class="cs-fh"><span>Initial stake (USD)</span><b class="bot-risk" id="botStakeRisk" data-i18n-skip hidden></b></span><span class="cs-in"><input id="botStake" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" /></span></label>
       <label class="cs-field"><span class="cs-fh"><span>Take profit (USD)</span><b class="bot-risk" id="botTpRisk" data-i18n-skip hidden></b></span><span class="cs-in"><input id="botTp" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" /></span></label>
-      <label class="cs-field"><span>Stop loss (USD)</span><span class="cs-in"><input id="botSl" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" /></span></label>
+      <label class="cs-field" id="botSlWrap" hidden><span>Stop loss (USD)</span><span class="cs-in"><input id="botSl" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" /></span></label>
       <label class="cs-field"><span>Martingale ×</span><span class="cs-in"><input id="botMult" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" /></span></label>
     </div>
     <div class="bot-risk-note" id="botRisk" data-i18n-skip hidden></div>
@@ -123,6 +123,8 @@ const MARKUP = `
         <!-- The risk guide (off unless turned on): Safe / High / Too high on the stake and the take
              profit, and the safe figure. On or off, each type starts from its own figures. -->
         <label class="cs-keep"><input type="checkbox" id="botGuide" role="switch" /><i aria-hidden="true"></i><span>Risk guide</span></label>
+        <!-- The stop loss (off unless turned on): off, a run has none and its field is hidden. -->
+        <label class="cs-keep"><input type="checkbox" id="botSlOn" role="switch" /><i aria-hidden="true"></i><span>Stop loss</span></label>
       </span>
     </div>
     <div class="cs-actions">
@@ -241,6 +243,8 @@ const MARKUP = `
       <div class="bm-fin-k">Stop Loss</div>
       <h2>Stop-loss hit</h2>
       <p class="bm-fin-p">Your stop-loss was reached, so the bot stopped to protect your balance.</p>
+      <!-- What the run did past the risk guide (cln-bot.js mistakes), when it did. -->
+      <div class="bm-why" id="bmLossWhy" data-i18n-skip hidden></div>
       <div class="bm-fin-pl"><div>Session P/L</div><b class="cs-mono" id="bmLossPl" data-i18n-skip></b></div>
       <div class="bm-fin-mini">
         <div><span>Trades</span><b class="cs-mono" id="bmLossN" data-i18n-skip></b></div>
@@ -255,6 +259,7 @@ const MARKUP = `
       <span class="bm-fund-ico">${ic(I.wallet, 20)}</span>
       <h3 id="bmFundTitle">Add funds to start</h3>
       <p class="bm-fund-p" id="bmFundText" data-i18n-skip></p>
+      <div class="bm-why" id="bmFundWhy" data-i18n-skip hidden></div>
       <p class="bm-fund-p">You can deposit any amount, and we recommend 1,000 USD or more for the best results.</p>
       <p class="bm-fund-note" id="bmFundNote" data-i18n-skip></p>
       <p class="bm-fund-vis">${OPTIONS_ONLY}</p>
