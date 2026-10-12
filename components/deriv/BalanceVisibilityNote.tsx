@@ -14,10 +14,10 @@ import { DERIV_TRACKED_PORTFOLIO_URL } from "@/lib/deriv/config";
 export function BalanceVisibilityNote({ className = "", style }: { className?: string; style?: React.CSSProperties }) {
   return (
     <p className={`font-semibold ${className}`} style={{ color: "#34d399", ...style }}>
-      Only your options trading account shows here — move your other funds into it from your{" "}
-      <a href={DERIV_TRACKED_PORTFOLIO_URL} target="_blank" rel="noopener noreferrer" className="font-bold underline underline-offset-2 transition hover:opacity-80" style={{ color: "#38bdf8" }}>
-        Deriv portfolio
-      </a>.
+      If your full balance is not visible, transfer funds to your Deriv options account.{" "}
+      <a href={DERIV_TRACKED_PORTFOLIO_URL} target="_blank" rel="noopener noreferrer" className="ml-1 inline-flex items-center whitespace-nowrap rounded-full border px-2.5 py-px align-[1px] font-bold transition hover:opacity-80" style={{ color: "#38bdf8", borderColor: "rgba(56,189,248,0.45)", background: "rgba(56,189,248,0.12)" }}>
+        Transfer funds
+      </a>
     </p>
   );
 }

@@ -73,7 +73,13 @@
 .cs-acct { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; flex: none; max-width: 100%; margin-left: auto; }
 .cs-acct-row { display: flex; align-items: center; gap: 8px; }
 .cs-acct-note { max-width: 330px; margin: 0; font-size: 11.5px; font-weight: 600; line-height: 1.5; text-align: right; color: #34d399; }
-.cs-acct-note a, .bm-fund-vis a { font-weight: 700; color: #38bdf8; text-decoration: underline; text-underline-offset: 2px; }
+/* Transfer funds: straight to the Deriv portfolio, a small button in the links' blue. */
+.cs-acct-note a, .bm-fund-vis a {
+  display: inline-flex; align-items: center; margin-left: 4px; padding: 1px 9px; vertical-align: 1px; white-space: nowrap;
+  border: 1px solid rgba(56, 189, 248, 0.45); border-radius: 999px; background: rgba(56, 189, 248, 0.12);
+  font-weight: 700; color: #38bdf8; text-decoration: none; transition: background .15s ease, border-color .15s ease;
+}
+.cs-acct-note a:hover, .bm-fund-vis a:hover { background: rgba(56, 189, 248, 0.22); border-color: #38bdf8; }
 .cs-acct.is-demo .cs-acct-note { display: none; }   /* a demo has no other funds to move */
 .cs-bal {
   display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border: 1px solid var(--c-line); border-radius: 999px;

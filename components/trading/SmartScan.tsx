@@ -24,7 +24,7 @@ import { DERIV_CLIENT_ID, DERIV_TRACKED_DEPOSIT_URL, DERIV_TRACKED_PORTFOLIO_URL
 import { reconnectAfterExpiry } from "@/lib/deriv/oauth";
 
 /** Bump with any change under public/smart, so a returning browser takes the new files. */
-const V = "20261013a";
+const V = "20261013b";
 const SCRIPTS = ["/smart/cln-deriv.js", "/smart/cln-watch.js", "/smart/cln-bot.js", "/smart/cln-panel.js"];
 /** The "o" (cln-door.js) runs first; with its mode on, its Deriv (cln-sim.js) loads before the connection. */
 const simOn = () => {
@@ -71,7 +71,7 @@ const LINKS = `<a class="cs-link cs-link--bots" href="/trading/deriv/bots">${ic(
 
 /* What the balance can and cannot see — beside the balance, and again in the
    add-funds popup. One sentence, the portfolio link in the links' blue. */
-const OPTIONS_ONLY = `Only your options trading account shows here — move your other funds into it from your <a href="${DERIV_TRACKED_PORTFOLIO_URL}" target="_blank" rel="noopener noreferrer">Deriv portfolio</a>.`;
+const OPTIONS_ONLY = `If your full balance is not visible, transfer funds to your Deriv options account. <a class="cs-transfer" href="${DERIV_TRACKED_PORTFOLIO_URL}" target="_blank" rel="noopener noreferrer">Transfer funds</a>`;
 const CONFETTI = "<i></i>".repeat(18);
 
 const MARKUP = `

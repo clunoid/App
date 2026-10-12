@@ -87,7 +87,9 @@ export function snooze() {
 /** Inside an installed window there is nothing left to offer. */
 export function alreadyInstalled(): boolean {
   if (typeof window === "undefined") return false;
-  const standalone = window.matchMedia?.("(display-mode: standalone)").matches;
+  // Whatever window the installed app opens in (standalone, full screen, minimal-ui, a desktop
+  // app's title bar or tabs); an Android app shell too.
+  const standalone = window.matchMedia?.("(display-mode: standalone), (display-mode: fullscreen), (display-mode: minimal-ui), (display-mode: window-controls-overlay), (display-mode: tabbed)").matches || document.referrer.startsWith("android-app://");
   const iosStandalone = (window.navigator as Navigator & { standalone?: boolean }).standalone === true;
   return !!standalone || iosStandalone;
 }
