@@ -674,3 +674,11 @@
 @keyframes bot-wait-shine { from { background-position: 100% 0; } to { background-position: -200% 0; } }
 @keyframes bot-wait-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .bot-wait-orbit, .bot-wait-orbit::after, .bot-wait-sk i { animation-duration: 4s; } }
+
+/* A phone or tablet: Recent Trades takes more than half the screen, empty or not (owner); the
+   empty note fills it, and the trades get the room when they come. */
+@media (max-width: 1023px) {
+  .cs-trades { min-height: 56vh; min-height: 56dvh; }
+  .cs-trades-in .cs-empty { flex: 1; }
+  .cs-list { max-height: max(420px, 60dvh); }
+}
