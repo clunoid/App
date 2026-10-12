@@ -588,39 +588,62 @@
 }
 
 /* What went wrong (cln-bot.js mistakes): the run's figures past the risk guide, as points, inside
-   the stop-loss and add-funds popups — which keep their size: while the points show the rest
-   of the card is set closer (the tile beside the title in add-funds), and cln-bot.js gives the
-   points' box what is left of the popup's usual height (it scrolls for the rest, its foot
-   fading while there is more). */
-.bm-why { margin: 12px 0 0; padding: 10px 12px; text-align: left; border-radius: 12px; border: 1px solid rgba(242, 96, 125, 0.32); background: rgba(0, 0, 0, 0.22);
-  max-height: 220px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: rgba(242, 96, 125, 0.4) transparent; }
-.bm-why.is-more { -webkit-mask-image: linear-gradient(#000 calc(100% - 26px), rgba(0, 0, 0, 0.15)); mask-image: linear-gradient(#000 calc(100% - 26px), rgba(0, 0, 0, 0.15)); }
+   the stop-loss and add-funds popups, shown in full (the popup grows to hold them, nothing
+   scrolls inside it), then the note as a green tip. While they show, the rest of the card is
+   set closer (the tile beside the title in add-funds). */
+.bm-why { margin: 12px 0 0; display: grid; gap: 8px; text-align: left; }
+.bm-why-box { padding: 10px 12px; border-radius: 12px; border: 1px solid rgba(242, 96, 125, 0.32); background: rgba(0, 0, 0, 0.22); }
 .bm-why-h { margin: 0 0 5px; font-size: 9.5px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: #f2607d; }
 .bm-why ul { margin: 0; padding: 0 0 0 14px; display: grid; gap: 4px; list-style: disc outside; }
-.bm-why li { display: list-item; font-size: 12px; line-height: 1.45; color: var(--c-text); }
+.bm-why li { display: list-item; font-size: 12px; line-height: 1.45; color: var(--c-text); overflow-wrap: anywhere; }
 .bm-why li::marker { color: #f2607d; }
-.bm-why-note { margin: 6px 0 0; padding-top: 6px; border-top: 1px solid var(--c-line); font-size: 11.5px; line-height: 1.45; font-weight: 600; color: var(--c-warn); }
-/* the stop-loss card, closer */
-.bm-fin.has-why .bm-fin-ico { width: 42px; height: 42px; border-radius: 12px; }
+.bm-why-tip { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border-radius: 12px; border: 1px solid rgba(52, 211, 153, 0.32); background: rgba(52, 211, 153, 0.08); }
+.bm-why-tip-i { flex: none; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 8px; background: rgba(52, 211, 153, 0.16); color: #34d399; }
+.bm-why-tip p { margin: 0; font-size: 11.5px; line-height: 1.45; font-weight: 600; color: var(--c-text); }
+.bm-why-tip b { display: block; margin-bottom: 2px; font-size: 9.5px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: #34d399; }
+/* the stop-loss card, closer: the tile beside its kicker and title, the P/L on one line */
+.bm-fin.has-why { display: grid; grid-template-columns: 1fr auto auto 1fr; align-items: center; column-gap: 12px; }
+.bm-fin.has-why > * { grid-column: 1 / -1; }
+.bm-fin.has-why > .bm-fin-ico { grid-column: 2; grid-row: 1 / span 2; width: 42px; height: 42px; margin: 0; border-radius: 12px; }
 .bm-fin.has-why .bm-fin-ico svg { width: 20px; height: 20px; }
-.bm-fin.has-why .bm-fin-k { margin-top: 8px; }
-.bm-fin.has-why h2 { font-size: 18px; }
-.bm-fin.has-why .bm-fin-p { margin-top: 4px; line-height: 1.45; max-width: none; }
-.bm-fin.has-why .bm-fin-pl { margin-top: 10px; padding: 9px 14px; }
-.bm-fin.has-why .bm-fin-pl b { font-size: 22px; }
+.bm-fin.has-why > .bm-fin-k { grid-column: 3; grid-row: 1; margin: 0; text-align: left; align-self: end; }
+.bm-fin.has-why > h2 { grid-column: 3; grid-row: 2; margin: 0; font-size: 18px; text-align: left; align-self: start; }
+.bm-fin.has-why .bm-fin-p { margin-top: 8px; line-height: 1.45; max-width: none; }
+.bm-fin.has-why .bm-fin-pl { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 10px; padding: 8px 14px; }
+.bm-fin.has-why .bm-fin-pl b { margin: 0; font-size: 20px; }
 .bm-fin.has-why .bm-fin-mini { margin-top: 8px; gap: 6px; }
 .bm-fin.has-why .bm-fin-mini > div { padding: 5px 4px; }
 .bm-fin.has-why .bm-fin-done { margin-top: 12px; }
 .bm:has(> .bm-fin.has-why:not([hidden])) { padding-top: 20px; padding-bottom: 20px; }
-/* add funds: the tile beside the title */
-.bm-fund.has-why { display: grid; grid-template-columns: auto 1fr; align-items: center; column-gap: 10px; }
-.bm-fund.has-why > * { grid-column: 1 / -1; }
-.bm-fund.has-why > .bm-fund-ico { grid-column: 1; width: 34px; height: 34px; border-radius: 10px; }
+/* add funds: the tile beside the title, Later and Deposit side by side */
+.bm-fund.has-why { display: flex; flex-wrap: wrap; align-items: center; column-gap: 10px; }
+.bm-fund.has-why > * { flex: 1 1 100%; }
+.bm-fund.has-why > .bm-fund-ico { flex: 0 0 auto; width: 34px; height: 34px; border-radius: 10px; }
 .bm-fund.has-why > .bm-fund-ico svg { width: 17px; height: 17px; }
-.bm-fund.has-why > h3 { grid-column: 2; margin: 0; font-size: 19px; }
+.bm-fund.has-why > h3 { flex: 1 1 0; min-width: 0; margin: 0; font-size: 19px; }
 .bm:has(> .bm-fund.has-why:not([hidden])) { padding: 16px 20px; }
 .bm-fund.has-why .bm-fund-p { margin-top: 5px; font-size: 12px; line-height: 1.4; }
 .bm-fund.has-why .bm-why { margin-top: 8px; }
 .bm-fund.has-why .bm-fund-note, .bm-fund.has-why .bm-fund-vis { margin-top: 5px; font-size: 11.5px; line-height: 1.4; }
-.bm-fund.has-why .bm-fund-go { margin-top: 8px; padding: 8px 16px; }
-.bm-fund.has-why .bm-fund-later { margin-top: 5px; padding: 8px 16px; }
+.bm-fund.has-why > .bm-fund-later { order: 1; flex: 1 1 0; width: auto; margin-top: 10px; padding: 9px 12px; }
+.bm-fund.has-why > .bm-fund-go { order: 2; flex: 1 1 0; width: auto; margin-top: 10px; padding: 9px 12px; }
+/* A short screen: the popups with points set closer still, so all of each shows at once. */
+@media (max-height: 680px) {
+  .bm:has(> .bm-fin.has-why:not([hidden])) { padding-top: 16px; padding-bottom: 14px; }
+  .bm:has(> .bm-fund.has-why:not([hidden])) { padding-top: 14px; padding-bottom: 14px; }
+  .bm-why { gap: 6px; margin-top: 8px; }
+  .bm-why-box, .bm-why-tip { padding: 8px 10px; }
+  .bm-why-tip-i { width: 22px; height: 22px; }
+  .bm-fin.has-why > .bm-fin-ico { width: 36px; height: 36px; }
+  .bm-fin.has-why .bm-fin-p { margin-top: 6px; }
+  .bm-fin.has-why .bm-fin-pl { margin-top: 8px; padding: 6px 12px; }
+  .bm-fin.has-why .bm-fin-done { margin-top: 10px; }
+}
+/* The smallest phones (568 tall): the words a touch tighter too. */
+@media (max-height: 600px) {
+  .bm-why li { font-size: 11.5px; line-height: 1.38; }
+  .bm-why-tip p { font-size: 11px; line-height: 1.38; }
+  .bm-fin.has-why .bm-fin-p, .bm-fund.has-why .bm-fund-p, .bm-fund.has-why .bm-fund-note, .bm-fund.has-why .bm-fund-vis { line-height: 1.32; }
+  .bm-fin.has-why .bm-fin-mini > div { padding: 4px; }
+  .bm-fund.has-why > .bm-fund-later, .bm-fund.has-why > .bm-fund-go { margin-top: 8px; padding: 8px 12px; }
+}
