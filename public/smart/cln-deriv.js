@@ -31,8 +31,8 @@
  * line is down too, when the page leaves for the re-sign-in at once and the run
  * resumes on return (cln-bot.js keeps it for the tab).
  *
- * The demo account stays out of sight until three taps on Real reveal it for
- * this visit (taps counted here: an iPhone reports every tap as a first click).
+ * The demo account is shown beside Real (owner, Oct 12: no longer hidden). A login
+ * with only a demo trades on it, and is offered a real account.
  */
 
 (function (global) {
@@ -102,7 +102,7 @@
   var accounts = [];      // { id, type, currency, balance, status }
   var feeds = {};         // id → Feed
   var picked = null;      // the id shown
-  var showDemo = false;   // the demo, revealed for this visit
+  var showDemo = true;    // the demo is shown beside Real, always (no longer hidden)
 
   function isReal(a) {
     var t = String(a.account_type || a.type || "").toLowerCase(), id = String(a.account_id || a.loginid || "");
@@ -150,16 +150,17 @@
     if (on && on.type === "demo") { showDemo = true; store.set(PICK, on.id); }
     picked = pickShown();
     if (!picked) return noReal("real");
-    needReal = null;
+    // Only a demo: it is in use, and the bot offers a real account (needsReal() "real").
+    needReal = accounts.some(function (a) { return a.type === "real"; }) ? null : "real";
     $("acct").classList.remove("is-noreal");
     clearState();
     $("acct").hidden = false;
     painted = true;
     paint();
     accounts.forEach(function (a) {
-      if (a.status !== "active") return;
-      var f = feeds[a.id] || (feeds[a.id] = new Feed(a.id));
-      f.retry(true);
+      // A feed already open (the demo in use when a real account comes in) is left as it is.
+      if (a.status !== "active" || feeds[a.id]) return;
+      (feeds[a.id] = new Feed(a.id)).retry(true);
     });
     startPolling();
   }
@@ -185,6 +186,7 @@
   function lookAgain() {
     // Offline, nothing can be read: the "online" that follows looks at once.
     if (!needReal || document.visibilityState === "hidden" || navigator.onLine === false || Date.now() - lookedAt < 4000) return;
+    if (needReal === "real" && busy()) return;           // a run on the demo: the real account can wait
     lookedAt = Date.now();
     rest("GET", ACCOUNTS_URL).then(function (r) {
       if (!needReal) return;
@@ -277,18 +279,10 @@
   /* ── the toggle ────────────────────────────────────────────────────── */
 
   function bindToggle() {
-    var count = 0, last = 0;
     $("acctModes").addEventListener("click", function (e) {
       var b = e.target.closest(".cln-mode-btn");
       if (!b || b.disabled || busy()) return;
       var m = b.getAttribute("data-mode");
-      if (m === "real") {
-        // Three taps on Real within 600 ms of each other reveal the demo for this visit.
-        var now = Date.now();
-        count = now - last <= 600 ? count + 1 : 1;
-        last = now;
-        if (count >= 3 && !showDemo && first("demo")) { count = 0; showDemo = true; paint(); return; }
-      }
       var a = first(m);
       if (!a || a.id === picked) return;
       picked = a.id;

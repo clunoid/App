@@ -24,7 +24,7 @@ import { DERIV_CLIENT_ID, DERIV_TRACKED_DEPOSIT_URL, DERIV_TRACKED_PORTFOLIO_URL
 import { reconnectAfterExpiry } from "@/lib/deriv/oauth";
 
 /** Bump with any change under public/smart, so a returning browser takes the new files. */
-const V = "20261012e";
+const V = "20261012f";
 const SCRIPTS = ["/smart/cln-deriv.js", "/smart/cln-watch.js", "/smart/cln-bot.js", "/smart/cln-panel.js"];
 /** The "o" (cln-door.js) runs first; with its mode on, its Deriv (cln-sim.js) loads before the connection. */
 const simOn = () => {
@@ -161,6 +161,14 @@ const MARKUP = `
   <section class="cs-col cs-trades">
     <div class="cs-col-h"><h2>Recent Trades</h2><span class="cs-right cs-mono" id="csCount" data-i18n-skip></span></div>
     <div class="cs-trades-in">
+      <!-- A wait the run is in (cln-bot.js waitOf): shown, moving, until it trades again. -->
+      <div class="bot-wait" id="botWait" role="status" aria-live="polite" hidden>
+        <div class="bot-wait-top">
+          <span class="bot-wait-orbit" aria-hidden="true"><i></i></span>
+          <span class="bot-wait-t"><strong id="botWaitText" data-i18n-skip></strong><span>The bot carries on by itself — no need to do anything.</span></span>
+        </div>
+        <span class="bot-wait-sk" aria-hidden="true"><i></i><i></i></span>
+      </div>
       <div class="cs-empty" id="botEmpty"><span>No trades yet — start the bot.</span></div>
       <div class="cs-list" id="historyItems" translate="no"></div>
     </div>

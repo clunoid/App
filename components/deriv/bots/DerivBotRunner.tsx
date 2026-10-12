@@ -38,11 +38,9 @@ export function DerivBotRunner({ botId }: { botId: string }) {
   const [ready, setReady] = useState(false);
   const [access, setAccess] = useState("");
   const [accounts, setAccounts] = useState<ConnectedAccount[]>([]);
-  // Default everyone to their REAL account (that's where the markup is). Demo is
-  // hidden until the secret is entered — three taps on the Real toggle.
+  // Default everyone to their REAL account (that's where the markup is); the Demo
+  // toggle is shown beside it (owner, Oct 12: no longer hidden).
   const [mode, setMode] = useState<Mode>("real");
-  const [showDemo, setShowDemo] = useState(false);
-  const realTaps = useRef({ n: 0, at: 0 });
 
   const [stake, setStake] = useState(String(BOT_DEFAULTS.initialStake));
   const [takeProfit, setTakeProfit] = useState(String(BOT_DEFAULTS.takeProfit));
@@ -209,24 +207,12 @@ export function DerivBotRunner({ botId }: { botId: string }) {
               <span style={{ ...monoFont }}>{fmtBalance(shownBalance.balance, shownBalance.currency)}</span>
             </span>
             <div className="inline-flex rounded-full border p-0.5" style={{ borderColor: TC.line, background: "rgba(0,0,0,0.2)" }}>
-              {(showDemo ? (["demo", "real"] as const) : (["real"] as const)).map((m) => {
+              {(["demo", "real"] as const).map((m) => {
                 const avail = m === "demo" ? !!demoAccount : !!realAccount;
                 const active = mode === m;
                 return (
                   <button key={m}
-                    onClick={() => {
-                      // Secret: three taps on Real within 600 ms of each other reveal the hidden
-                      // Demo toggle. Counted here, not read from the click's detail: an iPhone
-                      // reports every tap as a first click, so a detail of 3 never comes.
-                      // Everyone stays on their real account otherwise — that's the point.
-                      if (m === "real") {
-                        const tap = realTaps.current, now = Date.now();
-                        tap.n = now - tap.at <= 600 ? tap.n + 1 : 1;
-                        tap.at = now;
-                        if (tap.n >= 3) { tap.n = 0; setShowDemo(true); return; }
-                      }
-                      switchMode(m);
-                    }}
+                    onClick={() => switchMode(m)}
                     disabled={runningState || !avail}
                     title={!avail ? `No ${m} account on your Deriv connection` : runningState ? "Stop the bot to switch accounts" : ""}
                     className="rounded-full px-2.5 py-1 text-[11px] font-semibold capitalize transition disabled:cursor-not-allowed disabled:opacity-40"
