@@ -13,7 +13,7 @@
  */
 
 import Link from "next/link";
-import { Clapperboard, Gift } from "lucide-react";
+import { Gift } from "lucide-react";
 import { TC } from "@/lib/trading/theme";
 
 export const BINANCE_REFERRAL_URL = "https://www.binance.com/referral/earn-together/refer2earn-usdc/claim?hl=en&ref=GRO_28502_IIEHW&utm_source=referral_entrance";
@@ -64,12 +64,6 @@ export function PlatformStrip() {
         </span>
       ))}
 
-      {/* Creator Program — last, and the one that pays. */}
-      <Link href="/trading/creators" className={chip} style={{ borderColor: "rgba(167,139,250,0.4)", background: "rgba(167,139,250,0.10)", color: TC.text }}>
-        <Clapperboard size={13} style={{ color: "#a78bfa" }} />
-        Creator Program
-        <span className={tag} style={{ background: "rgba(167,139,250,0.16)", color: "#a78bfa" }}>Get paid</span>
-      </Link>
     </nav>
   );
 }

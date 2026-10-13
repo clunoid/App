@@ -6,7 +6,7 @@
  */
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Bot, Star, ChevronRight } from "lucide-react";
+import { ArrowLeft, Bot, Star, ChevronRight, Clapperboard } from "lucide-react";
 import { TC, DOT_GRID, monoFont } from "@/lib/trading/theme";
 import { BOTS, type BotBadge } from "@/lib/deriv/bots/registry";
 import { SimBalanceEditor } from "@/components/deriv/bots/SimBalanceEditor";
@@ -33,6 +33,14 @@ export function DerivBotsSimList() {
       <div aria-hidden className="pointer-events-none absolute inset-0" style={DOT_GRID} />
 
       <div className="relative z-10 w-full px-6 py-5 sm:px-10 lg:px-16">
+        {/* The Creator Program, moved here from the public pages (as on the other simulation): one
+            small pill above the header, in its own violet so it never reads as a trading control. */}
+        <Link href="/trading/creators" className="mb-3 inline-flex max-w-full flex-wrap items-center gap-x-1.5 gap-y-0.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition hover:opacity-90"
+          style={{ borderColor: "rgba(167,139,250,0.45)", background: "rgba(167,139,250,0.12)", color: "#c4b5fd" }}>
+          <Clapperboard size={12} className="shrink-0" style={{ color: "#a78bfa" }} />
+          <span>Creator Program · Get paid to post</span>
+          <span className="whitespace-nowrap font-bold" style={{ color: "#34d399" }}>up to $1,250 a month</span>
+        </Link>
         <header className="flex flex-wrap items-center gap-3">
           <Link href="/trading/command" className="flex items-center gap-1.5 text-[13px] font-medium transition hover:opacity-80" style={{ color: TC.muted }}>
             <ArrowLeft size={15} /> Home

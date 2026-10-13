@@ -3,7 +3,10 @@ import { requireUser } from "@/lib/auth/requireUser";
 import { sendSupportMessage, MAX_UPLOAD_BYTES, ALLOWED_TYPES } from "@/lib/support/telegram";
 import { recordInbound, historyFor } from "@/lib/support/threads";
 import { isBanned } from "@/lib/support/bans";
-import { accessStatusFor, accessStatusLine } from "@/lib/deriv/mt5/eaAccess";
+import { accessStatusFor, accessStatusLine, accessState } from "@/lib/deriv/mt5/eaAccess";
+
+// The set-up ask, as the button words it in every language the site speaks.
+const DOWNLOADED_ASK = /have downloaded the EA|Ya descargu[eé] el EA|J[’']ai t[eé]l[eé]charg[eé] l[’']EA|J[aá] baixei o EA/i;
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -139,6 +142,19 @@ export async function POST(req: NextRequest) {
    * goes quiet, which is what being ignored looks like from the outside. */
   if (await isBanned(p.visitorId, email)) {
     return NextResponse.json({ ok: true, email });
+  }
+
+  /* "I have downloaded the EA — please guide me…" is for approved people only: the button shows
+   * only to them, and the ask (by the button, or typed in any of the site's languages) is taken
+   * only from a browser our records approve. Anyone else is told to get approved first. */
+  if (p.kind === "ea-downloaded" || DOWNLOADED_ASK.test(p.message)) {
+    const state = await accessState(p.visitorId || "");
+    if (state !== "approved") {
+      return NextResponse.json({ error: state === "unknown"
+        ? "We could not check your approval just now. Please try again in a minute."
+        : "Set-up help is for approved users. Request your download code on the MT5 page first — once you are approved, it arrives here." },
+        { status: state === "unknown" ? 503 : 403 });
+    }
   }
 
   // What we have already said to this person. Fetched BEFORE the new message is

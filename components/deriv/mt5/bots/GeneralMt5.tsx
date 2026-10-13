@@ -153,6 +153,18 @@ export function GeneralMt5() {
   const [updatedAt, setUpdatedAt] = useState<number>(0);
   const [eaOpen, setEaOpen] = useState(false);
   const [eaNotice, setEaNotice] = useState<EaNotice | null>(null);
+  /* The "Downloaded the EA?" step shows only to a browser our records approve (checked on every
+     visit); everyone else sees the set-up steps without it, numbered from 1. The server refuses
+     the ask too. */
+  const [approved, setApproved] = useState(false);
+  useEffect(() => {
+    let live = true;
+    fetch(`/api/trading/mt5/ea-request?visitorId=${encodeURIComponent(loadIdentity().visitorId)}`, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j: { state?: string } | null) => { if (live) setApproved(j?.state === "approved"); })
+      .catch(() => { /* not approved as far as this page knows */ });
+    return () => { live = false; };
+  }, []);
   const started = useRef(false);
 
   const load = useCallback(async (p: RiskProfile) => {
@@ -229,16 +241,16 @@ export function GeneralMt5() {
 
             <ol className="mt-4 space-y-3">
               {[
-                <><b style={{ color: TC.text }}>Downloaded the EA?</b> Tell support and we guide you through setting it up and using it the right way.{" "}
+                approved ? <><b style={{ color: TC.text }}>Downloaded the EA?</b> Tell support and we guide you through setting it up and using it the right way.{" "}
                   <b style={{ color: ACCENT, whiteSpace: "nowrap" }}>Click here →</b>{" "}
-                  <DownloadedButton onNotApproved={(why) => { setEaNotice(why); setEaOpen(true); }} /></>,
+                  <DownloadedButton onNotApproved={(why) => { setEaNotice(why); setEaOpen(true); }} /></> : null,
                 <>Copy the file into MT5&rsquo;s <code style={cx}>MQL5/Experts</code> folder — find it via <code style={cx}>File → Open Data Folder</code>.</>,
                 <>In MT5 go to <code style={cx}>Tools → Options → Expert Advisors</code>, tick <b style={{ color: TC.text }}>Allow WebRequest</b> and add <code style={cx}>https://www.clunoid.com</code>. <CopyAddress text="https://www.clunoid.com" muted={TC.muted} accent={ACCENT} line={TC.line} /></>,
                 <>Restart MT5, or press <b style={{ color: TC.text }}>Compile</b> in MetaEditor. The bot then appears under Expert Advisors.</>,
                 <>Drag it onto <b style={{ color: TC.text }}>any one chart</b>, set <code style={cx}>InpProfile</code> to your risk level, and enable <b style={{ color: TC.text }}>Algo Trading</b> — the toolbar button must be green: <AlgoToggle on text={TC.text} panel={TC.panelSolid} /> is <b style={{ color: TC.text }}>on</b>, <AlgoToggle on={false} text={TC.text} panel={TC.panelSolid} /> is <b style={{ color: TC.text }}>off</b>.</>,
                 <><b style={{ color: TC.text }}>Make sure you have followed every step above, in order.</b> A skipped step — the WebRequest address, Algo Trading, the risk profile — is the usual reason a bot sits idle.</>,
                 <>(Recommended) Right-click the bot → <b style={{ color: TC.text }}>Register a Virtual Server</b> so it keeps trading with your computer off.</>,
-              ].map((step, i) => (
+              ].filter(Boolean).map((step, i) => (
                 <li key={i} className="flex gap-3">
                   <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-[12px] font-bold" style={{ background: "rgba(56,189,248,0.16)", color: ACCENT }}>{i + 1}</span>
                   <span className="text-[12.5px] leading-relaxed" style={{ color: TC.muted }}>{step}</span>
